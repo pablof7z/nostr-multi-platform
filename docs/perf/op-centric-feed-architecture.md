@@ -160,7 +160,7 @@ pub enum TimelineBlock {
 | D7 | ✅ | Closure-shaped capabilities (`Arc<dyn Fn(...)>`). |
 | D8 | ✅ | Observer-driven; no poll. |
 | D11 | ✅ | No new bespoke C-ABI symbol. |
-| D14 | ✅ | `nmp.feed.home` is a typed projection. |
+| D14 | ✅ | App-owned OP-feed keys emit the shared typed NNFS projection schema. |
 
 **ADRs:** ADR-0035 (generic root-indexed feed engine), ADR-0036 (composition-root
 followset expansion). See also ADR-0037 and ADR-0038 for the shipped implementation.

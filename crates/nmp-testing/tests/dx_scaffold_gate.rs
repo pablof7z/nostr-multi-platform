@@ -389,6 +389,7 @@ fn g3_shell_uses_nmp_app_builder() {
          lib.rs:\n{lib_rs}",
     );
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
+    let retired_home_feed_key = ["nmp", "feed", "home"].join(".");
     assert!(
         !lib_rs.contains("resolved_profiles") && !lib_rs.contains(&legacy_embed_projection_key),
         "G3 DX GAP: starter code must not mention legacy projection data sources.\n\
@@ -403,7 +404,7 @@ fn g3_shell_uses_nmp_app_builder() {
         "ReducedSource",
         "PublishRaw",
         "publishRaw",
-        "nmp.feed.home",
+        &retired_home_feed_key,
         "resolved_profiles",
         &legacy_embed_projection_key,
     ] {

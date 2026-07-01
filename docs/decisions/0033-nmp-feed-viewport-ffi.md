@@ -35,16 +35,16 @@ Add exactly one generic C ABI symbol:
 void loadOlderFeed(const char *feed_key);
 ```
 
-`nmp-app-chirp` registers the reusable home feed under the snapshot-projection
-key `"nmp.feed.home"`. iOS and the TUI read that value from the normal NMP
-update stream:
+`nmp-app-chirp` registers the reusable home feed under an app-owned
+snapshot-projection key such as `"chirp.timeline.home"`. iOS and the TUI read
+that value from the normal NMP update stream:
 
 ```json
 { "blocks": [...], "cards": [...], "page": {...}, "metrics": {...} }
 ```
 
 When the rendered tail becomes visible, shells call
-`loadOlderFeed("nmp.feed.home")`. They do not construct cursor
+`loadOlderFeed("chirp.timeline.home")`. They do not construct cursor
 requests, do not know page-size or cap constants, and do not call a
 Chirp-specific feed read API.
 

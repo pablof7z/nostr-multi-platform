@@ -208,6 +208,7 @@ fn assert_named_installer_sequence(lib: &str) {
 
 fn assert_no_retired_app_surface(lib: &str, shell: &str) {
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");
+    let retired_home_feed_key = ["nmp", "feed", "home"].join(".");
     for forbidden in [
         "nmp-defaults",
         "nmp_defaults",
@@ -217,7 +218,7 @@ fn assert_no_retired_app_surface(lib: &str, shell: &str) {
         "ReducedSource",
         "PublishRaw",
         "publishRaw",
-        "nmp.feed.home",
+        &retired_home_feed_key,
         "resolved_profiles",
         &legacy_embed_projection_key,
     ] {

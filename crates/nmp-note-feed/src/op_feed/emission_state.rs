@@ -14,7 +14,8 @@
 //! There is exactly ONE omit implementation in the codebase:
 //! `nmp_core::projection_emission::TypedProjectionEmissionState`. All three
 //! typed projections that use the omit mechanism
-//! (`nmp.feed.home`, `refs.event.envelopes`, `nip46_onboarding`) share it.
+//! (app-owned NNFS OP-feed projections, `refs.event.envelopes`,
+//! `nip46_onboarding`) share it.
 //!
 //! ## Original mechanism docs (now in `nmp-core::projection_emission`)
 //!
@@ -30,7 +31,7 @@
 // reaching into `nmp-core` directly.
 pub use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
 
-/// Per-producer emission state for the `nmp.feed.home` typed projection.
+/// Per-producer emission state for NNFS OP-feed typed projections.
 ///
 /// Type alias for [`TypedProjectionEmissionState`]; the feed is a whole-value
 /// projection, so the generic state is used directly. All constructor and

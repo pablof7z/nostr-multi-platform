@@ -71,9 +71,10 @@ pub use keyed_projection_row_payload::{
 pub struct SnapshotProjectionEntry {
     /// The projection's identity — the kernel-emitted JSON key as it appears in
     /// the `projections` map AND the `TypedProjection.key` the producer
-    /// publishes for the typed sidecar (they are the same string for every
-    /// projection; the deliberate split the op-feed / follow-list carry is
-    /// `key` vs `schema_id`, both owned by the contract).
+    /// publishes for the typed sidecar. For entries in this registry, that key
+    /// is owned by the producing projection contract. App-owned OP-feed session
+    /// keys are intentionally absent from this shared registry even though their
+    /// payloads use the shared `nmp.note_feed.opfeed` / NNFS schema.
     ///
     /// #1723 (epic #1719): this is the SINGLE source of the projection's
     /// identity in this registry. It used to be spelled twice — once as
@@ -418,8 +419,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     },
     // D0 views cluster — `profile` (typed). V-112 (ADR-0042): author_view /
     // thread_view deleted. #1610: the JSON-era `timeline`, `inserted`,
-    // `updated`, `removed` per-tick delta slots deleted — the typed feed ships
-    // via `nmp.feed.home` (`OpFeedSnapshot`) which is the canonical typed form.
+    // `updated`, `removed` per-tick delta slots deleted. OP-feed sessions are
+    // app-owned projections that decode the shared `nmp.note_feed.opfeed` /
+    // NNFS schema; they are not a shared `SnapshotProjections` singleton.
     SnapshotProjectionEntry {
         key: "profile",
         swift_field: "profile",
@@ -431,23 +433,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // with this batch. Single-card copy with `has_*`→`String?` companion
             // mapping. See `TypedProjectionGlue.profile`.
             swift_reader_type: Some("nmp_kernel_ProfileSnapshot"),
-        }),
-    },
-    SnapshotProjectionEntry {
-        key: "nmp.feed.home",
-        swift_field: "homeFeed",
-        // Framework/protocol type name: `OpFeedSnapshot` mirrors the Rust
-        // `nmp_note_feed::op_feed::OpFeedSnapshot` (`RootFeedSnapshot<…>`) without
-        // embedding any app name.
-        swift_type: "OpFeedSnapshot",
-        // The op-feed pilot — the ONLY case where producer `key` (here
-        // `"nmp.feed.home"`) differs from `schema_id` (`"nmp.note_feed.opfeed"`).
-        // Already consumed by the hand-written `TypedHomeFeedDecoder` (nested
-        // NFWM/NFCT sub-buffer decode = thick bespoke glue), so the generator
-        // does NOT emit a decoder for it: `swift_reader_type: None` keeps it
-        // out of generated scope and avoids colliding with the existing wiring.
-        typed_sidecar: Some(TypedSidecar {
-            swift_reader_type: None,
         }),
     },
     // Host-registered dotted-key projections. The `.` in the JSON key is

@@ -77,11 +77,6 @@ pub const PRODUCER_VERSION_SOURCES: &[ProducerVersionSource] = &[
     // like the `nmp-core` producers. Only the remaining hand-declaring producers
     // are checked here.
     ProducerVersionSource {
-        key: "nmp.feed.home",
-        source_path: "crates/nmp-note-feed/src/op_feed/typed_wire.rs",
-        const_name: "OP_FEED_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
         key: "nmp.follow_list",
         source_path: "crates/nmp-nip02/src/wire/typed_fb.rs",
         const_name: "SCHEMA_VERSION",

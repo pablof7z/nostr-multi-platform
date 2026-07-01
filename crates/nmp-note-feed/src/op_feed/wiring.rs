@@ -26,16 +26,21 @@
 //! let engine = nmp_note_feed::register_op_feed(viewer, predicate, lookup);
 //! app.open_observed_projection(ObservedProjection::from_shape(
 //!     Arc::clone(&engine) as Arc<dyn ObservedProjectionSink>,
-//!     "nmp.feed.home",
+//!     app_home_timeline_projection_key,
 //!     0,
 //!     feed_shape,
 //!     256,
 //! ));
-//! app.register_feed("nmp.feed.home", Arc::clone(&engine) as Arc<dyn FeedController>);
+//! app.register_feed(
+//!     app_home_timeline_projection_key,
+//!     Arc::clone(&engine) as Arc<dyn FeedController>,
+//! );
 //! ```
 //!
-//! The feed key is a projection/output key only. It is unrelated to the
-//! kernel's event-claim refcount mechanism.
+//! The feed key is a caller/app-owned projection/output key only. This crate
+//! owns the OP-feed engine and NNFS wire schema, not a product key in the
+//! projection namespace. The key is unrelated to the kernel's event-claim
+//! refcount mechanism.
 //!
 //! # Secondary data
 //!
@@ -117,16 +122,11 @@ impl ParentResolver for NoteFeedResolver {
 /// The note-feed instance of the generic feed engine.
 pub type OpFeedEngine = RootIndexedFeed<NoteFeedResolver, Nip10ReplyAttribution, NoteFeedItem>;
 
-/// Snapshot / feed-registry key for the OP-centric home feed. Matches the key
-/// Chirp's `ModularTimelineProjection` registers today; the swap to this engine
-/// is rung 7, so this rung leaves the key registered ONLY inside tests.
-pub const OP_FEED_SNAPSHOT_KEY: &str = "nmp.feed.home";
-
 /// Construct (but do not register) the NIP-10 OP-feed engine.
 ///
 /// Returns the `Arc<OpFeedEngine>`. The composition root registers it as a
-/// `ObservedProjectionSink` (ingest) and a `FeedController` under
-/// [`OP_FEED_SNAPSHOT_KEY`] (output).
+/// `ObservedProjectionSink` (ingest) and a `FeedController` under the app-owned
+/// projection/output key chosen by the caller.
 ///
 /// * `viewer` — the active account pubkey (reserved for future
 ///   personalization; the engine itself is viewer-agnostic, mirroring

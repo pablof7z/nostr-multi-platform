@@ -126,7 +126,7 @@ For normal state updates, `kind = Snapshot` and the `snapshot` table carries
 typed envelope fields plus `typed_projections`. `kind = Panic` is the terminal
 actor-thread failure frame. Hosts decode the frame with generated FlatBuffers
 readers; there is no production JSON snapshot fallback. Product view state
-comes from typed projection rows such as `nmp.feed.home`,
+comes from typed projection rows such as `myapp.timeline.home`,
 `nmp.feed.author.<pubkey>`, and `nmp.feed.thread.<event_id>`.
 
 | Field | Type | Use |

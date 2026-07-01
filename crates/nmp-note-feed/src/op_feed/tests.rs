@@ -19,7 +19,8 @@ use crate::NoteFeedItem;
 
 use super::attribution::Nip10ReplyAttribution;
 use super::test_support::*;
-use super::wiring::{op_feed_observer, register_op_feed, OP_FEED_SNAPSHOT_KEY};
+use super::typed_wire::{OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID};
+use super::wiring::{op_feed_observer, register_op_feed};
 
 #[derive(Default)]
 struct TestSuppression {
@@ -432,9 +433,9 @@ fn repost_l5_etag_target_hydrates_later_rebuilds_card() {
 }
 
 #[test]
-fn op_feed_snapshot_key_matches_chirp_home_key() {
-    // The instance registers under the standard home-feed key (rung 7 swap).
-    assert_eq!(OP_FEED_SNAPSHOT_KEY, "nmp.feed.home");
+fn op_feed_owns_schema_not_projection_key() {
+    assert_eq!(OP_FEED_SCHEMA_ID, "nmp.note_feed.opfeed");
+    assert_eq!(OP_FEED_FILE_IDENTIFIER, b"NNFS");
 }
 
 #[test]

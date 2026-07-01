@@ -4,8 +4,8 @@
 //! that previously lived scattered across producer code, the Swift-centred
 //! `swift_projections_registry`, the kernel built-in key set, the projection
 //! revision dependency table, the typed decoder registries, and the drift
-//! gates: each projection's **key**, **tier**, **producer**, **schema_id**,
-//! **file_identifier**, **schema version**, **declaration policy**,
+//! gates: each shared projection's **key**, **tier**, **producer**,
+//! **schema_id**, **file_identifier**, **schema version**, **declaration policy**,
 //! **source-version dependencies**, and **presence policy**.
 //!
 //! ## What is neutral vs. presentation
@@ -36,6 +36,10 @@
 //! Backward-compat is explicitly out of scope (#1723): the migrated kernel
 //! built-in family uses ONLY this contract — its old hand-maintained dependency
 //! table and tier classification are deleted, not shimmed.
+//!
+//! OP-feed sessions are deliberately not rows in this projection-key contract:
+//! products choose their own projection keys, while `nmp-note-feed` owns the
+//! shared `nmp.note_feed.opfeed` / NNFS schema used by those rows.
 
 /// A projection's role in the kernel's projection keyspace.
 ///
@@ -97,7 +101,7 @@ pub enum PresencePolicy {
 pub struct ProjectionContract {
     /// Kernel-emitted projection key (the `TypedProjection.key` the producer
     /// publishes / the `projections` map key). e.g. `"accounts"`,
-    /// `"nmp.feed.home"`, `"refs.profile"`.
+    /// `"refs.event.envelopes"`, `"refs.profile"`.
     pub key: &'static str,
     /// The projection's role in the keyspace.
     pub tier: ProjectionTier,
@@ -108,8 +112,9 @@ pub struct ProjectionContract {
     pub owner_claim: &'static str,
     /// `TypedPayload.schema_id` — the buffer's stable schema identity (the
     /// `*_SCHEMA_ID` constant on the producer crate). For most Tier-2 built-ins
-    /// `key == schema_id`; for the op-feed / follow-list the producer
-    /// deliberately splits them.
+    /// `key == schema_id`; follow-list deliberately splits them. App-owned
+    /// OP-feed projections are outside this shared projection-key manifest and
+    /// use the NNFS schema owned by `nmp-note-feed`.
     pub schema_id: &'static str,
     /// FlatBuffers `file_identifier` (the 4-byte `*_FILE_IDENTIFIER` constant,
     /// e.g. `"KACC"`, `"NWST"`, `"NRRD"`).
