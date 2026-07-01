@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn dynamic_projection_rejects_framework_prefix() {
-        assert!(DynamicProjectionKey::app_owned("app.feed.home").is_ok());
+        assert!(DynamicProjectionKey::app_owned("test.feed.following").is_ok());
         assert!(matches!(
             DynamicProjectionKey::app_owned("nmp.feed.home"),
             Err(SurfaceTokenError::FrameworkPrefix { .. })
@@ -374,7 +374,7 @@ mod tests {
         )
         .is_ok());
         assert!(matches!(
-            FrameworkProjectionKey::declared("app.feed.home", "projection.nmp.bad"),
+            FrameworkProjectionKey::declared("test.feed.following", "projection.nmp.bad"),
             Err(SurfaceTokenError::MissingFrameworkPrefix { .. })
         ));
     }

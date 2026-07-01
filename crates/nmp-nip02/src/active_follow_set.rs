@@ -2,7 +2,7 @@
 //!
 //! # Overview
 //!
-//! The OP-centric home feed (V-59) needs to know, for any pubkey, whether the
+//! The active-follow feed (V-59) needs to know, for any pubkey, whether the
 //! active account follows that pubkey. The generic `RootIndexedFeed` engine in
 //! `nmp-feed` (rung 3) consumes that knowledge as a closure predicate
 //! (`Arc<dyn Fn(&str) -> bool + Send + Sync>`) — **not** a trait. v4 of the

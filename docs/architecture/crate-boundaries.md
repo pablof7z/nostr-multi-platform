@@ -238,7 +238,8 @@ Examples:
   state, and teardown for replies, reactions, reposts, zaps, bookmarks, mutes,
   and other markers belong to the concept crate that defines that behavior.
 - `nmp-note-feed` owns concrete note-feed composition: OP/flat feed rows,
-  home-feed typed wire, repost row composition, and feed projection keys.
+  typed note-feed wire, repost row composition, and reusable feed projection
+  mechanisms.
   It composes `nmp-nip01` kind:1/NIP-10 facts, `nmp-nip18` repost facts,
   `nmp-content` content trees, and `nmp-feed` mechanics; it does not own
   relation-count concepts or app render policy.

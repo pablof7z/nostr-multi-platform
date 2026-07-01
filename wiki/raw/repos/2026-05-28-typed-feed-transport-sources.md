@@ -1,6 +1,6 @@
 ---
 title: "Typed Feed Transport Sources 2026-05-28"
-summary: "Source notes for UpdateFrame, typed projection sidecars, app.feed.home typed payloads, and host decoder behavior."
+summary: "Historical source notes for UpdateFrame, typed projection sidecars, the former app.feed.home pilot payload, and host decoder behavior."
 tags: [repo, flatbuffers, feed, transport]
 source_type: repo-snapshot
 repo: /Users/pablofernandez/Work/nostr-multi-platform
@@ -56,8 +56,8 @@ buffer instead of duplicating cursor/page tables.
 
 ## NIP-01 Timeline Schema
 
-`nmp-nip01` owns the typed `ModularTimelineSnapshot` schema for the
-`app.feed.home` pilot:
+`nmp-nip01` owns the typed `ModularTimelineSnapshot` schema. In this historical
+2026-05-28 source snapshot, the pilot projection key was `app.feed.home`:
 
 - schema id: `nmp.nip01.timeline`
 - file identifier: `NFTS`
@@ -69,15 +69,15 @@ render data, repost attribution, typed content-tree bytes, and embedded
 
 ## Chirp Emitter
 
-`nmp_app_chirp_register` registers a typed snapshot producer for
-`"app.feed.home"`. It reads the same `ModularTimelineProjection` current
-window used by the generic feed controller and encodes it through
+`nmp_app_chirp_register` historically registered a typed snapshot producer for
+`"app.feed.home"`. It read the same `ModularTimelineProjection` current window
+used by the generic feed controller and encoded it through
 `nmp_nip01::typed_wire::encode_modular_timeline_snapshot`.
 
 ## Host Decoders
 
-`chirp-tui` decodes `UpdateFrame` with `decode_snapshot_with_typed`, then
-prefers the typed `"app.feed.home"` sidecar when its schema id matches
+`chirp-tui` decoded `UpdateFrame` with `decode_snapshot_with_typed`, then
+preferred the typed `"app.feed.home"` sidecar when its schema id matched
 `nmp.nip01.timeline`. It converts the typed snapshot back into the generic
 serde shape so the existing renderer can stay unchanged during migration.
 
@@ -87,8 +87,8 @@ adoption, inspect the current call path: `KernelUpdateFrameDecoder.decode`
 returns the generic decoded update, and the private typed-projection extractor
 is the local seam for lifting sidecars.
 
-Android gallery decodes the generic `UpdateFrame` tree. This source set did
-not show an Android typed home-feed decoder.
+Android gallery decoded the generic `UpdateFrame` tree. This historical source
+set did not show an Android typed app-feed decoder.
 
 ## Authority Notes
 

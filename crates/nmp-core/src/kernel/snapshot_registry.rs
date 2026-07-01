@@ -104,7 +104,7 @@ pub struct SnapshotRegistry {
     /// cannot synthesize these clears from `ProjectionPresence`.
     pending_typed_clears: Vec<String>,
     /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
-    /// snapshot key (e.g. `"app.feed.home"`) so a re-registration replaces (not
+    /// snapshot key (e.g. `"microblog.timeline.home"`) so a re-registration replaces (not
     /// duplicates) the provider and an `unregister_feed` removes it. Each closure
     /// returns the author keys its feed will RENDER this tick; the kernel
     /// reconciles them through `resolve_ref` inside the snapshot tick. Keyed by
@@ -252,7 +252,7 @@ impl SnapshotRegistry {
     /// Register a **typed** projection closure under `key` — the
     /// FlatBuffers-sidecar seam (ADR-0037).
     ///
-    /// `key` is the host-chosen snapshot namespace (e.g. `"app.feed.home"`).
+    /// `key` is the host-chosen snapshot namespace (e.g. `"microblog.timeline.home"`).
     /// Registering the same key twice replaces the first — last-writer-wins, with
     /// no duplicate-closure CPU cost on subsequent ticks.
     ///

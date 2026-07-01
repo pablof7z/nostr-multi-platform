@@ -1,10 +1,10 @@
 //! `nmp-note-feed` — reusable note-feed composition.
 //!
-//! This crate owns concrete feed output for note timelines: OP-centric home
-//! feeds, author feeds, and thread feeds. It composes lower-level NIP facts
-//! (`nmp-nip01` kind:1 / NIP-10 and `nmp-nip18` reposts) with generic
-//! `nmp-feed` mechanics, then emits feed-owned typed wire. Lower protocol
-//! crates do not own row/card render contracts.
+//! This crate owns concrete feed output for note timelines: active-follow
+//! feeds, app-owned timeline feeds, author feeds, and thread feeds. It composes
+//! lower-level NIP facts (`nmp-nip01` kind:1 / NIP-10 and `nmp-nip18` reposts)
+//! with generic `nmp-feed` mechanics, then emits feed-owned typed wire. Lower
+//! protocol crates do not own row/card render contracts.
 
 mod card_payload;
 pub mod flat_feed;

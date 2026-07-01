@@ -32,7 +32,7 @@ Last updated: 2026-05-28
 | [topics/subscription-planning-and-routing.md](wiki/topics/subscription-planning-and-routing.md) | Deep dive on LogicalInterest, compiled plans, routing lanes, and relay targets. | planner, routing, relays | 2026-05-28 |
 | [topics/crate-boundaries-and-module-ownership.md](wiki/topics/crate-boundaries-and-module-ownership.md) | Explains NMP layer boundaries and where app, protocol, routing, and kernel concepts belong. | crates, architecture, d0 | 2026-05-28 |
 | [topics/app-composition-and-chirp-wiring.md](wiki/topics/app-composition-and-chirp-wiring.md) | Explains generic defaults, Chirp registration, projection wiring, and feed sidecars. | app-composition, chirp, ffi | 2026-05-28 |
-| [topics/op-feed-and-typed-projections.md](wiki/topics/op-feed-and-typed-projections.md) | Explains the app.feed.home ownership split and typed sidecar chain. | feed, op-feed, flatbuffers | 2026-05-28 |
+| [topics/op-feed-and-typed-projections.md](wiki/topics/op-feed-and-typed-projections.md) | Explains the app-owned feed-session ownership split and typed sidecar chain. | feed, op-feed, flatbuffers | 2026-05-28 |
 | [references/source-authority-map.md](wiki/references/source-authority-map.md) | Maps major NMP questions to the durable repo source that owns the answer. | references, sources | 2026-05-28 |
 
 ## Recent Changes

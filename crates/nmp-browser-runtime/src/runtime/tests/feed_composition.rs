@@ -1,4 +1,4 @@
-//! Browser home-feed composition gates.
+//! Browser app-feed composition gates.
 
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 use nmp_core::{substrate::KernelEvent, RelayFrame};
@@ -120,7 +120,7 @@ fn browser_home_feed_observer_opens_on_active_account_change() {
         texts
             .iter()
             .any(|text| text.contains(r#""kinds":[1,5,6]"#) && text.contains(ACCOUNT_PK)),
-        "active-account change must open the self-included home-feed observer; outbound={texts:?}"
+        "active-account change must open the self-included app-feed observer; outbound={texts:?}"
     );
 }
 

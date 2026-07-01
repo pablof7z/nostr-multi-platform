@@ -180,7 +180,7 @@ static FEED_STORE: OnceLock<FeedStore> = OnceLock::new();
 pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore) {
     // Shape only, not a copy/paste API:
     //
-    // 1. Declare the app's home-feed read session:
+    // 1. Declare the app-owned feed read session:
     //      key: FEED_SNAPSHOT_KEY
     //      demand: kind:1 notes
     //      replay: bounded before live activation

@@ -1,6 +1,6 @@
 ---
 title: "OP Feed and Typed Projections"
-summary: "How the reusable feed engine, NIP-01 timeline schema, typed sidecar transport, and host decoders relate around app.feed.home."
+summary: "How reusable feed mechanics, NIP-01 timeline schemas, typed sidecar transport, and host decoders relate around app-owned feed sessions."
 tags: [feed, op-feed, flatbuffers, chirp]
 created: 2026-05-28
 updated: 2026-05-28
@@ -14,10 +14,10 @@ sources:
 
 # OP Feed and Typed Projections
 
-`app.feed.home` is both a product surface and a stress test for NMP's ownership
-rules. It is high-volume, it crosses FFI, and it mixes generic feed mechanics
-with NIP-01/NIP-10 timeline semantics. The current design keeps those concerns
-separate.
+App-owned feed sessions are product surfaces and stress tests for NMP's
+ownership rules. They are high-volume, cross FFI, and mix generic feed
+mechanics with NIP-01/NIP-10 timeline semantics. The current design keeps those
+concerns separate.
 
 ## Ownership Split
 
@@ -30,15 +30,16 @@ about NIP-10 replies, reposts, author profiles, or Chirp ranking.
 counts, author display facts, content render data, repost attribution, and an
 embedded `nmp-feed` window buffer.
 
-`apps/chirp/crates/nmp-app-chirp` composes the projection into the running app and
-registers the feed key.
+An app crate composes the projection into the running app and registers its own
+feed session key, such as `microblog.timeline.home`.
 
 ## Typed Sidecar Chain
 
-The transport frame remains one `NMPU` update frame. For the home feed, the
-typed sidecar chain is:
+The transport frame remains one `NMPU` update frame. For an app-owned home
+timeline, the typed sidecar chain is:
 
-1. `SnapshotFrame.typed_projections[]` contains key `"app.feed.home"`.
+1. `SnapshotFrame.typed_projections[]` contains an app-owned key such as
+   `"microblog.timeline.home"`.
 2. Its descriptor says schema id `nmp.nip01.timeline`, version `1`, file id
    `NFTS`.
 3. The `NFTS` payload is decoded by `nmp-nip01` bindings.
@@ -53,9 +54,9 @@ fall back to the generic tree.
 
 ## Host Adoption Is Per Host
 
-`chirp-tui` already exercises the intended migration pattern: decode the typed
-home-feed sidecar when present, convert it back into the existing serde shape,
-and let the old renderer continue from the same projection slot.
+`chirp-tui` exercised the intended migration pattern: decode the typed app feed
+sidecar when present, convert it back into the existing serde shape, and let
+the old renderer continue from the same projection slot.
 
 iOS has generated bindings and a `TypedHomeFeedDecoder`, but current adoption
 should be verified from the live call path rather than inferred from the file's
