@@ -46,7 +46,7 @@ pub(super) enum FlushResult {
 }
 
 pub(super) fn flush_relay_writes(
-    role: RelayRole,
+    _role: RelayRole,
     relay_url: &str,
     generation: u64,
     relay_tx: &Sender<RelayEvent>,
@@ -61,7 +61,6 @@ pub(super) fn flush_relay_writes(
             Err(error) => {
                 pending.push_front(text);
                 let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                     error: error.to_string(),
@@ -90,7 +89,7 @@ fn flush_socket(socket: &mut RelaySocket) -> FlushResult {
 }
 
 pub(super) fn drain_relay_reads(
-    role: RelayRole,
+    _role: RelayRole,
     relay_url: &str,
     generation: u64,
     relay_tx: &Sender<RelayEvent>,
@@ -109,7 +108,6 @@ pub(super) fn drain_relay_reads(
                 }
                 if relay_tx
                     .send(RelayEvent::Message {
-                        role,
                         relay_url: relay_url.to_string(),
                         generation,
                         message,
@@ -124,7 +122,6 @@ pub(super) fn drain_relay_reads(
                 let error_str = error.to_string();
                 let permanent = is_permanent_error(&error_str);
                 let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                     error: error_str,

@@ -33,16 +33,19 @@
 //! # Why no `&NmpApp` constructor
 //!
 //! The design doc sketches `ActiveFollowSet::new(app: &NmpApp)`. That is
-//! pseudocode: `NmpApp` lives in `nmp-ffi`, which `nmp-nip02` depends on only
-//! as a *dev*-dependency. A production `&NmpApp` parameter would invert the
-//! dependency graph (`nmp-nip02 → nmp-ffi`). The substrate-clean realization —
+//! pseudocode: `NmpApp` lives in `nmp-native-runtime` (the composition-root
+//! crate; `nmp-uniffi` is the native binding surface built on top of it),
+//! which `nmp-nip02` depends on only as a *dev*-dependency. A production
+//! `&NmpApp` parameter would invert the dependency graph
+//! (`nmp-nip02 → nmp-native-runtime`). The substrate-clean realization —
 //! mirroring the sibling [`crate::projection::FollowListProjection`] — is to
 //! take the [`ActiveAccountSlot`] (re-exported through `nmp_core::slots`) and
 //! a store-backed latest-kind:3 reader directly. The composition root registers this
 //! struct as a `ObservedProjectionSink` separately, exactly as it already does
 //! for `FollowListProjection`. No new crate edge in either direction (verified:
 //! `cargo tree -p nmp-nip02` carries `nmp-core`, `nostr`, `serde`,
-//! `serde_json` only — no `nmp-feed`, no `nmp-ffi`).
+//! `serde_json` only — no `nmp-feed`, no `nmp-native-runtime` in the
+//! production dependency graph).
 //!
 //! # Self-inclusion
 //!

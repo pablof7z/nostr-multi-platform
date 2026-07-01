@@ -9,14 +9,15 @@ use std::time::Duration;
 
 use crate::role::RelayRole;
 
-/// Stringly-typed relay URL. Matches `nmp_core::relay::RelayUrl`
-/// (`pub type RelayUrl = String`) so handing a URL across the
-/// `nmp-network` / `nmp-core` boundary is a no-op.
+/// Stringly-typed relay URL. Re-exported from `nmp-relay-url` (Layer 0),
+/// the single workspace authority for this alias (issue #2648) — matches
+/// `nmp_core::relay::RelayUrl` (`pub type RelayUrl = String`) so handing a
+/// URL across the `nmp-network` / `nmp-core` boundary is a no-op.
 ///
 /// The pool canonicalizes input URLs internally (whitespace trim +
 /// lowercase scheme/host); two URLs that canonicalize to the same string
 /// share one [`super::RelayHandle`].
-pub type RelayUrl = String;
+pub use nmp_relay_url::RelayUrl;
 
 /// Generational handle identifying one (URL, open-count) pair inside the
 /// pool. The spec calls for **structural rejection** of stale handles:

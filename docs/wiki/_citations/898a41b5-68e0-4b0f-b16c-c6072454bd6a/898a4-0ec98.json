@@ -1,0 +1,6 @@
+{
+  "id": "898a4-0ec98",
+  "ts": "2026-06-29T12:40:20Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "Assistant: Good question — \"door\" is just the metaphor for **the app-facing API surface**. The refactor splits the public surface into two doors:\n\n- **Read door** = how an app *consumes* data → typed read sessions (\"given the store, what should the UI see?\").\n- **Write door** = how an app *produces and emits* Nostr events → everything an app does that creates a new event on the network.\n\nSo \"write what?\" — **Nostr events.** Every user action that isn't just reading is a write: post a note, reply, react/like, repost, follow/unfollow, edit profile (kind:0), send a DM, join/post in a group, delete an event, mute someone. All of those are \"writes\" the app makes through this door. [...] - **The shell is dumb on purpose.** It builds a typed action and renders status. Routing, signer choice, retries, durable write state, provenance — all Rust. (Thin-shell rule; the same kernel drives iOS, Android, and browser.)\n- **A write is a tracked object with a lifecycle, not a function call.** The whole point of the write-door redesign is that \"I published a note\" is a durable, observable status fact that survives offline and reports honest terminal outcomes — versus the old model where dispatching and succeeding were conflated."
+}

@@ -12,7 +12,7 @@ crate-type = ["rlib"]
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core" }
-# NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
+# NIP-19/21 entity codec (Layer 0) carved out of nmp-core per issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id" }
 # NIP-50 search request shape — the orchestrator serializes a `SearchRequest`
 # into the opaque `InputIntentTarget::TextQuery { request_json }` so nmp-core

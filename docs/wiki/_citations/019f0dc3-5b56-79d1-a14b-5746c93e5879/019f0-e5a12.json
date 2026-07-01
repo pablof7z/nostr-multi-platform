@@ -1,0 +1,6 @@
+{
+  "id": "019f0-e5a12",
+  "ts": "2026-06-29T12:11:34Z",
+  "session": "019f0dc3-5b56-79d1-a14b-5746c93e5879",
+  "text": "- No fragmentation: every concept has exactly one canonical representation and one code path.\n  If two paths exist for the same concern, one must be deleted before the PR merges. [...] Less is more, but the target is not “fewer files at any cost.” The target is:\n\n- fewer public concepts;\n- fewer app-facing lifecycle recipes;\n- fewer read/write doors;\n- fewer hidden defaults;\n- fewer native-owned protocol decisions;\n- fewer duplicate sources of truth.\n"
+}

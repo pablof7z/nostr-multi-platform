@@ -1,0 +1,6 @@
+{
+  "id": "3c942-e3b0b",
+  "ts": "2026-06-29T11:10:13Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "**So my earlier \"shell is the wildcard for huge deletion\" was wrong** — there isn't much shell to delete because there isn't much shell. That revises the campaign estimate down: net deletion is **Rust-dominated (~10k–25k net)** plus modest shell — call it **~12k–30k net total**, concentrated in collapsing duplicate per-feature lifecycle wiring in `nmp-core`/runtimes. The win remains concept/surface reduction, not raw LOC."
+}

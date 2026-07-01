@@ -31,49 +31,33 @@ pub(crate) use crate::relay_protocol::BackoffClass;
 
 /// One physical relay-worker event.
 ///
-/// T105: every event carries both the diagnostic `role` (the lane this URL
-/// belongs to — Content/Indexer) AND the actual `relay_url` the socket
-/// connects to. The url is what the URL-keyed `relay_controls` map indexes
-/// on; the role is what the kernel's per-lane diagnostics use.
+/// T105: every event carries the `relay_url` the socket actually connects
+/// to — the url is what the URL-keyed `relay_controls` map indexes on. The
+/// worker itself still dials on an explicit `RelayRole` lane (see
+/// `spawn_relay_worker_with_keepalive`), but the role is not part of the
+/// event payload: the pool translator already knows each URL's role from
+/// the `relay_controls` map, so carrying a second copy on every event would
+/// be a redundant diagnostic field with no reader (removed; see git history
+/// for the prior `role` field / `RelayEvent::role()` accessor).
 pub enum RelayEvent {
     Connected {
-        role: RelayRole,
         relay_url: String,
         generation: u64,
     },
     Failed {
-        role: RelayRole,
         relay_url: String,
         generation: u64,
         error: String,
     },
     Closed {
-        role: RelayRole,
         relay_url: String,
         generation: u64,
     },
     Message {
-        role: RelayRole,
         relay_url: String,
         generation: u64,
         message: Message,
     },
-}
-
-impl RelayEvent {
-    #[allow(dead_code)] // Used by ingest dispatch; kept for diagnostic helpers.
-    pub fn role(&self) -> RelayRole {
-        match self {
-            Self::Connected { role, .. }
-            | Self::Failed { role, .. }
-            | Self::Closed { role, .. }
-            | Self::Message { role, .. } => *role,
-        }
-    }
-    // The `relay_url()` / `generation()` accessors were removed when the pool
-    // translator was reworked to pre-translate events off-lock: the variants
-    // are now destructured directly into a `PreparedEvent` in `pool::inner`,
-    // so the by-reference routing-key accessors had no remaining caller.
 }
 
 pub enum RelayCommand {
@@ -197,7 +181,6 @@ fn run_relay_worker(
                 let connected_at = Instant::now();
                 if relay_tx
                     .send(RelayEvent::Connected {
-                        role,
                         relay_url: relay_url.clone(),
                         generation,
                     })
@@ -259,7 +242,6 @@ fn run_relay_worker(
                 // no point reconnecting.
                 let permanent = is_permanent_error(&error);
                 let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
                     relay_url: relay_url.clone(),
                     generation,
                     error,
@@ -303,7 +285,6 @@ fn run_connected_relay(
         Ok(poller) => poller,
         Err(error) => {
             let _ = relay_tx.send(RelayEvent::Failed {
-                role,
                 relay_url: relay_url.to_string(),
                 generation,
                 error: format!("relay readiness setup failed: {error}"),
@@ -317,7 +298,6 @@ fn run_connected_relay(
             io_ready::ControlDrain::Shutdown => {
                 let _ = socket.close(None);
                 let _ = relay_tx.send(RelayEvent::Closed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                 });
@@ -330,7 +310,6 @@ fn run_connected_relay(
                 // non-terminal event forever.
                 let _ = socket.close(None);
                 let _ = relay_tx.send(RelayEvent::Closed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                 });
@@ -346,7 +325,6 @@ fn run_connected_relay(
             };
         if let Err(error) = poller.set_wants_write(socket, wants_write) {
             let _ = relay_tx.send(RelayEvent::Failed {
-                role,
                 relay_url: relay_url.to_string(),
                 generation,
                 error: format!("relay readiness update failed: {error}"),
@@ -381,7 +359,6 @@ fn run_connected_relay(
                     FlushResult::Blocked => wants_write = true,
                     FlushResult::Reconnect => {
                         let _ = relay_tx.send(RelayEvent::Failed {
-                            role,
                             relay_url: relay_url.to_string(),
                             generation,
                             error: "ping write failed".to_string(),
@@ -392,7 +369,6 @@ fn run_connected_relay(
             }
             KeepaliveAction::Dead => {
                 let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                     error: "keepalive timeout (no pong within 30s)".to_string(),
@@ -403,7 +379,6 @@ fn run_connected_relay(
 
         if let Err(error) = poller.set_wants_write(socket, wants_write) {
             let _ = relay_tx.send(RelayEvent::Failed {
-                role,
                 relay_url: relay_url.to_string(),
                 generation,
                 error: format!("relay readiness update failed: {error}"),
@@ -418,7 +393,6 @@ fn run_connected_relay(
             Ok(ready) => ready,
             Err(error) => {
                 let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
                     relay_url: relay_url.to_string(),
                     generation,
                     error: format!("relay readiness wait failed: {error}"),

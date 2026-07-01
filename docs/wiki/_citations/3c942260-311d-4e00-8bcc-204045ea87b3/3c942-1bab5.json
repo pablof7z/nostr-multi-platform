@@ -1,0 +1,6 @@
+{
+  "id": "3c942-1bab5",
+  "ts": "2026-06-29T11:25:26Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "**3. One real ordering gap in the WRITE chain.** The dependency graph is *partially* encoded — #2370 and #2372 both declare `Depends on: #2368`. But **#2371 (\"delete anonymous explicit-route defaults\") declares only `Blocks #2256`**, with no `Depends on` for #2370 (typed signer provenance) or #2369 (finalization gate). Deleting the anonymous route before the typed-provenance replacement is wired is exactly the build-then-delete inversion you avoided on the READ side. I'd add an explicit `Depends on: #2369, #2370` to #2371 so an agent doesn't pick it up first."
+}

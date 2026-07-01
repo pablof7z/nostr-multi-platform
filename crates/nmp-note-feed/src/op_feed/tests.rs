@@ -458,7 +458,7 @@ fn identity_reset_clears_pending_feed_state_without_claims() {
     let h = Harness::new(&[ALICE]);
     h.ingest(&reply_event(REPLY_ID, ALICE, 10, OP_ID));
 
-    h.engine.reset_for_identity_change();
+    h.engine.reset_for_perspective_change();
 
     assert!(
         h.snapshot().cards.is_empty(),

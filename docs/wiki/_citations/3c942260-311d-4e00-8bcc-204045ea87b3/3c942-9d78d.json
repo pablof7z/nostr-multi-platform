@@ -1,0 +1,6 @@
+{
+  "id": "3c942-9d78d",
+  "ts": "2026-06-29T12:16:18Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "### B. Stay, but must be **reconciled against the reset** before they're actionable\nThese touch surfaces the campaign is *actively reshaping*, so their scope/acceptance is now partly wrong:\n- **#2125 (UniFFI M14 migration)** — overlaps ADR-0072 *and* the live C-ABI deletions (#2364 is retiring `nmp_app_open_feed`/`close_feed` right now). Migrating to UniFFI a surface you're simultaneously deleting needs a coherence pass, or you'll do work twice.\n- **#2232 (split Marmot C-ABI shell)** — a C-ABI/shell-boundary refactor that should be re-read against ADR-0072's runtime/shell ownership rules.\n- **#2038 (Chirp Web rebuild)** — its acceptance criteria must now honor ADR-0072 (\"silent in-memory fallback cannot count as success\").\n\nThese shouldn't be closed, but they shouldn't sit unexamined either. ADR-0073's own follow-up rule applies: whoever next touches those surfaces re-scopes the issue in place. I'd at minimum drop a comment on each noting the governing ADR so the next agent doesn't execute a stale plan."
+}

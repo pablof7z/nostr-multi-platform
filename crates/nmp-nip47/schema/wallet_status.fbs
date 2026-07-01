@@ -5,13 +5,13 @@ namespace nmp.nip47;
 //
 // This is the typed sidecar counterpart to the authoritative serde JSON of
 // `WalletStatus`: the generic `Value` projection stays the source of truth
-// (`apps/chirp/.../wallet_runtime.rs` still registers it), and this buffer is
-// emitted ALONGSIDE it in every `SnapshotFrame`'s `typed_projections` sidecar
+// (`nmp_nip47::register_wallet`, `crates/nmp-nip47/src/register.rs`, still
+// registers it), and this buffer is emitted ALONGSIDE it in every
+// `SnapshotFrame`'s `typed_projections` sidecar
 // (ADR-0037). A host with a `NWST` decoder prefers this typed payload; an
 // un-updated host falls back to the generic `Value` subtree. Purely additive.
 //
-// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
-// docs/wiki/guides/shell-formatting-boundary.md): this buffer carries ONLY raw
+// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032): this buffer carries ONLY raw
 // semantic tokens — never pre-rendered English labels, tone strings, or
 // display-formatted numbers. Shells render the status label, semantic tone, and
 // thousands-separated balance themselves from the raw `status` token +
@@ -34,18 +34,22 @@ namespace nmp.nip47;
 //   flatc --rust -o crates/nmp-nip47/src/wire/generated \
 //         crates/nmp-nip47/schema/wallet_status.fbs
 //
-// Regenerate Swift bindings (FlatBuffers 25.12.19):
-//   flatc --swift -o apps/chirp/ios/Chirp/Bridge/Generated \
+// Regenerate Swift bindings (FlatBuffers 25.12.19) into your platform shell's
+// generated-bindings directory, e.g.:
+//   flatc --swift -o <ios-app>/Bridge/Generated \
 //         crates/nmp-nip47/schema/wallet_status.fbs
+// (No in-tree iOS shell currently wires the NIP-47 wallet stack — Chirp,
+// which historically consumed this schema, is now an external consumer repo
+// outside this monorepo; apps/nmp-gallery does not carry a wallet runtime.)
 //
 // Regenerate Kotlin bindings (FlatBuffers 25.2.10 — the Android/Kotlin runtime
-// pin set by `flatbuffers-java:25.2.10` in apps/chirp/android/app/build.gradle.kts, and
-// enforced by ci/check-flatbuffers-version-pins.sh's FLATBUFFERS_25_2_10()
-// guard. This is DISTINCT from the Rust/Swift pin 25.12.19 above: every Kotlin
-// binding under apps/chirp/android/app/src/main/java/nmp must use 25.2.10 or the runtime
-// version guard call (Constants.FLATBUFFERS_25_2_10()) will not exist and the
-// Android build will fail to compile):
-//   flatc --kotlin -o apps/chirp/android/app/src/main/java \
+// pin set by `flatbuffers-java:25.2.10` in the consuming app's
+// `android/app/build.gradle.kts`, and enforced by
+// ci/check-flatbuffers-version-pins.sh's FLATBUFFERS_25_2_10() guard. This is
+// DISTINCT from the Rust/Swift pin 25.12.19 above: every Kotlin binding must
+// use 25.2.10 or the runtime version guard call (Constants.FLATBUFFERS_25_2_10())
+// will not exist and the Android build will fail to compile):
+//   flatc --kotlin -o <android-app>/app/src/main/java \
 //         crates/nmp-nip47/schema/wallet_status.fbs
 
 // Coarse-grained NWC transport-health state (`nmp_nip47::NwcConnectionState`).

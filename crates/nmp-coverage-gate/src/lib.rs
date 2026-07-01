@@ -9,9 +9,9 @@
 //!
 //! This crate ships the **pure policy data** that drives the hook: thresholds
 //! and back-off rules. The hook closure itself — the part that actually mutates
-//! a `CompiledPlan` — lives in the assembly crate (today `nmp-app-chirp`, in
-//! future a generic `nmp-app-base`), which is the only layer entitled to
-//! depend on both `nmp-core` and this crate.
+//! a `CompiledPlan` — lives in an assembly crate (e.g. the external Chirp
+//! repo's `nmp-app-chirp`, or a future generic `nmp-app-base`), which is the
+//! only layer entitled to depend on both `nmp-core` and this crate.
 //!
 //! # Why a separate crate
 //!
@@ -41,9 +41,10 @@
 /// `CompiledPlan` to prefer negentropy/set-reconciliation over raw REQ.
 ///
 /// This crate has **zero `nmp-core` dependency** — it is pure policy data.
-/// The assembly crate (e.g. `nmp-app-chirp`) depends on both `nmp-core` and
-/// this crate, creates a `PlanCoverageHook` closure that consults these
-/// thresholds, and installs it via `SubscriptionLifecycle::set_coverage_hook`.
+/// The assembly crate (e.g. the external Chirp repo's `nmp-app-chirp`)
+/// depends on both `nmp-core` and this crate, creates a `PlanCoverageHook`
+/// closure that consults these thresholds, and installs it via
+/// `SubscriptionLifecycle::set_coverage_hook`.
 ///
 /// # D2 doctrine
 ///

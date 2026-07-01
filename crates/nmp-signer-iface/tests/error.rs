@@ -12,9 +12,11 @@ fn all_variants() -> Vec<SignerError> {
         SignerError::NotReady("not connected".into()),
         SignerError::Unsupported("nip44 unavailable".into()),
         SignerError::Rejected("user denied".into()),
+        SignerError::Unavailable("signer app uninstalled".into()),
         SignerError::Mismatch("pubkey drift".into()),
         SignerError::Timeout("5s".into()),
         SignerError::SignatureVerificationFailed("bad sig".into()),
+        SignerError::KindOutOfRange { kind: 70_000 },
         SignerError::Backend("relay io".into()),
     ]
 }

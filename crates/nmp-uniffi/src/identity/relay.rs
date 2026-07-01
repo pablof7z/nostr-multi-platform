@@ -1,16 +1,12 @@
-//! Relay-list edit UniFFI methods — M14-C2.
+//! Relay-list edit UniFFI methods.
 //!
-//! Mirrors the relay-management symbols from `nmp-ffi/src/identity.rs`:
-//! `nmp_app_add_relay` and `nmp_app_remove_relay`.
-//!
-//! Each method calls the SAME underlying `nmp_native_runtime::NmpApp` method
-//! the C-ABI wrapper calls. No logic is duplicated.
+//! Adds and removes relays on the active account's relay list. Each method
+//! calls the underlying `nmp_native_runtime::NmpApp` method directly; no
+//! logic is duplicated.
 //!
 //! ## Role default
 //!
-//! The C-ABI `nmp_app_add_relay` defaults a null `role` pointer to `"both"`.
-//! The UniFFI surface uses `Option<String>` and applies the same default,
-//! preserving parity.
+//! A missing `role` defaults to `"both"`.
 
 use crate::NmpApp;
 

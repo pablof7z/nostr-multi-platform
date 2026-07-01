@@ -1,0 +1,6 @@
+{
+  "id": "3c942-9c79f",
+  "ts": "2026-06-29T11:10:44Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "The instinct (\"don't over-prescribe *how*, since the new arch may change the approach\") is exactly right. But a single issue holding \"a bunch of text\" is, mechanically, **a scattered todo list / parallel roadmap living inside one issue** — which is the precise thing the planning-discipline rule bans, and the thing WIP.md was retired for. It just relocates the anti-pattern from a file to an issue body. Concretely you'd lose:"
+}

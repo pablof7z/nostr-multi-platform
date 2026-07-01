@@ -17,7 +17,7 @@
 //! | `tests_d0_to_d9.rs`       | D0, D6, D7, D8, D9, action_namespace |
 //! | `tests_d10_d11_d12.rs`    | D10, D11, D12                         |
 //! | `tests_d13_d14_d15.rs`    | D13, D14, D15                         |
-//! | `tests_d16_workspace.rs`  | D16, --workspace-d8, end-to-end clean |
+//! | `tests_d16_workspace.rs`  | apps/chirp tombstone, --workspace-d8, end-to-end clean |
 //! | `tests_d17_misc.rs`       | D17, cache-serve seal                 |
 //! | `file_size_gate_tests.rs` | file-size baseline ratchet            |
 //! | `gallery_composition_gates.rs` | gallery explicit composition ratchet |
@@ -59,7 +59,7 @@ mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling
 mod tests_d0_to_d9; // D0, D6, D7, D8, D9, action_namespace — sibling module.
 mod tests_d10_d11_d12; // D10, D11, D12 fixture smoke tests — sibling module.
 mod tests_d13_d14_d15; // D13, D14, D15 fixture smoke tests — sibling module.
-mod tests_d16_workspace; // D16, --workspace-d8, end-to-end clean — sibling module.
+mod tests_d16_workspace; // apps/chirp tombstone, --workspace-d8, end-to-end clean — sibling module.
 mod tests_d17_misc; // D17 and cache-serve seal — sibling module.
 mod trellis_public_api_gates; // Trellis must stay private implementation machinery.
 mod wasm_abi_gates; // nmp-wasm retired-crate gates (deleted #2202; must stay deleted).

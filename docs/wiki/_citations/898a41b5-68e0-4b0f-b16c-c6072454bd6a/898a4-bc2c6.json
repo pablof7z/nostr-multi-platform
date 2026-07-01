@@ -1,0 +1,6 @@
+{
+  "id": "898a4-bc2c6",
+  "ts": "2026-06-29T12:39:27Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "The codebase is executing a coordinated three-reform \"clean-break\" redesign (ADR spine 0069–0073) across all targets simultaneously: kill `register_defaults()`, retire raw interest/feed C ABI in favor of typed sessions, and classify publish routes with explicit pre-sign provenance. Each reform is being applied to native, browser, and starter targets in rapid succession with doctrine-lint ratchets closing the door behind each completed slice — the pattern is \"ship the right thing, then lock it.\" Orthogonally, zap/NIP-57 was cleanly excised from v1 scope, and display-separation (no tint/display logic in kernel projections) continues to be actively enforced. The overall trajectory is toward a leaner, fully typed, explicitly composed FFI surface ready for UniFFI-native direction. [...] Everything active traces to one north-star epic. It's a coordinated three-door reform governed by ADR spine **0069–0073**, applied to native + browser + starter targets in lockstep, with doctrine-lint/doc ratchets locking each slice shut behind it (\"ship the right thing, then lock the door\"):"
+}

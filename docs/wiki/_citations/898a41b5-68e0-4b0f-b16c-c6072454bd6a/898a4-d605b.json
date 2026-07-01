@@ -1,0 +1,6 @@
+{
+  "id": "898a4-d605b",
+  "ts": "2026-06-29T12:38:50Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "1. **The schema + builder live in the app's crate** (`apps/<app>/`), not in NMP. The ownership test is explicit: *\"would this crate be useful to a completely different Nostr app?\"* If yes → NMP crate; if it's your app's proprietary domain (your made-up kind 232123 schema) → app crate. Your kind schema is by definition the latter.\n2. **The app implements/registers an `ActionModule`** for that kind and installs it at its **composition root** as an app-owned product feature — alongside the named reusable NMP features it opts into. That's literally what the composition root is for: \"what does *this* app do?\""
+}

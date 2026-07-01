@@ -1,0 +1,6 @@
+{
+  "id": "3c942-d77aa",
+  "ts": "2026-06-29T11:08:26Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "The two most recent commits (4–6h ago) were \"clean-break\" clarifications: 0069 added the explicit builder construction sketch; 0071 sharpened that draft *construction* is fine — the bug is unmanaged signing/publishing — and 0027 was updated so \"registering an action means implementing one trait\" (framework owns dispatch). [...] - **High:** don't wrap `nmp-ffi`/parse JSON — **move the FFI-free dispatch core into `nmp-native-runtime`** and wrap that. [...] **Codex verdict on #2389:** shape **approved** (\"the right UniFFI pattern\"), with refinements all folded into the posted spec — in-workspace `crates/nmp-uniffi`, `{correlation_id, error, code}` typed result, explicit idempotent `shutdown()`, move the dispatch core out of `nmp-ffi` into `nmp-native-runtime`, `pull_page` deferred to C7, base-object scoping with pre-start seams documented for C2/C5/C6, checked-in bindings + drift gate. [...] - **Blocking:** `DispatchOutcome` must carry `{correlation_id, error, code}` — coded rejections are load-bearing in tests, my 2-case enum dropped `code`."
+}

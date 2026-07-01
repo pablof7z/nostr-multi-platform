@@ -1,17 +1,19 @@
-//! FFI-composition helpers for `nmp-ffi`'s `signer_broker.rs`.
+//! Composition-boundary helpers for `nmp-native-runtime`'s `signer_broker.rs`.
 //!
 //! These functions wrap `RelayRole` / `ActorLaneTransport` details that
-//! `nmp-ffi` must not name directly (keeping `nmp-ffi` free of an `nmp-network`
-//! dependency on the `signer-broker` feature path).  Production code in
-//! `nmp-ffi/src/signer_broker.rs` calls these helpers from the bunker hook
-//! closure; test code in `nmp-testing` can use the lower-level runtime API
-//! directly since `nmp-testing` already depends on `nmp-network`.
+//! `nmp-native-runtime` must not name directly (keeping it free of an
+//! `nmp-network` dependency on the `signer-broker` feature path).  Production
+//! code in `nmp-native-runtime/src/signer_broker.rs` calls these helpers from
+//! the bunker hook closure; test code in `nmp-testing` can use the
+//! lower-level runtime API directly since `nmp-testing` already depends on
+//! `nmp-network`.
 //!
 //! ## Responsibilities
 //!
 //! - [`deliver_init_effects`] — translate the initial [`Effect`]s returned by
 //!   `init_bunker` / `init_nostrconnect` into `CommandSender` calls so they
-//!   reach the actor's pool without `nmp-ffi` naming `RelayRole::Signer`.
+//!   reach the actor's pool without `nmp-native-runtime` naming
+//!   `RelayRole::Signer`.
 //! - [`cancel_nip46_session`] — clear the runtime and post
 //!   `UnregisterPersistentSub` for every relay, unblocking EOSE-triggered
 //!   CLOSE.

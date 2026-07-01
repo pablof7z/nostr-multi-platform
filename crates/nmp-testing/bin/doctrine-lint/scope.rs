@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use crate::rules::{
-    a6, action_namespace, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9,
+    a6, action_namespace, d10, d12, d14, d15, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9,
 };
 
 /// True iff the action-namespace prefix rule should scan `path`.
@@ -79,20 +79,6 @@ pub(crate) fn d14_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 /// `target/` outside the nmp-core path tree).
 pub(crate) fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d15::file_in_scope(path) {
-        return true;
-    }
-    let s = path.to_string_lossy().replace('\\', "/");
-    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
-}
-
-/// True iff D16 should scan `path` — either the file is inside `apps/chirp/`
-/// via `d16::file_in_scope`, or the caller opted-in via `--d16-extra-scope`
-/// (used by the fixture smoke test to stage a positive fixture under
-/// `target/` outside the apps/chirp/ path tree). The allowlist check
-/// (`d16::file_is_allowlisted`) is separate and applied at the per-line
-/// invocation site so whitelisted files are correctly excluded.
-pub(crate) fn d16_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
-    if d16::file_in_scope(path) {
         return true;
     }
     let s = path.to_string_lossy().replace('\\', "/");

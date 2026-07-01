@@ -225,13 +225,13 @@ fn snapshot_serde_round_trips() {
 }
 
 #[test]
-fn reset_for_identity_change_clears_all_state() {
+fn reset_for_perspective_change_clears_all_state() {
     let h = Harness::new(&["alice"]);
     h.ingest(&reply_event("r1", "alice", 11, "op1"));
     h.ingest(&root_event("op1", "bob", 10, "hello"));
     assert_eq!(h.snapshot().cards.len(), 1);
 
-    h.engine.reset_for_identity_change();
+    h.engine.reset_for_perspective_change();
     assert!(h.snapshot().cards.is_empty());
 }
 

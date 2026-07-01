@@ -18,20 +18,16 @@
 //! directly (same fields `ingest_tests.rs` uses) rather than going through the
 //! deleted projection.
 //!
-//! See `docs/product-spec/offline-first.md` §7 and
-//! `docs/wiki/d1-snapshot-before-relay-io.md`.
+//! See `docs/product-spec/offline-first.md` §7.
 
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
 
 // 64-hex constants for the seeded event and its author.
-const SEED_NOTE_ID: &str =
-    "d100000000000000000000000000000000000000000000000000000000000001";
-const SEED_AUTHOR: &str =
-    "d1aa0000000000000000000000000000000000000000000000000000000000aa";
-const SEED_CONTENT: &str =
-    "offline-first proof: this note was stored before any relay connected";
+const SEED_NOTE_ID: &str = "d100000000000000000000000000000000000000000000000000000000000001";
+const SEED_AUTHOR: &str = "d1aa0000000000000000000000000000000000000000000000000000000000aa";
+const SEED_CONTENT: &str = "offline-first proof: this note was stored before any relay connected";
 
 /// D1 assertion: a kernel with locally-stored events reflects them in the
 /// `events` cache and `timeline` ordering BEFORE any relay I/O.

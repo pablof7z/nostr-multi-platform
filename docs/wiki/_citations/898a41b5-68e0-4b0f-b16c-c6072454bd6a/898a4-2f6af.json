@@ -1,0 +1,6 @@
+{
+  "id": "898a4-2f6af",
+  "ts": "2026-06-29T12:38:34Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **Explicit Composition (ADR-0069)** — PRs #2374, #2361, #2360, #2337, #2385 — `register_defaults()` is dead as a production path; every app target (starter, gallery, browser production) now wires its composition root explicitly at build time. Doc ratchets lock the path shut. [...] - **register_defaults() is dead as a production path (ADR-0069).** Replaced everywhere by explicit builder composition. Ratchet in CI. [...] 3. **Composition root — explicit (ADR-0069):** ✅ `register_defaults()` is dead as a production path everywhere (starter, gallery, browser); CI ratchet enforces it. [...] - The doc/vocabulary ratchets — these are *pro*-migration. They exist to stop old `register_defaults`/raw-projection vocabulary from creeping back in. They're the opposite of friction-for-nothing.\n"
+}

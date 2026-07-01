@@ -1,16 +1,17 @@
-//! Reference resolution UniFFI surface — M14-C3 (#2125).
+//! Reference resolution UniFFI surface (#2125).
 //!
-//! Migrates the ADR-0063 Lane D C-ABI symbols from
-//! `nmp-ffi/src/resolve_ref.rs` to typed `#[uniffi::export] impl NmpApp`
-//! methods. This is ADDITIVE — the C-ABI symbols are NOT deleted here.
+//! `nmp-uniffi` is the sole native binding surface for ADR-0063 Lane D
+//! reference resolution (M14 complete; the legacy `nmp-ffi` C-ABI crate has
+//! been deleted). Each sub-module adds a `#[uniffi::export] impl NmpApp`
+//! block exposing typed methods.
 //!
 //! ## Module layout
 //!
-//! | Module    | UniFFI methods                                                    | C-ABI counterpart                              |
-//! |-----------|-------------------------------------------------------------------|------------------------------------------------|
-//! | `ref_`    | `resolve_ref`, `resolve_ref_with_metadata`, `release_ref`        | `nmp_app_resolve_ref` / `_with_metadata` / `_release_ref` |
-//! | `profile` | `resolve_profile_ref`, `resolve_profile_card_live`, `release_profile_ref` | typed profile adapters |
-//! | `embed`   | `resolve_event_embed`, `resolve_event_embed_live`, `resolve_event_embed_with_metadata`, `resolve_event_embed_live_with_metadata`, `release_event_ref` | typed event adapters |
+//! | Module    | UniFFI methods                                                    |
+//! |-----------|---------------------------------------------------------------------|
+//! | `ref_`    | `resolve_ref`, `resolve_ref_with_metadata`, `release_ref`        |
+//! | `profile` | `resolve_profile_ref`, `resolve_profile_card_live`, `release_profile_ref` |
+//! | `embed`   | `resolve_event_embed`, `resolve_event_embed_live`, `resolve_event_embed_with_metadata`, `resolve_event_embed_live_with_metadata`, `release_event_ref` |
 //!
 //! ## Reactive-lifecycle design note
 //!

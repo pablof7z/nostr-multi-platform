@@ -48,8 +48,10 @@ grep-based guardrail for classes of mistakes the repo has chosen to catch
 mechanically. The smoke test is registered as `doctrine_lint_smoke` in
 `crates/nmp-testing/Cargo.toml`.
 
-The linter has rules named D0, D6, D7, D8, D9, D10, and D11-D16. Those rule ids
-are implementation gates, not a complete restatement of canonical doctrine.
+The linter has rules named D0, D6, D7, D8, D9, D10, and D11-D15, D17-D27 (D16
+was deleted along with `apps/chirp/` — its sole scope — when Chirp was
+extracted to its own repo). Those rule ids are implementation gates, not a
+complete restatement of canonical doctrine.
 Always read the rule file before relying on a rule number. For example, the
 current lint `d9.rs` checks action namespace prefixes, while canonical product
 D9 is timestamp ownership.

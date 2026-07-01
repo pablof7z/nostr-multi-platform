@@ -1,0 +1,6 @@
+{
+  "id": "898a4-0c987",
+  "ts": "2026-06-29T12:40:03Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- `#2403` M14-D0 — parent: ratchet + delete migrated raw native ABI lanes (`status:staged`)\n- `#2424` D0-A — ratchet nmp-ffi exports, delete low-blast helpers (unblocked — the next one)\n- `#2425` D0-B — convert callers, delete migrated stateless helper C exports (`blocked` on D0-A)\n- `#2426` D0-C — delete migrated app-loop C-ABI after UniFFI caller cutover (`blocked` on D0-B)\n [...] The M14 deletion is a **strict serial chain** (D0-A → D0-B → D0-C) — it can't be parallelized, and \"later lanes\" of #2403 are still blocked on unmerged C4+ UniFFI replacements (capability/action/publish, feed/search, storage, Marmot/#2232). This is the genuine long tail of the *epic*.\n"
+}

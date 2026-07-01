@@ -1,9 +1,10 @@
 //! Typed FlatBuffers wire codec for [`crate::projection::FollowListSnapshot`].
 //!
-//! The authoritative FFI shape of the `"nmp.follow_list"` projection is the
+//! The authoritative wire shape of the `"nmp.follow_list"` projection is the
 //! serde JSON of the follow-list snapshot (registered via
-//! `register_snapshot_projection` in `apps/chirp/.../ffi/register.rs`). This
-//! module adds a **typed FlatBuffers** encoding of the same snapshot — a
+//! `register_snapshot_projection` in [`crate::register_follow_state_runtime`],
+//! called by the composition root against the `nmp-uniffi` native binding
+//! surface). This module adds a **typed FlatBuffers** encoding of the same snapshot — a
 //! self-describing, schema-versioned, language-neutral binary the host
 //! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors
 //! instead of JSON reflection. It is a sidecar codec: the serde shape stays

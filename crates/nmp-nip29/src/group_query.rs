@@ -112,7 +112,7 @@ impl GroupEventsQuery {
     ///
     /// The client-side host-relay pin is NOT part of this filter — the wire
     /// `REQ` a relay sees carries only `kinds` + `#h`. The composition root
-    /// (`nmp-ffi`) attaches the pin as a separate `relay_pin` argument when it
+    /// (`nmp-native-runtime`) attaches the pin as a separate `relay_pin` argument when it
     /// opens the observed interest. This keeps `nmp-nip29` NmpApp-free (D0): it
     /// produces the wire filter shape; routing is the composer's concern.
     #[must_use]

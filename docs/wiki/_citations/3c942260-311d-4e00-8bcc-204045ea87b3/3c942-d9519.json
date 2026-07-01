@@ -1,0 +1,6 @@
+{
+  "id": "3c942-d9519",
+  "ts": "2026-06-29T12:16:29Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "User: save a memory entry for this\n\nAssistant: Now the index pointer in MEMORY.md:\n\nAssistant: The MEMORY.md content was in my system context but I need to Read it first to edit:\n\nAssistant: Saved. Memory entry created at `adr-spine-reset-0069-0073-2026-06-29.md` with a one-line pointer added to the top of `MEMORY.md`'s \"Recent shipped / in-flight\" index. It captures the spine ADRs (0069–0073), the fold/amend/retire ledger, the standing ratchet/follow-up rule, and links it back to the projection \"decomposition unsound\" thread and the relevant doctrine memories."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "3c942-a82e4",
+  "ts": "2026-06-29T11:10:44Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "ADR-0073's \"not a museum\" rule is about **durable guidance docs** (ADRs, builder-guide) that would otherwise present competing *current* rules. The issue queue is explicitly the opposite — it's the single canonical *temporal* tracker, and it's *supposed* to hold deferred and future work. So \"predates the epic\" is not, by itself, a reason to remove anything. A healthy post-v1 backlog living in issues is the system working as designed; the alternative (deleting it and trusting memory) is what the planning-discipline rule forbids."
+}

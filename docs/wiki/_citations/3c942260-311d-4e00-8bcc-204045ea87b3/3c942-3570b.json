@@ -1,0 +1,6 @@
+{
+  "id": "3c942-3570b",
+  "ts": "2026-06-29T12:15:35Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- Every slice I read is self-contained the right way: Problem → Evidence (with **real file paths on master**) → Target state → Scope → **Out-of-scope** → Acceptance criteria → Verification commands. This is exactly the shape an agent can pick up cold and execute without re-discovery. [...] - **Tight doctrine↔tactics coherence.** The slices map 1:1 onto the ADR spine that just settled: READ slices → ADR-0070, WRITE slices → ADR-0071, starter slices → ADR-0069, and the ratchet mechanics (retired-symbol tests, \"positive symbol test becomes a retired-symbol ratchet\") are exactly ADR-0073's discipline. The queue *is* the ADR reset, executed."
+}

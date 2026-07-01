@@ -1,0 +1,6 @@
+{
+  "id": "3c942-39fb3",
+  "ts": "2026-06-29T11:09:15Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **0072 — Runtime/capability/shell boundary.** Tightens RMP's \"Rust owns durable behavior.\" Anything a *second platform* would have to reimplement to stay correct (relay choice, signer choice, tag mutation, publish retry, queue truth, nav meaning) belongs in Rust. Browser durable storage (Worker/OPFS) must init before product start — **silent in-memory fallback cannot count as success**. Widgets/AppIntents/CarPlay/Live Activities must not own parallel queues or publish models."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "019f0-b38df",
+  "ts": "2026-06-29T12:10:54Z",
+  "session": "019f0dc3-5b56-79d1-a14b-5746c93e5879",
+  "text": "My recommendation for #2408: the right shape is the small static app-local contract path, not a plugin system.\n\nApp-private kind flow should be:\n\n1. App owns `action-builders.json` + `.fbs` schema next to its Rust app crate.\n2. `nmp-codegen` generates Swift/Kotlin/TS typed builders from that app-local registry.\n3. Native/web calls the generated builder and dispatches bytes through the normal NMP doorway.\n4. App Rust owns `ActionPayload::decode`, validation, tag/content policy, and `ActionModule`.\n5. NMP owns only the substrate after that: dispatch envelope, registration, signing, routing, publishing, drift gates."
+}

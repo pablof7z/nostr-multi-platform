@@ -1,0 +1,6 @@
+{
+  "id": "3c942-6065d",
+  "ts": "2026-06-29T11:09:38Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "There are now **two** component registries that describe overlapping concepts:\n- gallery **showcase** catalog (`apps/nmp-gallery/registry.json`) — what the gallery demos\n- CLI **install** registry (`crates/nmp-cli/registry/*.toml`) — what `nmp add` scaffolds\n\nThey can drift (a component shown in the gallery but not installable, or vice versa). Unifying them to one canonical source would be a real SSOT improvement — but it's a *design* decision, not a mechanical delete, and a bigger lift than what the audit described. Want me to investigate whether they've actually drifted and propose a unification (or file it as a decision issue), or leave the two-registry split as-is?\n\nUser: unify them"
+}

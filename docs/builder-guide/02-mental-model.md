@@ -18,7 +18,7 @@ Four layers, strict ownership. Built from the bottom up:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ PLATFORM SHELL          apps/chirp/ios + Android Chirp/gallery shells       │
+│ PLATFORM SHELL          apps/nmp-gallery/ios + apps/nmp-gallery/android      │
 │  owns: rendering, OS handle execution, generated binding wrappers      │
 │  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns     │
 └────────────────────────────────▲───────────────────────────────────────┘
@@ -33,9 +33,9 @@ Four layers, strict ownership. Built from the bottom up:
         ┌─────────────────────────┼──────────────────────────┐
 ┌───────┴──────────┐  ┌───────────┴───────────┐  ┌────────────┴─────────┐
 │ APP CORE CRATES   │  │ NMP PROTOCOL MODULES   │  │  (more app cores)    │
-│ apps/chirp/        │  │ nmp-nip29 (groups)     │  │ microblog-core       │
-│  microblog-core    │  │ nmp-nip42 (auth)       │  │  (walkthrough app)   │
-│  nmp-app-chirp     │  │ nmp-nip77 (sync)       │  │                      │
+│ nmp-app-gallery   │  │ nmp-nip29 (groups)     │  │ microblog-core       │
+│  microblog-core   │  │ nmp-nip42 (auth)       │  │  (walkthrough app)   │
+│                   │  │ nmp-nip77 (sync)       │  │                      │
 │ D0 ► MAY hold app  │  │ nmp-signers (identity) │  │ D0 ► app nouns OK    │
 │      nouns         │  │ D0 ► protocol nouns ONLY│  │                     │
 └───────┬──────────┘  └───────────┬───────────┘  └────────────┬─────────┘
@@ -50,13 +50,15 @@ Four layers, strict ownership. Built from the bottom up:
 
 Representative crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
-(protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
-`nmp-substrate` (shared substrate floor), `nmp-native-runtime` (native
-runtime owner), and binding crates/adapters (UniFFI for native,
+(protocol modules), `apps/nmp-gallery/crates/nmp-app-gallery` + `microblog-core`
+(app cores), `nmp-substrate` (shared substrate floor), `nmp-native-runtime`
+(native runtime owner), and binding crates/adapters (UniFFI for native,
 wasm-bindgen for browser).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
-it no longer generates per-app composition crates (ADR-0046). Chirp is the
-active product shell.
+it no longer generates per-app composition crates (ADR-0046). `nmp-gallery` is
+the in-tree reference app (iOS/Android/desktop/TUI shells over one Rust core);
+Chirp has been extracted into its own external consumer repo and is no longer
+part of this monorepo.
 
 ### Doctrine callouts on the diagram
 
@@ -250,7 +252,7 @@ raw glue is delivery-specific and is not starter-app API (see
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
 | `NoteRecord`, feed store | `microblog-core` | app noun (walkthrough app) |
 | App-owned store (`Arc<Mutex<T>>`) | app-core crate | D4: app owns its state |
-| SwiftUI list cell, OS audio handle | `apps/chirp/ios` / shell | rendering / OS execution |
+| SwiftUI list cell, OS audio handle | `apps/nmp-gallery/ios` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
 changes to `nmp-core`**.

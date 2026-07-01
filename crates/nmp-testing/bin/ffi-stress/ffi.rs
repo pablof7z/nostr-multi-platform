@@ -134,61 +134,6 @@ pub(crate) fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at: u6
     ));
 }
 
-/// Inject `count` pre-verified (unchecked) kind-1 events (test-support path).
-#[allow(dead_code)]
-pub(crate) fn nmp_app_inject_pre_verified_events(
-    app: *mut NmpApp,
-    base_id_prefix: *const std::ffi::c_char,
-    base_created_at: u64,
-    count: u32,
-) {
-    use nmp_core::actor::{ActorCommand, TestSupportCommand};
-
-    if app.is_null() {
-        return;
-    }
-    let prefix = if base_id_prefix.is_null() {
-        "stress".to_string()
-    } else {
-        unsafe { CStr::from_ptr(base_id_prefix) }
-            .to_str()
-            .unwrap_or("stress")
-            .to_string()
-    };
-    const POOL: &[&str] = &[
-        "0000000000000000000000000000000000000000000000000000000000000001",
-        "0000000000000000000000000000000000000000000000000000000000000002",
-        "0000000000000000000000000000000000000000000000000000000000000003",
-        "0000000000000000000000000000000000000000000000000000000000000004",
-        "0000000000000000000000000000000000000000000000000000000000000005",
-        "0000000000000000000000000000000000000000000000000000000000000006",
-        "0000000000000000000000000000000000000000000000000000000000000007",
-        "0000000000000000000000000000000000000000000000000000000000000008",
-    ];
-    let events: Vec<nmp_store::VerifiedEvent> = (0..count as u64)
-        .map(|i| {
-            let raw_id = format!("{prefix}{i:0>16x}");
-            let id = format!("{raw_id:0<64}");
-            let id = id[..64].to_string();
-            let pubkey = POOL[(i as usize) % POOL.len()].to_string();
-            let raw = nmp_store::RawEvent {
-                id,
-                pubkey,
-                created_at: base_created_at.saturating_add(i),
-                kind: 1,
-                tags: Vec::new(),
-                content: format!("harness event {i}"),
-                sig: "0".repeat(128),
-            };
-            nmp_store::VerifiedEvent::from_raw_unchecked(raw)
-        })
-        .collect();
-    // SAFETY: app is non-null.
-    unsafe { &*app }.send_cmd(ActorCommand::TestSupport(
-        TestSupportCommand::IngestPreVerifiedEvents(events),
-    ));
-}
-
 /// Read actor command-lane stats (queue depth + cumulative drops).
 pub(crate) fn nmp_app_read_command_lane_stats(
     app: *mut NmpApp,

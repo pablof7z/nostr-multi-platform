@@ -1,8 +1,8 @@
 namespace nmp.embed;
 
 // Typed FlatBuffers wire for the `refs.event.envelopes` derived projection
-// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-ffi` and browser runtimes derive
-// this payload from the authoritative `refs.event` row store and carry the
+// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-native-runtime` and browser
+// runtimes derive this payload from the authoritative `refs.event` row store and carry the
 // pre-resolved map (`primary_id -> EmbeddedEventEnvelope`) so typed-frame shells
 // can decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing
 // the `match kind` resolver in Swift/Kotlin/TS (the D0 thin-shell violation
@@ -11,7 +11,7 @@ namespace nmp.embed;
 // Shape mirrors the existing resolver types in
 // `crates/nmp-content/src/embed_projection/` — never a bespoke re-parse:
 //   * `EmbeddedEventEnvelope` mirrors `embed_projection::EmbeddedEventEnvelope`
-//     (the FFI sidecar synthesises `uri=""`, `depth=0`, `max_depth=4`,
+//     (the native-runtime sidecar synthesises `uri=""`, `depth=0`, `max_depth=4`,
 //     `collapsed=false` per the Phase 0 JSON shape).
 //   * `EmbedKindProjection` mirrors `embed_projection::EmbedKindProjection`,
 //     modelled — exactly like `content_tree.fbs` — as a `kind` discriminator

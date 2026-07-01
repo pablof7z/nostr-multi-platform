@@ -32,6 +32,11 @@ test-support = []
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-kinds = { path = "../nmp-kinds" }
+# Layer-0 relay-URL canonicalization authority (#967, #2648). `nmp-store`'s
+# `RelayUrl` alias re-exports this rather than redefining it; `nmp-relay-url`
+# is dependency-free, so this does not violate the "Layer 1 may depend on
+# Layer 0" rule.
+nmp-relay-url = { path = "../nmp-relay-url" }
 nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

@@ -10,15 +10,18 @@
 //! and then page or tear it ALL down — observer, projection, pull controller,
 //! interests — idempotently, using the HANDLE (never a re-derived filter/key).
 //!
-//! Tests and internal composition seams may inject a [`FeedCompiler`] through
-//! [`NmpApp::open_feed_with_compiler`]. Normal app/native callers do not choose a
-//! compiler; they pass a [`FeedParams`] declaration and the runtime applies the
-//! canonical compiler below the app boundary.
+//! Why a compiler closure rather than matching on `FeedScope` here: the
+//! concrete wiring of a scope names the OP-feed engine / follow set / typed
+//! sidecar, which live in this runtime's reusable feed composition layer.
+//! Keeping the scope->registration compile out of the binding surface
+//! (`nmp-uniffi`) keeps it D0-clean (it names no NIP/feed-kind noun) and keeps
+//! a single source of truth for feed state: `open_feed` owns only the session
+//! bookkeeping, never a second feed engine (D4).
 //!
 //! Doctrine map:
-//! - D0: app/native callers match on no `FeedScope` variant and pass no compiler;
-//!   the native runtime composition layer owns scope semantics. `open_feed` is
-//!   scope-agnostic.
+//! - D0: the binding surface (`nmp-uniffi`) matches on no `FeedScope` variant;
+//!   the compiler (in the native runtime composition layer) owns scope
+//!   semantics. `open_feed` is scope-agnostic.
 //! - D4: teardown reuses the existing `unregister_feed`,
 //!   observed-projection close, and dependent-interest cleanup paths via the
 //!   recorded closures — no second feed engine, no re-derived filter on close.

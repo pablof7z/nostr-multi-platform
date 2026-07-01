@@ -8,7 +8,7 @@
 //! `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
 //! `nmp-wot` must not depend on the C-ABI crate, so this in-crate test proves
 //! the wot-specific schema identity + encode/decode round-trip, matching the
-//! wallet template `apps/chirp/.../wallet_runtime_tests.rs`).
+//! wallet template `crates/nmp-nip47/src/register_tests.rs`).
 
 use super::{decode_wot_bootstrap, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION};
 use crate::runtime::WotBootstrapSnapshot;

@@ -25,12 +25,12 @@ function often actually need an action module. If your use case involves (a)
 triggering Nostr events from user input, or (b) projecting custom state into the
 snapshot, use `ActionModule` before reaching for any escape hatch.
 
-## 2. Test-Only Injectors — `nmp_app_inject_*`
+## 2. Test-Only Injectors — signed-event seeding
 
-**Module:** `crates/nmp-ffi/src/testing.rs`
+**Modules:** `crates/nmp-core/src/testing.rs`, `crates/nmp-native-runtime/src/testing.rs`
 **Gate:** `#[cfg(any(test, feature = "test-support"))]` — **never in production ABI**
-**Symbols:** `nmp_app_inject_pre_verified_events`, `nmp_app_inject_signed_events`,
-`nmp_app_inject_signed_event_json`
+**Symbols:** `nmp_core::testing::inject_signed_events`,
+`NmpApp::inject_signed_event_json_for_test`
 
 **What they give you:** Synthetic event injection into a live kernel for testing
 — bypassing the relay-wire transport entirely and (for `inject_pre_verified_events`)

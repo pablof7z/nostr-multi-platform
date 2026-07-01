@@ -1,0 +1,6 @@
+{
+  "id": "019f0-6a609",
+  "ts": "2026-06-29T12:11:20Z",
+  "session": "019f0dc3-5b56-79d1-a14b-5746c93e5879",
+  "text": "A request from one app is evidence, not permission to specialize the framework.\nDo not add app-named helpers, bespoke publish/read commands, hard-coded product\ndefaults, operator policy, compatibility shims, or \"quick\" shared-crate\nworkarounds just because a consuming app needs them. First ask whether the\nmissing piece is a reusable Nostr mechanism. If yes, add the generic mechanism\nonce. If no, implement it in the app's Rust core. If the answer is unclear,\nupdate the owning issue or ADR before writing code."
+}

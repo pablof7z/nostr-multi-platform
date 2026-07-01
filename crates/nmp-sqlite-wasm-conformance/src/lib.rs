@@ -7,7 +7,7 @@
 //! pool* VFS. `createSyncAccessHandle()` — the synchronous file primitive the
 //! pool VFS is built on — **only exists inside a dedicated Web Worker**; it is
 //! absent on the page main thread. The repo's existing wasm test setup
-//! (`crates/nmp-wasm/tests/`, `wasm_bindgen_test_configure!(run_in_browser)`)
+//! (`crates/nmp-browser-runtime/src/wasm/*_tests.rs`)
 //! executes on the **main thread**, so it structurally cannot exercise this
 //! backend. This crate is the missing vehicle: a `wasm-bindgen --target web`
 //! cdylib whose single exported entry point ([`run_conformance`]) is invoked

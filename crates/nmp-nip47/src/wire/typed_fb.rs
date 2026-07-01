@@ -1,8 +1,10 @@
 //! Typed FlatBuffers wire codec for [`crate::status::WalletStatus`].
 //!
 //! The authoritative FFI shape of the `"wallet"` projection is the serde JSON
-//! of [`WalletStatus`] (registered via `register_snapshot_projection` in
-//! `apps/chirp/crates/nmp-app-chirp/src/wallet_runtime.rs`). This module adds a
+//! of [`WalletStatus`], registered by [`crate::register::register_wallet`] —
+//! the app-neutral composition root every app wires through
+//! `NmpAppBuilder::with_wallet` (`crates/nmp-native-runtime/src/builder/wallet.rs`).
+//! This module adds a
 //! **typed FlatBuffers** encoding of the same struct — a self-describing,
 //! schema-versioned, language-neutral binary the host platforms (Swift /
 //! Kotlin / TypeScript) can decode with generated accessors instead of JSON

@@ -6,7 +6,7 @@ pub(crate) const USAGE: &str =
      [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
      [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
      [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] \
-     [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] \
+     [--d15-extra-scope <fragment>] \
      [--d17-extra-scope <fragment>] [--d19-extra-scope <fragment>] \
      [--d20-extra-scope <fragment>] [--d21-extra-scope <fragment>] \
      [--d23-extra-scope <fragment>] [--d24-extra-scope <fragment>] \
@@ -28,7 +28,6 @@ pub(crate) struct Config {
     pub(crate) d13_extra_scopes: Vec<String>,
     pub(crate) d14_extra_scopes: Vec<String>,
     pub(crate) d15_extra_scopes: Vec<String>,
-    pub(crate) d16_extra_scopes: Vec<String>,
     pub(crate) d17_extra_scopes: Vec<String>,
     pub(crate) d19_extra_scopes: Vec<String>,
     pub(crate) d20_extra_scopes: Vec<String>,
@@ -109,12 +108,6 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
                 args,
                 &mut i,
                 "--d15-extra-scope requires a path fragment",
-            )?,
-            "--d16-extra-scope" => push_required(
-                &mut cfg.d16_extra_scopes,
-                args,
-                &mut i,
-                "--d16-extra-scope requires a path fragment",
             )?,
             "--d17-extra-scope" => push_required(
                 &mut cfg.d17_extra_scopes,

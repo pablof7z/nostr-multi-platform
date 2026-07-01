@@ -1,4 +1,4 @@
-//! Build NIP-47 kind:23194 request event content (NIP-44 encrypted).
+//! Build NIP-47 kind:23194 request event content (NIP-04 encrypted).
 //!
 //! Returns the JSON-serialized content string and the `p` tag value.
 //! The caller (actor wallet runtime) assembles the full `UnsignedEvent`,
@@ -67,7 +67,7 @@ impl std::fmt::Display for NwcBuildError {
 
 impl std::error::Error for NwcBuildError {}
 
-/// Build the NIP-44 encrypted content for a kind:23194 request.
+/// Build the NIP-04 encrypted content for a kind:23194 request.
 ///
 /// `client_secret_hex`: client secret from the NWC URI.
 /// `wallet_pubkey_hex`: wallet pubkey from the NWC URI.
@@ -77,7 +77,7 @@ impl std::error::Error for NwcBuildError {}
 /// # Errors
 ///
 /// Returns `NwcBuildError` if the secret or pubkey are not valid secp256k1 keys
-/// or if NIP-44 encryption fails.
+/// or if NIP-04 encryption fails.
 pub fn request_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,

@@ -541,7 +541,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // Pre-resolved embed-envelope map over authoritative `refs.event` rows
     // (issue #1283 / ADR-0034 §embed-sidecar) — keyed by `primary_id`, one
     // `EmbeddedEventEnvelope` (the kind-dispatched `EmbedKindProjection`) per
-    // currently resolved event ref. Produced by `crates/nmp-ffi/src/embed_sidecar.rs`,
+    // currently resolved event ref. Produced by `crates/nmp-native-runtime/src/embed_sidecar.rs`,
     // which materialises `refs.event` rows through
     // `nmp_content::resolve_embed_projection` and emits the typed `NEMB`
     // FlatBuffer (this entry, Chirp typed-frame shell). Decoding the typed

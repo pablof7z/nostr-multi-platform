@@ -1,15 +1,15 @@
 //! ADR-0058 §3 mirror pull-page core — runtime-side encoding and pull logic.
 //!
-//! Extracted from `nmp-ffi/src/pull.rs` so the UniFFI surface
+//! Lives here (not in `nmp-uniffi`) so the UniFFI surface
 //! (`nmp_uniffi::mirror::NmpApp::mirror_pull_page`) and any internal tests can
 //! use the SAME underlying implementation without duplication.
 //!
 //! ## Key contract: single runtime implementation
 //!
-//! `nmp-ffi/src/pull.rs` re-exports the constants and helpers from this module
-//! for compatibility with internal callers that still consume the binary entry
-//! section. The public C doorway was deleted; hosts call the typed UniFFI
-//! mirror pull surface.
+//! `nmp-uniffi/src/mirror.rs` calls straight into these constants and helpers;
+//! it is the only native binding surface (the old `nmp-ffi` C-ABI crate and its
+//! binary entry section were deleted). Hosts call the typed UniFFI mirror pull
+//! surface.
 //!
 //! ## Wire format (little-endian)
 //!
@@ -58,10 +58,11 @@ pub mod variant {
 
 /// Serialized-result error codes (variant 2 payload).
 ///
-/// `pub` so `nmp-ffi/src/pull.rs` can re-export the module (`super::error::*`)
-/// and `nmp-uniffi/src/mirror.rs` can reference `error::PANIC`.
+/// `pub` so `nmp-uniffi/src/mirror.rs` can reference codes such as
+/// `error::PANIC` directly.
 pub mod error {
-    /// A legacy raw pointer caller passed a null app (not reachable via UniFFI).
+    /// Reserved for a null-app condition from the old C-ABI pointer surface
+    /// (deleted); not reachable via UniFFI, which never passes a raw pointer.
     pub const NULL_APP: u32 = 1;
     /// The cursor registry handle is unavailable (pre-start, or lock poisoned).
     pub const REGISTRY_UNAVAILABLE: u32 = 2;
@@ -91,8 +92,8 @@ mod op {
 
 // ── Encoding helpers ──────────────────────────────────────────────────────────
 //
-// `pub` so `nmp-ffi/src/pull.rs` can re-export them for backward-compatible
-// test access (`super::encode_gap`, `super::encode_page`).
+// `pub` so `nmp-uniffi/src/mirror.rs` and this module's own tests can call
+// them directly (`encode_gap`, `encode_page`).
 
 /// Build the 5-byte error payload for `variant = ERROR`.
 pub fn error_bytes(code: u32) -> Vec<u8> {

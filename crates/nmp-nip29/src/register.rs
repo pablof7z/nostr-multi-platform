@@ -1,8 +1,8 @@
 //! Host-app wiring helpers for NIP-29.
 //!
-//! These functions do the mechanical plumbing that every host app (Chirp,
-//! a TUI, a test harness) would otherwise have to repeat verbatim: binding the
-//! typed NIP-29 `ActionModule` impls against the action registry.
+//! These functions do the mechanical plumbing that every host app (a native
+//! shell, a TUI, a test harness) would otherwise have to repeat verbatim:
+//! binding the typed NIP-29 `ActionModule` impls against the action registry.
 //!
 //! ## Where the per-open read views live now (#2088)
 //!
@@ -10,12 +10,12 @@
 //! and the (deleted) raw group-events collector — used to be wired here via
 //! an ambient all-event observer. That made a view opened AFTER its events
 //! were already cached hydrate live-only: it missed the cached tail
-//! (#2088). The hydrating composition now lives in `nmp-ffi`
-//! (`crate::group_feed`), which registers the projection MUTED and routes its
+//! (#2088). The hydrating composition now lives in `nmp-native-runtime`
+//! (`nmp_native_runtime::group_feed`), which registers the projection MUTED and routes its
 //! ingest through `NmpApp::open_observed_interest_pinned` (the ADR-0062
 //! read-cache replay door) so a late-opened view catches up. That composition
-//! must name `NmpApp`, which is the FFI host type `nmp-nip29` may not name
-//! (D0), so it cannot live in this crate. `nmp-nip29` contributes only the
+//! must name `NmpApp`, which is the composition-root type `nmp-nip29` may not
+//! name (D0), so it cannot live in this crate. `nmp-nip29` contributes only the
 //! NmpApp-free filter-builders (`GroupEventsQuery::filter_json`,
 //! `group_metadata_filter_json`) the composer feeds to the open door.
 //!
@@ -23,8 +23,8 @@
 //!
 //! These helpers depend on `nmp-core` only through its public extension seams
 //! (`register_action`, `register_typed_snapshot_projection`). `nmp-core` gains
-//! zero NIP-29 nouns; composition happens here and in `nmp-ffi` (the hydrating
-//! read views), never in the kernel.
+//! zero NIP-29 nouns; composition happens here and in `nmp-native-runtime`
+//! (the hydrating read views), never in the kernel.
 
 use nmp_core::substrate::{ActionRegistrar, RegistrationError};
 

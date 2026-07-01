@@ -1,0 +1,6 @@
+{
+  "id": "019f0-05ac8",
+  "ts": "2026-06-29T12:11:00Z",
+  "session": "019f0dc3-5b56-79d1-a14b-5746c93e5879",
+  "text": "## Zero-tolerance on hacks, debt, and fragmentation\n\n**No temporary hacks. Ever.** This is a strict, non-negotiable rule enforced pedantically:\n\n- No \"for now\" workarounds, stubs that stay, or `// TODO: fix this properly` comments left\n  in production code. A staged fix is allowed *only* when a GitHub issue labeled\n  `status:staged` documents every stage with a completion deadline. An unplanned, undocumented \"temporary\"\n  measure is categorically forbidden — there is no such thing as acceptable technical debt. [...] User: we should only have CI checks that help idnetify issues as we build, but we shouldn't keep unnecessary CI gates that will just slow us down while things are supposed to be broken (i.e. mid refactor)\n [...] User: On the pursuit of this epic we can take any shortcuts we want to expedite things, for example we can just delete or disable wholesale test suite that no longer applies, remove CI, move the nmp-gallery apps out of this repo into its own repo like we did with chirp and update it after the fact (we should probably do this anyway and keep it as a separate repo); anything goes"
+}

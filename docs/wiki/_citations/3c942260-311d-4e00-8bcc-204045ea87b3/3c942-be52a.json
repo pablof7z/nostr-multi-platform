@@ -1,0 +1,6 @@
+{
+  "id": "3c942-be52a",
+  "ts": "2026-06-29T11:08:54Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "The framing rule (ADR-0073): the active ADR directory is **not a museum**. Old ADRs survive only for invariants that don't conflict with the spine; otherwise they're folded/amended/retired in place. Git history is the archive. The temporary `docs/new-arch/` packet was retired. [...] Every ADR 0001–0068 is now tagged **Current / Amended / Folded / Retired** with a named owner. Notable foldings into the new spine: [...] A standing **follow-up rule**: a PR touching a folded/amended ADR's implementation area must keep old public-surface counts flat-or-decreasing, or update the owning ADR in place — no new correction docs that leave stale guidance behind. Each architecture slice carries a deletion ledger (old doors deleted/privatized, new concepts, net permanent concepts), and ratchets prevent old-pattern counts from rising. [...] Per the freshly-reset ADR ledger: **ADR-0030 (UniFFI/C-ABI two-surface split) is \"Current,\" explicitly \"amended by ADR-0072.\"** And #2125 (M14: migrate lifecycle/binding/capability FFI to UniFFI) is open, with M14-0 already landed (#2149). So:"
+}

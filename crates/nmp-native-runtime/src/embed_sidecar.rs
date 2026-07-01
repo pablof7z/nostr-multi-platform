@@ -38,8 +38,9 @@
 //! ## D0 / D8 compliance
 //!
 //! - D0: kind-dispatch lives in `nmp-content`, not in the kernel. The native
-//!   runtime bridges substrate -> rendering for Rust hosts, while `nmp-ffi`
-//!   exposes that state through C ABI wrappers.
+//!   runtime bridges substrate -> rendering for Rust hosts, while `nmp-uniffi`
+//!   exposes that state through the typed binding surface (there is no
+//!   separate `nmp-ffi` C-ABI crate).
 //! - D8: the listener-thread processing (decode + resolve) is pure in-process
 //!   Rust — no I/O, no blocking.  Each projection closure is a cheap
 //!   `Mutex::lock` read + encode — non-blocking on the actor thread (D8:

@@ -1,0 +1,6 @@
+{
+  "id": "898a4-7ff83",
+  "ts": "2026-06-29T11:10:45Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "### Why it needed its own redesign\nThe core doctrine here (one of the owner's standing rules) is **signing and publishing must be orthogonal** — and the old surface conflated a bunch of distinct concepts into loose, ambiguous calls. The write door's job is to cleanly separate the three things that happen when an app emits an event:\n\n1. **Construction** — build the event (kind, tags, content). \"What is this event?\"\n2. **Signing** — a *generic capability* (local key, bunker/NIP-46, hardware). \"Who attests to it?\"\n3. **Publishing** — a *separate, optional, routed* step. \"Where does it go, and via what provenance?\"\n\nPlus two invariants threaded through all of it:\n- **Provenance** — every publish must declare *why/how* it's being routed (explicit route classification), not just \"send these bytes somewhere.\"\n- **Dispatch ≠ success** — handing an event to the publish pipeline is not the same as it landing. Rust owns a **local publish intent / status fact** (pending → signed → stored → planned → sent → failed/exhausted), so the app gets honest, offline-first write state instead of optimistic fire-and-forget.\n"
+}

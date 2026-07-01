@@ -7,8 +7,9 @@
 //! framework default), tracks the correlation id, and on a successful reply
 //! constructs the fully-initialised signer.
 //!
-//! The FFI driver (`nmp-ffi`) holds a `Nip55Connect` while the host round-trip
-//! is in flight and resolves it from `deliver`:
+//! The native-runtime adapter (`nmp-native-runtime::external_signer`) holds a
+//! `Nip55Connect` while the host round-trip is in flight and resolves it from
+//! `deliver`:
 //!
 //! ```text
 //! signin(pkg) ── Nip55Connect::new ── transport.send_request(get_public_key)

@@ -1,0 +1,6 @@
+{
+  "id": "898a4-4d4bb",
+  "ts": "2026-06-29T12:39:27Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "3. **Routing/provenance** — where it goes. This is where NIP-29 enters, and **NIP-29 owns only the h-tag routing concern, not kinds** (a hard rule here — the kinds filter was deliberately removed; `GroupEventsProjection` reads consumer-declared kinds).\n"
+}

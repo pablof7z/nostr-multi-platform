@@ -1,0 +1,6 @@
+{
+  "id": "898a4-7ff7a",
+  "ts": "2026-06-29T11:10:27Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "**#2125 M14 — Collapse native public binding surface to UniFFI** (p1, Post-v1)\nCurrent raw C/JNI ABI (`nmp-ffi`) is transitional. Target: one UniFFI surface for iOS/Android; FlatBuffers `Vec<u8>` bytes remain payload; wasm-bindgen stays separate for browser. Three sequenced slices just opened: inventory (#2387), benchmark (#2388), scaffold (#2389). Gate: prove cost-per-frame for UniFFI foreign-trait push vs C callback before committing. [...] - **#2232** — Split Marmot C-ABI shell out of Layer-4 nmp-marmot — `doctrine:d0`, `doctrine:d7`; p3/post-v1/staged; `nmp-marmot` mixes protocol logic with platform ABI ownership (D0 boundary + D7 native-executes-Rust-decides violation); must be resolved before Marmot ships. Target: migrate to #2125 UniFFI surface or delete; no durable `nmp_marmot_*` C ABI."
+}

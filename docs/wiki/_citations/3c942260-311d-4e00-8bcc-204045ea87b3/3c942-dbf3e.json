@@ -1,0 +1,6 @@
+{
+  "id": "3c942-dbf3e",
+  "ts": "2026-06-29T11:10:24Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **0071 — Publish intents & route provenance.** Keeps ADR-0064's single write doorway but separates construction → finalization → signing → publishing as stages of *one actor-owned workflow*. Draft builders are allowed (composable, ergonomic) but must not sign/publish/choose relays as side effects. Every explicit relay route must carry a typed **provenance class** (automatic / host-pin / verified-private-inbox / manual / imported / diagnostic). Private routes fail closed without verified-inbox provenance. Dispatch acceptance/queued state is **never** terminal publish success."
+}

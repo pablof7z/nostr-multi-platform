@@ -1,0 +1,6 @@
+{
+  "id": "898a4-b541d",
+  "ts": "2026-06-29T11:10:08Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "### So, can we start migrating existing apps? Not yet.\nThe real gate list before an existing app (29er, hl, etc.) can move over:\n1. **Product-read cutover** (#2399, #2418) — apps read product data; that path isn't fully typed yet.\n2. **DX clean-room proof** (#2256) — still blocked.\n3. **App-defined kinds first-class** (#2408/#2413/#2414) — external apps have their own kinds; this is now v1-dx, and it's at ~10%.\n4. (M14 UniFFI is the *native binding* collapse — large, but it's the iOS/Android surface, somewhat parallel to \"can an app migrate.\")"
+}
