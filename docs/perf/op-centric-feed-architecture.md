@@ -104,7 +104,10 @@ active account author and switches that projection on account changes.
 
 ```rust
 pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
-    let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
+    let follow_set = nmp_nip02::ActiveFollowSet::new(
+        app.active_account_handle(),
+        app.contacts_lookup(),
+    );
     app.open_feed(FeedParams {
         acquisition: FeedScope::ActiveUserFollows,
         primary_kinds,

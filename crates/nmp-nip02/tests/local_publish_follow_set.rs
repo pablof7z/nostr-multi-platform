@@ -154,7 +154,10 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // (`ActorCommand::Start`); a registration after start would be recorded as
     // `DroppedLateWiring` and never bound onto the kernel. Each observer
     // declares the event kinds it needs before receiving fan-out.
-    let follow_set = nmp_nip02::ActiveFollowSet::new(unsafe { &*app }.active_account_handle());
+    let follow_set = nmp_nip02::ActiveFollowSet::new(
+        unsafe { &*app }.active_account_handle(),
+        unsafe { &*app }.contacts_lookup(),
+    );
     let _set_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
         follow_set.clone(),
         "test.local_publish_follow_set",

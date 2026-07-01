@@ -283,9 +283,10 @@ impl super::KernelReducer {
     /// Return the kernel's active-account pubkey slot.
     ///
     /// The returned [`ActiveAccountSlot`] is `Arc<Mutex<Option<String>>>`.
-    /// Composition roots pass it to `ActiveFollowSet::new` (rung 4) so the
-    /// follow-set producer can seed itself and respond to account switches
-    /// without holding a reference to the full reducer.
+    /// Composition roots pass it to `ActiveFollowSet::new` (rung 4), alongside
+    /// the shared contacts lookup, so the follow-set producer can seed itself
+    /// and respond to account switches without holding a reference to the full
+    /// reducer.
     #[must_use]
     pub fn active_account_handle(&self) -> ActiveAccountSlot {
         self.kernel.active_account_handle()

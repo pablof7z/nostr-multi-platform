@@ -115,7 +115,10 @@ fn compile_home_feed(
     let registrar: Arc<dyn ObservedProjectionRegistrar + Send + Sync> =
         Arc::new(access.observed_projection_registrar.clone());
 
-    let follow_set = nmp_nip02::ActiveFollowSet::new(active_account_slot.clone());
+    let follow_set = nmp_nip02::ActiveFollowSet::new(
+        active_account_slot.clone(),
+        Arc::clone(&access.contacts_lookup),
+    );
     let follow_list_projection = nmp_nip02::FollowListProjection::new(
         active_account_slot.clone(),
         Arc::clone(&access.contacts_lookup),
