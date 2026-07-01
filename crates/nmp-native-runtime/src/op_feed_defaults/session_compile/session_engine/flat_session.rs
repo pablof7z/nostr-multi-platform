@@ -30,10 +30,11 @@ pub(super) fn build_flat_scope_session(
         live_shape,
         extra_acquisition,
         reset_hooks,
+        source_effect_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
-        active_follow_set,
+        active_follow_set: _,
     } = resolved;
 
     let feed = nmp_note_feed::FlatFeed::new(admission);
@@ -132,13 +133,13 @@ pub(super) fn build_flat_scope_session(
         });
         hook(reset_trigger);
     }
-    if let Some(active_follow_set_for_effects) = active_follow_set.as_ref() {
+    for hook in source_effect_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
         let sync_observer = engine_observer.clone();
         let notify = sender.clone();
-        active_follow_set_for_effects.on_source_effect(Box::new(move |_| {
+        let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             sync_acquisition(&extra);
             let reset = controller_for_reset.reset();
@@ -146,7 +147,8 @@ pub(super) fn build_flat_scope_session(
             if reset || replayed {
                 notify.mark_changed_since_emit();
             }
-        }));
+        });
+        hook(source_effect_trigger);
     }
 
     let teardown_handle = app.feed_teardown();

@@ -99,6 +99,7 @@ pub mod bookmark_sets;
 pub mod bookmarks;
 pub mod interests;
 pub mod people_list;
+mod people_list_graph;
 pub mod projection;
 pub mod runtime;
 pub mod search_fallback;
