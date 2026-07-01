@@ -188,6 +188,7 @@ mod tests {
 
     #[test]
     fn article_row_resolves_to_article_projection() {
+        nmp_app_gallery::register_gallery_embed_projection_adapters();
         let (primary, row) = article_row();
         let snap = snapshot_with(vec![(primary.clone(), row)]);
 

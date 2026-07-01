@@ -17,10 +17,11 @@ use nmp_feed::{
 };
 use serde::{Deserialize, Serialize};
 
-use nmp_content::context::RenderContext;
-use nmp_content::embed_projection::{resolve_embed_projection, EmbedKindProjection};
+use nmp_content::{tokenize_with_kind, RenderMode};
 
-use crate::{article_address, ArticleFeedItem, KIND_LONG_FORM_ARTICLE};
+use crate::{
+    article_address, article_embed_projection_from_event, ArticleFeedItem, KIND_LONG_FORM_ARTICLE,
+};
 
 /// Admission predicate supplied by the app/protocol composition layer.
 pub type LongformFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
@@ -365,10 +366,9 @@ fn article_summary_from_event(event: &KernelEvent) -> Option<ArticleFeedItem> {
     if event.kind != KIND_LONG_FORM_ARTICLE {
         return None;
     }
-    let ctx = RenderContext::default();
-    let EmbedKindProjection::Article(article) = resolve_embed_projection(event, &ctx) else {
-        return None;
-    };
+    let content_tree =
+        tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
+    let article = article_embed_projection_from_event(event, content_tree)?;
     Some(ArticleFeedItem::from_article(
         article_address(event, &article.d_tag),
         &article,

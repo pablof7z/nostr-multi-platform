@@ -3893,6 +3893,7 @@ version = "0.8.4"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-nip23",
  "nmp-nostr-id",
  "nmp-ownership",
  "nmp-signer-iface",
@@ -4096,6 +4097,7 @@ dependencies = [
  "nmp-nip09",
  "nmp-nip11",
  "nmp-nip18",
+ "nmp-nip23",
  "nmp-nip25",
  "nmp-nip29",
  "nmp-nip46",

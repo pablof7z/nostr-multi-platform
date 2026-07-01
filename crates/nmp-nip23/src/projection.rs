@@ -1,16 +1,14 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use nmp_content::context::RenderContext;
-use nmp_content::embed_projection::{
-    resolve_embed_projection, ArticleProjection, EmbedKindProjection,
-};
+use nmp_content::embed_projection::ArticleProjection;
+use nmp_content::{tokenize_with_kind, RenderMode};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use serde::{Deserialize, Serialize};
 
 use crate::wire::longform_fb;
-use crate::{KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
+use crate::{article_embed_projection_from_event, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
 
 /// Trimmed, screen-shaped summary for an article **feed list** row (D5).
 ///
@@ -167,12 +165,9 @@ impl ObservedProjectionSink for LongformProjection {
         if event.kind != KIND_LONG_FORM_ARTICLE {
             return;
         }
-        // Reuse the existing NIP-23 resolver — never a bespoke tag parser.
-        let ctx = RenderContext::default();
-        let EmbedKindProjection::Article(article) = resolve_embed_projection(event, &ctx) else {
-            // resolve_embed_projection maps 30023 -> Article unconditionally;
-            // any other variant means an upstream change. D6: ignore rather
-            // than panic.
+        let content_tree =
+            tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
+        let Some(article) = article_embed_projection_from_event(event, content_tree) else {
             return;
         };
         let address = article_address(event, &article.d_tag);

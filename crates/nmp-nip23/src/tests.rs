@@ -9,6 +9,8 @@
 
 use super::*;
 use crate::wire::longform_fb::{decode_longform_articles, LongformArticles};
+use nmp_content::embed_projection::{resolve_embed_projection, EmbedKindProjection};
+use nmp_content::{tokenize_with_kind, RenderContext, RenderMode};
 use nmp_core::substrate::KernelEvent;
 
 const AUTHOR_A: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11a";
@@ -45,6 +47,57 @@ fn article_event(
         ],
         content: body.to_string(),
         relay_provenance: Vec::new(),
+    }
+}
+
+#[test]
+fn article_embed_adapter_owns_nip23_tag_semantics() {
+    let event = article_event(
+        &"9".repeat(64),
+        AUTHOR_A,
+        "adapter-proof",
+        1_234,
+        "Adapter Title",
+        "Adapter summary",
+        "https://img.example/adapter.png",
+        "body",
+    );
+    let content_tree =
+        tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
+    let article =
+        article_embed_projection_from_event(&event, content_tree).expect("article projection");
+
+    assert_eq!(article.id, "9".repeat(64));
+    assert_eq!(article.author_pubkey, AUTHOR_A);
+    assert_eq!(article.title.as_deref(), Some("Adapter Title"));
+    assert_eq!(article.summary.as_deref(), Some("Adapter summary"));
+    assert_eq!(
+        article.hero_image_url.as_deref(),
+        Some("https://img.example/adapter.png")
+    );
+    assert_eq!(article.d_tag, "adapter-proof");
+}
+
+#[test]
+fn registered_adapter_drives_nmp_content_article_embed_dispatch() {
+    register_content_embed_projection_adapter();
+    let event = article_event(
+        &"8".repeat(64),
+        AUTHOR_A,
+        "registered",
+        1_235,
+        "Registered Title",
+        "Registered summary",
+        "https://img.example/registered.png",
+        "body",
+    );
+
+    match resolve_embed_projection(&event, &RenderContext::new()) {
+        EmbedKindProjection::Article(article) => {
+            assert_eq!(article.title.as_deref(), Some("Registered Title"));
+            assert_eq!(article.d_tag, "registered");
+        }
+        other => panic!("expected registered NIP-23 adapter to return Article, got {other:?}"),
     }
 }
 

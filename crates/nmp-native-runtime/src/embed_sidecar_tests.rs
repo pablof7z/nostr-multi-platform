@@ -87,6 +87,10 @@ fn claimed_events_only_frame(primary_id: &str, row: ClaimedEventRow) -> Vec<u8> 
     )
 }
 
+fn install_nip23_embed_adapter() {
+    nmp_nip23::register_content_embed_projection_adapter();
+}
+
 #[test]
 fn resolve_short_note_row_produces_short_note_projection() {
     let row = make_claimed_event_row(
@@ -108,6 +112,7 @@ fn resolve_short_note_row_produces_short_note_projection() {
 
 #[test]
 fn resolve_article_row_produces_article_projection() {
+    install_nip23_embed_adapter();
     let tags = vec![vec!["d".to_string(), "my-article".to_string()]];
     let row = make_claimed_event_row(
         "art456",
@@ -224,6 +229,7 @@ fn typed_sidecar_carries_the_expected_resolved_map() {
     // The JSON lane was deleted in PR #1525 (escape hatch #2 eliminated).
     // This test proves the typed FlatBuffers sidecar carries the correct
     // resolved entries for all three supported embed kinds.
+    install_nip23_embed_adapter();
     let slot = new_embed_sidecar_slot();
     let ctx = RenderContext::new();
     let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();

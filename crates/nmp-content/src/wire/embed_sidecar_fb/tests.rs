@@ -1,8 +1,8 @@
 //! Round-trip proofs for the `refs.event.envelopes` typed FlatBuffers codec.
 //!
-//! Every projection variant is resolved through the REAL
-//! [`resolve_embed_projection`] resolver (never a hand-built struct), wrapped in
-//! the FFI-sidecar envelope shape, encoded, and decoded — proving the typed wire
+//! Every projection variant except owner-registered NIP-23 articles is resolved
+//! through the REAL [`resolve_embed_projection`] resolver, wrapped in the
+//! FFI-sidecar envelope shape, encoded, and decoded — proving the typed wire
 //! preserves the exact resolver output a typed-frame shell consumes.
 
 use std::collections::BTreeMap;
@@ -12,8 +12,10 @@ use nmp_core::substrate::KernelEvent;
 use super::{decode_ref_event_envelopes, encode_ref_event_envelopes, FILE_IDENTIFIER};
 use crate::context::RenderContext;
 use crate::embed_projection::{
-    resolve_embed_projection, EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire,
+    resolve_embed_projection, ArticleProjection, EmbedKindProjection, EmbeddedEventEnvelope,
+    RenderContextWire,
 };
+use crate::{tokenize_with_kind, RenderMode};
 
 fn kernel_event(
     id: &str,
@@ -102,20 +104,18 @@ fn short_note_round_trips() {
 
 #[test]
 fn article_round_trips_with_optional_tags() {
-    let tags = vec![
-        vec!["d".to_string(), "my-article".to_string()],
-        vec!["title".to_string(), "My Title".to_string()],
-        vec!["summary".to_string(), "A summary".to_string()],
-    ];
-    let ev = kernel_event(
-        "art".repeat(16).as_str(),
-        &"cc".repeat(32),
-        30023,
-        "# Body",
-        tags,
-    );
+    let projection = EmbedKindProjection::Article(ArticleProjection {
+        id: "art".repeat(16),
+        author_pubkey: "cc".repeat(32),
+        created_at: 1_710_000_000,
+        title: Some("My Title".to_string()),
+        summary: Some("A summary".to_string()),
+        hero_image_url: None,
+        d_tag: "my-article".to_string(),
+        content_tree: tokenize_with_kind("# Body", &[], RenderMode::Auto, 30023).to_wire(),
+    });
     let mut entries = BTreeMap::new();
-    entries.insert("art1".to_string(), envelope("art1", resolve(&ev)));
+    entries.insert("art1".to_string(), envelope("art1", projection));
 
     let bytes = encode_ref_event_envelopes(&entries);
     let decoded = decode_ref_event_envelopes(&bytes).expect("decode");

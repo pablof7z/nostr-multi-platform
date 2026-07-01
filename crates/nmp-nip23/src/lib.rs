@@ -5,8 +5,8 @@
 //! folding, and the `nmp.nip23.articles` typed projection key.
 //!
 //! `nmp-content` remains the rendering/tokenization substrate: this crate
-//! calls `resolve_embed_projection` and reuses the `ContentTreeWire` codec for
-//! article bodies, but all NIP-23 protocol read-model decisions live here.
+//! provides the kind:30023 embed adapter and reuses the `ContentTreeWire` codec
+//! for article bodies, but all NIP-23 protocol read-model decisions live here.
 //!
 //! # Why this module exists — the A5 re-parse pattern
 //!
@@ -27,13 +27,11 @@
 //!
 //! # Reuse, not reinvention
 //!
-//! The article body shape ([`nmp_content::embed_projection::ArticleProjection`])
-//! and tag parser ([`nmp_content::embed_projection::resolve_embed_projection`])
-//! remain in `nmp-content`; this crate composes them as rendering/tokenization
-//! substrate. The wire codec ([`crate::wire::longform_fb`]) reuses the existing
-//! `ContentTreeWire` (`NFCT`) buffer for the article body. This module owns the
-//! NIP-23 observer/feed semantics without writing a second tag parser, content
-//! renderer, or supersession rule.
+//! The article body shape remains the embed-envelope wire shape in
+//! `nmp-content`; this crate owns the kind:30023 field extraction and composes
+//! the content renderer to fill the body. The wire codec
+//! ([`crate::wire::longform_fb`]) reuses the existing `ContentTreeWire` (`NFCT`)
+//! buffer for the article body.
 //!
 //! # Supersession — latest-at-coordinate collapse
 //!
@@ -77,8 +75,10 @@
 
 use std::sync::Arc;
 
+use nmp_content::embed_projection::{ArticleProjection, ArticleProjectionAdapter};
+use nmp_content::wire::ContentTreeWire;
 use nmp_core::substrate::{
-    ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
+    KernelEvent, ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::ObservedProjectionSink;
 
@@ -97,6 +97,36 @@ pub use projection::{ArticleFeedItem, LongformProjection};
 /// Snapshot-projection key the typed sidecar is emitted under.
 pub const LONGFORM_PROJECTION_KEY: &str = "nmp.nip23.articles";
 
+/// Owner-provided render adapter for an embedded NIP-23 kind:30023 article.
+///
+/// Rendering crates may adapt the returned payload into their envelope/wire
+/// shape, but the NIP-23 tag semantics stay in this crate.
+#[must_use]
+pub fn article_embed_projection_from_event(
+    event: &KernelEvent,
+    content_tree: ContentTreeWire,
+) -> Option<ArticleProjection> {
+    if event.kind != KIND_LONG_FORM_ARTICLE {
+        return None;
+    }
+    Some(ArticleProjection {
+        id: event.id.clone(),
+        author_pubkey: event.author.clone(),
+        created_at: event.created_at,
+        title: tag_value(&event.tags, "title"),
+        summary: tag_value(&event.tags, "summary"),
+        hero_image_url: tag_value(&event.tags, "image"),
+        d_tag: tag_value(&event.tags, "d").unwrap_or_default(),
+        content_tree,
+    })
+}
+
+/// Register this crate's NIP-23 embed adapter with `nmp-content`.
+pub fn register_content_embed_projection_adapter() {
+    let adapter: ArticleProjectionAdapter = article_embed_projection_from_event;
+    nmp_content::register_article_projection_adapter(adapter);
+}
+
 /// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection
 /// into `app`.
 ///
@@ -107,6 +137,7 @@ pub const LONGFORM_PROJECTION_KEY: &str = "nmp.nip23.articles";
 pub fn register_longform_projection(
     app: &(impl ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
 ) {
+    register_content_embed_projection_adapter();
     let projection = Arc::new(LongformProjection::new());
     let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
         Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
@@ -126,6 +157,12 @@ pub fn register_longform_projection(
         ),
         move || Some(projection_for_closure.typed_projection()),
     );
+}
+
+fn tag_value(tags: &[Vec<String>], key: &str) -> Option<String> {
+    tags.iter()
+        .find(|tag| tag.first().is_some_and(|candidate| candidate == key))
+        .and_then(|tag| tag.get(1).cloned())
 }
 
 #[cfg(test)]
