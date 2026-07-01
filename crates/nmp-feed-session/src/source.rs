@@ -12,6 +12,10 @@ use nmp_core::{DependentInterestChild, ObservedProjectionId};
 use nmp_feed::{FollowPredicate, RootAdmission, TeardownAction};
 use nmp_planner::{InterestScope, InterestShape};
 
+use crate::trellis_resources::{
+    FeedSessionResourceKey, FeedSessionRouteProvenance, InterestDemand,
+};
+
 /// A closure that, given the feed-window reset trigger, installs it on the
 /// underlying set's change signal.
 pub(super) type ResetHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
@@ -54,25 +58,46 @@ impl OpSessionIdentity {
 pub(super) struct AcquisitionInterest {
     pub shape: InterestShape,
     pub scope: InterestScope,
+    pub provenance: FeedSessionRouteProvenance,
 }
 
 impl AcquisitionInterest {
-    pub(super) fn active_account(shape: InterestShape) -> Self {
+    pub(super) fn active_account_with_provenance(
+        shape: InterestShape,
+        provenance: FeedSessionRouteProvenance,
+    ) -> Self {
         Self {
             shape,
             scope: InterestScope::ActiveAccount,
+            provenance,
         }
     }
 
     pub(super) fn global(shape: InterestShape) -> Self {
+        Self::global_with_provenance(shape, FeedSessionRouteProvenance::StaticFeedScope)
+    }
+
+    pub(super) fn global_with_provenance(
+        shape: InterestShape,
+        provenance: FeedSessionRouteProvenance,
+    ) -> Self {
         Self {
             shape,
             scope: InterestScope::Global,
+            provenance,
         }
     }
 
-    fn into_child(self) -> DependentInterestChild {
-        DependentInterestChild::tailing(self.shape, self.scope)
+    pub(super) fn demand(&self) -> InterestDemand {
+        InterestDemand::tailing(&self.scope, self.shape.clone(), self.provenance)
+    }
+
+    pub(super) fn resource_key(&self) -> FeedSessionResourceKey {
+        self.demand().resource_key()
+    }
+
+    pub(super) fn to_child(&self) -> DependentInterestChild {
+        DependentInterestChild::tailing(self.shape.clone(), self.scope.clone())
     }
 }
 
@@ -124,16 +149,4 @@ pub(super) fn empty_extra() -> ExtraAcquisition {
 
 pub(super) fn one_live_shape(live_shape: LiveShape) -> LiveShapes {
     Arc::new(move || live_shape().into_iter().collect())
-}
-
-pub(super) fn acquisition_children(
-    fixed: &[AcquisitionInterest],
-    extra: &ExtraAcquisition,
-) -> Vec<DependentInterestChild> {
-    fixed
-        .iter()
-        .cloned()
-        .chain(extra())
-        .map(AcquisitionInterest::into_child)
-        .collect()
 }

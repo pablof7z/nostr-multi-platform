@@ -14,6 +14,7 @@ use super::source::{
     one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook,
     SourceEffectHook,
 };
+use super::trellis_resources::FeedSessionRouteProvenance;
 
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
 
@@ -151,7 +152,12 @@ fn pointer_target_extra_acquisition(
             lock(&model)
                 .target_demand()
                 .filter_map(|target| target_shape(target, &primary_kinds))
-                .map(AcquisitionInterest::global),
+                .map(|shape| {
+                    AcquisitionInterest::global_with_provenance(
+                        shape,
+                        FeedSessionRouteProvenance::PointerTargetHydration,
+                    )
+                }),
         );
         interests
     })

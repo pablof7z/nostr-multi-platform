@@ -50,10 +50,10 @@ mod session_engine;
 mod set_algebra;
 mod source;
 mod source_replay;
+mod trellis_adapter;
 #[cfg(test)]
-mod source_tests;
+mod trellis_adapter_tests;
 // #2629 owns the private taxonomy; #2630 is the first production adapter user.
-#[allow(dead_code)]
 mod trellis_resources;
 #[cfg(test)]
 mod trellis_resources_tests;

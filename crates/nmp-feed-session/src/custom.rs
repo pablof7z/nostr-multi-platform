@@ -363,6 +363,7 @@ mod tests {
                 ..InterestShape::default()
             },
             scope,
+            provenance: crate::trellis_resources::FeedSessionRouteProvenance::SetAlgebra,
         }
     }
 

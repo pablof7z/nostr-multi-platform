@@ -126,12 +126,21 @@ impl From<&InterestScope> for FeedSessionInterestScope {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub(crate) enum FeedSessionRouteProvenance {
     ActiveFollowTimeline,
     Nip51ListMembers,
     Nip29GroupTimeline,
+    WotTimeline,
+    PointerTargetHydration,
     StaticFeedScope,
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "test-only set algebra provenance until #2631 routes custom sources"
+        )
+    )]
     SetAlgebra,
 }
 
@@ -141,6 +150,8 @@ impl FeedSessionRouteProvenance {
             Self::ActiveFollowTimeline => "active-follow-timeline",
             Self::Nip51ListMembers => "nip51-list-members",
             Self::Nip29GroupTimeline => "nip29-group-timeline",
+            Self::WotTimeline => "wot-timeline",
+            Self::PointerTargetHydration => "pointer-target-hydration",
             Self::StaticFeedScope => "static-feed-scope",
             Self::SetAlgebra => "set-algebra",
         }
@@ -172,10 +183,33 @@ impl FeedSessionScopeKey {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum FeedSessionResourceCommand {
     OpenInterest(InterestDemand),
+    #[expect(
+        dead_code,
+        reason = "staged close command taxonomy for #2631 adapter slice"
+    )]
     CloseInterest(InterestDemand),
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged interest-set command taxonomy for #2631 adapter slice"
+        )
+    )]
     ReplaceInterestSet(InterestSetDemand),
+    #[expect(
+        dead_code,
+        reason = "staged replay command taxonomy for #2631 adapter slice"
+    )]
     ReplayFromStore(ReplayDemand),
+    #[expect(
+        dead_code,
+        reason = "staged output attachment taxonomy for #2631 adapter slice"
+    )]
     AttachProjection(ProjectionAttachment),
+    #[expect(
+        dead_code,
+        reason = "staged output attachment taxonomy for #2631 adapter slice"
+    )]
     DetachProjection(ProjectionAttachment),
 }
 
@@ -188,6 +222,13 @@ pub(crate) struct InterestSetDemand {
 
 impl InterestSetDemand {
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged interest-set command payload for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn new(
         owner: FeedSessionScopeKey,
         mut children: Vec<InterestDemand>,
@@ -203,6 +244,10 @@ impl InterestSetDemand {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    dead_code,
+    reason = "staged interest-set reason taxonomy for #2631 adapter slice"
+)]
 pub(crate) enum InterestSetReason {
     SourceChanged,
     SessionClosed,
@@ -216,11 +261,25 @@ pub(crate) struct ProjectionAttachment {
 
 impl ProjectionAttachment {
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged output attachment payload for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn new(projection: ProjectionKey, render: FeedRender) -> Self {
         Self { projection, render }
     }
 
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged output attachment payload for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn resource_key(&self) -> FeedSessionResourceKey {
         FeedSessionResourceKey::projection(self)
     }
@@ -234,6 +293,13 @@ pub(crate) struct ReplayDemand {
 
 impl ReplayDemand {
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged replay demand payload for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn new(projection: ProjectionKey, mut interests: Vec<InterestDemand>) -> Self {
         interests.sort_by_key(InterestDemand::resource_key);
         Self {
@@ -243,6 +309,13 @@ impl ReplayDemand {
     }
 
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged replay demand payload for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn resource_key(&self) -> FeedSessionResourceKey {
         FeedSessionResourceKey::replay(self)
     }
@@ -257,6 +330,13 @@ pub(crate) struct HostStatusIdentity {
 
 impl HostStatusIdentity {
     #[must_use]
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "staged host-status feedback identity for #2631 adapter slice"
+        )
+    )]
     pub(crate) fn new(
         resource_key: FeedSessionResourceKey,
         scope: FeedSessionScopeKey,

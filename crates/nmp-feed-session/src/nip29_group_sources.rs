@@ -11,6 +11,7 @@ use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, LiveShapes, OpSessionIdentity, ReducedSource,
     SourceEffectHook,
 };
+use super::trellis_resources::FeedSessionRouteProvenance;
 
 pub(super) fn resolve_active_simple_groups(
     app: &impl FeedSessionHost,
@@ -118,14 +119,20 @@ fn active_simple_groups_extra_acquisition(
     Arc::new(move || {
         let mut shapes = Vec::new();
         if let Some(viewer) = crate::read_active(&slot) {
-            shapes.push(AcquisitionInterest::active_account(
+            shapes.push(AcquisitionInterest::active_account_with_provenance(
                 simple_group_list_shape(&viewer),
+                FeedSessionRouteProvenance::Nip29GroupTimeline,
             ));
         }
         shapes.extend(
             group_event_shapes(&projection.groups(), &kinds)
                 .into_iter()
-                .map(AcquisitionInterest::global),
+                .map(|shape| {
+                    AcquisitionInterest::global_with_provenance(
+                        shape,
+                        FeedSessionRouteProvenance::Nip29GroupTimeline,
+                    )
+                }),
         );
         shapes
     })

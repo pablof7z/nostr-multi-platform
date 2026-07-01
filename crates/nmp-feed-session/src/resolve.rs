@@ -42,6 +42,7 @@ use super::source::{
     one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
     ReducedSource, ResetHook, SourceEffectHook,
 };
+use super::trellis_resources::FeedSessionRouteProvenance;
 use super::wot_graph::SessionWotGraph;
 
 const KIND_CONTACT_LIST: u32 = 3;
@@ -251,9 +252,10 @@ fn resolve_wot(
     // (needed to rank second-degree candidates) and the candidates' timelines are
     // re-synced live by the session engine as the graph fills (extra_acquisition +
     // live_shape below).
-    let interests = vec![AcquisitionInterest::active_account(seed_contacts_shape(
-        seed,
-    ))];
+    let interests = vec![AcquisitionInterest::active_account_with_provenance(
+        seed_contacts_shape(seed),
+        FeedSessionRouteProvenance::WotTimeline,
+    )];
 
     let live_shape: LiveShape = {
         let graph = Arc::clone(&graph);
@@ -283,17 +285,19 @@ fn resolve_wot(
             let follows = graph.direct_follows();
             if !follows.is_empty() {
                 let k: BTreeSet<u32> = [KIND_CONTACT_LIST].into_iter().collect();
-                shapes.push(AcquisitionInterest::active_account(
+                shapes.push(AcquisitionInterest::active_account_with_provenance(
                     InterestShape::timeline_for(follows, k),
+                    FeedSessionRouteProvenance::WotTimeline,
                 ));
             }
             let candidates = graph.ranked_candidates();
             if !candidates.is_empty() && !timeline_kinds.is_empty() {
-                shapes.push(AcquisitionInterest::active_account(
+                shapes.push(AcquisitionInterest::active_account_with_provenance(
                     InterestShape::timeline_for(
                         candidates.into_iter().collect(),
                         timeline_kinds.clone(),
                     ),
+                    FeedSessionRouteProvenance::WotTimeline,
                 ));
             }
             shapes
@@ -359,12 +363,16 @@ fn active_contact_list_extra_acquisition(
     Arc::new(move || {
         let mut shapes = Vec::new();
         if let Some(viewer) = crate::read_active(&slot) {
-            shapes.push(AcquisitionInterest::active_account(seed_contacts_shape(
-                &viewer,
-            )));
+            shapes.push(AcquisitionInterest::active_account_with_provenance(
+                seed_contacts_shape(&viewer),
+                FeedSessionRouteProvenance::ActiveFollowTimeline,
+            ));
         }
         if let Some(shape) = live_shape() {
-            shapes.push(AcquisitionInterest::active_account(shape));
+            shapes.push(AcquisitionInterest::active_account_with_provenance(
+                shape,
+                FeedSessionRouteProvenance::ActiveFollowTimeline,
+            ));
         }
         shapes
     })

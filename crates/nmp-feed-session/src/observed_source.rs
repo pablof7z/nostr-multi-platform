@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use crate::source::{acquisition_children, ExtraAcquisition, ReducedSource};
+use crate::source::ReducedSource;
+use crate::trellis_adapter::FeedSessionTrellisAdapter;
 use crate::{FeedOpenError, FeedSessionHost};
-use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild, ProjectionKey};
@@ -86,34 +86,19 @@ fn build_observed_source_session(
     source_observer.sync();
 
     let sender = app.command_sender();
-    let owner = crate::session_engine::session_acquisition_owner(key);
-    let fixed_acquisition = Arc::new(interests);
-    let sync_acquisition = {
-        let sender = sender.clone();
-        let fixed_acquisition = Arc::clone(&fixed_acquisition);
-        move |extra: &ExtraAcquisition| {
-            let children = acquisition_children(&fixed_acquisition, extra);
-            let _ = sender.send(ActorCommand::Interests(
-                InterestsCommand::ReplaceDependentInterestSet {
-                    owner,
-                    children,
-                    reason: "feed-observed-source-acquisition".to_string(),
-                },
-            ));
-        }
-    };
-    sync_acquisition(&extra_acquisition);
+    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, interests, sender.clone())?;
+    acquisition_adapter.sync(&extra_acquisition, "feed-observed-source-acquisition");
 
     for hook in reset_hooks {
         let extra = Arc::clone(&extra_acquisition);
-        let sync_acquisition = sync_acquisition.clone();
+        let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = source_observer.clone();
         let notify = sender.clone();
         let reset = options.reset_on_source_change.clone();
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             reset_app_projection(reset.as_ref());
             sync_observer.sync();
-            sync_acquisition(&extra);
+            acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
             notify.mark_changed_since_emit();
         });
         hook(trigger);
@@ -121,14 +106,14 @@ fn build_observed_source_session(
 
     for hook in source_effect_hooks {
         let extra = Arc::clone(&extra_acquisition);
-        let sync_acquisition = sync_acquisition.clone();
+        let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = source_observer.clone();
         let notify = sender.clone();
         let reset = options.reset_on_source_change.clone();
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             reset_app_projection(reset.as_ref());
             sync_observer.sync();
-            sync_acquisition(&extra);
+            acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
             notify.mark_changed_since_emit();
         });
         hook(trigger);
@@ -136,10 +121,7 @@ fn build_observed_source_session(
 
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(app.mark_changed_action());
-    teardown.push(crate::session_engine::clear_acquisition_set(
-        sender.clone(),
-        owner,
-    ));
+    teardown.push(acquisition_adapter.close_action());
     teardown.push(app.remove_projection_action(key.to_string()));
     for id in resolver_observer_ids {
         let handle = app.observed_projection_handle();

@@ -27,9 +27,6 @@
 use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::InterestsCommand;
-use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
@@ -39,7 +36,8 @@ use nmp_feed::{
 use nmp_note_feed::OpFeedEngine;
 use nmp_planner::InterestScope;
 
-use super::source::{acquisition_children, ExtraAcquisition, OpSessionIdentity, ReducedSource};
+use super::source::{OpSessionIdentity, ReducedSource};
+use super::trellis_adapter::FeedSessionTrellisAdapter;
 
 mod flat_session;
 
@@ -224,7 +222,7 @@ fn build_op_scope_session(
         })
     });
 
-    // ── 4+5. Replace dependent acquisition set + reactive re-sync ─────────
+    // ── 4+5. Trellis-backed dependent acquisition set + reactive re-sync ───
     //
     // The session owns ONE dependent-interest set keyed by its projection. Fixed
     // seed/list interests and live member timeline interests are replaced
@@ -232,23 +230,8 @@ fn build_op_scope_session(
     // children immediately; teardown sends the empty set. The session never
     // serializes shapes to NIP-01 JSON or tracks a private open log.
     let sender = app.command_sender();
-    let owner = session_acquisition_owner(key);
-    let fixed_acquisition = Arc::new(interests);
-    let sync_acquisition = {
-        let sender = sender.clone();
-        let fixed_acquisition = Arc::clone(&fixed_acquisition);
-        move |extra: &ExtraAcquisition| {
-            let children = acquisition_children(&fixed_acquisition, extra);
-            let _ = sender.send(ActorCommand::Interests(
-                InterestsCommand::ReplaceDependentInterestSet {
-                    owner,
-                    children,
-                    reason: "feed-session-acquisition".to_string(),
-                },
-            ));
-        }
-    };
-    sync_acquisition(&extra_acquisition);
+    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, interests, sender.clone())?;
+    acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
 
     // Wire each projection-set change to re-sync acquisition for the new
     // members, then reset the window/cursor. Graph-backed sources use the
@@ -256,12 +239,12 @@ fn build_op_scope_session(
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
-        let sync_acquisition = sync_acquisition.clone();
+        let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
         let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
-            sync_acquisition(&extra);
+            acquisition_adapter.sync(&extra, "feed-session-acquisition");
             if controller_for_reset.reset() {
                 notify.mark_changed_since_emit();
             }
@@ -272,12 +255,12 @@ fn build_op_scope_session(
     for hook in source_effect_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
-        let sync_acquisition = sync_acquisition.clone();
+        let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
         let notify = sender.clone();
         let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
-            sync_acquisition(&extra);
+            acquisition_adapter.sync(&extra, "feed-session-acquisition");
             if controller_for_reset.reset() {
                 notify.mark_changed_since_emit();
             }
@@ -292,11 +275,11 @@ fn build_op_scope_session(
     //   2. revoke the engine ingest observer
     //   3. revoke each resolver observer
     //   4. remove the projection
-    //   5. clear acquisition set                (WITHDRAW actor-owned state)
+    //   5. close Trellis acquisition scope      (WITHDRAW actor-owned state)
     //   6. mark-changed                          (the notification, runs last)
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(app.mark_changed_action()); // exec #6 (last)
-    teardown.push(clear_acquisition_set(sender.clone(), owner)); // exec #5
+    teardown.push(acquisition_adapter.close_action()); // exec #5
     teardown.push(app.remove_projection_action(key.to_string())); // exec #4
     for id in resolver_observer_ids {
         let handle = app.observed_projection_handle();
@@ -332,28 +315,9 @@ pub(super) fn visible_flat_payload(feed: &nmp_note_feed::FlatFeed) -> Vec<u8> {
     nmp_note_feed::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
-pub(super) fn session_acquisition_owner(key: &str) -> SubOwnerKey {
-    SubOwnerKey::new(("feed-session-acquisition", key))
-}
-
 pub(crate) fn interest_scope_code(scope: InterestScope) -> u32 {
     match scope {
         InterestScope::ActiveAccount | InterestScope::Account(_) => 0,
         InterestScope::Global => 1,
     }
-}
-
-pub(crate) fn clear_acquisition_set(
-    sender: nmp_core::CommandSender,
-    owner: SubOwnerKey,
-) -> nmp_feed::TeardownAction {
-    Box::new(move || {
-        let _ = sender.send(ActorCommand::Interests(
-            InterestsCommand::ReplaceDependentInterestSet {
-                owner,
-                children: Vec::new(),
-                reason: "feed-session-acquisition-close".to_string(),
-            },
-        ));
-    })
 }
