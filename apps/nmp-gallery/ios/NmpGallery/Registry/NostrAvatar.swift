@@ -8,7 +8,8 @@ import Foundation
 /// Replace `AsyncImage` with your own image cache (Kingfisher, Nuke, etc.)
 /// if you already have one — the identicon fallback is self-contained.
 ///
-/// Depends on `swiftui/user-avatar` for `ProfileWire` and `NostrProfileHost`.
+/// Depends on `swiftui/user-avatar` for `ProfileWire` / `NostrProfileHost`
+/// and `swiftui/content-core` for the shared `NostrIdenticon`.
 public struct NostrAvatar: View, Equatable {
     @Environment(\.nostrProfileHost) private var profileHost
 
@@ -19,12 +20,8 @@ public struct NostrAvatar: View, Equatable {
     @State private var generatedConsumerID: String
     @State private var claimedPubkey: String?
 
-    /// Equatable conformance comparing only the rendered-value inputs.
-    ///
-    /// `@State` vars (`generatedConsumerID`, `claimedPubkey`) are internal
-    /// identity managed by SwiftUI across body re-evaluations and must NOT
-    /// participate in equality — including them would cause `.equatable()` to
-    /// wrongly suppress re-renders when those internal vars change.
+    /// Compare only the render-relevant inputs. SwiftUI-owned `@State`
+    /// storage changes independently and must not participate in equality.
     public nonisolated static func == (lhs: NostrAvatar, rhs: NostrAvatar) -> Bool {
         lhs.pubkey == rhs.pubkey
             && lhs.pictureUrl == rhs.pictureUrl
@@ -100,20 +97,7 @@ public struct NostrAvatar: View, Equatable {
     }
 
     private var identicon: some View {
-        // #2224: the deterministic 5×5 symmetric grid is the single shared
-        // fallback across every platform. `NostrIdenticon` (defined once in
-        // `ContentTreeWire.swift`) renders the same pattern as Android Compose
-        // for a given pubkey.
         NostrIdenticon.identiconView(forPubkey: pubkey, size: size)
             .clipShape(Circle())
     }
 }
-
-// MARK: - Identicon
-//
-// NOTE (gallery local edit): the `NostrIdenticon` enum that originally lived
-// here in the upstream `swiftui/user-avatar` registry component has been
-// removed. The single definition lives in `ContentTreeWire.swift`
-// (`swiftui/content-core`) and is kept byte-identical to the registry source
-// by the cross-platform identicon drift gate (#2224). Keeping both
-// definitions in the same Swift module is a redeclaration error.

@@ -26,6 +26,7 @@ struct NmpGalleryApp: App {
     @State private var kindRegistry: NostrKindRegistry = {
         let reg = NostrKindRegistry.makeDefault()
         reg.setArticle(ArticleEmbed())
+        reg.setProfile(ProfileEmbed())
         reg.setHighlight(HighlightEmbed())
         return reg
     }()

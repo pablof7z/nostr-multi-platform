@@ -172,8 +172,7 @@ public struct DefaultHighlightRenderer: KindRenderer {
                     Text("highlight ·")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    // Self-claiming byline: the name component owns claiming the
-                    // author's kind:0 — the kernel never fetches it.
+                    // Self-claiming byline for the author.
                     NostrProfileName(pubkey: h.authorPubkey, font: .caption, color: .secondary)
                 }
                 Text(h.highlightedText)

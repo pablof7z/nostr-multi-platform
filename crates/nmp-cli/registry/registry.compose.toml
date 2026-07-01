@@ -145,6 +145,7 @@ id = "compose/user-avatar"
 version = "0.1.0"
 target = "compose"
 description = "Reference-first Compose Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
+dependencies = ["compose/content-core"]
 [[components.files]]
 source = "compose/user-avatar/ProfileWire.kt"
 target = "Components/NostrUser/ProfileWire.kt"

@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct NostrContentRun: Identifiable, Equatable, RenderIdentifiable {
-    public enum Kind: Equatable {
+    public enum Kind: Equatable, Sendable {
         case text
         case mention(pubkey: String)
         case hashtag(String)

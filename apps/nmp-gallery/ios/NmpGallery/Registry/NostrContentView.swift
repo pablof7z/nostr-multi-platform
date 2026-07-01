@@ -11,17 +11,32 @@ import UIKit
 ///   • Theming + tap callbacks come from `NostrContentRenderer` in the
 ///     SwiftUI environment (see `swiftui/content-core`).
 ///   • Mention display labels are provided by the app via `mentionLabel`.
-///   • Quote/embed cards are app-owned: the app passes a `quoteCardProvider`
-///     closure that returns a `NostrQuoteCardModel` for an event-ref URI.
-///     When `nil`, the view falls back to a `.collapsed` quote card.
+///   • Embedded events (`nostr:nevent…` / `nostr:naddr…`) render through the
+///     kind-dispatch registry (ADR-0034): the app binds an `EmbedEnvelopeSource`
+///     + `EventRefResolverProtocol` + `NostrKindRegistry` via
+///     `.embedEnvelopeSource(...)` and `eventRefView` dispatches through
+///     `EmbeddedEvent`. With no host bound,
+///     `EmbeddedEvent` still renders a loading placeholder via the default
+///     registry — there is no separate quote-card fallback.
 public struct NostrContentView: View {
     public var tree: ContentTreeWire
     public var font: Font
     public var mentionLabel: (NostrWireUri) -> String
-    public var quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)?
+    /// Highlight overlays to paint on the body. Each decoration's `quote` is
+    /// matched against the rendered plain text and painted with its colour;
+    /// taps route to `renderer.callbacks.onDecorationTap`. Empty (the default)
+    /// keeps the fast `Text`-concatenation path.
+    public var decorations: [NostrContentDecoration]
+    /// Opt-in body text selection. When `true`, paragraph/heading runs become
+    /// selectable and the selection edit menu gains a "Highlight" action that
+    /// fires `renderer.callbacks.onTextSelected(quote, context)`. Off by
+    /// default so non-article surfaces keep the lightweight `Text` path.
+    public var selectionEnabled: Bool
 
-    @Environment(\.nostrContentRenderer) private var renderer
-    @Environment(\.embedHost) private var embedHost
+    // Non-private so the article-mode extension (NostrContentArticleView,
+    // NostrContentAttributed) in the same module can read theming + callbacks.
+    @Environment(\.nostrContentRenderer) var renderer
+    @Environment(\.embedEnvelopeSource) private var embedEnvelopeSource
     @Environment(\.embedEventRefResolver) private var embedEventRefResolver
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
 
@@ -29,22 +44,38 @@ public struct NostrContentView: View {
         tree: ContentTreeWire,
         font: Font = .body,
         mentionLabel: @escaping (NostrWireUri) -> String = NostrContentView.defaultMentionLabel,
-        quoteCardProvider: ((NostrWireUri) -> NostrQuoteCardModel?)? = nil
+        decorations: [NostrContentDecoration] = [],
+        selectionEnabled: Bool = false
     ) {
         self.tree = tree
         self.font = font
         self.mentionLabel = mentionLabel
-        self.quoteCardProvider = quoteCardProvider
+        self.decorations = decorations
+        self.selectionEnabled = selectionEnabled
     }
 
     public var body: some View {
         let groups = nostrContentGroups(tree)
         if groups.isEmpty {
             EmptyView()
+        } else if articleMode {
+            // Footnote-definition paragraphs (`[^1]: …`) are rendered once, by
+            // `footnoteSection`. Suppress the originals from the normal loop so
+            // the body shows each definition exactly once and the marker
+            // scrolls to the single rendered block.
+            let bodyGroups = groups.filter { !isFootnoteDefinitionGroup($0) }
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(bodyGroups.enumerated()), id: \.offset) { _, group in
+                        groupView(group, proxy: proxy)
+                    }
+                    footnoteSection(proxy: proxy)
+                }
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    groupView(group)
+                    groupView(group, proxy: nil)
                 }
             }
         }
@@ -53,10 +84,10 @@ public struct NostrContentView: View {
     // MARK: - Group dispatch
 
     @ViewBuilder
-    private func groupView(_ group: NostrContentGroup) -> some View {
+    private func groupView(_ group: NostrContentGroup, proxy: ScrollViewProxy?) -> some View {
         switch group {
         case .inline(let level, let children):
-            inlineGroup(level: level, children: children)
+            inlineGroup(level: level, children: children, proxy: proxy)
         case .media(let urls, let kind):
             mediaGroup(urls: urls, kind: kind)
         case .eventRef(let uri):
@@ -77,21 +108,25 @@ public struct NostrContentView: View {
     }
 
     @ViewBuilder
-    private func inlineGroup(level: NostrContentInlineLevel, children: [UInt32]) -> some View {
-        let concatenated = children.reduce(Text("")) { acc, child in
-            acc + inlineText(child)
-        }
-        switch level {
-        case .paragraph:
-            concatenated
-                .font(font)
-                .foregroundStyle(renderer.textColor)
-                .fixedSize(horizontal: false, vertical: true)
-        case .heading(let lvl):
-            concatenated
-                .font(headingFont(for: lvl))
-                .foregroundStyle(renderer.textColor)
-                .fixedSize(horizontal: false, vertical: true)
+    private func inlineGroup(level: NostrContentInlineLevel, children: [UInt32], proxy: ScrollViewProxy?) -> some View {
+        if articleMode {
+            articleInlineGroup(level: level, children: children, proxy: proxy)
+        } else {
+            let concatenated = children.reduce(Text("")) { acc, child in
+                acc + inlineText(child)
+            }
+            switch level {
+            case .paragraph:
+                concatenated
+                    .font(font)
+                    .foregroundStyle(renderer.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .heading(let lvl):
+                concatenated
+                    .font(headingFont(for: lvl))
+                    .foregroundStyle(renderer.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -211,50 +246,19 @@ public struct NostrContentView: View {
         .buttonStyle(.plain)
     }
 
-    @ViewBuilder
     private func eventRefView(_ uri: NostrWireUri) -> some View {
-        if let registry = nostrKindRegistry, embedHost != nil || embedEventRefResolver != nil {
-            // Kind-dispatch path (ADR-0034 / M16). `EmbeddedEvent` owns the
-            // resolve/release lifecycle via `task(id:)` + `onDisappear`; the
-            // registry picks the renderer for the resolved projection. The
-            // view always renders even if the host doesn't have the envelope
-            // yet (loading placeholder via `EmbedChromeContainer`).
-            EmbeddedEvent(
-                uri: uri.uri,
-                envelope: embedHost?.envelopeForPrimaryID(uri.primaryId)
-                    ?? embedHost?.envelopeForURI(uri.uri),
-                registry: registry,
-                eventRefResolver: embedEventRefResolver
-            )
-        } else {
-            // Legacy quote-card path. Kept so existing content-quote-card
-            // showcases keep working — the new embed environment opts in
-            // when an EmbedHost is bound by the gallery shell.
-            legacyQuoteCardView(uri)
-        }
-    }
-
-    /// Legacy `eventRefView` body — split into its own helper so the parent
-    /// `@ViewBuilder` doesn't see the `let variant: ... if {} else {}`
-    /// pattern (Swift's ViewBuilder treats the assignments as Views).
-    private func legacyQuoteCardView(_ uri: NostrWireUri) -> NostrQuoteCard {
-        let providedModel = quoteCardProvider?(uri)
-        let variant: NostrQuoteCardVariant
-        let model: NostrQuoteCardModel
-        if quoteCardProvider == nil {
-            variant = .collapsed
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-        } else if let providedModel {
-            variant = .rich
-            model = providedModel
-        } else {
-            variant = .missing
-            model = NostrQuoteCardModel(id: uri.primaryId, unresolvedUri: uri.uri)
-        }
-        return NostrQuoteCard(
-            model: model,
-            variant: variant,
-            onTap: { renderer.callbacks.onEventRefTap(uri.primaryId) }
+        // Kind-dispatch path (ADR-0034 / F-CR-04). `EmbeddedEvent` owns the
+        // resolve/release lifecycle via `task(id:)` + `onDisappear`; the registry
+        // picks the renderer for the resolved projection. The view always
+        // renders even if the host hasn't resolved the envelope yet (loading
+        // placeholder via `EmbedChromeContainer`). With no registry bound, the
+        // built-in defaults render.
+        EmbeddedEvent(
+            uri: uri.uri,
+            envelope: embedEnvelopeSource?.envelopeForPrimaryID(uri.primaryId)
+                ?? embedEnvelopeSource?.envelopeForURI(uri.uri),
+            registry: nostrKindRegistry ?? NostrKindRegistry.makeDefault(),
+            eventRefResolver: embedEventRefResolver
         )
     }
 
@@ -359,7 +363,7 @@ public struct NostrContentView: View {
 
     // MARK: - Defaults / helpers
 
-    nonisolated public static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
+    public nonisolated static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
         let value = uri.primaryId
         guard value.count > 12 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"

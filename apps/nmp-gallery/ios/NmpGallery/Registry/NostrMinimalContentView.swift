@@ -1,7 +1,7 @@
 import SwiftUI
 
-public struct NostrContentRun: Identifiable, Equatable {
-    public enum Kind: Equatable {
+public struct NostrContentRun: Identifiable, Equatable, RenderIdentifiable {
+    public enum Kind: Equatable, Sendable {
         case text
         case mention(pubkey: String)
         case hashtag(String)
@@ -17,6 +17,12 @@ public struct NostrContentRun: Identifiable, Equatable {
         self.label = label
         self.kind = kind
     }
+
+    public func rendersIdentically(_ other: Self) -> Bool {
+        self.id == other.id
+            && self.label == other.label
+            && self.kind == other.kind
+    }
 }
 
 public struct NostrMinimalContentView: View {
@@ -30,7 +36,10 @@ public struct NostrMinimalContentView: View {
     public var body: some View {
         FlowLayout(spacing: 4) {
             ForEach(runs) { run in
-                runView(run)
+                EquatableRow(model: run) { model in
+                    runView(model)
+                }
+                .equatable()
             }
         }
     }
@@ -147,13 +156,11 @@ public extension ContentTreeWire {
     /// `\n` text run so the `FlowLayout` can break visually. Emphasis /
     /// strong wrappers contribute only their children's text (no styling
     /// in the minimal view).
-    func nostrMinimalRuns(
-        mentionLabel: ((NostrWireUri) -> String)? = nil
-    ) -> [NostrContentRun] {
+    func nostrMinimalRuns() -> [NostrContentRun] {
         var runs: [NostrContentRun] = []
         var counter = 0
         for index in roots {
-            walkMinimal(index: index, runs: &runs, counter: &counter, mentionLabel: mentionLabel)
+            walkMinimal(index: index, runs: &runs, counter: &counter)
         }
         return runs
     }
@@ -161,15 +168,14 @@ public extension ContentTreeWire {
     private func walkMinimal(
         index: UInt32,
         runs: inout [NostrContentRun],
-        counter: inout Int,
-        mentionLabel: ((NostrWireUri) -> String)?
+        counter: inout Int
     ) {
         guard let node = node(at: index) else { return }
         switch node {
         case .text(let value):
             appendText(value, runs: &runs, counter: &counter)
         case .mention(let uri):
-            let label = mentionLabel?(uri) ?? "@\(shortMentionLabel(uri))"
+            let label = "@\(shortMentionLabel(uri))"
             append(label: label, kind: .mention(pubkey: uri.primaryId), runs: &runs, counter: &counter)
         case .hashtag(let tag):
             append(label: "#\(tag)", kind: .hashtag(tag), runs: &runs, counter: &counter)
@@ -198,7 +204,7 @@ public extension ContentTreeWire {
              .paragraph(let children),
              .heading(_, let children):
             for child in children {
-                walkMinimal(index: child, runs: &runs, counter: &counter, mentionLabel: mentionLabel)
+                walkMinimal(index: child, runs: &runs, counter: &counter)
             }
         case .softBreak:
             appendText(" ", runs: &runs, counter: &counter)

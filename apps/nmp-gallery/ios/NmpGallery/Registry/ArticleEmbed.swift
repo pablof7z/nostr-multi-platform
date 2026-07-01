@@ -56,17 +56,14 @@ public struct ArticleEmbed: KindRenderer {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                // Author byline.
+                // Author byline. Avatar + name each self-claim the author's
+                // kind:0 from the pubkey — the kernel never fetches it, and no
+                // author display fields ride the projection wire.
                 HStack(spacing: 8) {
-                    // Self-claiming avatar: resolves the author's kind:0 picture
-                    // reactively from the pubkey — the kernel never fetches it.
                     NostrAvatar(
                         pubkey: article.authorPubkey,
                         size: 24
                     )
-                    .equatable()
-                    // Self-claiming byline: avatar + name each own claiming the
-                    // author's kind:0 — the kernel never fetches it.
                     NostrProfileName(
                         pubkey: article.authorPubkey,
                         font: .caption.weight(.medium),

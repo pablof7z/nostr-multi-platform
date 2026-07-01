@@ -229,6 +229,7 @@ id = "swiftui/user-avatar"
 version = "0.1.0"
 target = "swiftui"
 description = "Reference-first Nostr avatar that claims its own profile projection and falls back to a deterministic identicon."
+dependencies = ["swiftui/content-core"]
 [[components.files]]
 source = "swiftui/user-avatar/ProfileWire.swift"
 target = "Components/NostrUser/ProfileWire.swift"

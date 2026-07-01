@@ -5,7 +5,7 @@
 // Install alongside `compose/content-kind-registry`, then register
 // `NostrHighlightCardRenderer` with `registry.setHighlight(...)`.
 
-package nmp.content
+package org.nmp.gallery.registry
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

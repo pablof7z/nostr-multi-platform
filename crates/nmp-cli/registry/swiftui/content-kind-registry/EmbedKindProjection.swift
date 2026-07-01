@@ -8,7 +8,7 @@ import Foundation
 ///
 /// Each variant is a typed payload the native renderer consumes verbatim; the
 /// dispatch decision is `match projection` on the Swift side.
-public enum EmbedKindProjection: Equatable {
+public enum EmbedKindProjection: Equatable, Sendable, Decodable {
     case shortNote(ShortNoteProjection)
     case article(ArticleProjection)
     case highlight(HighlightProjection)
@@ -17,7 +17,7 @@ public enum EmbedKindProjection: Equatable {
 }
 
 /// kind:1 short text note projection.
-public struct ShortNoteProjection: Equatable {
+public struct ShortNoteProjection: Equatable, Sendable, Decodable {
     public let id: String
     public let authorPubkey: String
     public let createdAt: UInt64
@@ -43,7 +43,7 @@ public struct ShortNoteProjection: Equatable {
 }
 
 /// kind:30023 long-form article projection (NIP-23).
-public struct ArticleProjection: Equatable {
+public struct ArticleProjection: Equatable, Sendable, Decodable {
     public let id: String
     public let authorPubkey: String
     public let createdAt: UInt64
@@ -77,7 +77,7 @@ public struct ArticleProjection: Equatable {
 }
 
 /// kind:9802 highlight projection (NIP-84).
-public struct HighlightProjection: Equatable {
+public struct HighlightProjection: Equatable, Sendable, Decodable {
     public let id: String
     public let authorPubkey: String
     public let createdAt: UInt64
@@ -109,7 +109,7 @@ public struct HighlightProjection: Equatable {
 }
 
 /// kind:0 profile metadata projection.
-public struct ProfileProjection: Equatable {
+public struct ProfileProjection: Equatable, Sendable, Decodable {
     public let pubkey: String
     public let displayName: String?
     public let pictureUrl: String?
@@ -138,7 +138,7 @@ public struct ProfileProjection: Equatable {
 }
 
 /// Fallback projection for kinds without a registered handler.
-public struct UnknownProjection: Equatable {
+public struct UnknownProjection: Equatable, Sendable, Decodable {
     public let kind: UInt32
     public let authorPubkey: String
     public let createdAt: UInt64
@@ -164,7 +164,7 @@ public struct UnknownProjection: Equatable {
 }
 
 /// Full envelope mirror of `nmp_content::embed_projection::EmbeddedEventEnvelope`.
-public struct EmbeddedEventEnvelope: Equatable {
+public struct EmbeddedEventEnvelope: Equatable, Sendable, Decodable {
     /// The original nostr: URI (nevent1… / naddr1… / npub1…).
     public let uri: String
     /// Primary identifier: event-id hex for event-addressed refs, or
@@ -197,5 +197,38 @@ public struct EmbeddedEventEnvelope: Equatable {
         self.projection = projection
         self.collapsed = collapsed
         self.collapseReason = collapseReason
+    }
+}
+
+public extension EmbedKindProjection {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let variant = try container.decode(String.self, forKey: .variant)
+        switch variant {
+        case "shortNote":
+            self = .shortNote(try container.decode(ShortNoteProjection.self, forKey: .data))
+        case "article":
+            self = .article(try container.decode(ArticleProjection.self, forKey: .data))
+        case "highlight":
+            self = .highlight(try container.decode(HighlightProjection.self, forKey: .data))
+        case "profile":
+            self = .profile(try container.decode(ProfileProjection.self, forKey: .data))
+        case "unknown":
+            self = .unknown(try container.decode(UnknownProjection.self, forKey: .data))
+        default:
+            self = .unknown(
+                UnknownProjection(
+                    kind: 0,
+                    authorPubkey: "",
+                    content: "",
+                    altText: "unknown projection variant: \(variant)"
+                )
+            )
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case variant
+        case data
     }
 }

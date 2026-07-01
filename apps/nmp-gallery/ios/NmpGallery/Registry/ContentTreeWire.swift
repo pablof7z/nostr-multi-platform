@@ -230,8 +230,8 @@ public enum NostrWireNode: Decodable, Equatable, Sendable {
 /// URL can render the geometric `identiconView(forPubkey:)` (a 5×5 symmetric
 /// pixel grid in the GitHub-style — same input always produces the same
 /// pattern). `color(forPubkey:)` is still exposed so apps can theme borders
-/// or backgrounds with the same palette. The shared djb2-based palette keeps
-/// installed apps visually consistent.
+/// or backgrounds with the same palette. Ported from Chirp's djb2-based
+/// palette so installed apps stay visually consistent.
 public enum NostrIdenticon {
     /// Returns a stable `Color` derived from a hex pubkey (or any string).
     /// Uses the djb2 hash mapped to HSB with fixed S/B for legibility.

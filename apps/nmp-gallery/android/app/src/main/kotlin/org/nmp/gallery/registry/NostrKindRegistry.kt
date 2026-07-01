@@ -212,11 +212,10 @@ public val DefaultUnknownRenderer: KindRenderer = KindRenderer { projection, _ -
 // ---------------------------------------------------------------------------
 // Shared byline header for the default renderers. Paints the author avatar
 // (which self-claims the kind:0 via the profile host wired into
-// `compose/user-avatar`) plus a reactively-resolved display label (via
-// `NostrProfileName`, which self-claims the kind:0 through the profile host)
-// and a kind/time caption. The byline carries only the raw author pubkey —
-// the display name joins reactively at presentation time, never from the
-// projection.
+// `compose/user-avatar`) plus a reactively-resolved display name
+// ([NostrProfileName], which self-claims the same kind:0) and a kind/time
+// caption. No author display data rides the embed projection — display joins
+// reactively at this presentation layer (display-separation doctrine).
 // ---------------------------------------------------------------------------
 
 @Composable

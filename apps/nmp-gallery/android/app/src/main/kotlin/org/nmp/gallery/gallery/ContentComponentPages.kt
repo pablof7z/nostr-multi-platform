@@ -126,7 +126,7 @@ private fun ContentComponentBody(
 ) {
     when (componentId) {
         "content-core" -> ContentCoreShowcase(showcase, mentionLabel)
-        "content-view" -> ContentViewShowcase(showcase, mentionLabel, resolvedEventEmbeds)
+        "content-view" -> ContentViewShowcase(showcase, mentionLabel)
         "content-mention-chip" -> MentionChipShowcase(showcase, profileMap, mentionLabel)
         "content-minimal" -> MinimalContentShowcase(showcase, mentionLabel)
         "content-media-grid" -> MediaGridShowcase(resolvedEventEmbeds)
@@ -147,12 +147,10 @@ private fun ContentCoreShowcase(
 private fun ContentViewShowcase(
     showcase: GalleryShowcaseReferences,
     mentionLabel: (WireNostrUri) -> String,
-    resolvedEventEmbeds: Map<String, ResolvedEventEnvelopeWire>,
 ) {
     NostrContentView(
         tree = showcaseRichTree(showcase),
         mentionLabel = mentionLabel,
-        quoteCardProvider = { uri -> quoteCardFor(uri, resolvedEventEmbeds) },
     )
 }
 
