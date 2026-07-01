@@ -1,11 +1,10 @@
-//! The `FeedParams` → registered-session compiler (#1740 steps 2 + 3).
+//! Shared `FeedParams` → registered-session compiler.
 //!
-//! THE composition-layer compiler [`crate::NmpApp::open_feed`] drives. It
-//! names both `NmpApp` and the op-feed instance in one breath (the same edge
-//! [`super::open_active_follows_op_feed`] owns) — exactly why it lives in the
-//! native runtime and not in the C ABI wrapper (D0: `nmp-ffi` matches on no
-//! `FeedScope`). It is a SESSION
-//! WRAPPER over the existing OP-feed mechanics, not a second feed engine (D4).
+//! Runtime composition roots drive this compiler through [`FeedSessionHost`].
+//! The compiler owns feed-scope semantics, OP/flat session wiring, source
+//! effects, dependent acquisition replacement, and typed sidecar registration.
+//! Native and browser runtimes adapt their slots/registries into the host trait
+//! instead of carrying separate feed-source policy.
 //!
 //! Step 3 added the CLOSED perspective compiler: every feed scope routes
 //! through ONE path — `resolve::resolve_scope` compiles the typed scope into a
@@ -17,36 +16,98 @@
 //!
 //! Step 4 adds `CustomPerspectiveId` RESOLUTION over the same compiler: an app
 //! registers a CLOSED [`nmp_feed::CustomPerspectiveDef`] (a `FeedScope` +
-//! ranking) under an id (`NmpApp::register_custom_perspective`); a `Custom`
+//! ranking) under an id; a `Custom`
 //! reference in [`FeedParams`] looks the id up and compiles the registered scope
 //! through `resolve_scope`/`build_scope_session` — NO second resolver. An
 //! UNREGISTERED id still fails CLOSED (no leak). See `custom.rs`.
 
 use std::collections::BTreeSet;
-
-use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{empty_suppression_lookup, SuppressionLookup};
-use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild};
 use std::sync::Arc;
 
+use nmp_core::substrate::{
+    empty_suppression_lookup, ObservedProjectionCommandHandle, ObservedProjectionRegistrar,
+    SuppressionLookup,
+};
+use nmp_core::{CommandSender, TypedProjectionData};
+use nmp_feed::{
+    CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedAuthorRefs, FeedController,
+    FeedParams, FeedRenderSource, FeedSessionBuild, PullFn, TeardownAction,
+};
+
+mod active_shape;
 mod custom;
+mod dynamic_observer;
 mod flat_replay;
 mod nip51_sources;
 mod pointer_targets;
 mod resolve;
 mod resolve_static;
+#[cfg(test)]
+mod resolve_tests;
 mod session_engine;
 mod set_algebra;
 mod source;
 mod source_replay;
-mod wot_graph;
-pub(super) use session_engine::OpScopeSessionArtifacts;
-
 #[cfg(test)]
 mod source_tests;
-#[cfg(test)]
-#[path = "resolve_tests.rs"]
-mod tests;
+mod wot_graph;
+pub(crate) use active_shape::read_active;
+pub use session_engine::OpScopeSessionArtifacts;
+
+/// Compiled ownership descriptor for crate-ownership reports.
+pub mod ownership;
+
+/// Session-scoped identity observer id used by feed-source resolvers.
+pub type IdentityChangeObserverId = u64;
+
+/// Typed failure of a feed-session compile (D6 — no panic across runtime seams).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FeedOpenError {
+    /// The declared [`FeedParams`] failed primary-kind validation.
+    InvalidParams(nmp_nip18::PrimaryKindError),
+    /// The declared scope is recognized by the model but unsupported by this
+    /// runtime/capability set.
+    ScopeNotSupportedYet { scope: &'static str },
+    /// The feed-session registry could not track the compiled session; the
+    /// caller must run the just-produced teardown before returning this error.
+    RegistryUnavailable,
+}
+
+/// Runtime capabilities required by the shared feed-session compiler.
+pub trait FeedSessionHost {
+    fn active_account_handle(&self) -> nmp_core::slots::ActiveAccountSlot;
+    fn event_store_handle(&self) -> nmp_core::slots::EventStoreSlot;
+    fn observed_projection_handle(&self) -> ObservedProjectionCommandHandle;
+    fn register_identity_change_observer<F>(&self, callback: F) -> IdentityChangeObserverId
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static;
+    fn observed_projection_registrar_handle(
+        &self,
+    ) -> Arc<dyn ObservedProjectionRegistrar + Send + Sync> {
+        self.observed_projection_handle()
+            .observed_projection_registrar_handle()
+    }
+    fn unregister_identity_change_observer_action(
+        &self,
+        id: IdentityChangeObserverId,
+    ) -> TeardownAction;
+    fn feed_pull_fn(&self) -> PullFn;
+    fn command_sender(&self) -> CommandSender;
+    fn register_feed(&self, key: String, controller: Arc<dyn FeedController>);
+    fn load_older_feed(&self, key: &str) -> bool;
+    fn register_feed_render_source<S, F>(
+        &self,
+        feed_key: String,
+        source: Arc<FeedRenderSource<S>>,
+        encode: F,
+    ) where
+        S: FeedAuthorRefs + Send + Sync + 'static,
+        F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static;
+    fn custom_perspective(&self, id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef>;
+    fn unregister_feed_action(&self, key: String) -> TeardownAction;
+    fn remove_projection_action(&self, key: String) -> TeardownAction;
+    fn mark_changed_action(&self) -> TeardownAction;
+}
 
 /// Compile a [`FeedParams`] into a registered feed session over the EXISTING
 /// op-feed mechanics, returning the teardown recipe `open_feed` records.
@@ -79,16 +140,16 @@ mod tests;
 ///   children.
 /// * `RelaySet` and `CustomPerspectiveId` stay fail-closed (no resolver / step
 ///   4 respectively).
-pub fn compile_feed_params(
-    app: &NmpApp,
+pub fn compile_feed_params<H: FeedSessionHost>(
+    app: &H,
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     compile_feed_params_with_suppression(app, params, acquisition_kinds, empty_suppression_lookup())
 }
 
-pub(super) fn compile_feed_params_with_suppression(
-    app: &NmpApp,
+pub fn compile_feed_params_with_suppression<H: FeedSessionHost>(
+    app: &H,
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
     suppression: Arc<dyn SuppressionLookup>,
@@ -97,8 +158,8 @@ pub(super) fn compile_feed_params_with_suppression(
         .map(|detailed| detailed.build)
 }
 
-pub(super) fn compile_feed_params_with_suppression_and_artifacts(
-    app: &NmpApp,
+pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
+    app: &H,
     params: &FeedParams,
     acquisition_kinds: &BTreeSet<u32>,
     suppression: Arc<dyn SuppressionLookup>,

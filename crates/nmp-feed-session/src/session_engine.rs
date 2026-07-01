@@ -26,7 +26,7 @@
 
 use std::sync::Arc;
 
-use crate::{FeedOpenError, NmpApp};
+use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::SubOwnerKey;
@@ -45,12 +45,12 @@ use super::source::{
 
 mod flat_session;
 
-pub(crate) struct ScopeSessionBuild {
+pub struct ScopeSessionBuild {
     pub build: FeedSessionBuild,
     pub artifacts: Option<OpScopeSessionArtifacts>,
 }
 
-pub(crate) struct OpScopeSessionArtifacts {
+pub struct OpScopeSessionArtifacts {
     pub engine: Arc<OpFeedEngine>,
     pub controller: Arc<dyn FeedController>,
     pub follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
@@ -64,7 +64,7 @@ pub(crate) struct OpScopeSessionArtifacts {
 /// acquisition interests, reset hooks, and any resolver observer ids that must
 /// be revoked on close.
 pub(super) fn build_scope_session_with_artifacts(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     key: &str,
     render: &FeedRender,
     resolved: ReducedSource,
@@ -84,7 +84,7 @@ pub(super) fn build_scope_session_with_artifacts(
 }
 
 fn build_op_scope_session(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     key: &str,
     resolved: ReducedSource,
     suppression: Arc<dyn SuppressionLookup>,
@@ -105,7 +105,7 @@ fn build_op_scope_session(
     } = resolved;
 
     let viewer = match (
-        super::super::read_active(&app.active_account_handle()),
+        crate::read_active(&app.active_account_handle()),
         op_session_identity,
     ) {
         (Some(viewer), _) => viewer,
@@ -144,7 +144,7 @@ fn build_op_scope_session(
         suppression,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
-    let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
+    let engine_observer = crate::dynamic_observer::DynamicObservedProjection::new(
         app.observed_projection_handle(),
         observer_for_registry,
         format!("{key}.observer"),
@@ -250,9 +250,9 @@ fn build_op_scope_session(
     };
     sync_acquisition(&extra_acquisition);
 
-    // Wire each legacy underlying-set change to re-sync acquisition for the new
+    // Wire each projection-set change to re-sync acquisition for the new
     // members, then reset the window/cursor. Graph-backed sources use the
-    // source-effect hook path below instead.
+    // source-effect hook path below.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
@@ -294,20 +294,20 @@ fn build_op_scope_session(
     //   4. remove the projection
     //   5. clear acquisition set                (WITHDRAW actor-owned state)
     //   6. mark-changed                          (the notification, runs last)
-    let teardown_handle = app.feed_teardown();
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
-    teardown.push(teardown_handle.mark_changed()); // exec #6 (last)
+    teardown.push(app.mark_changed_action()); // exec #6 (last)
     teardown.push(clear_acquisition_set(sender.clone(), owner)); // exec #5
-    teardown.push(teardown_handle.remove_projection(key.to_string())); // exec #4
-    for id in &resolver_observer_ids {
-        teardown.push(teardown_handle.revoke_observer(*id));
+    teardown.push(app.remove_projection_action(key.to_string())); // exec #4
+    for id in resolver_observer_ids {
+        let handle = app.observed_projection_handle();
+        teardown.push(Box::new(move || handle.close(id)));
     } // exec #3
-    for id in &identity_observer_ids {
-        teardown.push(teardown_handle.revoke_identity_observer(*id));
+    for id in identity_observer_ids {
+        teardown.push(app.unregister_identity_change_observer_action(id));
     } // exec #3
     teardown.extend(resolver_teardown);
     teardown.push(engine_observer.teardown_action()); // exec #2
-    teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
+    teardown.push(app.unregister_feed_action(key.to_string())); // exec #1 (first)
 
     Ok(ScopeSessionBuild {
         build: FeedSessionBuild {

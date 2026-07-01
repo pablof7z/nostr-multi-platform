@@ -118,11 +118,10 @@ use nmp_nip02::{ActiveFollowSet, LatestKind3FollowSet};
 use nmp_nip51::MuteListProjection;
 use nmp_note_feed::OpFeedEngine;
 
+#[cfg(test)]
 mod active_shape;
-mod dynamic_observer;
 #[cfg(test)]
 use active_shape::live_active_follows_shape;
-use active_shape::read_active;
 
 #[cfg(test)]
 use nmp_core::slots::ActiveAccountSlot;
@@ -224,11 +223,11 @@ fn open_active_follows_op_feed_inner(
           -> Result<
         (
             nmp_feed::FeedSessionBuild,
-            session_compile::OpScopeSessionArtifacts,
+            nmp_feed_session::OpScopeSessionArtifacts,
         ),
         FeedOpenError,
     > {
-        let detailed = session_compile::compile_feed_params_with_suppression_and_artifacts(
+        let detailed = nmp_feed_session::compile_feed_params_with_suppression_and_artifacts(
             app,
             params,
             kinds,
@@ -297,9 +296,7 @@ fn fallback_follow_set(app: &NmpApp) -> Arc<ActiveFollowSet> {
     )
 }
 
-// #1740 step 2 — `FeedParams` → existing-registration compiler (sibling module).
-mod session_compile;
-pub use session_compile::compile_feed_params;
+pub use nmp_feed_session::compile_feed_params;
 
 #[cfg(test)]
 #[path = "op_feed_session/tests.rs"]

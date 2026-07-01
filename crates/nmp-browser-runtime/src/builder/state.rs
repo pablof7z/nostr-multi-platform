@@ -127,7 +127,7 @@ pub(crate) struct BrowserBuilderInner {
     // ── Collections handed to BrowserRuntime at start() ───────────────────────
     pub(crate) relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
-    pub(crate) identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    pub(crate) identity_change_observers: Vec<crate::runtime::BrowserIdentityObserverFn>,
     pub(crate) configured_relays_change_observers: Vec<Box<dyn Fn() + Send + Sync + 'static>>,
     /// Capability/signer providers accumulated via
     /// `BrowserAppBuilder::with_capability_providers`. Moved into the

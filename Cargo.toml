@@ -14,6 +14,7 @@ members = [
     "crates/nmp-core",
     "crates/nmp-coverage-gate",
     "crates/nmp-feed",
+    "crates/nmp-feed-session",
     "crates/nmp-marmot",
     "crates/nmp-native-runtime",
     "crates/nmp-uniffi",

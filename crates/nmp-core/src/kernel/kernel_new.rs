@@ -171,10 +171,8 @@ impl Kernel {
         // routing call `Kernel::set_routing` directly. The default `mailbox_cache`
         // is similarly `EmptyMailboxCache` in production and a
         // `TestInMemoryMailboxCache` under `cfg(any(test, feature = "test-support"))`
-        // so the dozens of in-tree kind:10002 ingest tests keep working
-        // without each one having to inject `nmp_router::InMemoryMailboxCache`
-        // from a downstream crate (which `nmp-core` cannot depend on —
-        // layering).
+        // so in-tree routing/publish tests can seed parsed mailbox facts
+        // without depending on downstream `nmp-router` (layering).
         let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::with_clock(
             Arc::clone(&clock),
         ));
@@ -359,13 +357,6 @@ impl Kernel {
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
-                crate::substrate::TestNip65RelayListParser::new(kernel.mailbox_cache_arc()),
-            );
-            kernel.register_ingest_parser(crate::kinds::KIND_RELAY_LIST, parser);
-        }
         if let Some(store) = store_bundle.relay_score_store {
             kernel.set_relay_score_store(store);
         }

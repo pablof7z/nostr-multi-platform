@@ -14,8 +14,8 @@
 //!   not just reply attribution.
 //! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
-//! * `reset_hooks` — closures that install a window-reset on legacy reactive
-//!   sources that have not moved to graph source effects yet.
+//! * `reset_hooks` — closures that install a window-reset on reactive
+//!   projection sources without a graph source-effect owner.
 //! * `source_effect_hooks` — graph-proven source changes that drive the same
 //!   acquisition replacement and reset path. `ActiveUserFollows` and ordinary
 //!   `ListMembers` use this lane.
@@ -31,10 +31,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{
-    KernelEvent, ObservedProjection, ObservedProjectionReconciler, ObservedProjectionRegistrar,
-};
+use crate::{FeedOpenError, FeedSessionHost};
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionReconciler};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
 use nmp_planner::InterestShape;
@@ -50,7 +48,7 @@ const KIND_CONTACT_LIST: u32 = 3;
 /// Resolve a non-set-algebra scope. Set algebra is handled by
 /// [`super::set_algebra`]; `CustomPerspectiveId` is handled in `custom.rs`.
 pub(super) fn resolve_scope(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     scope: &nmp_feed::FeedScope,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
@@ -97,10 +95,10 @@ pub(super) fn not_supported(scope: &'static str) -> FeedOpenError {
 // ── ContactList { owner } ────────────────────────────────────────────────
 
 fn resolve_active_user_follows(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
-    let initial_viewer = super::super::read_active(&app.active_account_handle());
+    let initial_viewer = crate::read_active(&app.active_account_handle());
     resolve_active_follow_set(
         app,
         kinds,
@@ -113,11 +111,11 @@ fn resolve_active_user_follows(
 /// [`nmp_nip02::ActiveFollowSet`] (live, reactive). A FOREIGN owner's kind:3 has
 /// no single-source framework resolver → fail closed (deferred to step 4).
 fn resolve_contact_list(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     owner: &str,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
-    let viewer = super::super::read_active(&app.active_account_handle())
+    let viewer = crate::read_active(&app.active_account_handle())
         .ok_or_else(|| not_supported("ContactList-no-active-account"))?;
     if owner != viewer {
         return Err(not_supported("ContactList-foreign-owner"));
@@ -127,7 +125,7 @@ fn resolve_contact_list(
 }
 
 fn resolve_active_follow_set(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     kinds: &BTreeSet<u32>,
     initial_viewer: Option<String>,
     op_session_identity: OpSessionIdentity,
@@ -141,7 +139,7 @@ fn resolve_active_follow_set(
     );
     let resolver_shape_slot = app.active_account_handle();
     let resolver_live_shape: LiveShape = Arc::new(move || {
-        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        let viewer = crate::read_active(&resolver_shape_slot)?;
         Some(seed_contacts_shape(&viewer))
     });
     let follow_observer: Arc<dyn ObservedProjectionSink> = follow_set.clone();
@@ -163,7 +161,7 @@ fn resolve_active_follow_set(
     let identity_observer_id = app.register_identity_change_observer(move |_| {
         follow_set_for_identity.notify_account_changed();
         resolver_for_identity.sync();
-        if let Some(viewer) = super::super::read_active(&replay_slot) {
+        if let Some(viewer) = crate::read_active(&replay_slot) {
             super::source_replay::replay_source_shape_with_pull(
                 &replay_pull,
                 follow_set_for_replay.as_ref(),
@@ -216,20 +214,22 @@ fn resolve_active_follow_set(
 // ── Wot { seed, rules } — reuse the #1698 ranked query ────────────────────
 
 fn resolve_wot(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     seed: &str,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
     // A session-scoped WoT graph observer, reusing `WotGraph` (the #1698 ranked
     // second-degree query) — we do NOT touch the singleton bootstrap runtime.
     let graph = Arc::new(SessionWotGraph::new(seed.to_string(), KIND_CONTACT_LIST));
-    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
-        Arc::clone(&graph) as Arc<dyn ObservedProjectionSink>,
-        "nmp.feed.resolver.wot",
-        0,
-        seed_contacts_shape(seed),
-        256,
-    ));
+    let observer_id = app
+        .observed_projection_handle()
+        .open(ObservedProjection::from_shape(
+            Arc::clone(&graph) as Arc<dyn ObservedProjectionSink>,
+            "nmp.feed.resolver.wot",
+            0,
+            seed_contacts_shape(seed),
+            256,
+        ));
 
     let admission: RootAdmission = {
         let graph = Arc::clone(&graph);
@@ -334,7 +334,7 @@ fn follow_set_live_shape(
         if kinds.is_empty() {
             return None;
         }
-        let viewer = super::super::read_active(&slot)?;
+        let viewer = crate::read_active(&slot)?;
         let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
         authors.insert(viewer);
         Some(InterestShape::timeline_for(authors, kinds.clone()))
@@ -348,7 +348,7 @@ fn active_contact_list_extra_acquisition(
     let live_shape = Arc::clone(live_shape);
     Arc::new(move || {
         let mut shapes = Vec::new();
-        if let Some(viewer) = super::super::read_active(&slot) {
+        if let Some(viewer) = crate::read_active(&slot) {
             shapes.push(AcquisitionInterest::active_account(seed_contacts_shape(
                 &viewer,
             )));

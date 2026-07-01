@@ -17,8 +17,8 @@
 
 use std::collections::BTreeSet;
 
-use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{KernelEvent, ObservedProjectionRegistrar};
+use crate::{FeedOpenError, FeedSessionHost};
+use nmp_core::substrate::KernelEvent;
 use nmp_feed::RootAdmission;
 use nmp_planner::InterestShape;
 
@@ -27,7 +27,7 @@ use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
 
 /// Resolve a binary set-algebra scope by recursing into both children.
 pub(super) fn resolve_set_op(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     op: SetOp,
     left: &nmp_feed::FeedScope,
     right: &nmp_feed::FeedScope,
@@ -41,10 +41,10 @@ pub(super) fn resolve_set_op(
         Ok(r) => r,
         Err(e) => {
             for id in &l.resolver_observer_ids {
-                app.close_observed_projection(*id);
+                app.observed_projection_handle().close(*id);
             }
             for id in &l.identity_observer_ids {
-                app.unregister_identity_change_observer(*id);
+                (app.unregister_identity_change_observer_action(*id))();
             }
             for teardown in l.resolver_teardown {
                 teardown();

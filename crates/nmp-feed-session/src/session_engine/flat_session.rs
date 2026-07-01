@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::{FeedOpenError, NmpApp};
+use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
@@ -13,12 +13,10 @@ use super::{
     clear_acquisition_set, observed_projection_scope, session_acquisition_owner,
     visible_flat_payload,
 };
-use crate::op_feed_session::session_compile::source::{
-    acquisition_children, ExtraAcquisition, ReducedSource,
-};
+use crate::source::{acquisition_children, ExtraAcquisition, ReducedSource};
 
 pub(super) fn build_flat_scope_session(
-    app: &NmpApp,
+    app: &impl FeedSessionHost,
     key: &str,
     resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
@@ -39,7 +37,7 @@ pub(super) fn build_flat_scope_session(
 
     let feed = nmp_note_feed::FlatFeed::new(admission);
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
-    let engine_observer = crate::op_feed_session::dynamic_observer::DynamicObservedProjection::new(
+    let engine_observer = crate::dynamic_observer::DynamicObservedProjection::new(
         app.observed_projection_handle(),
         observer_for_registry,
         format!("{key}.observer"),
@@ -95,7 +93,7 @@ pub(super) fn build_flat_scope_session(
     let replayed_tail = app.load_older_feed(key);
     let replayed_ids = super::super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
     if replayed_ids && !replayed_tail {
-        (app.feed_teardown().mark_changed())();
+        (app.mark_changed_action())();
     }
 
     let sender = app.command_sender();
@@ -151,20 +149,20 @@ pub(super) fn build_flat_scope_session(
         hook(source_effect_trigger);
     }
 
-    let teardown_handle = app.feed_teardown();
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
-    teardown.push(teardown_handle.mark_changed());
+    teardown.push(app.mark_changed_action());
     teardown.push(clear_acquisition_set(sender.clone(), owner));
-    teardown.push(teardown_handle.remove_projection(key.to_string()));
-    for id in &resolver_observer_ids {
-        teardown.push(teardown_handle.revoke_observer(*id));
+    teardown.push(app.remove_projection_action(key.to_string()));
+    for id in resolver_observer_ids {
+        let handle = app.observed_projection_handle();
+        teardown.push(Box::new(move || handle.close(id)));
     }
-    for id in &identity_observer_ids {
-        teardown.push(teardown_handle.revoke_identity_observer(*id));
+    for id in identity_observer_ids {
+        teardown.push(app.unregister_identity_change_observer_action(id));
     }
     teardown.extend(resolver_teardown);
     teardown.push(engine_observer.teardown_action());
-    teardown.push(teardown_handle.unregister_feed(key.to_string()));
+    teardown.push(app.unregister_feed_action(key.to_string()));
 
     Ok(FeedSessionBuild {
         projection_key: nmp_feed::ProjectionKey::app_owned(key).unwrap(),

@@ -3777,6 +3777,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-feed",
+ "nmp-feed-session",
  "nmp-kinds",
  "nmp-network",
  "nmp-nip01",
@@ -3985,6 +3986,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-feed-session"
+version = "0.8.4"
+dependencies = [
+ "nmp-content",
+ "nmp-core",
+ "nmp-feed",
+ "nmp-kinds",
+ "nmp-nip02",
+ "nmp-nip09",
+ "nmp-nip18",
+ "nmp-nip51",
+ "nmp-note-feed",
+ "nmp-ownership",
+ "nmp-planner",
+ "nmp-store",
+ "nmp-wot",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-gallery-desktop"
 version = "0.8.4"
 dependencies = [
@@ -4065,6 +4086,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-feed",
+ "nmp-feed-session",
  "nmp-intent",
  "nmp-kinds",
  "nmp-marmot",

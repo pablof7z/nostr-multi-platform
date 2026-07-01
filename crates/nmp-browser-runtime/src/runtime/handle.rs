@@ -2,19 +2,11 @@
 //!
 //! Extracted from `runtime.rs` to keep both files under the 500-LOC ceiling
 //! (AGENTS.md). The handle exposes the narrow dispatch / snapshot / sign /
-//! diagnostics surface WITHOUT exposing the raw `KernelReducer` or
-//! `BrowserRuntime` fields.
-//!
-//! # New surface (#2051 / #2073 / #2074 / #2075 / #2076)
-//!
-//! - `next_frame(running) -> SnapshotOutcome` — fail-closed snapshot (#2073)
-//! - `set_signer_state(model)` — write the browser signer-state slot (#2074)
-//! - `diagnostics() -> BrowserRuntimeDiagnostics` — log-safe diagnostics (#2075)
-//! - Clock injection applied in `from_builder_inner` (#2076)
+//! diagnostics surface without exposing raw reducer/runtime fields.
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{mpsc, Arc};
+use std::sync::{atomic::AtomicU64, mpsc, Arc};
 
 use nmp_core::substrate::{ObservedProjectionCommandHandle, PreferredRelaySource};
 use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
@@ -27,7 +19,7 @@ use super::signer_state::{
     BrowserSignerStateSlot,
 };
 use super::snapshot::{BrowserSnapshotCache, SnapshotOutcome};
-use super::{BrowserRuntime, PumpOutcome};
+use super::{browser_identity_observer_slot, BrowserRuntime, PumpOutcome};
 use crate::builder::BrowserBuilderInner;
 use crate::relay::RelayPool;
 use crate::signer::{
@@ -35,8 +27,10 @@ use crate::signer::{
     PendingCipherCompletions, SignerCompletion,
 };
 
-use super::NoopRoutingTrace;
-use super::{BrowserGroupDiscoverySession, BrowserGroupEventsSession, BrowserNotificationsSession};
+use super::{
+    BrowserGroupDiscoverySession, BrowserGroupEventsSession, BrowserNotificationsSession,
+    NoopRoutingTrace,
+};
 use crate::feed::OpenedBrowserFeedSession;
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
@@ -65,8 +59,10 @@ pub struct BrowserRuntimeHandle {
     pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
     pub(super) group_events_sessions: HashMap<String, BrowserGroupEventsSession>,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
+    pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
     pub(crate) feed_sessions: nmp_feed::FeedSessionRegistry,
     pub(crate) feed_session_runtimes: HashMap<nmp_feed::FeedSessionId, OpenedBrowserFeedSession>,
+    pub(crate) identity_observer_next_id: Arc<AtomicU64>,
 }
 
 impl BrowserRuntimeHandle {
@@ -191,6 +187,9 @@ impl BrowserRuntimeHandle {
             CommandSender::new_bounded(inbox_tx.clone()),
         );
 
+        let (identity_change_observers, identity_observer_next_id) =
+            browser_identity_observer_slot(inner.identity_change_observers);
+
         let runtime = BrowserRuntime {
             reducer: inner.reducer,
             action_registry: inner.action_registry,
@@ -205,7 +204,7 @@ impl BrowserRuntimeHandle {
             signer_state_slot: Arc::clone(&signer_state_slot),
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
-            identity_change_observers: inner.identity_change_observers,
+            identity_change_observers,
             configured_relays_change_observers: inner.configured_relays_change_observers,
             relay_pool,
             pending_startup_events: Vec::new(),
@@ -223,8 +222,10 @@ impl BrowserRuntimeHandle {
             group_discovery_sessions: HashMap::new(),
             group_events_sessions: HashMap::new(),
             notifications_sessions: HashMap::new(),
+            feed_registry: nmp_feed::new_feed_registry_slot(),
             feed_sessions: nmp_feed::FeedSessionRegistry::default(),
             feed_session_runtimes: HashMap::new(),
+            identity_observer_next_id,
         };
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────

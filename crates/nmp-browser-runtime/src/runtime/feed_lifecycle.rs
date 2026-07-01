@@ -3,16 +3,12 @@
 //! Kept out of `handle.rs` so the public handle stays a compact owner of slots
 //! and API methods while feed-specific open/close/drop behavior is co-located.
 
+use std::sync::Arc;
+
 use super::BrowserRuntimeHandle;
 use crate::feed::{open_browser_feed_session, FeedRuntimeAccess};
 
 impl BrowserRuntimeHandle {
-    pub(crate) fn sync_feed_sessions_after_identity_change(&self) {
-        for session in self.feed_session_runtimes.values() {
-            session.sync_identity_change();
-        }
-    }
-
     /// Open a caller-owned browser feed session.
     ///
     /// The caller supplies the full [`nmp_feed::FeedParams`], including the
@@ -21,13 +17,19 @@ impl BrowserRuntimeHandle {
     pub fn open_feed(&mut self, params: nmp_feed::FeedParams) -> Option<nmp_feed::FeedHandle> {
         let observed_projection_registrar = self.observed_projection_registrar.clone();
         let command_sender = self.command_sender();
+        let feed_registry = Arc::clone(&self.feed_registry);
+        let identity_observers = Arc::clone(&self.runtime.identity_change_observers);
+        let identity_observer_next_id = Arc::clone(&self.identity_observer_next_id);
         let opened = open_browser_feed_session(
             &self.feed_sessions,
-            FeedRuntimeAccess {
-                reducer: &mut self.runtime.reducer,
+            FeedRuntimeAccess::new(
+                &self.runtime.reducer,
                 observed_projection_registrar,
                 command_sender,
-            },
+                feed_registry,
+                identity_observers,
+                identity_observer_next_id,
+            ),
             params,
         )?;
         let handle = opened.handle.clone();

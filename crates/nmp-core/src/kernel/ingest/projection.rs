@@ -116,7 +116,12 @@ impl Kernel {
 
     /// Substrate-honest mailbox-change observer (replaces the deleted
     /// `kernel/ingest/relay_list.rs` impl, 2026-05-25).
-    fn on_mailbox_changed(&mut self, author: &str, event_id: &str, created_at: u64) {
+    pub(in crate::kernel) fn on_mailbox_changed(
+        &mut self,
+        author: &str,
+        event_id: &str,
+        created_at: u64,
+    ) {
         let _ = self.route_subscription_relays(
             crate::stable_hash::stable_hash64(("mailbox-changed", event_id, created_at)),
             &[author],

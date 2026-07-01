@@ -1,57 +1,65 @@
 //! Browser-runtime feed-session adapter.
 //!
-//! Browser owns runtime lifecycle, not a second feed model. The app-visible
-//! session descriptor, handle, registry, and teardown semantics come from
-//! `nmp-feed`; this module only wires the browser runtime slots into the
-//! existing OP-feed machinery.
+//! Browser owns runtime lifecycle and projection registry access, not a second
+//! feed-source compiler. Feed-scope reduction, source effects, acquisition
+//! replacement, OP/flat session wiring, and teardown recipes come from
+//! `nmp-feed-session`.
 
-use std::collections::BTreeSet;
+use std::num::NonZeroUsize;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use nmp_core::slots;
 use nmp_core::substrate::ObservedProjectionCommandHandle;
-use nmp_core::substrate::{
-    EmptySuppressionLookup, ObservedProjectionReconciler, ObservedProjectionRegistrar,
-};
-use nmp_core::{CommandSender, ObservedProjectionSink, TypedProjectionData};
+use nmp_core::{CommandSender, KernelReducer, TypedProjectionData};
 use nmp_feed::{
-    FeedAdmission, FeedAuthorRefs, FeedHandle, FeedParams, FeedRanking, FeedRender,
-    FeedRenderSource, FeedSessionBuild, FeedSessionRegistry, ProjectionKey, PubkeySetExpr,
-    TeardownAction,
+    CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedHandle,
+    FeedParams, FeedRenderSource, FeedSessionRegistry, PullFn, TeardownAction,
 };
-use nmp_note_feed::op_feed::{op_feed_observer, register_op_feed};
-use nmp_planner::InterestShape;
+use nmp_feed_session::{FeedSessionHost, IdentityChangeObserverId};
+use nmp_store::{PullPage, ScanLogResult};
 
-type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
+use crate::runtime::{
+    unregister_identity_observer, BrowserIdentityObserverFn, BrowserIdentityObserverRegistration,
+    BrowserIdentityObserverSlot,
+};
 
 pub(crate) struct FeedRuntimeAccess<'a> {
-    pub(crate) reducer: &'a mut nmp_core::KernelReducer,
+    pub(crate) reducer: &'a KernelReducer,
     pub(crate) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(crate) command_sender: CommandSender,
+    pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
+    pub(crate) identity_observers: BrowserIdentityObserverSlot,
+    pub(crate) identity_observer_next_id: Arc<AtomicU64>,
+    event_store_slot: nmp_core::slots::EventStoreSlot,
+}
+
+impl<'a> FeedRuntimeAccess<'a> {
+    pub(crate) fn new(
+        reducer: &'a KernelReducer,
+        observed_projection_registrar: ObservedProjectionCommandHandle,
+        command_sender: CommandSender,
+        feed_registry: nmp_feed::FeedRegistrySlot,
+        identity_observers: BrowserIdentityObserverSlot,
+        identity_observer_next_id: Arc<AtomicU64>,
+    ) -> Self {
+        let event_store_slot = nmp_core::slots::new_event_store_slot();
+        if let Ok(mut slot) = event_store_slot.lock() {
+            *slot = Some(reducer.event_store_handle());
+        }
+        Self {
+            reducer,
+            observed_projection_registrar,
+            command_sender,
+            feed_registry,
+            identity_observers,
+            identity_observer_next_id,
+            event_store_slot,
+        }
+    }
 }
 
 pub(crate) struct OpenedBrowserFeedSession {
     pub(crate) handle: FeedHandle,
-    runtime: BrowserFeedSessionRuntime,
-}
-
-impl OpenedBrowserFeedSession {
-    pub(crate) fn sync_identity_change(&self) {
-        self.runtime.sync_identity_change();
-    }
-}
-
-struct BrowserFeedSessionRuntime {
-    follow_observer: ObservedProjectionReconciler,
-    follow_set: Arc<nmp_nip02::ActiveFollowSet>,
-    _engine: Arc<nmp_note_feed::op_feed::OpFeedEngine>,
-}
-
-impl BrowserFeedSessionRuntime {
-    fn sync_identity_change(&self) {
-        self.follow_set.notify_account_changed();
-        self.follow_observer.sync();
-    }
 }
 
 pub(crate) fn open_browser_feed_session(
@@ -59,19 +67,10 @@ pub(crate) fn open_browser_feed_session(
     access: FeedRuntimeAccess<'_>,
     params: FeedParams,
 ) -> Option<OpenedBrowserFeedSession> {
-    if params.render != FeedRender::OpCentric
-        || params.acquisition != PubkeySetExpr::ActiveUserFollows
-        || params.admission != FeedAdmission::All
-        || params.ranking != FeedRanking::ChronologicalDesc
-    {
-        return None;
-    }
-
     let acquisition_kinds =
         nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied()).ok()?;
     let projection = params.projection.clone();
-
-    let (runtime, build) = compile_feed(access, acquisition_kinds, projection.clone());
+    let build = nmp_feed_session::compile_feed_params(&access, &params, &acquisition_kinds).ok()?;
     let session_id = sessions.open(build);
     if session_id.0 == 0 {
         return None;
@@ -82,118 +81,136 @@ pub(crate) fn open_browser_feed_session(
             projection_key: projection,
             session_id,
         },
-        runtime,
     })
 }
 
-fn compile_feed(
-    access: FeedRuntimeAccess<'_>,
-    acquisition_kinds: BTreeSet<u32>,
-    projection: ProjectionKey,
-) -> (BrowserFeedSessionRuntime, FeedSessionBuild) {
-    let active_account_slot = access.reducer.active_account_handle();
-    let event_store = access.reducer.event_store_handle();
-    let follow_store_slot = slots::new_event_store_slot();
-    if let Ok(mut slot) = follow_store_slot.lock() {
-        *slot = Some(Arc::clone(&event_store));
+impl FeedSessionHost for FeedRuntimeAccess<'_> {
+    fn active_account_handle(&self) -> nmp_core::slots::ActiveAccountSlot {
+        self.reducer.active_account_handle()
     }
-    let registrar: Arc<dyn ObservedProjectionRegistrar + Send + Sync> =
-        Arc::new(access.observed_projection_registrar.clone());
 
-    let follow_set = nmp_nip02::ActiveFollowSet::new(
-        active_account_slot.clone(),
-        nmp_nip02::LatestKind3FollowSet::new(follow_store_slot.clone()),
-    );
-    let event_lookup: nmp_feed::EventLookup =
-        Arc::new(move |id| slots::event_by_id_from_arc(&event_store, id));
+    fn event_store_handle(&self) -> nmp_core::slots::EventStoreSlot {
+        Arc::clone(&self.event_store_slot)
+    }
 
-    let engine = register_op_feed(
-        String::new(),
-        follow_set.predicate(),
-        Arc::clone(&event_lookup),
-    );
-    let observer = op_feed_observer(
-        Arc::clone(&engine),
-        event_lookup,
-        Arc::new(EmptySuppressionLookup),
-    );
+    fn observed_projection_handle(&self) -> ObservedProjectionCommandHandle {
+        self.observed_projection_registrar.clone()
+    }
 
-    let follow_observer = ObservedProjectionReconciler::new(
-        Arc::clone(&registrar),
-        follow_set.clone() as Arc<dyn ObservedProjectionSink>,
-        format!("{}.follow_set", projection.as_str()),
-        1,
-        64,
-        active_contact_list_shape(active_account_slot.clone()),
-    );
-    let feed_observer = ObservedProjectionReconciler::new(
-        registrar,
-        observer as Arc<dyn ObservedProjectionSink>,
-        format!("{}.engine", projection.as_str()),
-        1,
-        512,
-        active_follow_feed_shape(
-            active_account_slot,
-            Arc::clone(&follow_set),
-            acquisition_kinds.clone(),
-        ),
-    );
-
-    // Eager sync for cold-start: the account may already be set. Without an
-    // active account, ActiveUserFollows fails closed until the graph source
-    // effect from sign-in reconciles this observer.
-    follow_observer.sync();
-    feed_observer.sync();
-
-    let engine_for_source_effect = Arc::clone(&engine);
-    let feed_for_source_effect = feed_observer.clone();
-    let notify_for_source_effect = access.command_sender.clone();
-    follow_set.on_source_effect(Box::new(move |_| {
-        feed_for_source_effect.sync();
-        let had_rows = !engine_for_source_effect
-            .snapshot_current_window()
-            .cards
-            .is_empty();
-        engine_for_source_effect.reset_for_perspective_change();
-        if had_rows {
-            notify_for_source_effect.mark_changed_since_emit();
+    fn register_identity_change_observer<F>(&self, callback: F) -> IdentityChangeObserverId
+    where
+        F: Fn(Option<String>) + Send + Sync + 'static,
+    {
+        let id = self
+            .identity_observer_next_id
+            .fetch_add(1, Ordering::Relaxed);
+        let callback: BrowserIdentityObserverFn = Arc::new(callback);
+        if let Ok(mut observers) = self.identity_observers.lock() {
+            observers.push(BrowserIdentityObserverRegistration { id, callback });
         }
-    }));
+        id
+    }
 
-    register_feed_render_source(
-        access.reducer,
-        projection.as_str().to_string(),
-        Arc::clone(&engine),
-    );
+    fn unregister_identity_change_observer_action(
+        &self,
+        id: IdentityChangeObserverId,
+    ) -> TeardownAction {
+        let observers = Arc::clone(&self.identity_observers);
+        Box::new(move || unregister_identity_observer(&observers, id))
+    }
 
-    let teardown: Vec<TeardownAction> = vec![
-        mark_changed(access.command_sender.clone()),
-        access
-            .reducer
-            .remove_feed_snapshot_projection_action(projection.as_str().to_string()),
-        close_reconciler(feed_observer.clone()),
-        close_reconciler(follow_observer.clone()),
-    ];
+    fn feed_pull_fn(&self) -> PullFn {
+        let slot = Arc::clone(&self.event_store_slot);
+        let max_entries =
+            NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
+        let max_scan = NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE.saturating_mul(8))
+            .unwrap_or(NonZeroUsize::MIN);
+        let limits = nmp_core::PullLimits {
+            max_entries,
+            max_scan_entries: max_scan,
+        };
 
-    (
-        BrowserFeedSessionRuntime {
-            follow_observer,
-            follow_set,
-            _engine: engine,
-        },
-        FeedSessionBuild {
-            projection_key: projection,
-            teardown,
-        },
-    )
+        Arc::new(move |scope: nmp_core::PullScope, after_seq: u64| {
+            let exhausted = || {
+                ScanLogResult::Page(PullPage {
+                    entries: Vec::new(),
+                    next_after_seq: after_seq,
+                    latest_seq: after_seq,
+                    has_more: false,
+                })
+            };
+            let store = {
+                let Ok(guard) = slot.lock() else {
+                    return exhausted();
+                };
+                match guard.as_ref() {
+                    Some(store) => Arc::clone(store),
+                    None => return exhausted(),
+                }
+            };
+            nmp_core::pull_page_over(store.as_ref(), scope, after_seq, limits)
+                .unwrap_or_else(|_| exhausted())
+        })
+    }
+
+    fn command_sender(&self) -> CommandSender {
+        self.command_sender.clone()
+    }
+
+    fn register_feed(&self, key: String, controller: Arc<dyn FeedController>) {
+        self.feed_registry.register(key, controller);
+    }
+
+    fn load_older_feed(&self, key: &str) -> bool {
+        let changed = self.feed_registry.load_older(key);
+        if changed {
+            self.command_sender.mark_changed_since_emit();
+        }
+        changed
+    }
+
+    fn register_feed_render_source<S, F>(
+        &self,
+        feed_key: String,
+        source: Arc<FeedRenderSource<S>>,
+        encode: F,
+    ) where
+        S: FeedAuthorRefs + Send + Sync + 'static,
+        F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static,
+    {
+        register_feed_render_source(self.reducer, feed_key, source, encode);
+    }
+
+    fn custom_perspective(&self, _id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {
+        None
+    }
+
+    fn unregister_feed_action(&self, key: String) -> TeardownAction {
+        let registry = Arc::clone(&self.feed_registry);
+        Box::new(move || {
+            let _ = registry.unregister(&key);
+        })
+    }
+
+    fn remove_projection_action(&self, key: String) -> TeardownAction {
+        self.reducer.remove_feed_snapshot_projection_action(key)
+    }
+
+    fn mark_changed_action(&self) -> TeardownAction {
+        let sender = self.command_sender.clone();
+        Box::new(move || sender.mark_changed_since_emit())
+    }
 }
 
-fn register_feed_render_source(
-    reducer: &nmp_core::KernelReducer,
+fn register_feed_render_source<S, F>(
+    reducer: &KernelReducer,
     key: String,
-    engine: Arc<nmp_note_feed::op_feed::OpFeedEngine>,
-) {
-    let source = FeedRenderSource::new(move || engine.snapshot_current_window());
+    source: Arc<FeedRenderSource<S>>,
+    encode: F,
+) where
+    S: FeedAuthorRefs + Send + Sync + 'static,
+    F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static,
+{
     let Some((tick_rev, emitted_sink)) = reducer.feed_render_source_handles() else {
         return;
     };
@@ -206,7 +223,7 @@ fn register_feed_render_source(
         return;
     };
     reducer.register_typed_snapshot_projection(registration_key, move || {
-        let rev = tick_rev_for_typed.load(std::sync::atomic::Ordering::Acquire);
+        let rev = tick_rev_for_typed.load(Ordering::Acquire);
         let snapshot = source_for_typed.snapshot_for_tick(rev);
         nmp_core::record_emitted_feed_authors(
             &emitted_sink,
@@ -214,61 +231,17 @@ fn register_feed_render_source(
             consumer_for_typed.clone(),
             snapshot.visible_author_keys(),
         );
-        Some(TypedProjectionData {
-            key: typed_key.clone(),
-            schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_note_feed::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(
-                nmp_note_feed::op_feed::OP_FEED_FILE_IDENTIFIER,
-            )
-            .into_owned(),
-            payload: nmp_note_feed::op_feed::encode_op_feed_snapshot(&snapshot),
-            ..Default::default()
+        encode(&snapshot).map(|mut data| {
+            if data.key.is_empty() {
+                data.key = typed_key.clone();
+            }
+            data
         })
     });
 
     let source_for_provider = source;
     reducer.register_feed_author_provider(key, move || {
-        let rev = tick_rev.load(std::sync::atomic::Ordering::Acquire);
+        let rev = tick_rev.load(Ordering::Acquire);
         source_for_provider.author_keys_for_tick(rev)
     });
-}
-
-fn close_reconciler(reconciler: ObservedProjectionReconciler) -> TeardownAction {
-    Box::new(move || {
-        reconciler.close_current();
-    })
-}
-
-fn mark_changed(sender: CommandSender) -> TeardownAction {
-    Box::new(move || {
-        sender.mark_changed_since_emit();
-    })
-}
-
-fn active_contact_list_shape(active_account_slot: nmp_core::slots::ActiveAccountSlot) -> LiveShape {
-    Arc::new(move || {
-        let active = active_account_slot.lock().ok()?.clone()?;
-        Some(InterestShape {
-            authors: [active].into_iter().collect(),
-            kinds: [nmp_kinds::KIND_CONTACT_LIST].into_iter().collect(),
-            ..Default::default()
-        })
-    })
-}
-
-fn active_follow_feed_shape(
-    active_account_slot: nmp_core::slots::ActiveAccountSlot,
-    follow_set: Arc<nmp_nip02::ActiveFollowSet>,
-    acquisition_kinds: BTreeSet<u32>,
-) -> LiveShape {
-    Arc::new(move || {
-        let active = active_account_slot.lock().ok().and_then(|g| g.clone())?;
-        let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
-        authors.insert(active);
-        Some(InterestShape::timeline_for(
-            authors,
-            acquisition_kinds.clone(),
-        ))
-    })
 }

@@ -378,21 +378,15 @@ fn local_kind10002_publish_notifies_event_observers_immediately() {
     // engine's Nip65 outbox resolver has a current write relay to route to, yet
     // the freshly-published kind:10002 (created_at 1_700_000_000) supersedes it
     // in the store (`Replaced`) — the real production shape (you publish a newer
-    // relay list to the relays your current list names). `seed_kind10002_for_test`
-    // stamps `u64::MAX`, which would make any real-timestamp publish a no-op
-    // `Superseded`, so we seed inline at an older timestamp here.
-    kernel.inject_replaceable_event(
+    // relay list to the relays your current list names).
+    kernel.seed_kind10002_tags_for_test(
         &author,
-        &author,
-        1_699_000_000,
-        10002,
         vec![vec![
             "r".to_string(),
             "wss://write.test".to_string(),
             "write".to_string(),
         ]],
-        "wss://seed",
-        500,
+        1_699_000_000,
     );
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();

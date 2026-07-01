@@ -40,6 +40,7 @@ nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
+nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip01 = { path = "../nmp-nip01" }
