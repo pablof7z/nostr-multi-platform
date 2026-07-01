@@ -16,13 +16,13 @@ use crate::trellis_resources::{
     FeedSessionResourceKey, FeedSessionRouteProvenance, InterestDemand,
 };
 
-/// A closure that, given the feed-window reset trigger, installs it on the
-/// underlying set's change signal.
-pub(super) type ResetHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
-
-/// A closure that installs the session reconciler on a graph-proven source
-/// effect.
-pub(super) type SourceEffectHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
+/// A closure that installs the session reconciler on a source-change signal.
+///
+/// Resolvers may obtain that signal from a Trellis-backed source graph, a
+/// protocol projection, or a session-local observer. The session engine owns a
+/// single response path: resync observed delivery, resync Trellis acquisition,
+/// and rebaseline output if the visible window changed.
+pub(super) type SessionReactivityHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
 
 /// The single render/pull acquisition shape, re-read live.
 pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
@@ -126,11 +126,9 @@ pub(super) struct ReducedSource {
     pub observer_scope: InterestScope,
     /// Extra acquisition that may change as the source projection changes.
     pub extra_acquisition: ExtraAcquisition,
-    /// Reactive-reset installers for sources without a graph effect owner.
-    pub reset_hooks: Vec<ResetHook>,
-    /// Graph source-effect installers. These carry source-set changes through
-    /// the same dependent acquisition replacement and feed reset path.
-    pub source_effect_hooks: Vec<SourceEffectHook>,
+    /// Source-change installers. These carry source-set changes through the
+    /// Trellis dependent-acquisition replacement and feed reset/rebaseline path.
+    pub reactivity_hooks: Vec<SessionReactivityHook>,
     /// Resolver observer ids the session must revoke on close.
     pub resolver_observer_ids: Vec<ObservedProjectionId>,
     /// Identity-change observer ids the session must revoke on close.
@@ -138,7 +136,7 @@ pub(super) struct ReducedSource {
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
     /// Active-follow owner retained for active-follows session diagnostics.
-    /// Session reactivity is carried by `source_effect_hooks`.
+    /// Session reactivity is carried by `reactivity_hooks`.
     pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }
 

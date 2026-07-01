@@ -132,14 +132,12 @@ pub(super) fn resolve_set_op(
         })
     };
 
-    // ── Reactive reset + teardown flow up from BOTH children ──────────────
+    // ── Reactive source-change + teardown flow up from BOTH children ──────
     //
-    // Both children's reset hooks + observer ids flow up even for Difference: the
+    // Both children's reactivity hooks + observer ids flow up even for Difference: the
     // right side must stay reactive so its exclusion (AndNot) tracks changes.
-    let mut reset_hooks = l.reset_hooks;
-    reset_hooks.extend(r.reset_hooks);
-    let mut source_effect_hooks = l.source_effect_hooks;
-    source_effect_hooks.extend(r.source_effect_hooks);
+    let mut reactivity_hooks = l.reactivity_hooks;
+    reactivity_hooks.extend(r.reactivity_hooks);
     let mut resolver_observer_ids = l.resolver_observer_ids;
     resolver_observer_ids.extend(r.resolver_observer_ids);
     let mut identity_observer_ids = l.identity_observer_ids;
@@ -157,8 +155,7 @@ pub(super) fn resolve_set_op(
         live_shapes,
         observer_scope,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,

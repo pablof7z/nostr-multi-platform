@@ -10,7 +10,7 @@ use nmp_planner::InterestShape;
 
 use super::source::{
     one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
-    ReducedSource, ResetHook, SourceEffectHook,
+    ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -91,11 +91,11 @@ pub(super) fn resolve_list_members(
     };
     let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
-    let source_effect_hooks = {
+    let reactivity_hooks = {
         let projection = Arc::clone(&projection);
         vec![Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
             projection.on_source_effect(Box::new(move |_| trigger()));
-        }) as SourceEffectHook]
+        }) as SessionReactivityHook]
     };
     let extra_acquisition = list_members_extra_acquisition(
         app.active_account_handle(),
@@ -114,8 +114,7 @@ pub(super) fn resolve_list_members(
         live_shape,
         live_shapes,
         observer_scope: nmp_planner::InterestScope::ActiveAccount,
-        reset_hooks: Vec::new(),
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
@@ -198,8 +197,8 @@ pub(super) fn resolve_active_mute_list_members(
     let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     let reset_proj = Arc::clone(&projection);
-    let reset_hook: ResetHook = Box::new(move |reset| {
-        reset_proj.on_change(Box::new(move || reset()));
+    let reactivity_hook: SessionReactivityHook = Box::new(move |trigger| {
+        reset_proj.on_change(Box::new(move || trigger()));
     });
     let extra_acquisition = active_mute_list_extra_acquisition(
         app.active_account_handle(),
@@ -217,8 +216,7 @@ pub(super) fn resolve_active_mute_list_members(
         live_shape,
         live_shapes,
         observer_scope: nmp_planner::InterestScope::ActiveAccount,
-        reset_hooks: vec![reset_hook],
-        source_effect_hooks: Vec::new(),
+        reactivity_hooks: vec![reactivity_hook],
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],

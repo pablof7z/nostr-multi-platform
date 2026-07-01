@@ -70,8 +70,7 @@ fn build_observed_source_session(
         live_shapes,
         observer_scope,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
@@ -96,21 +95,7 @@ fn build_observed_source_session(
     let acquisition_adapter = FeedSessionTrellisAdapter::new(key, render, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-observed-source-acquisition");
 
-    for hook in reset_hooks {
-        let extra = Arc::clone(&extra_acquisition);
-        let acquisition_adapter = acquisition_adapter.clone();
-        let sync_observer = source_observer.clone();
-        let reset = options.reset_on_source_change.clone();
-        let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            reset_app_projection(reset.as_ref());
-            sync_observer.sync();
-            acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
-            acquisition_adapter.rebaseline_output_if_changed(true);
-        });
-        hook(trigger);
-    }
-
-    for hook in source_effect_hooks {
+    for hook in reactivity_hooks {
         let extra = Arc::clone(&extra_acquisition);
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = source_observer.clone();
