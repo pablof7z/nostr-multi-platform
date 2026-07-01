@@ -40,6 +40,31 @@ fn record_appends_in_order() {
 }
 
 #[test]
+fn claim_once_installs_then_yields_to_existing_root() {
+    let ledger = CompositionLedger::new();
+
+    assert!(ledger.claim_once(
+        "composition_root",
+        "nmp-app-gallery",
+        "nmp_app_gallery::register_gallery_composition",
+    ));
+    assert!(!ledger.claim_once(
+        "composition_root",
+        "nmp-app-gallery",
+        "nmp_app_gallery::register_gallery_composition",
+    ));
+
+    let records = ledger.records();
+    assert_eq!(records.len(), 2);
+    assert_eq!(records[0].disposition, Disposition::Installed);
+    assert_eq!(records[1].disposition, Disposition::YieldedToExisting);
+    assert_eq!(
+        records[1].replaced.as_deref(),
+        Some("nmp_app_gallery::register_gallery_composition")
+    );
+}
+
+#[test]
 fn to_json_serializes_disposition_and_replaced() {
     let ledger = CompositionLedger::new();
     ledger.record(

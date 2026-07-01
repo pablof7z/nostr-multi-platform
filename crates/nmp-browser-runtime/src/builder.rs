@@ -343,7 +343,7 @@ impl BrowserAppBuilder<ProvidersDecided> {
     /// Finalise composition and return a `BrowserRuntimeHandle`.
     ///
     /// Sequence:
-    /// 1. Install explicit browser substrate/protocol/runtime defaults.
+    /// 1. Install explicit browser substrate/protocol/runtime composition.
     /// 2. Apply all deferred `&mut`-kernel settings (routing, coverage hook,
     ///    publish resolver, relay slot, etc.).
     /// 3. Install the search-scope registry into the event store.

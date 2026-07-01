@@ -225,6 +225,22 @@ impl NmpApp {
         &self.composition_ledger
     }
 
+    /// Claim a singleton app/runtime composition root before installing it.
+    ///
+    /// Returns `true` for the first pre-start claim and `false` for duplicate
+    /// or late claims. Duplicate claims are still recorded in the composition
+    /// ledger so diagnostics show the skipped installer.
+    pub fn claim_composition_root(&self, key: &'static str, provider: &'static str) -> bool {
+        if self
+            .ensure_prestart_config("composition_root", key, provider)
+            .is_err()
+        {
+            return false;
+        }
+        self.composition_ledger
+            .claim_once("composition_root", key, provider)
+    }
+
     /// ADR-0049 Part 2 — record a last-writer-wins **wiring-slot** decision.
     ///
     /// `seam`/`key` name the slot (e.g. `"routing_substrate"`). When the app is

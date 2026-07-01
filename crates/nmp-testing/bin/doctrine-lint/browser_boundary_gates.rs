@@ -90,21 +90,30 @@ fn nmp_browser_runtime_is_direct_doctrine_lint_clean() {
 #[test]
 fn browser_production_start_does_not_use_hidden_defaults_preset() {
     let root = workspace_root();
-    let builder = root.join("crates/nmp-browser-runtime/src/builder.rs");
-    let body = std::fs::read_to_string(&builder)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", builder.display()));
+    let files = [
+        root.join("crates/nmp-browser-runtime/src/builder.rs"),
+        root.join("crates/nmp-browser-runtime/src/builder/composition.rs"),
+    ];
 
     let mut violations = Vec::new();
-    let mut in_block_comment = false;
-    for (idx, line) in body.lines().enumerate() {
-        let live = strip_line_comments(line, &mut in_block_comment);
-        for token in [
-            "nmp_defaults::register_defaults(",
-            "nmp_defaults::register_defaults_with(",
-            "nmp_defaults::register_defaults_with_handles(",
-        ] {
-            if live.contains(token) {
-                violations.push(format!("builder.rs:{} hidden `{token}` call", idx + 1));
+    for file in files {
+        let body = std::fs::read_to_string(&file)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", file.display()));
+        let mut in_block_comment = false;
+        for (idx, line) in body.lines().enumerate() {
+            let live = strip_line_comments(line, &mut in_block_comment);
+            for token in [
+                "nmp_defaults::register_defaults(",
+                "nmp_defaults::register_defaults_with(",
+                "nmp_defaults::register_defaults_with_handles(",
+            ] {
+                if live.contains(token) {
+                    violations.push(format!(
+                        "{}:{} hidden `{token}` call",
+                        relative_to(&root, &file).display(),
+                        idx + 1
+                    ));
+                }
             }
         }
     }
@@ -115,6 +124,28 @@ fn browser_production_start_does_not_use_hidden_defaults_preset() {
          installers explicitly instead of hiding behind register_defaults:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn browser_production_composition_names_owner_installers() {
+    let root = workspace_root();
+    let composition = root.join("crates/nmp-browser-runtime/src/builder/composition.rs");
+    let body = std::fs::read_to_string(&composition)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", composition.display()));
+
+    for token in [
+        "nmp_substrate::install",
+        "nmp_nip50::register_search_scopes",
+        "nmp_nip02::register_follow_actions",
+        "nmp_nip17::register_runtime",
+        "nmp_nip23::register_longform_projection",
+    ] {
+        assert!(
+            body.contains(token),
+            "browser production composition must name owner installers directly; \
+             missing `{token}`"
+        );
+    }
 }
 
 #[test]

@@ -65,6 +65,9 @@ pub mod showcase;
 
 use std::ffi::{c_char, c_void, CString};
 
+const GALLERY_COMPOSITION_ROOT: &str = "nmp-app-gallery";
+const GALLERY_COMPOSITION_PROVIDER: &str = "nmp_app_gallery::register_gallery_composition";
+
 /// JSON-escape a string (adds surrounding quotes + backslash escapes).
 /// Falls back to `""` on failure (D6: failures are data, never panics).
 #[cfg(feature = "native")]
@@ -101,11 +104,12 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     // The cast is sound because `nmp_app_gallery_register`'s C signature is
     // `void(void *)` — Swift / Kotlin pass the same opaque pointer they got back.
     let app = unsafe { &mut *(app as *mut nmp_native_runtime::NmpApp) };
-    register_gallery_composition(app);
-    // ADR-0053 / Workstream-E4 — the gallery is a full client (it showcases
-    // every component, so it reads the full built-in set). Declare that intent
-    // explicitly here.
-    app.consume_all_builtin_projections();
+    if register_gallery_composition(app) {
+        // ADR-0053 / Workstream-E4 — the gallery is a full client (it showcases
+        // every component, so it reads the full built-in set). Declare that intent
+        // explicitly here.
+        app.consume_all_builtin_projections();
+    }
 }
 
 /// Bridge-private Android shim — register gallery composition for a UniFFI `NmpApp`.
@@ -142,15 +146,16 @@ pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
     // ownership of the clone (will decrement the refcount on drop).
     let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
     arc.configure_pre_start_for_app_facade(|inner| {
-        register_gallery_composition(inner);
-        inner.consume_all_builtin_projections();
-        // Issue #2523 / crate-boundaries.md §9 — the NIP-55 (Amber)
-        // first-connect permission batch is an app-owned policy fact and must
-        // be declared by the leaf composition root, never baked into the
-        // shared `nmp-signers` crate. NIP-55 is Android-only; this call is a
-        // no-op on iOS (no Android `ExternalSignerCapabilityBridge` ever calls
-        // `signin_nip55` there).
-        inner.set_external_signer_permissions(gallery_nip55_permissions());
+        if register_gallery_composition(inner) {
+            inner.consume_all_builtin_projections();
+            // Issue #2523 / crate-boundaries.md §9 — the NIP-55 (Amber)
+            // first-connect permission batch is an app-owned policy fact and must
+            // be declared by the leaf composition root, never baked into the
+            // shared `nmp-signers` crate. NIP-55 is Android-only; this call is a
+            // no-op on iOS (no Android `ExternalSignerCapabilityBridge` ever calls
+            // `signin_nip55` there).
+            inner.set_external_signer_permissions(gallery_nip55_permissions());
+        }
     });
     // `arc` drops here — decrements the UniFFI Arc ref-count back to 1.
 }
@@ -172,7 +177,15 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryReg
     nmp_app_gallery_register_uniffi(arc_ptr as *mut std::ffi::c_void);
 }
 
-fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
+fn register_gallery_composition(app: &mut nmp_native_runtime::NmpApp) -> bool {
+    if !app.claim_composition_root(GALLERY_COMPOSITION_ROOT, GALLERY_COMPOSITION_PROVIDER) {
+        return false;
+    }
+    install_gallery_composition(app);
+    true
+}
+
+fn install_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
     nmp_nip50::register_search_scopes(app);
@@ -382,6 +395,45 @@ mod tests {
         );
 
         unsafe { drop(Box::from_raw(app)) };
+    }
+
+    #[test]
+    fn register_gallery_composition_is_one_shot() {
+        let mut app = nmp_native_runtime::new_app();
+
+        assert!(register_gallery_composition(&mut app));
+        let first_report = app.debug_info_json(nmp_native_runtime::DOMAIN_COMPOSITION);
+        let first_count = first_report["count"]
+            .as_u64()
+            .expect("composition count must be numeric");
+
+        assert!(
+            !register_gallery_composition(&mut app),
+            "second Gallery composition claim must yield instead of reinstalling"
+        );
+        let second_report = app.debug_info_json(nmp_native_runtime::DOMAIN_COMPOSITION);
+        let second_count = second_report["count"]
+            .as_u64()
+            .expect("composition count must be numeric");
+        assert_eq!(
+            second_count,
+            first_count + 1,
+            "duplicate composition should record only the yielded root claim"
+        );
+
+        let records = second_report["records"]
+            .as_array()
+            .expect("composition records must be an array");
+        let root_records: Vec<_> = records
+            .iter()
+            .filter(|record| {
+                record["seam"] == "composition_root" && record["key"] == GALLERY_COMPOSITION_ROOT
+            })
+            .collect();
+        assert_eq!(root_records.len(), 2);
+        assert_eq!(root_records[0]["disposition"], "Installed");
+        assert_eq!(root_records[1]["disposition"], "YieldedToExisting");
+        assert_eq!(root_records[1]["replaced"], GALLERY_COMPOSITION_PROVIDER);
     }
 }
 
