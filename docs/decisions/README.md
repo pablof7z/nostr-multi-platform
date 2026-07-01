@@ -18,9 +18,10 @@ ADR-0069 through ADR-0073 are the active redesign spine for #2313, #2316, and
 - **0072**: runtime, capability, and shell boundaries.
 - **0073**: ADR reset discipline and rolling architecture ratchets.
 
-ADR-0075 extends ADR-0070 for the Trellis adoption path: Trellis may provide
-private reconciliation mechanics below typed read sessions, but NMP continues to
-own all public APIs and Nostr/resource semantics.
+ADR-0075 and ADR-0076 extend ADR-0070 without competing with it: Trellis may
+provide private reconciliation mechanics below typed read sessions, and
+app-facing feed APIs are feed-shaped helpers over typed read sessions. NMP
+continues to own all public APIs and Nostr/resource semantics.
 
 Older ADRs remain authoritative only where they do not conflict with that spine.
 If an older ADR teaches a superseded public API, read its status line and current
@@ -73,6 +74,8 @@ That document is the narrative companion to this ADR spine.
 ## Status Terms
 
 - **Current**: still owns a live invariant.
+- **Proposed**: records a ratified direction or target shape whose public API
+  migration is not complete yet.
 - **Amended**: still useful, but current guidance is narrowed by the listed ADR.
 - **Folded**: the surviving rule is now owned by a later ADR or durable doc.
 - **Retired**: historical or superseded; do not use as current architecture.
@@ -156,6 +159,7 @@ That document is the narrative companion to this ADR spine.
 | 0073 | Current | Redesign spine: ADR reset and ratchets. |
 | 0074 | Current | `nmp-nip09` exclusive owner of NIP-09 kind:5 deletion artifacts (#2511), widened to `a`-tag grammar and `AddressCoordinate` (#2589). |
 | 0075 | Current | Trellis may be a private reconciliation substrate below typed sessions; NMP owns public APIs and Nostr/resource semantics (#2627). |
+| 0076 | Proposed | App-facing feed APIs are typed read-session helpers over ADR-0070; `FeedParams` remains the descriptor, but helper APIs hide compiler/executor wiring (#1626). |
 
 ## Follow-Up Rule
 

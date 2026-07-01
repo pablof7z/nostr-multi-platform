@@ -124,13 +124,15 @@ planner receives normalized `LogicalInterest` data from those Rust-owned seams.
 
 Concrete current examples:
 
-- `FeedParams { primary_kinds: {1}, acquisition:
-  FeedScope::ActiveUserFollows, ... }` is an app-facing feed declaration. The
-  NIP-02/NIP-18/defaults composition reduces that source into acquisition
-  interests over the active account's current follows with derived wrapper
-  kinds. The app declares `{1}`, not `{1, 6}` and not a concrete follow list.
-- `FeedScope::Authors { ... }` and `FeedScope::Referrer { ... }` compile to
-  dynamic FlatFeed sidecars through `open_feed`, with close-by-handle teardown.
+- ADR-0076's feed helper is the app-facing shape. It compiles into a descriptor
+  such as `FeedParams { primary_kinds: {1}, source:
+  FeedSourceExpr::ActiveUserFollows, ... }`. The NIP-02/NIP-18/defaults
+  composition reduces that source into acquisition interests over the active
+  account's current follows with derived wrapper kinds. The app declares `{1}`,
+  not `{1, 6}` and not a concrete follow list.
+- `FeedSourceExpr::Authors { ... }` and `FeedSourceExpr::Referrer { ... }`
+  compile to dynamic FlatFeed sidecars through the feed session compiler, with
+  close-by-handle teardown.
 - `resolve_ref` / profile and event claims express component/read-model
   dependent interests. They are refcounted and deduped by the kernel; native
   components do not construct filters.

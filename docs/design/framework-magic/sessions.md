@@ -12,7 +12,7 @@
 - `SessionState` (`subsystems.md` §7.4 lines 107–125) carries `accounts: Vec<Account>` and `active: Option<String>` as plain state fields. A `SwitchActiveAccount { pubkey }` action mutates `active`; the mutation is the only state change.
 - Active-account observers fire as a consequence of the state change.
   ReducedSource feed sessions re-resolve sources such as
-  `FeedScope::ActiveUserFollows`, then replace their materialized child
+  `FeedSourceExpr::ActiveUserFollows`, then replace their materialized child
   interests through the generic dependent-interest owner. Concrete
   `InterestScope::ActiveAccount` interests also re-route; specific/global
   interests are untouched.
