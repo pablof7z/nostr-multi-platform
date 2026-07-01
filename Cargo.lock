@@ -4169,6 +4169,7 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+ "trellis-core",
 ]
 
 [[package]]
@@ -7657,15 +7658,15 @@ dependencies = [
 
 [[package]]
 name = "trellis-core"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d08a888129960437c89c211f690aad29187f5f030b1c8b479f527259d271b8b"
+checksum = "12bece120c366ff33197674ec32321ca7e011df6af10c92c74f6e32997a297ed"
 
 [[package]]
 name = "trellis-testing"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "93c9e22ea5c789cc126294bb6e85a7fe02f63eec16e23cea9d8e28fdd975af8e"
+checksum = "0916e1aed63a8b9ddee2e7e1ed7a0ece9365bfd5952033dedc1ddcc4a4500129"
 dependencies = [
  "trellis-core",
 ]

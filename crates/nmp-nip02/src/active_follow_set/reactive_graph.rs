@@ -1,12 +1,11 @@
 use std::collections::BTreeSet;
 
-use nmp_core::reactive_source_graph::{ReactiveSourceGraph, SourceInputUpdate, SourceNodeId};
+use trellis_core::{DependencyList, DerivedNode, Graph, InputNode};
 
 const ACTIVE_ACCOUNT_NODE: &str = "nmp.nip02.active_follow_set.active_account";
 const CONTACT_FOLLOWS_NODE: &str = "nmp.nip02.active_follow_set.contact_follows";
 const ACTIVE_FOLLOWS_NODE: &str = "nmp.nip02.active_follow_set.active_follows";
 const PERSPECTIVE_NODE: &str = "nmp.nip02.active_follow_set.perspective";
-const PERSPECTIVE_EFFECT_NODE: &str = "nmp.nip02.active_follow_set.perspective_effect";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ActiveFollowGraphEffect {
@@ -20,95 +19,79 @@ struct ActiveFollowPerspective {
 }
 
 pub(super) struct ActiveFollowGraph {
-    graph: ReactiveSourceGraph<ActiveFollowGraphEffect>,
-    active_account: SourceNodeId,
-    contact_follows: SourceNodeId,
-    active_follows: SourceNodeId,
+    graph: Graph<(), ()>,
+    active_account: InputNode<Option<String>>,
+    contact_follows: InputNode<BTreeSet<String>>,
+    active_follows: DerivedNode<BTreeSet<String>>,
+    perspective: DerivedNode<ActiveFollowPerspective>,
 }
 
 impl ActiveFollowGraph {
     pub(super) fn new(active_account: Option<String>, contact_follows: BTreeSet<String>) -> Self {
-        let active_account_node = SourceNodeId::from(ACTIVE_ACCOUNT_NODE);
-        let contact_follows_node = SourceNodeId::from(CONTACT_FOLLOWS_NODE);
-        let active_follows_node = SourceNodeId::from(ACTIVE_FOLLOWS_NODE);
-        let perspective_node = SourceNodeId::from(PERSPECTIVE_NODE);
-        let effect_node = SourceNodeId::from(PERSPECTIVE_EFFECT_NODE);
+        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut tx = graph
+            .begin_transaction()
+            .expect("static active-follow graph transaction opens");
 
-        let mut graph = ReactiveSourceGraph::new();
-        graph
-            .add_input(active_account_node.clone(), active_account)
+        let active_account_node = tx
+            .input::<Option<String>>(ACTIVE_ACCOUNT_NODE)
             .expect("static active-account node registration");
-        graph
-            .add_input(contact_follows_node.clone(), contact_follows)
+        let contact_follows_node = tx
+            .input::<BTreeSet<String>>(CONTACT_FOLLOWS_NODE)
             .expect("static contact-follows node registration");
+        tx.set_input(active_account_node, active_account)
+            .expect("static active-account seed");
+        tx.set_input(contact_follows_node, contact_follows)
+            .expect("static contact-follows seed");
 
-        graph
-            .add_derived::<BTreeSet<String>, _>(
-                active_follows_node.clone(),
-                [active_account_node.clone(), contact_follows_node.clone()],
-                {
-                    let active_account_node = active_account_node.clone();
-                    let contact_follows_node = contact_follows_node.clone();
-                    move |read| {
-                        let Some(Some(active)) = read.get::<Option<String>>(&active_account_node)
-                        else {
-                            return BTreeSet::new();
-                        };
-                        let mut follows = read
-                            .get::<BTreeSet<String>>(&contact_follows_node)
-                            .cloned()
-                            .unwrap_or_default();
-                        follows.insert(active.clone());
-                        follows
-                    }
+        let active_follows_node = tx
+            .derived::<BTreeSet<String>>(
+                ACTIVE_FOLLOWS_NODE,
+                DependencyList::new([active_account_node.id(), contact_follows_node.id()])
+                    .expect("static active-follows dependencies"),
+                move |read| {
+                    let Some(active) = read.input(active_account_node)?.as_ref() else {
+                        return Ok(BTreeSet::new());
+                    };
+                    let mut follows = read.input(contact_follows_node)?.clone();
+                    follows.insert(active.clone());
+                    Ok(follows)
                 },
             )
             .expect("static active-follows node registration");
 
-        graph
-            .add_derived::<ActiveFollowPerspective, _>(
-                perspective_node.clone(),
-                [active_account_node.clone(), active_follows_node.clone()],
-                {
-                    let active_account_node = active_account_node.clone();
-                    let active_follows_node = active_follows_node.clone();
-                    move |read| ActiveFollowPerspective {
-                        active_account: read
-                            .get::<Option<String>>(&active_account_node)
-                            .cloned()
-                            .unwrap_or_default(),
-                        follows: read
-                            .get::<BTreeSet<String>>(&active_follows_node)
-                            .cloned()
-                            .unwrap_or_default(),
-                    }
+        let perspective_node = tx
+            .derived::<ActiveFollowPerspective>(
+                PERSPECTIVE_NODE,
+                DependencyList::new([active_account_node.id(), active_follows_node.id()])
+                    .expect("static perspective dependencies"),
+                move |read| {
+                    Ok(ActiveFollowPerspective {
+                        active_account: read.input(active_account_node)?.clone(),
+                        follows: read.derived(active_follows_node)?.clone(),
+                    })
                 },
             )
             .expect("static active-follow perspective node registration");
 
-        graph
-            .add_effect(effect_node, [perspective_node.clone()], {
-                let perspective_node = perspective_node.clone();
-                move |read| {
-                    let perspective = read.get::<ActiveFollowPerspective>(&perspective_node)?;
-                    Some(ActiveFollowGraphEffect::PerspectiveChanged {
-                        follows: perspective.follows.clone(),
-                    })
-                }
-            })
-            .expect("static active-follow perspective effect registration");
+        tx.commit()
+            .expect("static active-follow graph initial transaction");
+        drop(tx);
 
         Self {
             graph,
             active_account: active_account_node,
             contact_follows: contact_follows_node,
             active_follows: active_follows_node,
+            perspective: perspective_node,
         }
     }
 
     pub(super) fn current_follows(&self) -> BTreeSet<String> {
         self.graph
-            .get::<BTreeSet<String>>(&self.active_follows)
+            .derived_value(self.active_follows)
+            .ok()
+            .flatten()
             .cloned()
             .unwrap_or_default()
     }
@@ -118,12 +101,30 @@ impl ActiveFollowGraph {
         active_account: Option<String>,
         contact_follows: BTreeSet<String>,
     ) -> Vec<ActiveFollowGraphEffect> {
-        self.graph
-            .apply_inputs([
-                SourceInputUpdate::new(self.active_account.clone(), active_account),
-                SourceInputUpdate::new(self.contact_follows.clone(), contact_follows),
-            ])
-            .map(|turn| turn.into_effects())
-            .unwrap_or_default()
+        let result = {
+            let mut tx = match self.graph.begin_transaction() {
+                Ok(tx) => tx,
+                Err(_) => return Vec::new(),
+            };
+            if tx.set_input(self.active_account, active_account).is_err()
+                || tx.set_input(self.contact_follows, contact_follows).is_err()
+            {
+                return Vec::new();
+            }
+            tx.commit()
+        };
+
+        let Ok(result) = result else {
+            return Vec::new();
+        };
+        debug_assert!(self.graph.assert_incremental_equals_full().is_ok());
+
+        if result.changed_derived_nodes.contains(&self.perspective.id()) {
+            vec![ActiveFollowGraphEffect::PerspectiveChanged {
+                follows: self.current_follows(),
+            }]
+        } else {
+            Vec::new()
+        }
     }
 }
