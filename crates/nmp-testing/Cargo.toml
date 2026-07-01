@@ -30,12 +30,12 @@ nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support
 nmp-nip77 = { path = "../nmp-nip77" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 ratatui = { version = "0.30", features = ["crossterm"] }
 crossterm = "0.29"
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { workspace = true, default-features = false, features = ["ring"] }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 # ffi-transport-bench: links the REAL uniffi_core runtime crate to exercise
 # the genuine RustBuffer lowering path (FfiConverter::lower) for Vec<u8>.
 # No generated bindings are produced; uniffi_core is a pure Rust library dep.
@@ -109,8 +109,8 @@ nmp-nip46-runtime = { path = "../nmp-nip46-runtime" }
 # Real-relay smoke test dependencies (real_relay_smoke.rs).
 # NIP-46 mock-bunker integration test (nip46_bunker_signing.rs) needs nip04/nip44.
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { workspace = true, default-features = false, features = ["ring"] }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 # Marmot exit-gate integration tests (marmot_*.rs).
 # nmp-marmot drives MarmotService; test-utils gates new_unencrypted / new_in_memory.
 # mdk-core exposes MessageProcessingResult + NostrGroupConfigData + GroupId for assertions.

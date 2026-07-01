@@ -11,5 +11,5 @@ name = "nmp_signer_iface"
 
 [dependencies]
 nmp-ownership = { workspace = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

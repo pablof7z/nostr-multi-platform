@@ -13,5 +13,5 @@ crate-type = ["rlib"]
 [dependencies]
 nmp-ownership = { workspace = true }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
