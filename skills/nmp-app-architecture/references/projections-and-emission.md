@@ -20,7 +20,7 @@ registration surface; the public seam for reusable crates is the `SnapshotProjec
 trait (`substrate/app_host/projection.rs`).
 
 ```rust
-registry.register_typed("nmp.feed.home", || {
+registry.register_typed("app.feed.home", || {
     Some(TypedProjectionData { key, schema_id, schema_version, file_identifier, payload, .. })
 }) -> TypedAdmission
 ```

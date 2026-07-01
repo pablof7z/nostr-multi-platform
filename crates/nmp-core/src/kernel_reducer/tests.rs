@@ -52,7 +52,7 @@ fn with_store_uses_the_injected_event_store_handle() {
 fn remove_feed_snapshot_projection_drops_typed_projection_and_author_provider() {
     let mut r = KernelReducer::new();
     let feed_key = "nmp.feed.author.alice";
-    let sibling_key = "nmp.feed.home";
+    let sibling_key = "test.feed.home";
 
     r.register_typed_snapshot_projection(feed_key, || {
         Some(crate::TypedProjectionData {

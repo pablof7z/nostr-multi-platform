@@ -814,7 +814,7 @@ surface is available.
 - **Timeline/feed projection cleanup** (#922/#924–#929): legacy `TimelineItem`
   cluster deleted, `TimelineEventCard` stripped of render-decision fields.
   Shell read paths for `inserted` / `updated` / `removed` projection keys must
-  switch to the `nmp.feed.home` card-list model.
+  switch to the `app-owned feed` card-list model.
 
 - **chirp-repl app deleted** (#921): internal tooling only; no external impact.
 

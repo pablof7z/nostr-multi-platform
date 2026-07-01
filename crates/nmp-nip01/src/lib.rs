@@ -33,10 +33,8 @@ mod timeline_snapshot_generated {
 }
 
 pub mod build;
-pub mod contacts_cache;
 pub mod decode;
 pub mod kind0_parser;
-pub mod kind3_parser;
 pub mod kinds;
 pub mod meta_timeline;
 pub mod profile_cache;
@@ -46,10 +44,8 @@ pub mod typed_wire;
 pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
-pub use contacts_cache::ContactsCache;
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
 pub use kind0_parser::Kind0Parser;
-pub use kind3_parser::Kind3Parser;
 pub use kinds::KIND_SHORT_TEXT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,

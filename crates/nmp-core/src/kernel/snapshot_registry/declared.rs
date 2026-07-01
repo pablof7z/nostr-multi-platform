@@ -356,9 +356,9 @@ mod tests {
     fn stray_keys_flags_a_non_decodable_declaration() {
         let mut d = DeclaredProjections::new();
         // `relay_diagnstics` is a typo of the real `relay_diagnostics`; `profile`
-        // is a real built-in; `nmp.feed.home` is a Tier-1 key that must not be
+        // is a real built-in; `app.feed.home` is a Tier-1 key that must not be
         // declared here (it self-gates by registration).
-        d.declare(["profile", "relay_diagnstics", "nmp.feed.home"]);
+        d.declare(["profile", "relay_diagnstics", "app.feed.home"]);
         let mut stray = d.stray_keys(
             crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS
                 .iter()
@@ -367,7 +367,7 @@ mod tests {
         stray.sort();
         assert_eq!(
             stray,
-            vec!["nmp.feed.home".to_string(), "relay_diagnstics".to_string()],
+            vec!["app.feed.home".to_string(), "relay_diagnstics".to_string()],
             "the typo and the Tier-1 key are strays; the real built-in `profile` is not"
         );
     }

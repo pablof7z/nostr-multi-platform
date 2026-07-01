@@ -166,15 +166,11 @@ use nostr::{ratio, short_hex, truncate, NostrEvent};
 use crate::store::EventStore;
 use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 #[cfg(not(any(test, feature = "test-support")))]
-use crate::substrate::empty_contacts_lookup;
-#[cfg(not(any(test, feature = "test-support")))]
-use crate::substrate::empty_profile_lookup;
-#[cfg(not(any(test, feature = "test-support")))]
 use crate::substrate::EmptyMailboxCache;
 #[cfg(any(test, feature = "test-support"))]
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
-    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup, ContactsLookup,
+    empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
     DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
     ParsedRelayList, ProfileLookup, MAX_PROJECTION_MESSAGES,
 };
@@ -268,8 +264,6 @@ pub struct Kernel {
     deferred_outbound: VecDeque<OutboundMessage>,
     /// V-58 one-shot backoff hints drained by the actor after each `handle_message`.
     pending_backoff_hints: Vec<(String, BackoffHint)>,
-    /// Kind:3 contact-list lookup substrate (D0, ADR-0057 PR 3).
-    contacts_lookup: Arc<dyn ContactsLookup>,
     /// NIP-65 kind:10002 mailbox cache substrate (see crate-boundaries.md §3).
     mailbox_cache: Arc<dyn MailboxCache>,
     /// Outbox router substrate (see crate-boundaries.md §3).
@@ -295,9 +289,6 @@ pub struct Kernel {
     /// Test-only handle to `TestProfileCache` (backs `profile_lookup` in test builds).
     #[cfg(any(test, feature = "test-support"))]
     test_profile_cache: Arc<crate::substrate::TestProfileCache>,
-    /// Test-only handle to `TestContactsCache` (backs `contacts_lookup` in test builds).
-    #[cfg(any(test, feature = "test-support"))]
-    test_contacts_cache: Arc<crate::substrate::TestContactsCache>,
     pub(crate) timeline_authors: BTreeSet<String>,
     /// Source owner -> complete current set of child interests it produced.
     dependent_interest_sets: BTreeMap<

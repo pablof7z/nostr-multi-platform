@@ -77,7 +77,7 @@ pub use nmp_feed::FeedSessionBuild;
 pub use nmp_nip18::PrimaryKindError;
 pub use nmp_nip50::SearchRequest;
 pub use op_feed_defaults::{
-    compile_feed_params, default_home_feed_params, register_op_feed_defaults,
+    active_follows_op_feed_params, compile_feed_params, register_op_feed_defaults,
     register_op_feed_defaults_with_mute, OpFeedDefaults,
 };
 pub use prestart_config::NmpConfigStatus;

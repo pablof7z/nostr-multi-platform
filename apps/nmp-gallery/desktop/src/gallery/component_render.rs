@@ -95,8 +95,7 @@ pub(super) fn render_component<'a>(
             let ex = &app.data.content_mention_chip;
             let labels = profile_labels(app, ex);
             if let Some(uri) = first_mention(&ex.tree) {
-                let mut chip = NostrMentionChip::new(uri)
-                    .profile(ex.render_data.profile_for(uri));
+                let mut chip = NostrMentionChip::new(uri).profile(ex.render_data.profile_for(uri));
                 if let Some(label) = labels.get(&uri.primary_id) {
                     chip = chip.label(label.clone());
                 }
@@ -213,7 +212,10 @@ fn profile_labels(app: &GalleryApp, ex: &ContentExample) -> BTreeMap<String, Str
     let mut labels = BTreeMap::new();
     for pubkey in ex.tree.mentioned_pubkeys() {
         app.bridge.resolve_profile(&pubkey, CONSUMER_ID);
-        labels.insert(pubkey.clone(), app.profiles.resolve(&pubkey).display().to_string());
+        labels.insert(
+            pubkey.clone(),
+            app.profiles.resolve(&pubkey).display().to_string(),
+        );
     }
     labels
 }

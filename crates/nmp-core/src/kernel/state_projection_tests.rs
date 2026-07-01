@@ -532,11 +532,11 @@ fn profile_card_carries_raw_pubkey_without_npub() {
 // claimed_profiles projection removed entirely (replaced by refs.profile KPRF
 // row-delta sidecar). Profile refinement tests live in the refs integration suite.
 
-// ─── kind:3 contacts → metrics projection ────────────────────────────────────
+// ─── kind:3 contacts stay out of metrics projection ──────────────────────────
 
-/// Active kind:3 ingest surfaces follow counts in snapshot metrics.
+/// Active kind:3 ingest does not create a second follow-count source in metrics.
 #[test]
-fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
+fn contact_list_does_not_create_snapshot_metrics_source_of_truth() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
 
@@ -565,8 +565,8 @@ fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
     let after = snapshot(&mut kernel);
     assert_eq!(
         after["metrics"]["contacts_authors"].as_u64(),
-        Some(2),
-        "metrics.contacts_authors must project the two kind:3 follows",
+        Some(0),
+        "metrics.contacts_authors is retired; follows derive from stored kind:3 at the read seam",
     );
     // Core contact ingest no longer owns feed author expansion; reduced feed
     // sources compile that dynamic author set above the generic interest seam.

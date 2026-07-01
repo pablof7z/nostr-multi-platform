@@ -1,6 +1,6 @@
 //! S7 — Feed-idle capstone (ADR-0055 R6-S4).
 //!
-//! **Purpose:** empirical PASS/FAIL proof that registering `nmp.feed.home` via
+//! **Purpose:** empirical PASS/FAIL proof that registering an app-owned OP feed via
 //! `register_op_feed_defaults` + `nmp_app_declare_incremental_apply` reduces
 //! idle-tick total frame bytes by ~58.8KB — the REAL whole-product win that
 //! R3-S5 could not show because it did not register the op_feed default.
@@ -71,7 +71,7 @@ use crate::s7_feed_oracle::{run_feed_oracle, FeedFrameRecord};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const FEED_KEY: &str = "nmp.feed.home";
+const FEED_KEY: &str = "nmp.testing.feed_idle";
 const FEED_EVENT_COUNT: u32 = 120;
 const IDLE_TICKS: usize = 8;
 const TICK_SETTLE_MS: u64 = 600;
@@ -277,6 +277,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],
+            nmp_feed::ProjectionKey(FEED_KEY.to_string()),
         );
 
         let (signal_a, probe_a) = FrameProbe::new();
@@ -325,6 +326,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],
+            nmp_feed::ProjectionKey(FEED_KEY.to_string()),
         );
 
         let (signal_b, probe_b) = FrameProbe::new();

@@ -353,9 +353,9 @@ impl Kernel {
     // the retired author_view status block. Interest relay routing is the
     // planner's job now (per-NIP-65 routing in the compile pass).
 
-    /// Compute estimated store bytes by scanning all events, profiles, and seed
-    /// contacts. This is the O(store) function; use `estimated_store_bytes()`
-    /// (the public getter) for the cached version.
+    /// Compute estimated store bytes by scanning cached events and profiles.
+    /// This is the O(store) function; use `estimated_store_bytes()` (the public
+    /// getter) for the cached version.
     fn compute_estimated_store_bytes(&self) -> usize {
         let event_bytes: usize = self
             .events
@@ -372,16 +372,13 @@ impl Kernel {
         // per-entry byte accounting for its own value type (`estimated_bytes`),
         // returning the same formula this term used before the migration.
         let profile_bytes: usize = self.profile_lookup().estimated_bytes();
-        // ADR-0057 PR 3 — the contacts cache is capability-owned; it owns the
-        // per-entry byte accounting (`estimated_bytes` = `total_follows() * 64`),
-        // returning the same formula this term used before the migration.
-        event_bytes + profile_bytes + self.contacts_lookup().estimated_bytes()
+        event_bytes + profile_bytes
     }
 
     /// Get estimated store bytes, using a cached value if available.
     /// The cache is invalidated (set to None) at every store-mutation site
-    /// (events, profile-cache, contacts-cache writes). Subsequent calls to this
-    /// function recompute the value once and cache it until the next mutation.
+    /// (events and profile-cache writes). Subsequent calls to this function
+    /// recompute the value once and cache it until the next mutation.
     pub(super) fn estimated_store_bytes(&self) -> usize {
         if let Some(v) = self.cached_estimated_store_bytes.get() {
             return v;

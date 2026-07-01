@@ -288,15 +288,13 @@ impl Kernel {
             return false;
         }
 
-        // ADR-0057 PR 3 — read the active account's contacts presence from the
-        // capability-owned cache (`Arc<dyn ContactsLookup>`) rather than the
-        // deleted kernel-owned `seed_contacts` HashMap. `Some(_)` (incl. a
-        // cleared `Some(vec![])`) means a kind:3 has arrived for the active
-        // account, so the timeline can open.
+        // Read the active account's contact-list presence from the event store.
+        // `Some(_)` (including `Some(vec![])`) means a kind:3 has arrived for
+        // the active account, so the timeline can open.
         let has_active_contacts = self
             .active_account
             .as_deref()
-            .map(|pk| self.contacts_lookup().follows(pk).is_some())
+            .map(|pk| crate::slots::latest_kind3_follows_from_arc(&self.store, pk).is_some())
             .unwrap_or(false);
         has_active_contacts
             || self

@@ -53,7 +53,7 @@ visible-target zap counts, optional wallet runtime, and the Chirp home timeline
 projection.
 
 The home feed currently registers a `ModularTimelineProjection` under
-`"nmp.feed.home"` as both a feed controller and a typed snapshot sidecar
+`"app.feed.home"` as both a feed controller and a typed snapshot sidecar
 producer. The typed sidecar encodes the same current bounded window as the
 generic feed projection.
 
@@ -70,7 +70,7 @@ follow-feed subscription expansion.
 
 `nmp_app_chirp_snapshot` still serializes a `ModularTimelineSnapshot` as JSON,
 but its doc comment marks it diagnostics-only. Runtime hosts are expected to
-consume the `"nmp.feed.home"` projection from the update stream.
+consume the `"app.feed.home"` projection from the update stream.
 
 ## Authority Notes
 

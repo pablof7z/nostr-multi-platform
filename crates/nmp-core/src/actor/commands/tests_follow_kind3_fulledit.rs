@@ -141,23 +141,12 @@ fn follow_preserves_relay_hints_petnames_and_content_on_edit() {
 }
 
 #[test]
-fn follow_many_creates_first_kind3_for_brand_new_account() {
-    // P0-A on-device regression: a brand-new onboarding account is created with
-    // EMPTY `initial_follows`, so NO cold-start kind:3 is ever published and the
-    // event store has no kind:3 for it. The user then selects follow packs and
-    // `follow_many` runs. It must NOT fail closed — a freshly-generated local
-    // key has no REMOTE contact list to clobber, so its empty follow set is
-    // authoritative — and must publish the account's FIRST kind:3 containing
-    // EVERY selected pubkey.
+fn follow_many_fails_closed_for_brand_new_account_without_kind3() {
+    // A brand-new onboarding account created with EMPTY `initial_follows`
+    // publishes no cold-start kind:3, so the event store has no baseline to
+    // edit. The command must fail closed rather than relying on a hidden
+    // known-empty contact cache seed.
     let (mut id, mut kernel) = fresh();
-    // Production composition installs `nmp_nip01::ContactsCache`; the in-crate
-    // harness defaults to `EmptyContactsLookup` (every list reports unknown), so
-    // install the substrate test cache to exercise the real "contacts known"
-    // signal `create_account` seeds.
-    kernel.set_contacts_lookup(std::sync::Arc::new(
-        crate::substrate::TestContactsCache::new(),
-    ));
-
     let profile = std::collections::HashMap::new();
     let relays = vec![("wss://onboard.relay/".to_string(), "both".to_string())];
     create_account(
@@ -173,6 +162,7 @@ fn follow_many_creates_first_kind3_for_brand_new_account() {
     let author = id.active_pubkey().expect("new account pubkey");
     // Guarantee the outbox resolver routes the kind:3 publish to a write relay.
     kernel.seed_kind10002_for_test(&author, &["wss://onboard.relay/"]);
+    let publish_queue_before = kernel.publish_queue_snapshot().len();
 
     let a = "a".repeat(64);
     let b = "b".repeat(64);
@@ -187,33 +177,25 @@ fn follow_many_creates_first_kind3_for_brand_new_account() {
     );
 
     assert!(
-        !outbound.is_empty(),
-        "follow_many on a brand-new account must publish a kind:3, not fail closed"
+        outbound.is_empty(),
+        "follow_many without a stored kind:3 baseline must fail closed"
     );
     assert!(
-        !kernel
+        kernel
             .last_error_toast_snapshot()
             .is_some_and(|t| t.contains("follow_list_not_loaded")),
-        "a brand-new account must NOT surface follow_list_not_loaded"
+        "missing baseline must surface follow_list_not_loaded"
     );
-    let event = last_published_event_json(&outbound);
-    assert_eq!(event["kind"], 3, "follow_many must publish a kind:3");
-    let p: std::collections::HashSet<String> = tags_of(&event)
-        .into_iter()
-        .filter(|t| t.first().map(String::as_str) == Some("p"))
-        .filter_map(|t| t.get(1).cloned())
-        .collect();
     assert!(
-        p.contains(&a) && p.contains(&b) && p.contains(&c),
-        "the account's first kind:3 must contain ALL selected pubkeys; got {p:?}"
+        kernel.publish_queue_snapshot().len() == publish_queue_before,
+        "fail-closed follow_many must not enqueue a new publish"
     );
-    assert_eq!(p.len(), 3, "exactly the three selected pubkeys, no more");
 }
 
 #[test]
 fn follow_many_fails_closed_for_unsynced_existing_account() {
     // Safety counterpart: an EXISTING account (signed in via nsec, kind:3 NOT
-    // yet synced from relays, contacts cache has no entry) must STILL fail
+    // yet synced from relays, no kind:3 baseline stored) must STILL fail
     // closed — publishing here would silently clobber the unsynced remote
     // contact list. This is the "list exists remotely but is not loaded" case
     // the gate must keep distinguishing from a brand-new local account.

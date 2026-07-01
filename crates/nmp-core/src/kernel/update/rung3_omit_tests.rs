@@ -115,8 +115,8 @@ fn disabled_all_rows_present() {
 /// even when enabled (D3-7).
 #[test]
 fn tier1_no_manifest_entry_never_omitted() {
-    // "nmp.feed.home" is a Tier-1 host projection — absent from manifest.
-    let typed = vec![make_row("nmp.feed.home", vec![0xca, 0xfe])];
+    // "test.feed.home" is a Tier-1 host projection — absent from manifest.
+    let typed = vec![make_row("test.feed.home", vec![0xca, 0xfe])];
     // Manifest only covers a Tier-2 key (profile), not the feed.
     let manifest = make_manifest(vec![("profile", ProjectionPresence::Unchanged, 0)]);
     let result = omit_unchanged(typed, &manifest, true);
@@ -125,7 +125,7 @@ fn tier1_no_manifest_entry_never_omitted() {
         1,
         "Tier-1 key absent from manifest must never be omitted"
     );
-    assert_eq!(result[0].key, "nmp.feed.home");
+    assert_eq!(result[0].key, "test.feed.home");
     assert_eq!(result[0].state, WireProjectionState::Changed);
 }
 

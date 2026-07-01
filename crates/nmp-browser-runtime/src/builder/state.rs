@@ -22,7 +22,7 @@ use nmp_core::substrate::InputScopeRegistry;
 use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_core::substrate::{
-    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, MailboxCache,
+    BlockedRelayLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, MailboxCache,
     ObservedProjectionSessionMap, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
     RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
@@ -88,7 +88,6 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) coverage_hook: Option<PlanCoverageHook>,
     pub(crate) req_frame_interceptor: Option<Arc<dyn ReqFrameInterceptor>>,
     pub(crate) profile_lookup: Option<Arc<dyn ProfileLookup>>,
-    pub(crate) contacts_lookup: Option<Arc<dyn ContactsLookup>>,
     pub(crate) dm_inbox_relay_lookup: Option<Arc<dyn DmInboxRelayLookup>>,
     pub(crate) blocked_relay_lookup: Option<Arc<dyn BlockedRelayLookup>>,
     /// Read-only `MailboxCache` for the NIP-19 `nprofile` encoder. Stored here;
@@ -175,7 +174,6 @@ impl BrowserBuilderInner {
             coverage_hook: None,
             req_frame_interceptor: None,
             profile_lookup: None,
-            contacts_lookup: None,
             dm_inbox_relay_lookup: None,
             blocked_relay_lookup: None,
             mailbox_cache_reader: None,

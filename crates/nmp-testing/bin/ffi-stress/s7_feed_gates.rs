@@ -5,7 +5,7 @@
 //! This is the capstone measurement that empirically proves the whole-product
 //! feed-gating win: once incremental apply is set and the feed
 //! has been registered via `register_op_feed_defaults`, idle ticks produce ~0
-//! feed bytes (the byte-equality gate fires and omits the `nmp.feed.home` row).
+//! feed bytes (the byte-equality gate fires and omits the `nmp.testing.feed_idle` row).
 //!
 //! The R3-S5 measurement (18%/68.8%) understated the real win because it did not
 //! register the op_feed default — the feed (~58.8KB/tick, the dominant payload)
@@ -47,9 +47,9 @@ pub(crate) struct FeedPhaseMetrics {
     pub(crate) serialize_us_p50: u64,
     /// Number of frames captured during the idle window.
     pub(crate) emit_count: usize,
-    /// Frames that carried `nmp.feed.home` (Changed).
+    /// Frames that carried `nmp.testing.feed_idle` (Changed).
     pub(crate) frames_with_feed: usize,
-    /// Frames with `nmp.feed.home` absent (Unchanged — omitted by the gate).
+    /// Frames with `nmp.testing.feed_idle` absent (Unchanged — omitted by the gate).
     pub(crate) frames_without_feed: usize,
     /// p50 of feed payload bytes across frames that carried the feed.
     pub(crate) feed_bytes_p50: u64,
@@ -204,7 +204,7 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S7Outcome) {
     // ── Report notes ─────────────────────────────────────────────────────────
     report.notes.push(
         "ADR-0055 R6-S4 capstone: feed-idle byte reduction — whole-product win with \
-         nmp.feed.home registered. Honesty: this is the IDLE/static-feed scenario; \
+         nmp.testing.feed_idle registered. Honesty: this is the IDLE/static-feed scenario; \
          a mutating feed (new in-window event) still re-sends the whole feed (row-deltas \
          are Option B, deferred post-v1)."
             .to_string(),

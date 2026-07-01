@@ -1,6 +1,6 @@
 ---
 title: "Typed Feed Transport Sources 2026-05-28"
-summary: "Source notes for UpdateFrame, typed projection sidecars, nmp.feed.home typed payloads, and host fallback behavior."
+summary: "Source notes for UpdateFrame, typed projection sidecars, app.feed.home typed payloads, and host decoder behavior."
 tags: [repo, flatbuffers, feed, transport]
 source_type: repo-snapshot
 repo: /Users/pablofernandez/Work/nostr-multi-platform
@@ -57,7 +57,7 @@ buffer instead of duplicating cursor/page tables.
 ## NIP-01 Timeline Schema
 
 `nmp-nip01` owns the typed `ModularTimelineSnapshot` schema for the
-`nmp.feed.home` pilot:
+`app.feed.home` pilot:
 
 - schema id: `nmp.nip01.timeline`
 - file identifier: `NFTS`
@@ -70,14 +70,14 @@ render data, repost attribution, typed content-tree bytes, and embedded
 ## Chirp Emitter
 
 `nmp_app_chirp_register` registers a typed snapshot producer for
-`"nmp.feed.home"`. It reads the same `ModularTimelineProjection` current
+`"app.feed.home"`. It reads the same `ModularTimelineProjection` current
 window used by the generic feed controller and encodes it through
 `nmp_nip01::typed_wire::encode_modular_timeline_snapshot`.
 
 ## Host Decoders
 
 `chirp-tui` decodes `UpdateFrame` with `decode_snapshot_with_typed`, then
-prefers the typed `"nmp.feed.home"` sidecar when its schema id matches
+prefers the typed `"app.feed.home"` sidecar when its schema id matches
 `nmp.nip01.timeline`. It converts the typed snapshot back into the generic
 serde shape so the existing renderer can stay unchanged during migration.
 

@@ -122,8 +122,9 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
     // The active-owner ContactList resolver builds an ActiveFollowSet and uses
     // its live predicate.
     let slot = Arc::new(Mutex::new(Some(ALICE.to_string())));
+    let store_slot = nmp_core::slots::new_event_store_slot();
     let follow_set =
-        nmp_nip02::ActiveFollowSet::new(slot, nmp_core::substrate::empty_contacts_lookup());
+        nmp_nip02::ActiveFollowSet::new(slot, nmp_nip02::LatestKind3FollowSet::new(store_slot));
     // Deliver the active account's kind:3 follow list.
     follow_set.on_kernel_event(&contacts(ALICE, &[MEMBER]));
     let admit = follow_set.predicate();

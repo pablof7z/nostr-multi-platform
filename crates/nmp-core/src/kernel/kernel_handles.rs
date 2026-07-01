@@ -47,30 +47,6 @@ impl Kernel {
         Arc::clone(&self.routing_trace)
     }
 
-    /// Pre-populate the contacts cache at sign-in without fabricating a kind:3 event.
-    pub(crate) fn prepopulate_contacts(&mut self, pubkey: String, follows: Vec<String>) {
-        let created_at = self.now_secs();
-        // (1) Write the contacts cache directly — non-ingest writer seam, NO
-        // fabricated event through the dispatcher / observer fan-out.
-        self.contacts_lookup().upsert(
-            pubkey.clone(),
-            crate::substrate::ContactsView {
-                // Maximal sentinel id: a real signed kind:3 (a 64-hex id, always
-                // `< "f"*64`) supersedes this seed on a `created_at` tie.
-                event_id: "f".repeat(64),
-                created_at,
-                follows: follows.clone(),
-            },
-        );
-        self.cached_estimated_store_bytes.set(None);
-        // (2) Drive the kernel-owned follow-feed effects directly (active-account
-        // scoped, like the chokepoint transition that calls the same body) —
-        // WITHOUT `notify_event_observers`.
-        if self.active_account.as_deref() == Some(pubkey.as_str()) {
-            self.on_active_contacts_changed(&pubkey, follows, created_at);
-        }
-    }
-
     /// Pre-populate the NIP-65 mailbox cache from a just-signed kind:10002 event.
     pub(crate) fn prepopulate_author_relay_list(
         &mut self,

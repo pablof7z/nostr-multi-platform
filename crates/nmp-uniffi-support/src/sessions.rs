@@ -57,8 +57,8 @@ pub enum FeedSessionError {
 /// * [`FeedSessionError::InvalidParams`] — invalid JSON or invalid primary kinds.
 /// * [`FeedSessionError::OpenFailed`] — the compiler could not register the session.
 pub fn open_feed_session(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, FeedSessionError> {
-    let (params, _acquisition_kinds) =
-        decode_and_validate_feed_params(params_json).map_err(|_| FeedSessionError::InvalidParams)?;
+    let (params, _acquisition_kinds) = decode_and_validate_feed_params(params_json)
+        .map_err(|_| FeedSessionError::InvalidParams)?;
 
     app.open_feed(&params, &compile_feed_params)
         .map(|handle| OpenedFeed {
@@ -167,7 +167,10 @@ mod tests {
     fn open_then_close_then_close_is_idempotent() {
         let app = nmp_native_runtime::new_app();
         let Ok(opened) = open_feed_session(&app, ACTIVE_FOLLOWS_KIND1) else {
-            assert!(false, "open must succeed for valid ActiveUserFollows/kind:1");
+            assert!(
+                false,
+                "open must succeed for valid ActiveUserFollows/kind:1"
+            );
             return;
         };
         assert!(!opened.projection_key.is_empty());

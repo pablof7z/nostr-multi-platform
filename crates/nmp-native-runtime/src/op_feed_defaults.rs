@@ -21,8 +21,8 @@
 //!      (`NoteFeedItem::from_event_for_op_feed`).
 //! 3. Registers the returned `Arc<OpFeedEngine>` as an
 //!    [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) (ingest) and a
-//!    [`FeedController`](nmp_feed::FeedController) under
-//!    `"nmp.feed.home"` (output).
+//!    [`FeedController`](nmp_feed::FeedController) under the caller's
+//!    projection key (output).
 //! 4. Registers the `ActiveFollowSet` as its own `ObservedProjectionSink` (so
 //!    kind:3 ingest keeps the follow set current — exactly the pattern the
 //!    sibling `FollowListProjection` already uses).
@@ -71,12 +71,12 @@
 //!
 //! # Active-account source of truth
 //!
-//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`] and
-//! canonical contacts lookup. `register_op_feed_defaults` reads both directly from
-//! [`NmpApp::active_account_handle`](crate::NmpApp::active_account_handle)
-//! and [`NmpApp::contacts_lookup`](crate::NmpApp::contacts_lookup) so the
-//! follow predicate, identity-change observer, and kind:3 cache reader share
-//! the same app-owned handles the actor/composition root writes.
+//! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`] plus a
+//! store-derived latest-kind:3 reader. `register_op_feed_defaults` reads both
+//! directly from [`NmpApp::active_account_handle`](crate::NmpApp::active_account_handle)
+//! and [`NmpApp::event_store_handle`](crate::NmpApp::event_store_handle), so
+//! the follow predicate and identity-change observer derive from the same
+//! event store the actor writes.
 //!
 //! # Perspective changes reset the feed
 //!
@@ -93,8 +93,8 @@
 //! frame, and `NmpApp`'s update listener fires its identity observers before
 //! forwarding that frame to native. The callback registered here calls
 //! `notify_account_changed()`: `ActiveFollowSet` clears A's set, hydrates B's
-//! cached contact list from the shared contacts lookup if one is already
-//! present, re-seeds self-inclusion of B, and fires `on_change`; this callback
+//! latest kind:3 follow set from the event store if one is already present,
+//! re-seeds self-inclusion of B, and fires `on_change`; this callback
 //! sees `B != A`, resets the engine, and records B. When B's kind:3 later
 //! ingests, `ActiveFollowSet`'s own observer rebuilds from the event and fires
 //! `on_change` again. The clear-then-hydrate ordering means the
@@ -111,7 +111,7 @@ use nmp_feed::{
     FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
     FeedWindow, ProjectionKey,
 };
-use nmp_nip02::ActiveFollowSet;
+use nmp_nip02::{ActiveFollowSet, LatestKind3FollowSet};
 use nmp_nip51::MuteListProjection;
 use nmp_note_feed::OpFeedEngine;
 
@@ -164,8 +164,15 @@ pub fn register_op_feed_defaults(
     app: &NmpApp,
     viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
+    projection: ProjectionKey,
 ) -> OpFeedDefaults {
-    register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, empty_suppression_lookup())
+    register_op_feed_defaults_inner(
+        app,
+        viewer,
+        primary_feed_kinds,
+        projection,
+        empty_suppression_lookup(),
+    )
 }
 
 /// Wire the OP-centric home feed with the default NIP-51 mute read model.
@@ -176,15 +183,23 @@ pub fn register_op_feed_defaults_with_mute(
     app: &NmpApp,
     viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
+    projection: ProjectionKey,
     mute: Arc<MuteListProjection>,
 ) -> OpFeedDefaults {
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
-    let defaults = register_op_feed_defaults_inner(app, viewer, primary_feed_kinds, suppression);
+    let defaults = register_op_feed_defaults_inner(
+        app,
+        viewer,
+        primary_feed_kinds,
+        projection.clone(),
+        suppression,
+    );
     if defaults.handle.is_some() {
         let registry = app.feed_registry_handle();
         let sender = app.command_sender();
+        let projection_key = projection.0.clone();
         mute.on_change(Box::new(move || {
-            if registry.reset(nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY) {
+            if registry.reset(&projection_key) {
                 sender.mark_changed_since_emit();
             }
         }));
@@ -196,9 +211,10 @@ fn register_op_feed_defaults_inner(
     app: &NmpApp,
     _viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
+    projection: ProjectionKey,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> OpFeedDefaults {
-    let params = default_home_feed_params(primary_feed_kinds);
+    let params = active_follows_op_feed_params(primary_feed_kinds, projection);
     let compiler = move |app: &NmpApp,
                          params: &FeedParams,
                          kinds: &std::collections::BTreeSet<u32>|
@@ -236,7 +252,10 @@ fn register_op_feed_defaults_inner(
 }
 
 #[must_use]
-pub fn default_home_feed_params(primary_feed_kinds: Vec<u32>) -> FeedParams {
+pub fn active_follows_op_feed_params(
+    primary_feed_kinds: Vec<u32>,
+    projection: ProjectionKey,
+) -> FeedParams {
     FeedParams {
         primary_kinds: primary_feed_kinds,
         render: FeedRender::OpCentric,
@@ -246,7 +265,7 @@ pub fn default_home_feed_params(primary_feed_kinds: Vec<u32>) -> FeedParams {
         window: FeedWindow {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
-        projection: ProjectionKey(nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY.to_string()),
+        projection,
     }
 }
 
@@ -269,7 +288,10 @@ fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
 }
 
 fn fallback_follow_set(app: &NmpApp) -> Arc<ActiveFollowSet> {
-    ActiveFollowSet::new(app.active_account_handle(), app.contacts_lookup())
+    ActiveFollowSet::new(
+        app.active_account_handle(),
+        LatestKind3FollowSet::new(app.event_store_handle()),
+    )
 }
 
 // #1740 step 2 — `FeedParams` → existing-registration compiler (sibling module).

@@ -103,14 +103,20 @@ active account author and switches that projection on account changes.
 **App/runtime composition root:**
 
 ```rust
-pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
+pub fn register_op_feed_defaults(
+    app: &NmpApp,
+    viewer: Pubkey,
+    primary_kinds: Vec<u32>,
+    projection: ProjectionKey,
+) {
     let follow_set = nmp_nip02::ActiveFollowSet::new(
         app.active_account_handle(),
-        app.contacts_lookup(),
+        nmp_nip02::LatestKind3FollowSet::new(app.event_store_handle()),
     );
     app.open_feed(FeedParams {
         acquisition: FeedScope::ActiveUserFollows,
         primary_kinds,
+        projection,
         render: FeedRender::OpCentric { /* ... */ },
         /* ... */
     });

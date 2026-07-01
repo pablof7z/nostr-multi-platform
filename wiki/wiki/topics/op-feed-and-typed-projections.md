@@ -1,6 +1,6 @@
 ---
 title: "OP Feed and Typed Projections"
-summary: "How the reusable feed engine, NIP-01 timeline schema, typed sidecar transport, and host decoders relate around nmp.feed.home."
+summary: "How the reusable feed engine, NIP-01 timeline schema, typed sidecar transport, and host decoders relate around app.feed.home."
 tags: [feed, op-feed, flatbuffers, chirp]
 created: 2026-05-28
 updated: 2026-05-28
@@ -14,7 +14,7 @@ sources:
 
 # OP Feed and Typed Projections
 
-`nmp.feed.home` is both a product surface and a stress test for NMP's ownership
+`app.feed.home` is both a product surface and a stress test for NMP's ownership
 rules. It is high-volume, it crosses FFI, and it mixes generic feed mechanics
 with NIP-01/NIP-10 timeline semantics. The current design keeps those concerns
 separate.
@@ -38,7 +38,7 @@ registers the feed key.
 The transport frame remains one `NMPU` update frame. For the home feed, the
 typed sidecar chain is:
 
-1. `SnapshotFrame.typed_projections[]` contains key `"nmp.feed.home"`.
+1. `SnapshotFrame.typed_projections[]` contains key `"app.feed.home"`.
 2. Its descriptor says schema id `nmp.nip01.timeline`, version `1`, file id
    `NFTS`.
 3. The `NFTS` payload is decoded by `nmp-nip01` bindings.

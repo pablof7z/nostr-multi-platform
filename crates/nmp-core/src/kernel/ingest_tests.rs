@@ -8,8 +8,9 @@
 //! tests are orthogonal: they call the `ingest_contacts` method *directly* —
 //! the kernel method invoked AFTER `verify_and_persist` confirms an
 //! `Inserted | Replaced`. No store round-trip, no signing: the ingest method
-//! consumes a `NostrEvent` (the post-JSON-decode shape) and the contract
-//! under test is purely the cache + lifecycle mutation that method performs.
+//! consumes a `NostrEvent` (the post-JSON-decode shape) and the contract under
+//! test is the store-derived contacts transition + lifecycle mutation it
+//! performs.
 //!
 //! `NostrEvent` is `pub(super)` within `kernel`, so this file (declared as
 //! `#[cfg(test)] mod ingest_tests;` in `kernel/mod.rs`) constructs it directly
@@ -207,16 +208,12 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
             vec!["e".to_string(), FOLLOW_A.to_string()],
         ],
     );
-    // ADR-0057 PR 3 — kind:3 is now parser-fed: `inject_contacts` runs the
-    // chokepoint projection → the registered `TestKind3Parser` writes the
-    // capability-owned contacts cache (for ANY author), and the kernel reacts
-    // to a transition ONLY for the active account.
+    // `inject_contacts` persists the kind:3, then runs the chokepoint
+    // projection. The kernel reacts to a transition ONLY for the active account.
     kernel.inject_contacts(event);
 
-    let follows = kernel
-        .contacts_lookup()
-        .follows(AUTHOR)
-        .expect("a kind:3 must store a follow-graph entry under the author pubkey");
+    let follows = crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+        .expect("a kind:3 must be stored under the author pubkey");
     assert_eq!(
         follows,
         vec![FOLLOW_A.to_string(), FOLLOW_B.to_string()],
@@ -241,10 +238,8 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
     );
 }
 
-/// An empty kind:3 (no `p` tags) does NOT remove the contacts-cache entry —
-/// the kind:3 parser has no empty-list early return (unlike the DM-relay cache).
-/// It unconditionally stores an empty follow vector, which is the correct
-/// "cleared follow set" representation.
+/// An empty kind:3 (no `p` tags) stores an empty follow vector, which is the
+/// correct "cleared follow set" representation.
 #[test]
 fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -259,7 +254,7 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     );
     kernel.inject_contacts(seed);
     assert_eq!(
-        kernel.contacts_lookup().follows(AUTHOR).map(|f| f.len()),
+        crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR).map(|f| f.len()),
         Some(2),
         "precondition: the seed contact list holds two follows",
     );
@@ -274,13 +269,11 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     );
     kernel.inject_contacts(cleared);
 
-    // The entry is PRESENT but empty — the kind:3 parser always upserts; an
-    // empty `p`-tag set yields `Some(vec![])`, NOT `None` (a cleared follow set
-    // is a distinct state from "no kind:3 cached"). See `ContactsLookup`.
-    let follows = kernel
-        .contacts_lookup()
-        .follows(AUTHOR)
-        .expect("an empty kind:3 must still leave a (now-empty) follow-graph entry");
+    // The event is PRESENT but derived empty — an empty `p`-tag set yields
+    // `Some(vec![])`, NOT `None` (a cleared follow set is distinct from
+    // "no kind:3 stored").
+    let follows = crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+        .expect("an empty kind:3 must still leave a stored contact-list event");
     assert!(
         follows.is_empty(),
         "an empty kind:3 must store an empty follow vector (cleared follow set), \
@@ -306,12 +299,10 @@ fn ingest_contacts_for_active_account_enqueues_source_recompile() {
     kernel.inject_contacts(event);
 
     assert!(
-        kernel
-            .contacts_lookup()
-            .follows(AUTHOR)
-            .expect("active kind:3 must write contacts cache")
+        crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+            .expect("active kind:3 must be stored")
             .contains(&FOLLOW_A.to_string()),
-        "active-account kind:3 must still update the contacts cache",
+        "active-account kind:3 must update the stored latest contact list",
     );
     assert_eq!(
         kernel.lifecycle.pending_trigger_count(),

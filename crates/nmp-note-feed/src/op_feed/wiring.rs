@@ -12,13 +12,10 @@
 //! # Why no `&NmpApp` parameter
 //!
 //! The design doc (`docs/perf/op-centric-feed-architecture.md` §3-A) sketches
-//! `register_op_feed(app: &NmpApp, …)`. That is pseudocode, exactly as rung 4
-//! documented for `ActiveFollowSet::new(slot, contacts_lookup)`: `NmpApp`
-//! lives in `nmp-ffi`, which this crate does not depend on. The substrate-clean
-//! realization —
-//! mirroring
-//! `nmp_nip02::ActiveFollowSet` — is to construct the engine here and hand the
-//! caller back the `Arc<OpFeedEngine>`. The composition root (rung 6,
+//! `register_op_feed(app: &NmpApp, …)`. That is pseudocode: `NmpApp` lives in
+//! `nmp-ffi`, which this crate does not depend on. The substrate-clean
+//! realization is to construct the engine here and hand the caller back the
+//! `Arc<OpFeedEngine>`. The composition root (rung 6,
 //! `explicit composition`, which *does* depend on `nmp-ffi`) performs the
 //! `NmpApp`-level registration:
 //!

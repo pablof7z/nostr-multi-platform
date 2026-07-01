@@ -28,8 +28,8 @@
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
 //!    to [`nmp_native_runtime::register_op_feed_defaults`] wires the OP-centric home
 //!    feed (the following timeline): ingest fan-out, the live follow-set
-//!    predicate, the seq-ordered pull pager, and the typed `nmp.feed.home`
-//!    projection. The shell never names a relay, a filter, or a subscription.
+//!    predicate, the seq-ordered pull pager, and this app's typed projection.
+//!    The shell never names a relay, a filter, or a subscription.
 //! 3. [`render_home_rows`] — read the Rust-owned typed projection and turn it
 //!    into renderable rows. Pure presentation: decode the FlatBuffers sidecar,
 //!    copy raw protocol fields, format a short pubkey. No policy, no caching,
@@ -37,12 +37,13 @@
 //!
 //! A real iOS/Android/desktop shell substitutes its own renderer for
 //! [`render_home_rows`] (SwiftUI `List`, Compose `LazyColumn`, egui) over the
-//! identical `nmp.feed.home` typed projection — the projection→render contract
-//! is platform-agnostic.
+//! identical typed projection — the projection→render contract is
+//! platform-agnostic.
 
 use nmp_core::substrate::{ActionRegistrar, AppHost};
+use nmp_feed::ProjectionKey;
 use nmp_native_runtime::NmpApp;
-use nmp_note_feed::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
+use nmp_note_feed::op_feed::decode_op_feed_snapshot;
 
 #[cfg(feature = "harness")]
 pub mod harness;
@@ -51,6 +52,7 @@ pub mod private_status;
 /// The primary note kinds the following timeline renders: kind:1 text notes.
 /// Repost wrappers are derived below this app-facing declaration.
 pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
+pub const FOLLOWING_TIMELINE_PROJECTION_KEY: &str = "example.login_timeline.following";
 
 /// Step 1 — install the tutorial composition explicitly.
 ///
@@ -91,7 +93,8 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
 
 /// Step 2 — open the FOLLOWING timeline.
 ///
-/// One framework call wires the OP-centric home feed (`nmp.feed.home`): the
+/// One framework call wires the OP-centric following feed under this example's
+/// app-owned projection key: the
 /// engine is registered as a declared observed projection (ingest) AND as the
 /// feed controller + typed projection (output). The follow-set predicate is read
 /// LIVE from the active account's contact list, so once the user signs in and
@@ -107,6 +110,7 @@ pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<St
         app,
         viewer_pubkey_hex.into(),
         FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),
+        ProjectionKey(FOLLOWING_TIMELINE_PROJECTION_KEY.to_string()),
     );
 }
 
@@ -153,7 +157,7 @@ impl TimelineRow {
 
 /// Step 3 — render the FOLLOWING timeline from the Rust-owned typed projection.
 ///
-/// Reads the `nmp.feed.home` typed FlatBuffers sidecar (`NNFS`) the kernel emits
+/// Reads this example's typed FlatBuffers sidecar (`NNFS`) the kernel emits
 /// every tick, decodes it with the NMP-provided [`decode_op_feed_snapshot`], and
 /// maps each root card to a [`TimelineRow`]. This is exactly the projection→
 /// render contract a platform shell follows (iOS's `TypedHomeFeedDecoder` does
@@ -165,7 +169,10 @@ impl TimelineRow {
 #[must_use]
 pub fn render_home_rows(app: &NmpApp) -> Vec<TimelineRow> {
     let typed = app.run_typed_snapshot_projections();
-    let Some(home) = typed.into_iter().find(|t| t.key == OP_FEED_SNAPSHOT_KEY) else {
+    let Some(home) = typed
+        .into_iter()
+        .find(|t| t.key == FOLLOWING_TIMELINE_PROJECTION_KEY)
+    else {
         return Vec::new();
     };
     let Ok(snapshot) = decode_op_feed_snapshot(&home.payload) else {

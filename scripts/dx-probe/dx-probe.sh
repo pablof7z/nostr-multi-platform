@@ -296,7 +296,7 @@ log "Analysing DX GAPs"
 
 DX_GAPS=""
 
-if grep -Eq "register_defaults|open_interest|ObservedProjection|ReducedSource|PublishRaw|publishRaw|nmp.feed.home|resolved_profiles|claimed_event_embeds" "$LIB_RS" "$SHELL_RS"; then
+if grep -Eq "register_defaults|open_interest|ObservedProjection|ReducedSource|PublishRaw|publishRaw|resolved_profiles|claimed_event_embeds" "$LIB_RS" "$SHELL_RS"; then
     DX_GAPS="${DX_GAPS}GAP-1: scaffold exposes retired clean-break app vocabulary — starters must use explicit composition plus typed read/write helpers.\n"
 else
     log "  scaffold avoids hidden defaults and retired raw app vocabulary: YES"

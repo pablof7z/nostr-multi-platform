@@ -31,7 +31,7 @@ arbitrary bytes.
 The generic tree remains useful for low-frequency projections. The hot path can
 avoid string-keyed tree walking by attaching a typed sidecar keyed by projection
 name, schema id, schema version, and FlatBuffers file identifier. For example,
-the `nmp.feed.home` projection can be decoded through a schema owned outside
+the `app.feed.home` projection can be decoded through a schema owned outside
 `nmp-core` while the core transport sees only opaque bytes.
 
 The transport code path is `crates/nmp-core/src/update_envelope.rs` over the
@@ -53,7 +53,7 @@ This rule keeps transport backward-compatible without creating an app-specific
 union inside `nmp-core`.
 
 Host adoption is not global. `chirp-tui` currently decodes typed
-`nmp.feed.home` sidecars and merges the typed result back into the generic
+`app.feed.home` sidecars and merges the typed result back into the generic
 projection slot used by its renderer. iOS has generated bindings and a typed
 home-feed decoder, but the live render path should be verified from
 `KernelUpdateFrameDecoder` and `KernelBridge` before claiming typed feed render

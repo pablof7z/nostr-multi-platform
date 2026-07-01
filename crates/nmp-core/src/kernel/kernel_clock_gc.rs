@@ -51,12 +51,10 @@ impl Kernel {
         // the LMDB-tier gc_step (#1085) so the two paths stay independent and
         // merge-clean.
         let ram_report = self.evict_ram_caches();
-        if ram_report.events_evicted + ram_report.profiles_evicted + ram_report.contacts_evicted > 0
-        {
+        if ram_report.events_evicted + ram_report.profiles_evicted > 0 {
             tracing::debug!(
                 events_evicted = ram_report.events_evicted,
                 profiles_evicted = ram_report.profiles_evicted,
-                contacts_evicted = ram_report.contacts_evicted,
                 "ram cache eviction pass",
             );
         }

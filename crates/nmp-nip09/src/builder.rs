@@ -46,10 +46,7 @@ pub fn build_deletion_event(req: &DeletionRequest) -> Result<UnsignedEvent, Stri
     }
     for id in &req.event_ids {
         if !is_hex64(id) {
-            return Err(format!(
-                "deletion event_id must be 64-hex, got {:?}",
-                id
-            ));
+            return Err(format!("deletion event_id must be 64-hex, got {:?}", id));
         }
     }
     let mut tags: Vec<Vec<String>> = Vec::new();

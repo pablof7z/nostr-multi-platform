@@ -112,7 +112,6 @@ fn browser_defaults_defer_required_substrate_slots_before_start() {
     assert!(inner.publish_resolver_factory.is_some());
     assert!(inner.mailbox_cache_reader.is_some());
     assert!(inner.profile_lookup.is_some());
-    assert!(inner.contacts_lookup.is_some());
     assert!(inner.dm_inbox_relay_lookup.is_some());
     assert!(inner.blocked_relay_lookup.is_some());
     assert!(inner.coverage_hook.is_some());

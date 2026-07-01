@@ -12,8 +12,8 @@
 //!   dependent-interest owner under the session's projection key and withdrawn
 //!   symmetrically on close.
 //!
-//! The session registers under the caller's UNIQUE [`nmp_feed::ProjectionKey`]
-//! (not the home `OP_FEED_SNAPSHOT_KEY`), so many scope sessions coexist. Close
+//! The session registers under the caller's UNIQUE [`nmp_feed::ProjectionKey`],
+//! so many scope sessions coexist. Close
 //! tears everything down in reverse order: withdraw each interest, remove the
 //! controller + projection, revoke the ingest observer + any resolver observers.
 //!

@@ -105,9 +105,6 @@ fn snapshot_carries_nip46_onboarding_projection() {
             profile_lookup: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_profile_lookup(),
             )),
-            contacts_lookup: Arc::new(std::sync::Mutex::new(
-                crate::substrate::empty_contacts_lookup(),
-            )),
             blocked_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_blocked_relay_lookup(),
             )),

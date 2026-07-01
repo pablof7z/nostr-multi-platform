@@ -6,7 +6,7 @@
 //! ```
 //!
 //! It signs in with a throwaway nsec, follows a freshly-generated author, and
-//! renders the following timeline from the Rust-owned `nmp.feed.home` typed
+//! renders the following timeline from the Rust-owned `example.login_timeline.following` typed
 //! projection — first after the author's initial note, then again after a live
 //! second note arrives. The host code here is rendering + login intent only;
 //! every line of relay routing, subscription lifecycle, cache invalidation, and

@@ -18,7 +18,6 @@
 //! - **RelayLifecyclePort**: `Arc<dyn OutboxRouter>` — relay routing decisions.
 //! - **ProtocolDispatchPort**: `Arc<RwLock<EventIngestDispatcher>>` — ingest parser registry.
 //! - **IdentityPort**: `Arc<ActiveAccountSlot>` — active account state.
-//! - **FollowPort**: `Arc<dyn ContactsLookup>` — follow-set cache.
 //! - **ReferencePort**: Reference-tracking capability (future).
 //! - **PullCursorPort**: `Arc<PullCursorRegistrySlot>` — pull-cursor registry.
 //! - **UiPort**: `Arc<RoutingTraceProjection>` — diagnostics projection.
@@ -30,7 +29,7 @@
 use std::sync::Arc;
 
 use crate::publish::PublishStore;
-use crate::substrate::{ContactsLookup, EventIngestDispatcher, OutboxRouter};
+use crate::substrate::{EventIngestDispatcher, OutboxRouter};
 
 use super::pull_cursor::PullCursorRegistrySlot;
 use super::routing_trace::RoutingTraceProjection;
@@ -94,15 +93,6 @@ pub struct ProtocolDispatchPort(pub Arc<std::sync::RwLock<EventIngestDispatcher>
 #[derive(Clone)]
 pub struct IdentityPort(pub Arc<ActiveAccountSlot>);
 
-/// Follow-set capability port.
-///
-/// Holds the contact-list (kind:3) cache. Injected at composition time via
-/// `Kernel::set_contacts_lookup`. Default is `EmptyContactsLookup` (every
-/// lookup returns `None`). Production composition injects
-/// `nmp_nip01::ContactsCache`.
-#[derive(Clone)]
-pub struct FollowPort(pub Arc<dyn ContactsLookup>);
-
 /// Reference-tracking capability port.
 ///
 /// Placeholder for reference-resolution capability. Reserved for future use
@@ -159,7 +149,6 @@ pub struct KernelPorts {
     pub relay_lifecycle: RelayLifecyclePort,
     pub protocol_dispatch: ProtocolDispatchPort,
     pub identity: IdentityPort,
-    pub follow: FollowPort,
     pub reference: ReferencePort,
     pub pull_cursor: PullCursorPort,
     pub ui: UiPort,

@@ -37,8 +37,7 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::substrate::{
-    ContactsLookup, IngestParser, ObservedProjectionCommandHandle, ObservedProjectionSessionMap,
-    ProfileLookup,
+    IngestParser, ObservedProjectionCommandHandle, ObservedProjectionSessionMap, ProfileLookup,
 };
 use crate::{EmittedFeedAuthorsSlot, ObservedProjectionId, TypedProjectionData};
 
@@ -331,15 +330,6 @@ impl super::KernelReducer {
     /// profile cache between the kind:0 ingest parser and kernel readers.
     pub fn set_profile_lookup(&mut self, lookup: Arc<dyn ProfileLookup>) {
         self.kernel.set_profile_lookup(lookup);
-    }
-
-    /// Install the contacts lookup used by kernel follow-feed readers.
-    ///
-    /// Wasm composition roots cannot go through the native `AppHost`
-    /// `set_contacts_lookup` seam, so they use this method to share one
-    /// contacts cache between the kind:3 ingest parser and kernel readers.
-    pub fn set_contacts_lookup(&mut self, lookup: Arc<dyn ContactsLookup>) {
-        self.kernel.set_contacts_lookup(lookup);
     }
 
     /// Register a post-store ingest parser against the wrapped kernel.

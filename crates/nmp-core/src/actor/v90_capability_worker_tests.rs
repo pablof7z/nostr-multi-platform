@@ -148,7 +148,6 @@ fn dispatch_capability_result(
     let dm_inbox_relays_slot =
         Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup()));
     let profile_lookup_slot = Arc::new(Mutex::new(crate::substrate::empty_profile_lookup()));
-    let contacts_lookup_slot = Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup()));
     let blocked_relays_slot = Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup()));
     let bootstrap_self_kinds_slot = Arc::new(Mutex::new(None));
     let routing_trace_slot = Arc::new(Mutex::new(None));
@@ -167,7 +166,6 @@ fn dispatch_capability_result(
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
         dm_inbox_relays: dm_inbox_relays_slot,
         profile_lookup: profile_lookup_slot,
-        contacts_lookup: contacts_lookup_slot,
         blocked_relays: blocked_relays_slot,
         bootstrap_self_kinds: bootstrap_self_kinds_slot,
         routing_substrate: crate::slots::new_routing_substrate_slot(),

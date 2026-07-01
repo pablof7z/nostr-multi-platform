@@ -7,10 +7,13 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use nmp_core::substrate::{ContactsLookup, ContactsView, KernelEvent, TestContactsCache};
+use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
-use nmp_nip02::ActiveFollowSet;
+use nmp_nip02::{ActiveFollowSet, LatestKind3FollowSet};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nostr::{Event, EventBuilder, JsonUtil, Keys, SecretKey, Timestamp, ToBech32};
+
+const TEST_FEED_KEY: &str = "test.op.feed.home";
 
 fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     let mut tags: Vec<Vec<String>> = follows
@@ -30,20 +33,37 @@ fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     }
 }
 
-fn upsert_contacts(cache: &TestContactsCache, owner: &str, follows: &[&str]) {
-    cache.upsert_view(
-        owner,
-        ContactsView {
-            event_id: owner.to_string(),
-            created_at: 100,
-            follows: follows.iter().map(|pk| (*pk).to_string()).collect(),
-        },
-    );
-}
-
 fn keys_from_byte(byte: u8) -> Keys {
     let secret = SecretKey::from_slice(&[byte; 32]).expect("valid fixture secret");
     Keys::new(secret)
+}
+
+fn latest_kind3_reader() -> (LatestKind3FollowSet, Arc<dyn EventStore>) {
+    let slot = nmp_core::slots::new_event_store_slot();
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    *slot.lock().expect("store slot") = Some(Arc::clone(&store));
+    (LatestKind3FollowSet::new(slot), store)
+}
+
+fn insert_kind3(store: &Arc<dyn EventStore>, owner: &str, follows: &[&str]) {
+    let tags = follows
+        .iter()
+        .map(|pk| vec!["p".to_string(), (*pk).to_string()])
+        .collect();
+    let raw = RawEvent {
+        id: format!("{:0>64x}", follows.len() + 1),
+        pubkey: owner.to_string(),
+        created_at: 100,
+        kind: nmp_core::kinds::KIND_CONTACT_LIST,
+        tags,
+        content: String::new(),
+        sig: "22".repeat(64),
+    };
+    let _ = store.insert(
+        VerifiedEvent::from_raw_unchecked(raw),
+        &"wss://store.test/".to_string(),
+        100_000,
+    );
 }
 
 fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event {
@@ -51,6 +71,17 @@ fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event {
         .custom_created_at(Timestamp::from_secs(created_at))
         .sign_with_keys(keys)
         .expect("sign note")
+}
+
+fn signed_contact_list(keys: &Keys, follows: &[&str], created_at: u64) -> Event {
+    let tags = follows
+        .iter()
+        .map(|follow| nostr::Tag::parse(["p", *follow]).expect("valid p tag"));
+    EventBuilder::new(nostr::Kind::from(3u16), "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind3")
 }
 
 fn wait_for(rx: &Receiver<()>, label: &str, pred: impl Fn() -> bool) {
@@ -66,19 +97,16 @@ fn wait_for(rx: &Receiver<()>, label: &str, pred: impl Fn() -> bool) {
     }
 }
 
-fn visible_home_feed_ids(app: &crate::NmpApp) -> Vec<String> {
+fn visible_feed_ids(app: &crate::NmpApp, key: &str) -> Vec<String> {
     let Some(row) = app
         .run_typed_snapshot_projections()
         .into_iter()
-        .find(|row| {
-            row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY
-                && row.state != nmp_core::WireProjectionState::Cleared
-        })
+        .find(|row| row.key == key && row.state != nmp_core::WireProjectionState::Cleared)
     else {
         return Vec::new();
     };
     nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload)
-        .expect("nmp.feed.home NNFS payload decodes")
+        .expect("NNFS payload decodes")
         .cards
         .into_iter()
         .map(|card| card.card.id)
@@ -95,8 +123,8 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     let alice = "a".repeat(64);
     let bob = "b".repeat(64);
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice.clone())));
-    let follow_set =
-        ActiveFollowSet::new(slot.clone(), nmp_core::substrate::empty_contacts_lookup());
+    let (reader, _store) = latest_kind3_reader();
+    let follow_set = ActiveFollowSet::new(slot.clone(), reader);
     // Populate a real, non-empty follow set for the active account.
     ObservedProjectionSink::on_kernel_event(&*follow_set, &kind3(&alice, &[&bob]));
     assert!(
@@ -128,23 +156,20 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     );
 }
 
-/// Regression for #2500: account creation can prepopulate the shared contacts
-/// cache before the active account's kind:3 relays back through ingest. The
-/// OP-feed pull shape must use that cached follow set immediately, or seeded
-/// home-feed rows are ingested but remain invisible.
+/// The OP-feed pull shape hydrates from the active account's latest stored
+/// kind:3 before any observer event arrives.
 #[test]
-fn provider_hydrates_shape_from_cached_contacts_before_kind3_echo() {
+fn provider_hydrates_shape_from_stored_kind3() {
     let alice = "a".repeat(64);
     let bob = "b".repeat(64);
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice.clone())));
-    let cache = Arc::new(TestContactsCache::new());
-    upsert_contacts(&cache, &alice, &[&bob]);
-    let lookup: Arc<dyn ContactsLookup> = cache.clone();
-    let follow_set = ActiveFollowSet::new(slot.clone(), lookup);
+    let (reader, store) = latest_kind3_reader();
+    insert_kind3(&store, &alice, &[&bob]);
+    let follow_set = ActiveFollowSet::new(slot.clone(), reader);
     let kinds: BTreeSet<u32> = [1u32, 6u32].into_iter().collect();
 
     let shape = live_active_follows_shape(&slot, &follow_set, &kinds)
-        .expect("cached contacts should compile an active-follows shape");
+        .expect("stored contacts should compile an active-follows shape");
 
     assert!(shape.authors.contains(&alice), "viewer is self-included");
     assert!(shape.authors.contains(&bob), "cached follow is included");
@@ -152,31 +177,24 @@ fn provider_hydrates_shape_from_cached_contacts_before_kind3_echo() {
     assert_eq!(shape.kinds, kinds);
 }
 
-/// Regression for #2574 / #2500 product failure shape: exercise the production
-/// default-home composition path, not just the helper shape provider. Cached
-/// contacts hydrate the session-owned active follows before the active account's
-/// kind:3 relays back; a followed author's ingested note must then appear in the
-/// typed `nmp.feed.home` projection.
+/// Exercise the production default composition path, not just the helper shape
+/// provider. A stored active-account kind:3 hydrates the session-owned active
+/// follows; a followed author's ingested note must then appear in the caller's
+/// typed projection.
 #[test]
-fn default_home_projection_renders_followed_note_from_cached_contacts() {
+fn default_projection_renders_followed_note_from_stored_kind3() {
     let alice = keys_from_byte(11);
     let bob = keys_from_byte(12);
     let alice_pk = alice.public_key().to_hex();
     let bob_pk = bob.public_key().to_hex();
+    let alice_kind3 = signed_contact_list(&alice, &[&bob_pk], 105);
     let bob_note = signed_note(&bob, "visible from cached contacts", 110);
     let bob_note_id = bob_note.id.to_hex();
 
     let app = crate::new_app();
-    let cache = Arc::new(TestContactsCache::new());
-    upsert_contacts(&cache, &alice_pk, &[&bob_pk]);
-    let lookup: Arc<dyn ContactsLookup> = cache;
-    assert_eq!(
-        app.set_contacts_lookup(lookup),
-        crate::NmpConfigStatus::Ok,
-        "test contacts cache must be the app's canonical contacts lookup"
-    );
-
-    let defaults = crate::register_op_feed_defaults(&app, alice_pk.clone(), vec![1]);
+    let projection = nmp_feed::ProjectionKey(TEST_FEED_KEY.to_string());
+    let defaults =
+        crate::register_op_feed_defaults(&app, alice_pk.clone(), vec![1], projection.clone());
     assert!(
         defaults.handle.is_some(),
         "default home feed opens through the ordinary feed-session compiler"
@@ -184,8 +202,8 @@ fn default_home_projection_renders_followed_note_from_cached_contacts() {
     assert!(
         app.registered_typed_projection_keys()
             .iter()
-            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
-        "default home feed registers the typed nmp.feed.home projection"
+            .any(|key| key == &projection.0),
+        "default feed registers the caller-owned typed projection"
     );
 
     let (tx, rx) = channel::<()>();
@@ -196,9 +214,15 @@ fn default_home_projection_renders_followed_note_from_cached_contacts() {
 
     let nsec = alice.secret_key().to_bech32().expect("nsec fixture");
     app.signin_nsec_for_test(nsec, true);
-    wait_for(&rx, "active follows hydrated from cached contacts", || {
+    wait_for(&rx, "active account selected", || {
         app.active_account_handle().lock().unwrap().as_deref() == Some(&alice_pk)
-            && defaults.follow_set.follows().contains(&bob_pk)
+    });
+    assert!(
+        app.inject_signed_event_json_for_test(&alice_kind3.as_json()),
+        "signed active-account kind3 verifies and enters ingest"
+    );
+    wait_for(&rx, "active follows hydrated from stored kind3", || {
+        defaults.follow_set.follows().contains(&bob_pk)
     });
     assert!(
         app.wait_barrier_for_test(Duration::from_secs(5)),
@@ -210,7 +234,7 @@ fn default_home_projection_renders_followed_note_from_cached_contacts() {
         "signed followed-author note verifies and enters ingest"
     );
     wait_for(&rx, "visible default home feed row", || {
-        visible_home_feed_ids(&app) == vec![bob_note_id.clone()]
+        visible_feed_ids(&app, &projection.0) == vec![bob_note_id.clone()]
     });
 
     app.set_update_listener(None);
@@ -222,8 +246,8 @@ fn default_home_projection_renders_followed_note_from_cached_contacts() {
 fn provider_fails_closed_on_empty_kinds() {
     let alice = "a".repeat(64);
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice)));
-    let follow_set =
-        ActiveFollowSet::new(slot.clone(), nmp_core::substrate::empty_contacts_lookup());
+    let (reader, _store) = latest_kind3_reader();
+    let follow_set = ActiveFollowSet::new(slot.clone(), reader);
     let empty: BTreeSet<u32> = BTreeSet::new();
     assert!(live_active_follows_shape(&slot, &follow_set, &empty).is_none());
 }

@@ -84,9 +84,10 @@ mod tests {
     #[test]
     fn observer_delivers_identity_to_sink() {
         let seen: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
-        let observer = account_change_observer_from_sink(Box::new(Arc::clone(&seen)), |seen, id| {
-            seen.lock().unwrap().push(id);
-        });
+        let observer =
+            account_change_observer_from_sink(Box::new(Arc::clone(&seen)), |seen, id| {
+                seen.lock().unwrap().push(id);
+            });
 
         observer(Some("b00b".to_string()));
         observer(None);

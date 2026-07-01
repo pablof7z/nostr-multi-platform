@@ -692,7 +692,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      *
      * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * or a well-known constant like `"app.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
      * already at the oldest page (D6: always succeeds, never panics).
      */
@@ -1352,7 +1352,7 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
      *
      * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a well-known constant like `"nmp.feed.home"`). Returns `true` when the
+     * or a well-known constant like `"app.feed.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
      * already at the oldest page (D6: always succeeds, never panics).
      */
@@ -2054,7 +2054,7 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
 /**
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
- * `projection_key` — the NMPU snapshot key (e.g. `"nmp.feed.home"`) the host
+ * `projection_key` — the NMPU snapshot key (e.g. `"app.feed.home"`) the host
  * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
  * viewport paging commands.
  * `session_id` — the numeric session id; pass it to `close_feed_session` for

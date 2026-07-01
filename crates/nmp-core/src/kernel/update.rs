@@ -126,11 +126,8 @@ impl Kernel {
                 duplicate_events: self.metric_duplicate_events,
                 delete_events: 0,
                 // `metric_stored_events` tracks `events.len()` (an O(1) read on
-                // its own); the profile-cache + contacts-cache terms are O(1)
-                // `len()` calls, so the historical sum is preserved unchanged.
-                stored_events: self.metric_stored_events as usize
-                    + self.profile_lookup().len()
-                    + self.contacts_lookup().len(),
+                // its own); the profile-cache term is also an O(1) `len()` call.
+                stored_events: self.metric_stored_events as usize + self.profile_lookup().len(),
                 tombstones: 0,
                 // Step 3A (#920): feed cluster removed — constant `0` until the
                 // frozen `KernelMetrics` shape migrates.
@@ -168,7 +165,10 @@ impl Kernel {
                 closed_rx: counters.closed_rx,
                 bytes_rx: counters.bytes_rx,
                 bytes_tx: counters.bytes_tx,
-                contacts_authors: self.contacts_lookup().total_follows(),
+                // Frozen wire field; there is no contacts cache read model now.
+                // Kind:3 follow sets are derived from the event store by readers
+                // that need them.
+                contacts_authors: 0,
                 timeline_authors: self.timeline_authors.len(),
                 first_event_ms: self.elapsed_ms(self.timing.first_event_at),
                 target_profile_loaded_ms: self.elapsed_ms(self.timing.target_profile_loaded_at),

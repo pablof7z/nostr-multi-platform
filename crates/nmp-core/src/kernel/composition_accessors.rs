@@ -23,16 +23,6 @@ impl Kernel {
         &*self.profile_lookup
     }
 
-    /// Inject the kind:3 contacts lookup (composition seam, ADR-0057 PR 3).
-    pub(crate) fn set_contacts_lookup(&mut self, lookup: Arc<dyn ContactsLookup>) {
-        self.contacts_lookup = lookup;
-    }
-
-    /// Read accessor for the injected contacts lookup.
-    pub(crate) fn contacts_lookup(&self) -> &dyn ContactsLookup {
-        &*self.contacts_lookup
-    }
-
     /// Inject the blocked-relay lookup used by both routing and publish.
     pub(crate) fn set_blocked_relay_lookup(&mut self, lookup: Arc<dyn BlockedRelayLookup>) {
         self.publish_engine
@@ -120,7 +110,6 @@ impl Kernel {
                 &self.ingest_dispatcher,
             )),
             identity: kernel_ports::IdentityPort(Arc::new(Arc::clone(&self.active_account_handle))),
-            follow: kernel_ports::FollowPort(Arc::clone(&self.contacts_lookup)),
             reference: kernel_ports::ReferencePort::new(),
             pull_cursor: kernel_ports::PullCursorPort(Arc::clone(&self.pull_cursor_registry)),
             ui: kernel_ports::UiPort(Arc::clone(&self.routing_trace)),

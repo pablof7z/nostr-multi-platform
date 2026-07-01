@@ -25,14 +25,11 @@
 //!   ([`Kernel::feed_served_event`]), so the two paths cannot diverge.
 //! - **Projection / relevance** = read-time only. The kernel-owned post-store
 //!   read-cache is gated by the timeline author projection and by active
-//!   generic interests. Profiles (kind:0, ADR-0057 PR 2) AND contacts (kind:3,
-//!   ADR-0057 PR 3) moved out to registered `nmp_nip01::Kind0Parser` /
-//!   `Kind3Parser` writing the capability-owned `ProfileCache` /
-//!   `ContactsCache` — both detected via a before/after cache snapshot exactly
-//!   like the mailbox / DM-relay observers. For contacts the kernel reacts to
-//!   the ACTIVE account's transition by enqueueing a source recompile trigger;
-//!   the reduced feed-source compiler owns author-set expansion and generic
-//!   interest replacement.
+//!   generic interests. Profiles (kind:0) are parser-fed into the profile cache.
+//!   Contacts (kind:3) are store-derived; for the active account the kernel
+//!   reacts to the accepted event by enqueueing a source recompile trigger. The
+//!   reduced feed-source compiler owns author-set expansion and generic interest
+//!   replacement.
 //!   Substrate `MailboxCache` / `DmInboxRelayLookup` transitions are likewise
 //!   detected kind-agnostically by bracketing the chokepoint with before/after
 //!   snapshots (the kernel only knows "this author's mailbox / contacts

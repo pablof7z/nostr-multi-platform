@@ -5,8 +5,8 @@
 //! events of ALL kinds (incl. kind:1 / kind:6 / kind:7 — the #1440 ghost-post
 //! fix, not only the replaceables the deleted `record_local_publish_intent`
 //! ladder covered), the D4 relay-echo dedup (`Duplicate` is projection-silent),
-//! and the kernel-owned post-store caches (profile / contacts) being fed by the
-//! chokepoint. (Migrated + extended from the deleted `local_publish_intent_tests`
+//! and the kernel-owned post-store projections being fed by the chokepoint.
+//! (Migrated + extended from the deleted `local_publish_intent_tests`
 //! when `record_local_publish_intent` / `local_publish_intent.rs` were deleted.)
 
 use super::*;
@@ -93,7 +93,7 @@ fn signed_contact_list(keys: &::nostr::Keys, follow: &str, created_at: u64) -> S
 
 /// V-112 (ADR-0042): `author_view.primary_action` was deleted with the author
 /// view state machine. The underlying property being tested — that publishing a
-/// kind:3 contact list updates `kernel.contacts` — is now observed directly.
+/// kind:3 contact list updates the event store — is now observed directly.
 #[test]
 fn local_kind3_publish_updates_contacts_set() {
     let keys = ::nostr::Keys::generate();
@@ -103,28 +103,23 @@ fn local_kind3_publish_updates_contacts_set() {
     kernel.active_account = Some(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
-    // Before publishing kind:3, FOLLOWED is not in the contacts cache for this
-    // author. ADR-0057 PR 3 — read through the capability-owned `ContactsLookup`.
+    // Before publishing kind:3, FOLLOWED is not in the latest stored kind:3 for
+    // this author.
     assert!(
-        kernel
-            .contacts_lookup()
-            .follows(&author)
+        crate::slots::latest_kind3_follows_from_arc(&kernel.store, &author)
             .map_or(true, |follows| !follows.contains(&FOLLOWED.to_string())),
-        "precondition: FOLLOWED must not be in the contacts cache before publish"
+        "precondition: FOLLOWED must not be in the stored kind:3 before publish"
     );
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 
     assert!(!outbound.is_empty(), "publish should have an outbox target");
-    // After publishing kind:3 with FOLLOWED in the p-tags, the local read-your-
-    // writes path (publish engine → `ingest_accepted_event(LocalPublish)` →
-    // chokepoint → registered kind:3 parser) wrote the contacts cache.
+    // After publishing kind:3 with FOLLOWED in the p-tags, the local
+    // read-your-writes path persists it before projection.
     assert!(
-        kernel
-            .contacts_lookup()
-            .follows(&author)
+        crate::slots::latest_kind3_follows_from_arc(&kernel.store, &author)
             .map_or(false, |follows| follows.contains(&FOLLOWED.to_string())),
-        "FOLLOWED must be in the contacts cache for author after kind:3 publish"
+        "FOLLOWED must be in the stored kind:3 for author after publish"
     );
 }
 

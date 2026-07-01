@@ -104,7 +104,6 @@ pub fn spawn_actor_with_storage_path(
             search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
             dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
             profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
-            contacts_lookup: Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup())),
             blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
             bootstrap_self_kinds: Arc::new(Mutex::new(None)),
             user_agent: Arc::new(Mutex::new(None)),

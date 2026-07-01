@@ -15,7 +15,7 @@
 //! `ActiveFollowSet` is the **producer** of that closure. It owns an
 //! `Arc<RwLock<BTreeSet<String>>>` of raw hex pubkeys for the active account's
 //! follows (plus the active account's own pubkey; see below), hydrates it from
-//! the shared [`ContactsLookup`] on construction/account switch, keeps it
+//! the latest kind:3 in the event store on construction/account switch, keeps it
 //! current by observing kind:3 ingest, and hands out:
 //!
 //! * [`ActiveFollowSet::follows`] — a sorted `Vec<String>` snapshot read.
@@ -38,7 +38,7 @@
 //! dependency graph (`nmp-nip02 → nmp-ffi`). The substrate-clean realization —
 //! mirroring the sibling [`crate::projection::FollowListProjection`] — is to
 //! take the [`ActiveAccountSlot`] (re-exported through `nmp_core::slots`) and
-//! shared [`ContactsLookup`] directly. The composition root registers this
+//! a store-backed latest-kind:3 reader directly. The composition root registers this
 //! struct as a `ObservedProjectionSink` separately, exactly as it already does
 //! for `FollowListProjection`. No new crate edge in either direction (verified:
 //! `cargo tree -p nmp-nip02` carries `nmp-core`, `nostr`, `serde`,
@@ -60,8 +60,8 @@
 //! [`ActiveFollowSet::notify_account_changed`]: the composition root calls it
 //! when the active account changes (rung 6 wires this to the same identity-
 //! change path every other subsystem already uses). It re-reads the slot,
-//! rebuilds the set for the new active account from the canonical contacts
-//! lookup (clearing it entirely on logout, when the slot is `None`), and fires
+//! rebuilds the set for the new active account from the canonical event-store
+//! kind:3 row (clearing it entirely on logout, when the slot is `None`), and fires
 //! `on_change` when that rebuild changes membership. A kind:3 ingest does not
 //! cover logout — there is no logout-triggered kind:3 — so the explicit seam is
 //! required for correctness, not convenience.
@@ -100,21 +100,17 @@
 //! #1497) follow membership but have different internal designs:
 //!
 //! * `ActiveFollowSet` owns a live `Arc<RwLock<BTreeSet<String>>>` that it
-//!   hydrates from the shared `Arc<dyn ContactsLookup>` on construction and
-//!   account change, and rebuilds on each `on_kernel_event` (kind:3). This lets
-//!   sign-in seed contacts written directly into the contacts cache qualify feed
-//!   rows before the user's kind:3 relays back through ingest. It hands out a
-//!   closure predicate that reads the shared set live.
-//! * `FollowListProjection` is a **thin read-model** over the shared
-//!   `Arc<dyn ContactsLookup>` — it holds NO secondary `HashMap` or observer
-//!   state. Its `snapshot()` simply calls
-//!   `contacts_lookup.follows(active_pubkey)` directly, so account-switch
-//!   consistency is automatic: the slot is re-read on every snapshot call, and
-//!   the `ContactsLookup` is the single source of truth written by
-//!   `nmp_nip01::Kind3Parser`. Demand interest (kind:3 acquisition) is driven
-//!   by `register_follow_state_runtime` via `ActorCommand::OpenInterest` /
-//!   `CloseInterest` — no `ObservedProjectionSink` registration is needed for the
-//!   projection itself.
+//!   hydrates from the event store on construction/account change, and rebuilds
+//!   on each `on_kernel_event` (kind:3). It hands out a closure predicate that
+//!   reads the shared set live.
+//! * `FollowListProjection` is a **thin read-model** over the kernel event
+//!   store — it holds NO secondary `HashMap` or observer state. Its
+//!   `snapshot()` reads the active account's latest kind:3 from the store, so
+//!   account-switch consistency is automatic and kind:3 events remain the single
+//!   source of truth. Demand interest (kind:3 acquisition) is driven by
+//!   `register_follow_state_runtime` via `ActorCommand::OpenInterest` /
+//!   `CloseInterest` — no `ObservedProjectionSink` registration is needed for
+//!   the projection itself.
 //! * **D6** — poisoned locks and a `None` active account degrade to an empty
 //!   set / a `false` predicate, never a panic.
 //! * **D8** — `on_kernel_event` does bounded work (one kind check, one lock,
@@ -128,9 +124,11 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::{ContactsLookup, KernelEvent};
+use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::contact_follows;
 use nmp_core::ObservedProjectionSink;
+
+use crate::LatestKind3FollowSet;
 
 /// A registered change callback. Fires on every follow-set transition
 /// (kind:3 update, account switch, logout).
@@ -140,7 +138,7 @@ type ChangeCallback = Box<dyn Fn() + Send + Sync>;
 ///
 /// Construct with [`ActiveFollowSet::new`] passing the kernel's
 /// [`ActiveAccountSlot`] (clone of `Kernel::active_account_handle()`) and the
-/// canonical contacts lookup. The composition root registers the returned
+/// canonical latest-kind:3 reader. The composition root registers the returned
 /// `Arc<Self>` as a [`ObservedProjectionSink`] so kind:3 events are ingested,
 /// and calls [`ActiveFollowSet::notify_account_changed`] on identity change.
 ///
@@ -151,10 +149,9 @@ pub struct ActiveFollowSet {
     /// account switch / logout. `None` means no signed-in account → empty set,
     /// `false` predicate.
     active_pubkey: ActiveAccountSlot,
-    /// Canonical contact-list cache installed by the composition root. This
-    /// hydrates sign-in-prepopulated follows before the active account's kind:3
-    /// relays back through ingest.
-    contacts_lookup: Arc<dyn ContactsLookup>,
+    /// Canonical follow-set source derived from the event store's latest kind:3
+    /// for an author.
+    latest_kind3: LatestKind3FollowSet,
     /// The active account's follow set: raw hex pubkeys plus the active
     /// account's own pubkey (self-inclusion, mirroring `timeline_authors`).
     /// Captured (as an `Arc` clone) by every predicate handed out, so the
@@ -166,7 +163,7 @@ pub struct ActiveFollowSet {
 
 impl ActiveFollowSet {
     /// Construct an `ActiveFollowSet` over the kernel's active-account slot and
-    /// canonical contacts lookup.
+    /// canonical latest-kind:3 reader.
     ///
     /// Returns `Arc<Self>` because the same value is shared three ways: as a
     /// [`ObservedProjectionSink`] in the kernel's observer registry, as the
@@ -179,13 +176,10 @@ impl ActiveFollowSet {
     /// returns `true` for the active account's own pubkey and for any
     /// sign-in-prepopulated follows.
     #[must_use]
-    pub fn new(
-        active_pubkey: ActiveAccountSlot,
-        contacts_lookup: Arc<dyn ContactsLookup>,
-    ) -> Arc<Self> {
+    pub fn new(active_pubkey: ActiveAccountSlot, latest_kind3: LatestKind3FollowSet) -> Arc<Self> {
         let this = Arc::new(Self {
             active_pubkey,
-            contacts_lookup,
+            latest_kind3,
             follows: Arc::new(RwLock::new(BTreeSet::new())),
             on_change: Mutex::new(Vec::new()),
         });
@@ -278,11 +272,11 @@ impl ActiveFollowSet {
     }
 
     /// Build membership for an active account from the canonical contacts
-    /// lookup plus self-inclusion. `None` from the lookup means no cached
-    /// contact list has arrived/preloaded yet, not a failure.
+    /// lookup plus self-inclusion. `None` from the lookup means no contact list
+    /// has arrived yet, not a failure.
     fn follow_set_for_active(&self, active: String) -> BTreeSet<String> {
         let mut rebuilt: BTreeSet<String> = self
-            .contacts_lookup
+            .latest_kind3
             .follows(&active)
             .unwrap_or_default()
             .into_iter()

@@ -326,8 +326,7 @@ pub mod account;
 pub mod sessions;
 
 pub use account::{
-    account_change_observer_from_sink, register_account_change_sink,
-    unregister_account_change_sink,
+    account_change_observer_from_sink, register_account_change_sink, unregister_account_change_sink,
 };
 pub use sessions::{
     close_feed_session, open_feed_session, reopen_feed_session, FeedSessionError, OpenedFeed,

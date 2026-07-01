@@ -3,6 +3,8 @@
 //! Extracted from `kernel/mod.rs` (`impl Kernel`) to honour the 500-LOC ceiling.
 
 use super::*;
+#[cfg(not(any(test, feature = "test-support")))]
+use crate::substrate::empty_profile_lookup;
 
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
@@ -214,12 +216,6 @@ impl Kernel {
         #[cfg(any(test, feature = "test-support"))]
         let test_profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
 
-        // ADR-0057 PR 3 — test / test-support contacts cache (shared between the
-        // `contacts_lookup` reader default and the `test_contacts_cache` writer
-        // handle so in-crate tests can seed + read contact lists).
-        #[cfg(any(test, feature = "test-support"))]
-        let test_contacts_cache = Arc::new(crate::substrate::TestContactsCache::new());
-
         let mut kernel = Self {
             store,
             clock,
@@ -256,15 +252,6 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             pending_backoff_hints: Vec::new(),
-            // ADR-0057 PR 3 — production starts cold (empty lookup); apps inject
-            // `nmp_nip01::ContactsCache` via `set_contacts_lookup`. Test /
-            // test-support builds default to a `TestContactsCache` shared with
-            // `test_contacts_cache` so in-crate tests can seed + read contact
-            // lists without depending on `nmp-nip01`.
-            #[cfg(not(any(test, feature = "test-support")))]
-            contacts_lookup: empty_contacts_lookup(),
-            #[cfg(any(test, feature = "test-support"))]
-            contacts_lookup: Arc::clone(&test_contacts_cache) as Arc<dyn ContactsLookup>,
             #[cfg(any(test, feature = "test-support"))]
             mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
             #[cfg(not(any(test, feature = "test-support")))]
@@ -281,8 +268,6 @@ impl Kernel {
             test_dm_inbox_cache: None,
             #[cfg(any(test, feature = "test-support"))]
             test_profile_cache,
-            #[cfg(any(test, feature = "test-support"))]
-            test_contacts_cache,
             timeline_authors: BTreeSet::new(),
             dependent_interest_sets: BTreeMap::new(),
             profile_claims: HashMap::new(),
@@ -390,21 +375,6 @@ impl Kernel {
                 crate::substrate::TestKind0Parser::new(Arc::clone(&kernel.test_profile_cache)),
             );
             kernel.register_ingest_parser(0, parser);
-        }
-        // ADR-0057 PR 3 — in test / test-support builds, register a kind:3
-        // parser writing the shared `TestContactsCache` on the kernel's own
-        // dispatcher. This makes the real chokepoint path (`verify_and_persist`
-        // → `EventIngestDispatcher` → parser → the kernel's contacts-transition
-        // effect signal) write the contacts cache exactly as production does
-        // (where `nmp_substrate::install` registers
-        // `nmp_nip01::Kind3Parser`), so read-your-writes for a locally published
-        // kind:3 works in-crate without depending on `nmp-nip01`.
-        #[cfg(any(test, feature = "test-support"))]
-        {
-            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
-                crate::substrate::TestKind3Parser::new(Arc::clone(&kernel.test_contacts_cache)),
-            );
-            kernel.register_ingest_parser(3, parser);
         }
         kernel
     }

@@ -108,7 +108,7 @@ impl NmpApp {
     ///
     /// CALLER CONTRACT — this is **destructive on any key** that has a live
     /// `FeedController` / projection, including the permanent home-feed key
-    /// (`nmp.feed.home`): calling it there WOULD drop the home feed's controller
+    /// (`app.feed.home`): calling it there WOULD drop the home feed's controller
     /// and projection. It is "safe" only in the sense that it never panics, not
     /// that it preserves the feed.
     ///

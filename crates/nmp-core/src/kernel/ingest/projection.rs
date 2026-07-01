@@ -37,9 +37,6 @@ impl Kernel {
         let mailbox_before = self.mailbox_cache().snapshot(&author);
         let dm_before = self.recipient_dm_relays(&author);
         let profile_before = self.profile_lookup().profile(&author);
-        // ADR-0057 PR 3 — snapshot the contacts cache for the author (ANY author,
-        // like the profile snapshot above).
-        let contacts_before = self.contacts_lookup().follows(&author);
         // GAP-3: snapshot the active account's blocked-relay set BEFORE dispatch
         // so we can detect a kind:10006 write and enqueue a recompile.
         let blocked_before_urls: std::collections::BTreeSet<String> =
@@ -77,13 +74,11 @@ impl Kernel {
         if dm_before != dm_after {
             self.on_dm_relays_changed(&author, created_at_for_trigger);
         }
-        let contacts_after = self.contacts_lookup().follows(&author);
-        if contacts_before != contacts_after {
-            self.cached_estimated_store_bytes.set(None);
-            if self.active_account.as_deref() == Some(author.as_str()) {
-                let follows = contacts_after.unwrap_or_default();
-                self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
-            }
+        if raw.kind == crate::kinds::KIND_CONTACT_LIST
+            && self.active_account.as_deref() == Some(author.as_str())
+        {
+            let follows = crate::tags::contact_follows(&raw.tags);
+            self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
         }
         // GAP-3: detect blocked-relay-set change. Kind:10006 is the wire shape,
         // but the transition detector is kind-agnostic (mirrors the contacts

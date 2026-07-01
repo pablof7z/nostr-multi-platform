@@ -8,7 +8,7 @@
 //! exactly as the composition root will at rung 6.
 
 use super::*;
-use nmp_core::substrate::{ContactsLookup, ContactsView, TestContactsCache};
+use crate::latest_kind3::tests_support::{insert_kind3, reader_with_store};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 // Valid-looking 64-hex pubkeys, all distinct.
@@ -21,23 +21,12 @@ fn slot(active: Option<&str>) -> ActiveAccountSlot {
     Arc::new(Mutex::new(active.map(str::to_string)))
 }
 
-fn empty_contacts() -> Arc<dyn ContactsLookup> {
-    nmp_core::substrate::empty_contacts_lookup()
+fn empty_follow_reader() -> LatestKind3FollowSet {
+    reader_with_store().0
 }
 
 fn active_set(active: Option<&str>) -> Arc<ActiveFollowSet> {
-    ActiveFollowSet::new(slot(active), empty_contacts())
-}
-
-fn upsert_contacts(cache: &TestContactsCache, owner: &str, follows: &[&str]) {
-    cache.upsert_view(
-        owner,
-        ContactsView {
-            event_id: owner.to_string(),
-            created_at: 100,
-            follows: follows.iter().map(|pk| (*pk).to_string()).collect(),
-        },
-    );
+    ActiveFollowSet::new(slot(active), empty_follow_reader())
 }
 
 /// Build a kind:3 contact-list event authored by `author` with the given
@@ -131,12 +120,11 @@ fn non_kind3_event_is_ignored() {
 }
 
 #[test]
-fn cached_contacts_are_hydrated_before_kind3_ingest() {
-    let cache = Arc::new(TestContactsCache::new());
-    upsert_contacts(&cache, ALICE, &[BOB, CAROL]);
-    let lookup: Arc<dyn ContactsLookup> = cache.clone();
+fn stored_contacts_are_hydrated_before_kind3_ingest() {
+    let (reader, store) = reader_with_store();
+    insert_kind3(&store, ALICE, "alice-kind3", 100, &[BOB, CAROL]);
 
-    let set = ActiveFollowSet::new(slot(Some(ALICE)), lookup);
+    let set = ActiveFollowSet::new(slot(Some(ALICE)), reader);
 
     let follows = set.follows();
     assert!(follows.contains(&ALICE.to_string()), "self is included");
@@ -184,7 +172,7 @@ fn predicate_reflects_live_updates() {
 #[test]
 fn account_switch_rebuilds_set_and_fires_on_change() {
     let slot = slot(Some(ALICE));
-    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_contacts());
+    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
     set.on_kernel_event(&kind3(ALICE, &[BOB, CAROL]));
     assert_eq!(set.follows().len(), 3);
 
@@ -218,15 +206,14 @@ fn account_switch_rebuilds_set_and_fires_on_change() {
 }
 
 #[test]
-fn account_switch_hydrates_cached_contacts_for_new_account() {
-    let cache = Arc::new(TestContactsCache::new());
-    upsert_contacts(&cache, ALICE, &[BOB]);
-    upsert_contacts(&cache, DAVE, &[CAROL]);
-    let lookup: Arc<dyn ContactsLookup> = cache.clone();
+fn account_switch_hydrates_stored_contacts_for_new_account() {
+    let (reader, store) = reader_with_store();
+    insert_kind3(&store, ALICE, "alice-kind3", 100, &[BOB]);
+    insert_kind3(&store, DAVE, "dave-kind3", 100, &[CAROL]);
 
     let slot = slot(Some(ALICE));
-    let set = ActiveFollowSet::new(Arc::clone(&slot), lookup);
-    assert!(set.predicate()(BOB), "initial cached follow is loaded");
+    let set = ActiveFollowSet::new(Arc::clone(&slot), reader);
+    assert!(set.predicate()(BOB), "initial stored follow is loaded");
 
     *slot.lock().unwrap() = Some(DAVE.to_string());
     set.notify_account_changed();
@@ -235,7 +222,7 @@ fn account_switch_hydrates_cached_contacts_for_new_account() {
     assert!(!pred(ALICE), "prior account's self-entry is cleared");
     assert!(!pred(BOB), "prior account's cached follows are cleared");
     assert!(pred(DAVE), "new active account is self-included");
-    assert!(pred(CAROL), "new account's cached follows are loaded");
+    assert!(pred(CAROL), "new account's stored follows are loaded");
 }
 
 // ─── logout clears the set ───────────────────────────────────────────────────
@@ -243,7 +230,7 @@ fn account_switch_hydrates_cached_contacts_for_new_account() {
 #[test]
 fn logout_clears_set_and_fires_on_change() {
     let slot = slot(Some(ALICE));
-    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_contacts());
+    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
     set.on_kernel_event(&kind3(ALICE, &[BOB, CAROL]));
     assert_eq!(set.follows().len(), 3);
 
@@ -272,7 +259,7 @@ fn logout_clears_set_and_fires_on_change() {
 #[test]
 fn on_change_fires_on_each_change() {
     let slot = slot(Some(ALICE));
-    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_contacts());
+    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
 
     let fired = Arc::new(AtomicUsize::new(0));
     let fired_cb = Arc::clone(&fired);
@@ -323,12 +310,11 @@ fn unchanged_kind3_echo_does_not_fire_on_change() {
 
 #[test]
 fn unchanged_account_notification_does_not_fire_on_change() {
-    let cache = Arc::new(TestContactsCache::new());
-    upsert_contacts(&cache, ALICE, &[BOB]);
-    let lookup: Arc<dyn ContactsLookup> = cache.clone();
+    let (reader, store) = reader_with_store();
+    insert_kind3(&store, ALICE, "alice-kind3", 100, &[BOB]);
 
     let slot = slot(Some(ALICE));
-    let set = ActiveFollowSet::new(Arc::clone(&slot), lookup);
+    let set = ActiveFollowSet::new(Arc::clone(&slot), reader);
     assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
 
     let fired = Arc::new(AtomicUsize::new(0));
@@ -341,7 +327,7 @@ fn unchanged_account_notification_does_not_fire_on_change() {
     assert_eq!(
         fired.load(Ordering::SeqCst),
         0,
-        "same account and same cached follows are not a membership transition"
+        "same account and same stored follows are not a membership transition"
     );
 }
 
