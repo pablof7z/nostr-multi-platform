@@ -11,8 +11,8 @@ use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::resolve::{not_supported, resolve_scope};
 use super::source::{
-    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook,
-    SourceEffectHook,
+    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource,
+    SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -57,33 +57,21 @@ pub(super) fn resolve_pointer_targets(
     let live_shape = target_live_shape(&model, primary_kinds);
     let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
-    let mut reset_hooks = Vec::new();
-    for hook in pointer_source.reset_hooks {
+    let mut reactivity_hooks = Vec::new();
+    for hook in pointer_source.reactivity_hooks {
         let model = Arc::clone(&model);
         let pointer_dynamic = pointer_dynamic.clone();
-        reset_hooks.push(Box::new(move |reset: Arc<dyn Fn() + Send + Sync>| {
-            hook(Arc::new(move || {
-                lock(&model).clear();
-                pointer_dynamic.sync();
-                reset();
-            }));
-        }) as ResetHook);
-    }
-    reset_hooks.push(Box::new(move |reset| {
-        *lock(&reset_slot) = Some(reset);
-    }));
-    let mut source_effect_hooks = Vec::new();
-    for hook in pointer_source.source_effect_hooks {
-        let model = Arc::clone(&model);
-        let pointer_dynamic = pointer_dynamic.clone();
-        source_effect_hooks.push(Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
+        reactivity_hooks.push(Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
             hook(Arc::new(move || {
                 lock(&model).clear();
                 pointer_dynamic.sync();
                 trigger();
             }));
-        }) as SourceEffectHook);
+        }) as SessionReactivityHook);
     }
+    reactivity_hooks.push(Box::new(move |trigger| {
+        *lock(&reset_slot) = Some(trigger);
+    }));
 
     let extra_acquisition =
         pointer_target_extra_acquisition(pointer_source.extra_acquisition, &model, primary_kinds);
@@ -97,8 +85,7 @@ pub(super) fn resolve_pointer_targets(
         live_shapes,
         observer_scope: nmp_planner::InterestScope::Global,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids: pointer_source.resolver_observer_ids,
         identity_observer_ids: pointer_source.identity_observer_ids,
         resolver_teardown: {

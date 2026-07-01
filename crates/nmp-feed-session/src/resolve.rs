@@ -14,12 +14,10 @@
 //!   not just reply attribution.
 //! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
-//! * `reset_hooks` — closures that install a window-reset on reactive
-//!   projection sources without a graph source-effect owner.
-//! * `source_effect_hooks` — graph-proven source changes that drive the same
-//!   acquisition replacement and reset path. `ActiveUserFollows` and ordinary
-//!   `ListMembers` use this lane. Hosted-group feeds use the same lane,
-//!   expanding one source into per-host relay-pinned group interests.
+//! * `reactivity_hooks` — closures that install the session's Trellis-backed
+//!   acquisition replacement and reset/rebaseline path on source-change
+//!   signals. `ActiveUserFollows`, ordinary `ListMembers`, and session-local
+//!   observer sources all use this one lane.
 //!
 //! Deferred / fail-closed (typed `ScopeNotSupportedYet`, no registration):
 //! * `RelaySet` — no framework relay-set-id resolver exists; relay-pinned
@@ -40,7 +38,7 @@ use nmp_planner::InterestShape;
 
 use super::source::{
     one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
-    ReducedSource, ResetHook, SourceEffectHook,
+    ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 use super::wot_graph::SessionWotGraph;
@@ -194,11 +192,11 @@ fn resolve_active_follow_set(
     let interests = Vec::new();
     let extra_acquisition =
         active_contact_list_extra_acquisition(app.active_account_handle(), &live_shape);
-    let source_effect_hooks = {
+    let reactivity_hooks = {
         let follow_set = Arc::clone(&follow_set);
         vec![Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
             follow_set.on_source_effect(Box::new(move |_| trigger()));
-        }) as SourceEffectHook]
+        }) as SessionReactivityHook]
     };
 
     Ok(ReducedSource {
@@ -210,8 +208,7 @@ fn resolve_active_follow_set(
         live_shape,
         live_shapes,
         observer_scope: nmp_planner::InterestScope::ActiveAccount,
-        reset_hooks: Vec::new(),
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
@@ -305,8 +302,8 @@ fn resolve_wot(
     };
 
     let reset_graph = Arc::clone(&graph);
-    let reset_hook: ResetHook = Box::new(move |reset| {
-        reset_graph.on_change(Box::new(move || reset()));
+    let reactivity_hook: SessionReactivityHook = Box::new(move |trigger| {
+        reset_graph.on_change(Box::new(move || trigger()));
     });
 
     Ok(ReducedSource {
@@ -318,8 +315,7 @@ fn resolve_wot(
         live_shapes,
         observer_scope: nmp_planner::InterestScope::ActiveAccount,
         extra_acquisition,
-        reset_hooks: vec![reset_hook],
-        source_effect_hooks: Vec::new(),
+        reactivity_hooks: vec![reactivity_hook],
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),

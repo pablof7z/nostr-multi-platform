@@ -182,7 +182,7 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
     );
 
     // Acquisition: ONE fixed author+kind interest, Global scope. No reactive
-    // observers / reset hooks / extra acquisition (the set is static).
+    // observers / hooks / extra acquisition (the set is static).
     assert_eq!(
         resolved.interests.len(),
         1,
@@ -201,8 +201,8 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
     );
     assert_eq!(shape.kinds, kinds, "acquires exactly the compiled kinds");
     assert!(
-        resolved.resolver_observer_ids.is_empty() && resolved.reset_hooks.is_empty(),
-        "a static author set installs no reactive observers/reset hooks"
+        resolved.resolver_observer_ids.is_empty() && resolved.reactivity_hooks.is_empty(),
+        "a static author set installs no reactive observers/hooks"
     );
 
     // The live (pull-pager) shape mirrors the fixed acquisition.

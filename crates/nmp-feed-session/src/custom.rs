@@ -157,7 +157,7 @@ pub(super) fn apply_custom_admission(
 /// * admission: AND the two LIVE predicates (admit iff BOTH admit);
 /// * acquisition: KEEP the gate's interests/live_shape/extra so its predicate
 ///   goes live (its dependency events get fetched);
-/// * reactivity/teardown: both sides' reset hooks + observers flow up.
+/// * reactivity/teardown: both sides' source-change hooks + observers flow up.
 pub(super) fn combine_admission_gate(
     acquisition: ReducedSource,
     gate: ReducedSource,
@@ -171,8 +171,7 @@ pub(super) fn combine_admission_gate(
         live_shapes: acq_live_shapes,
         observer_scope: acq_observer_scope,
         extra_acquisition: acq_extra,
-        mut reset_hooks,
-        mut source_effect_hooks,
+        mut reactivity_hooks,
         mut resolver_observer_ids,
         mut identity_observer_ids,
         mut resolver_teardown,
@@ -223,8 +222,7 @@ pub(super) fn combine_admission_gate(
 
     // Both sides stay reactive + are torn down (the gate must track changes so
     // its exclusion follows the live list/graph).
-    reset_hooks.extend(gate.reset_hooks);
-    source_effect_hooks.extend(gate.source_effect_hooks);
+    reactivity_hooks.extend(gate.reactivity_hooks);
     resolver_observer_ids.extend(gate.resolver_observer_ids);
     identity_observer_ids.extend(gate.identity_observer_ids);
     resolver_teardown.extend(gate.resolver_teardown);
@@ -238,8 +236,7 @@ pub(super) fn combine_admission_gate(
         live_shapes,
         observer_scope,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
@@ -347,8 +344,7 @@ mod tests {
             live_shapes: Arc::new(Vec::new),
             observer_scope: InterestScope::ActiveAccount,
             extra_acquisition: Arc::new(Vec::new),
-            reset_hooks: Vec::new(),
-            source_effect_hooks: Vec::new(),
+            reactivity_hooks: Vec::new(),
             resolver_observer_ids: Vec::new(),
             identity_observer_ids: Vec::new(),
             resolver_teardown: Vec::new(),

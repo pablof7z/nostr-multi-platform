@@ -26,8 +26,7 @@ pub(super) fn build_flat_scope_session(
         live_shapes,
         observer_scope,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
@@ -97,33 +96,19 @@ pub(super) fn build_flat_scope_session(
     acquisition_adapter.rebaseline_output_if_changed(replayed_ids && !replayed_tail);
 
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
-    for hook in reset_hooks {
+    for hook in reactivity_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
             acquisition_adapter.rebaseline_output_if_changed(reset || replayed);
         });
-        hook(reset_trigger);
-    }
-    for hook in source_effect_hooks {
-        let controller_for_reset = controller.clone();
-        let extra = extra_acquisition.clone();
-        let acquisition_adapter = acquisition_adapter.clone();
-        let sync_observer = engine_observer.clone();
-        let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            sync_observer.sync();
-            acquisition_adapter.sync(&extra, "feed-session-acquisition");
-            let reset = controller_for_reset.reset();
-            let replayed = controller_for_reset.load_older();
-            acquisition_adapter.rebaseline_output_if_changed(reset || replayed);
-        });
-        hook(source_effect_trigger);
+        hook(trigger);
     }
 
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();

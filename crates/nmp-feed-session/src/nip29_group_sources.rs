@@ -9,7 +9,7 @@ use nmp_planner::InterestShape;
 
 use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, LiveShapes, OpSessionIdentity, ReducedSource,
-    SourceEffectHook,
+    SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -75,11 +75,11 @@ pub(super) fn resolve_active_simple_groups(
         Arc::new(move || live_shapes().into_iter().next())
     };
 
-    let source_effect_hooks = {
+    let reactivity_hooks = {
         let projection = Arc::clone(&projection);
         vec![Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
             projection.on_source_effect(Box::new(move |_| trigger()));
-        }) as SourceEffectHook]
+        }) as SessionReactivityHook]
     };
     let extra_acquisition =
         active_simple_groups_extra_acquisition(app.active_account_handle(), &projection, kinds);
@@ -93,8 +93,7 @@ pub(super) fn resolve_active_simple_groups(
         live_shapes,
         observer_scope: nmp_planner::InterestScope::Global,
         extra_acquisition,
-        reset_hooks: Vec::new(),
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],

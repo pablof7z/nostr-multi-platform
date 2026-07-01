@@ -94,8 +94,7 @@ fn build_op_scope_session(
         live_shapes,
         observer_scope,
         extra_acquisition,
-        reset_hooks,
-        source_effect_hooks,
+        reactivity_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
@@ -234,33 +233,19 @@ fn build_op_scope_session(
         FeedSessionTrellisAdapter::new(key, FeedRender::OpCentric, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
 
-    // Wire each projection-set change to re-sync acquisition for the new
-    // members, then reset the window/cursor. Graph-backed sources use the
-    // source-effect hook path below.
-    for hook in reset_hooks {
+    // Wire each source change to re-sync observed delivery/acquisition for the
+    // new members, then reset the window/cursor.
+    for hook in reactivity_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+        let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
             acquisition_adapter.rebaseline_output_if_changed(controller_for_reset.reset());
         });
-        hook(reset_trigger);
-    }
-
-    for hook in source_effect_hooks {
-        let controller_for_reset = controller.clone();
-        let extra = extra_acquisition.clone();
-        let acquisition_adapter = acquisition_adapter.clone();
-        let sync_observer = engine_observer.clone();
-        let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            sync_observer.sync();
-            acquisition_adapter.sync(&extra, "feed-session-acquisition");
-            acquisition_adapter.rebaseline_output_if_changed(controller_for_reset.reset());
-        });
-        hook(source_effect_trigger);
+        hook(trigger);
     }
 
     // ── 6. Teardown recipe (registration order = reverse of execution) ───
