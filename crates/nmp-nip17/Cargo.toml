@@ -6,6 +6,9 @@ license = { workspace = true }
 repository.workspace = true
 description = "NIP-17 private direct messages — kind:14 chat-message rumor builder. The gift-wrap (NIP-59) happens on the actor thread; this crate is a pure rumor builder."
 
+[features]
+test-support = []
+
 [dependencies]
 nmp-ownership = { workspace = true }
 # `nmp-core` supplies the substrate `UnsignedEvent` type — the same flat

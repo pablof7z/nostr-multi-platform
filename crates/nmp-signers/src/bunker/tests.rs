@@ -164,6 +164,22 @@ fn round_trips_via_display() {
 }
 
 #[test]
+fn debug_redacts_secret_and_extra_values() {
+    let uri = format!(
+        "bunker://{PK}?relay=wss://r.example&secret=secret-token&wallet_secret=extra-secret"
+    );
+    let parsed = parse_bunker_uri(&uri).unwrap();
+    let s = format!("{parsed:?}");
+    assert!(s.contains("BunkerUri"));
+    assert!(s.contains(PK));
+    assert!(s.contains("wss://r.example"));
+    assert!(s.contains("wallet_secret"));
+    assert!(!s.contains("secret-token"));
+    assert!(!s.contains("extra-secret"));
+    assert!(s.contains("[redacted]"));
+}
+
+#[test]
 fn normalises_pubkey_to_lowercase() {
     let upper_pk: String = PK.chars().map(|c| c.to_ascii_uppercase()).collect();
     let uri = format!("bunker://{upper_pk}?relay=wss://r.example");

@@ -155,8 +155,8 @@ fn nip46_rpc_clones_independently() {
 
 #[test]
 fn nip46_rpc_debug_does_not_panic_on_empty_fields() {
-    // Defensive: `Debug` is auto-derived but the type is held in user-facing
-    // diagnostics and tests; an empty-field instance must format without panic.
+    // Defensive: the type is held in user-facing diagnostics and tests; an
+    // empty-field instance must format without panic.
     let empty = Nip46Rpc {
         id: String::new(),
         body_json: String::new(),
@@ -166,4 +166,23 @@ fn nip46_rpc_debug_does_not_panic_on_empty_fields() {
     };
     let s = format!("{empty:?}");
     assert!(s.contains("Nip46Rpc"));
+}
+
+#[test]
+fn nip46_rpc_debug_redacts_secret_bearing_bodies() {
+    let rpc = Nip46Rpc {
+        id: "rpc-secret-id".into(),
+        body_json: r#"{"id":"rpc-secret-id","method":"nmp_nip44_decrypt_batch","params":[{"session_id":"session-secret","items":[{"ciphertext":"cipher-secret"}]}]}"#.into(),
+        body_json_to_encrypt: r#"{"method":"nmp_nip44_decrypt_batch","marker":"raw-body-secret"}"#.into(),
+        relays: vec!["wss://relay.example".into()],
+        remote_pubkey_hex: "aa".repeat(32),
+    };
+
+    let s = format!("{rpc:?}");
+    assert!(s.contains("Nip46Rpc"));
+    assert!(s.contains("rpc-secret-id"));
+    assert!(!s.contains("session-secret"));
+    assert!(!s.contains("cipher-secret"));
+    assert!(!s.contains("raw-body-secret"));
+    assert!(s.contains("[redacted]"));
 }

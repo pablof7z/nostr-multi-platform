@@ -8,10 +8,12 @@
 //! `Arc<dyn Nip46Transport>` for the signer broker without taking a
 //! dependency on `nmp-signers` (doctrine **D0**).
 
+use std::fmt;
+
 use crate::error::SignerError;
 
 /// Outbound RPC the signer needs the kernel to perform.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Nip46Rpc {
     /// Request id (echoed in the response).
     pub id: String,
@@ -24,6 +26,18 @@ pub struct Nip46Rpc {
     pub relays: Vec<String>,
     /// Remote pubkey to address the kind:24133 event to (in a `p` tag).
     pub remote_pubkey_hex: String,
+}
+
+impl fmt::Debug for Nip46Rpc {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Nip46Rpc")
+            .field("id", &self.id)
+            .field("body_json", &"[redacted]")
+            .field("body_json_to_encrypt", &"[redacted]")
+            .field("relays", &self.relays)
+            .field("remote_pubkey_hex", &self.remote_pubkey_hex)
+            .finish()
+    }
 }
 
 /// The transport contract.  The production kernel implements this; tests can

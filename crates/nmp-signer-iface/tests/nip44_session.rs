@@ -117,6 +117,14 @@ fn batch_result_allows_plaintext_or_per_item_error() {
 
 #[test]
 fn debug_redacts_secret_bearing_fields() {
+    let grant = Nip44DecryptSessionGrant {
+        session_id: "session-secret".to_string(),
+        max_batch_items: 128,
+        expires_at: 1_800_000_000,
+    };
+    let s = format!("{grant:?}");
+    assert!(!s.contains("session-secret"));
+
     let request = Nip44DecryptBatchRequest {
         session_id: "session-secret".to_string(),
         items: vec![Nip44DecryptBatchItem {
@@ -138,6 +146,12 @@ fn debug_redacts_secret_bearing_fields() {
     };
     let s = format!("{result:?}");
     assert!(!s.contains("plain-secret"));
+
+    let end = Nip44DecryptSessionEndRequest {
+        session_id: "session-secret".to_string(),
+    };
+    let s = format!("{end:?}");
+    assert!(!s.contains("session-secret"));
 }
 
 #[test]

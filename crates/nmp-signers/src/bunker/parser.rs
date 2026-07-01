@@ -11,7 +11,7 @@ use zeroize::Zeroizing;
 pub const MAX_BUNKER_URI_LEN: usize = 4 * 1024;
 
 /// Parsed `bunker://` URI.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct BunkerUri {
     /// Remote signer pubkey, lowercase hex (64 chars).
     pub remote_pubkey_hex: String,
@@ -27,6 +27,21 @@ pub struct BunkerUri {
     pub permissions: Option<String>,
     /// Unknown query params preserved for round-trip.
     pub extra: Vec<(String, String)>,
+}
+
+impl fmt::Debug for BunkerUri {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BunkerUri")
+            .field("remote_pubkey_hex", &self.remote_pubkey_hex)
+            .field("relays", &self.relays)
+            .field("secret", &self.secret.as_ref().map(|_| "[redacted]"))
+            .field("permissions", &self.permissions)
+            .field(
+                "extra_keys",
+                &self.extra.iter().map(|(key, _)| key).collect::<Vec<_>>(),
+            )
+            .finish()
+    }
 }
 
 /// Errors returned by [`parse_bunker_uri`].
