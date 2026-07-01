@@ -14,22 +14,16 @@
 //!   exactly one kernel session per process lifetime (ADR-0063 / #1671 —
 //!   row-delta batches must accumulate across frames).
 //!
-//! # URI-adapter symbols (still JNI — UniFFI NmpApp takes raw keys, not URIs)
+//! # URI-adapter symbols
 //!
-//! * [`nativeResolveEventRef`] — decodes a `nostr:` URI, calls
-//!   `resolve_ref_with_metadata` on the inner NmpApp.
-//! * [`nativeReleaseEvent`] — decodes a `nostr:` URI key, calls
-//!   `release_ref` on the inner NmpApp.
-//!
-//! Both URI adapter symbols accept an `arcPtr: Long` (a Kotlin
-//! `Pointer.nativeValue(app.uniffiClonePointer())` result) so they operate
-//! directly on the caller-owned UniFFI Arc — no process-global app pointer.
+//! * [`nativeEventRefFromUri`] — decodes a `nostr:` URI into the raw event key
+//!   plus resolver metadata JSON. Kotlin then calls the typed UniFFI
+//!   `resolveEventEmbedWithMetadata` / `releaseEventRef` methods.
 
-use std::ffi::{CStr, CString};
 use std::sync::{Mutex, OnceLock};
 
 use jni::objects::{JByteArray, JClass, JString};
-use jni::sys::{jlong, jstring};
+use jni::sys::jstring;
 use jni::JNIEnv;
 
 // ── Process-global ref-stores (nativeDecodeSnapshotJson) ─────────────────
@@ -42,87 +36,9 @@ fn get_ref_stores() -> &'static Mutex<crate::GalleryRefStores> {
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-fn jstring_to_cstring(env: &mut JNIEnv, value: &JString) -> Option<CString> {
+fn jstring_to_string(env: &mut JNIEnv, value: &JString) -> Option<String> {
     let s = env.get_string(value).ok()?;
-    CString::new(s.to_string_lossy().into_owned()).ok()
-}
-
-struct EventRefFromUri {
-    key: CString,
-    metadata_json: CString,
-}
-
-/// Decode a `nostr:` URI or bare NIP-19 entity into a raw event key plus
-/// resolver metadata JSON. D6: non-event URIs or decode failures return `None`.
-fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
-    let uri_str = uri.to_str().ok()?;
-    let (key, relays, author, kind_u64) = if uri_str.starts_with("nostr:") {
-        match nmp_nostr_id::parse_nostr_uri(uri_str).ok()? {
-            nmp_nostr_id::NostrUri::Event {
-                event_id,
-                relays,
-                author,
-                kind,
-            } => (event_id, relays, author, kind.map(|k| k as u64)),
-            nmp_nostr_id::NostrUri::Address {
-                identifier,
-                pubkey,
-                kind,
-                relays,
-            } => (
-                format!("{kind}:{pubkey}:{identifier}"),
-                relays,
-                None,
-                Some(kind as u64),
-            ),
-            _ => return None,
-        }
-    } else {
-        match nmp_nostr_id::parse(uri_str).ok()? {
-            nmp_nostr_id::Nip19Entity::Note(event_id) => (event_id, vec![], None, None),
-            nmp_nostr_id::Nip19Entity::Nevent(d) => {
-                (d.event_id, d.relays, d.author, d.kind.map(|k| k as u64))
-            }
-            nmp_nostr_id::Nip19Entity::Naddr(d) => (
-                format!("{}:{}:{}", d.kind, d.pubkey, d.identifier),
-                d.relays,
-                None,
-                Some(d.kind as u64),
-            ),
-            _ => return None,
-        }
-    };
-    let mut metadata = serde_json::json!({ "hints": relays });
-    if let Some(a) = author {
-        metadata["author"] = serde_json::Value::String(a);
-    }
-    if let Some(k) = kind_u64 {
-        metadata["kind"] = serde_json::Value::Number(k.into());
-    }
-    Some(EventRefFromUri {
-        key: CString::new(key).ok()?,
-        metadata_json: CString::new(metadata.to_string()).ok()?,
-    })
-}
-
-/// Parse ref-resolve metadata JSON into `RefResolveMetadata`.
-fn parse_ref_metadata(json: &str) -> nmp_core::RefResolveMetadata {
-    serde_json::from_str::<serde_json::Value>(json)
-        .ok()
-        .and_then(|v| {
-            let hints = v
-                .get("hints")?
-                .as_array()?
-                .iter()
-                .filter_map(|r| r.as_str().map(str::to_owned))
-                .collect();
-            let event_author = v.get("author").and_then(|a| a.as_str()).map(str::to_owned);
-            Some(nmp_core::RefResolveMetadata {
-                hints,
-                event_author,
-            })
-        })
-        .unwrap_or_default()
+    Some(s.to_string_lossy().into_owned())
 }
 
 // ── Gallery-owned JNI symbols ────────────────────────────────────────────
@@ -184,81 +100,31 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnap
 
 // ── URI-adapter symbols ───────────────────────────────────────────────────
 
-/// Decode a `nostr:` URI and resolve the event embed with relay metadata.
+/// Decode a `nostr:` URI into a raw event key and resolver metadata JSON.
 ///
-/// `arc_ptr` is a `Pointer.nativeValue(app.uniffiClonePointer())` result from
-/// Kotlin. `Arc::from_raw` takes ownership of the clone; the Arc drops at the
-/// end of the function, decrementing the refcount back to the caller's 1.
-///
-/// D6: a zero `arc_ptr`, unparseable URI, or any JNI failure is a silent no-op.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
+/// D6: unparseable URI or JNI failure returns null. Kotlin owns the app-facing
+/// resolve/release calls through typed UniFFI methods.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeEventRefFromUri(
     mut env: JNIEnv,
     _class: JClass,
-    arc_ptr: jlong,
     uri: JString,
-    consumer_id: JString,
-) {
-    if arc_ptr == 0 {
-        return;
+) -> jstring {
+    let null = std::ptr::null_mut();
+    let Some(uri) = jstring_to_string(&mut env, &uri) else {
+        return null;
+    };
+    let Some(event_ref) = crate::event_ref_uri::event_ref_from_uri(&uri) else {
+        return null;
+    };
+    let Ok(json) = serde_json::to_string(&serde_json::json!({
+        "key": event_ref.key,
+        "metadata_json": event_ref.metadata_json,
+    })) else {
+        return null;
+    };
+    match env.new_string(json) {
+        Ok(js) => js.into_raw(),
+        Err(_) => null,
     }
-    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else {
-        return;
-    };
-    let Some(consumer_id_cstr) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
-        return;
-    };
-    // SAFETY: arc_ptr is a uniffiClonePointer() result (refcount bumped by 1).
-    // Arc::from_raw takes ownership; drops at end decrement refcount to caller's 1.
-    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
-    let metadata_str = event_ref.metadata_json.to_string_lossy();
-    let metadata = parse_ref_metadata(&metadata_str);
-    arc.inner.resolve_ref_with_metadata(
-        nmp_core::RefNamespace::Event,
-        event_ref.key.to_string_lossy().into_owned(),
-        consumer_id_cstr.to_string_lossy().into_owned(),
-        nmp_core::RefShape::Event(nmp_core::EventShape::Embed),
-        nmp_core::RefLiveness::CacheOk,
-        metadata,
-    );
-    // arc drops here → refcount decremented back to caller's 1
-}
-
-/// Decode a `nostr:` URI and release the event ref.
-///
-/// Same Arc ownership contract as [`Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveEventRef`].
-/// D6: zero `arc_ptr`, bad URI, or JNI failure is a silent no-op.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(
-    mut env: JNIEnv,
-    _class: JClass,
-    arc_ptr: jlong,
-    uri: JString,
-    consumer_id: JString,
-) {
-    if arc_ptr == 0 {
-        return;
-    }
-    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else {
-        return;
-    };
-    let Some(consumer_id_cstr) = jstring_to_cstring(&mut env, &consumer_id) else {
-        return;
-    };
-    let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
-        return;
-    };
-    // SAFETY: same as nativeResolveEventRef — uniffiClonePointer() result.
-    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
-    arc.inner.release_ref(
-        nmp_core::RefNamespace::Event,
-        event_ref.key.to_string_lossy().into_owned(),
-        consumer_id_cstr.to_string_lossy().into_owned(),
-    );
-    // arc drops here → refcount decremented back to caller's 1
 }

@@ -4,6 +4,7 @@ import com.sun.jna.Pointer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -13,6 +14,7 @@ import uniffi.nmp_uniffi.ProfileShape
 import uniffi.nmp_uniffi.RefLiveness
 import uniffi.nmp_uniffi.RefNamespace
 import uniffi.nmp_uniffi.RefShape
+import uniffi.nmp_uniffi.ResolveMetadata
 import uniffi.nmp_uniffi.UpdateSink
 
 /**
@@ -44,9 +46,9 @@ fun interface KernelSignerRequestListener {
  * Thin Android facade over the generated UniFFI `NmpApp` binding.
  *
  * Migrated framework lifecycle, update, capability, sign-in, and ref APIs use
- * UniFFI. Retained JNI calls are gallery-owned adapters only: composition
- * registration, static showcase/registry JSON, snapshot decoding, and
- * URI-to-ref adaptation.
+ * UniFFI. Retained JNI calls are gallery-owned adapters only: bridge-private
+ * composition registration, static showcase/registry JSON, snapshot decoding,
+ * and URI decoding.
  */
 class KernelBridge {
     private var app: NmpApp? = null
@@ -77,7 +79,7 @@ class KernelBridge {
 
     /** Register the gallery-specific projection on the kernel actor. */
     fun galleryRegister() {
-        app?.withClonedPointer { nativeGalleryRegisterUniffi(it) }
+        app?.withBridgePrivateRegistrationPointer { nativeGalleryRegisterUniffi(it) }
     }
 
     fun showcaseReferencesJson(): String = nativeShowcaseReferencesJson()
@@ -107,14 +109,16 @@ class KernelBridge {
         app?.releaseProfileRef(pubkey, consumerId)
     }
 
-    /** App-local URI adapter: JNI decodes [uri] then calls UniFFI app internals. */
+    /** App-local URI adapter: JNI decodes [uri], UniFFI resolves the raw key. */
     fun resolveEventRef(uri: String, consumerId: String) {
-        app?.withClonedPointer { nativeResolveEventRef(it, uri, consumerId) }
+        val eventRef = eventRefFromUri(uri) ?: return
+        app?.resolveEventEmbedWithMetadata(eventRef.key, consumerId, eventRef.metadata)
     }
 
-    /** App-local URI adapter: JNI decodes [uri] then releases the resolved key. */
+    /** App-local URI adapter: JNI decodes [uri], UniFFI releases the raw key. */
     fun releaseEventRef(uri: String, consumerId: String) {
-        app?.withClonedPointer { nativeReleaseEvent(it, uri, consumerId) }
+        val eventRef = eventRefFromUri(uri) ?: return
+        app?.releaseEventRef(eventRef.key, consumerId)
     }
 
     /**
@@ -214,7 +218,31 @@ class KernelBridge {
             put("result_json", resultJson)
         }.toString()
 
-    private fun NmpApp.withClonedPointer(block: (Long) -> Unit) {
+    private fun eventRefFromUri(uri: String): EventRefFromUri? {
+        val raw = nativeEventRefFromUri(uri) ?: return null
+        val parsed = runCatching { Json.parseToJsonElement(raw).jsonObject }.getOrNull()
+            ?: return null
+        val key = parsed["key"]?.jsonPrimitive?.contentOrNull ?: return null
+        val metadataJson = parsed["metadata_json"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        return EventRefFromUri(key, parseResolveMetadata(metadataJson))
+    }
+
+    private fun parseResolveMetadata(metadataJson: String): ResolveMetadata {
+        val parsed = runCatching { Json.parseToJsonElement(metadataJson).jsonObject }.getOrNull()
+        val hints = runCatching {
+            parsed?.get("hints")
+                ?.jsonArray
+                ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+        }.getOrNull().orEmpty()
+        val author = parsed?.get("author")?.jsonPrimitive?.contentOrNull
+        return ResolveMetadata(hints, author)
+    }
+
+    /**
+     * Retained bridge-private seam for one-shot app composition registration.
+     * All lifecycle, storage, dispatch, and ref operations use typed UniFFI.
+     */
+    private fun NmpApp.withBridgePrivateRegistrationPointer(block: (Long) -> Unit) {
         val pointer = uniffiClonePointer()
         block(Pointer.nativeValue(pointer))
     }
@@ -222,8 +250,7 @@ class KernelBridge {
     private external fun nativeGalleryRegisterUniffi(arcPtr: Long)
     private external fun nativeShowcaseReferencesJson(): String
     private external fun nativeRegistryJson(): String
-    private external fun nativeResolveEventRef(arcPtr: Long, uri: String, consumerId: String)
-    private external fun nativeReleaseEvent(arcPtr: Long, uri: String, consumerId: String)
+    private external fun nativeEventRefFromUri(uri: String): String?
 
     companion object {
         @JvmStatic
@@ -240,3 +267,8 @@ class KernelBridge {
         }
     }
 }
+
+private data class EventRefFromUri(
+    val key: String,
+    val metadata: ResolveMetadata,
+)
