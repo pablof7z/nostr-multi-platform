@@ -101,7 +101,7 @@ impl Kernel {
     /// D0: no `KernelSnapshot.projections` field — this map is assembled
     /// transiently on each emit. The typed FlatBuffers sidecar is the production
     /// wire path; this map is used by test helpers that read JSON.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(in crate::kernel) fn build_projections_map(
         &mut self,
     ) -> std::collections::HashMap<String, serde_json::Value> {

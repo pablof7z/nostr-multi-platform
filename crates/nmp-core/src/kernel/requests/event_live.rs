@@ -203,7 +203,7 @@ impl Kernel {
     /// The primary fix removes the parked stake on release (`release_event_ref` →
     /// `remove_parked_event_claim`); this filter is a belt-and-suspenders guard so
     /// the drain can never resurrect a key whose refcount row is gone.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
         self.pending_event_claim_requests_at(crate::kernel::test_support::test_support_now())
     }

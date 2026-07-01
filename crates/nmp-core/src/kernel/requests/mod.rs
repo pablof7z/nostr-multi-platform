@@ -73,7 +73,7 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn pending_view_requests(&mut self) -> Vec<OutboundMessage> {
         self.pending_view_requests_at(crate::kernel::test_support::test_support_now())
     }

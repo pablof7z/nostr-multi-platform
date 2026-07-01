@@ -15,7 +15,7 @@ impl Kernel {
     /// [`RelayFrame`] before calling this; a non-native transport (wasm32
     /// WebSocket) is responsible for its own equivalent conversion. The
     /// kernel itself never names `tungstenite`.
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(crate) fn handle_message(
         &mut self,
         role: RelayRole,
@@ -68,7 +68,7 @@ impl Kernel {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(in crate::kernel) fn handle_text(
         &mut self,
         role: RelayRole,

@@ -33,7 +33,7 @@ fn deleted_defaults_positive_fixture_fires() {
         stdout, stderr
     );
     assert!(
-        stdout.contains("error[deleted_defaults]"),
+        stdout.contains(&format!("error[{}]", deleted_defaults::ID)),
         "positive fixture must emit deleted_defaults finding; stdout:\n{}",
         stdout
     );
@@ -76,7 +76,7 @@ fn deleted_defaults_negative_fixture_is_clean() {
         stdout, stderr
     );
     assert!(
-        !stdout.contains("error[deleted_defaults]"),
+        !stdout.contains(&format!("error[{}]", deleted_defaults::ID)),
         "negative fixture must produce no deleted_defaults finding; stdout:\n{}",
         stdout
     );
@@ -106,6 +106,22 @@ fn production_and_scaffold_code_do_not_reference_deleted_defaults() {
          replacement bundles:\n{}",
         violations.join("\n")
     );
+}
+
+#[test]
+fn deleted_defaults_scope_covers_production_and_scaffold_code() {
+    assert!(deleted_defaults::file_in_scope(Path::new(
+        "apps/demo/src/lib.rs"
+    )));
+    assert!(deleted_defaults::file_in_scope(Path::new(
+        "crates/nmp-cli/src/main.rs"
+    )));
+    assert!(deleted_defaults::file_in_scope(Path::new(
+        "crates/nmp-cli/templates/lib.rs.tmpl"
+    )));
+    assert!(!deleted_defaults::file_in_scope(Path::new(
+        "crates/nmp-testing/src/lib.rs"
+    )));
 }
 
 fn collect_production_crate_files(crates_dir: &Path, out: &mut Vec<PathBuf>) {

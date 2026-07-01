@@ -31,7 +31,7 @@ mod chokepoint_tests;
 mod claim_expansion_edge_tests;
 #[cfg(test)]
 mod claim_expansion_ingest_tests;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 mod claim_expansion_seam;
 #[cfg(test)]
 mod claim_expansion_tests;
@@ -77,7 +77,7 @@ mod ingest_pre_verified_dispatcher_tests;
 mod ingest_tests;
 #[cfg(test)]
 mod ingest_timeline_dispatcher_tests;
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(test)]
 mod interest_install_cache_serve_support;
 #[cfg(test)]
 mod interest_install_cache_serve_tests;

@@ -83,8 +83,9 @@ impl Gate {
     }
 }
 
-/// Markdown row for one gate. Used by `report::markdown_gates_table`.
+/// Markdown row for one gate. Kept for markdown-report consumers of the stress harness.
 impl Gate {
+    #[allow(dead_code)] // Removal condition: delete when markdown stress reports are formally retired.
     pub(crate) fn markdown_row(&self) -> String {
         let result = if self.passed { "PASS" } else { "FAIL" };
         let op_str = match self.op {
