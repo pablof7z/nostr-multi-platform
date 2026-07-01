@@ -106,6 +106,7 @@ fn dedup_blocks_second_republish_of_same_event() {
 
     assert_eq!(first.len(), 1);
     assert!(second.is_empty());
+    assert_eq!(policy.forwarded_count(), 1);
 }
 
 #[test]
@@ -224,15 +225,22 @@ fn runtime_handle_toggles_policy_without_replacing_it() {
 
     let first = policy.destinations(&make_frame(make_raw(0, 0x08), Some("wss://content-relay/")));
     assert_eq!(first.len(), 1, "initially enabled policy must forward");
+    assert_eq!(handle.forwarded_count(), 1);
 
     handle.set_enabled(false);
     let disabled =
         policy.destinations(&make_frame(make_raw(0, 0x09), Some("wss://content-relay/")));
     assert!(disabled.is_empty(), "disabled policy must stop forwarding");
+    assert_eq!(
+        handle.forwarded_count(),
+        1,
+        "disabled skip must not increment forwarded count"
+    );
 
     handle.set_enabled(true);
     let resumed = policy.destinations(&make_frame(make_raw(0, 0x0a), Some("wss://content-relay/")));
     assert_eq!(resumed.len(), 1, "re-enabled policy must resume forwarding");
+    assert_eq!(handle.forwarded_count(), 2);
 }
 
 #[test]
@@ -243,6 +251,7 @@ fn empty_indexer_set_short_circuits() {
     let dests = policy.destinations(&frame);
 
     assert!(dests.is_empty());
+    assert_eq!(policy.forwarded_count(), 0);
 }
 
 #[test]
@@ -256,4 +265,61 @@ fn different_indexers_are_independent_dedup_keys() {
     let dests = policy.destinations(&frame);
 
     assert_eq!(dests.len(), 2);
+}
+
+#[test]
+fn forwarded_count_increments_per_event_indexer_decision() {
+    let handle = IndexerRepublishPolicyHandle::new(true);
+    let policy = IndexerRepublishPolicy::new(
+        handle.clone(),
+        context_with_indexers(&["wss://indexer-a/", "wss://indexer-b/"]),
+    );
+
+    assert_eq!(handle.forwarded_count(), 0);
+    assert_eq!(policy.forwarded_count(), 0);
+
+    let raw_a = make_raw(0, 0x30);
+    let first = policy.destinations(&make_frame(raw_a.clone(), Some("wss://content-relay/")));
+    assert_eq!(first.len(), 2);
+    assert_eq!(handle.forwarded_count(), 2);
+    assert_eq!(policy.forwarded_count(), 2);
+
+    let duplicate = policy.destinations(&make_frame(raw_a, Some("wss://content-relay/")));
+    assert!(
+        duplicate.is_empty(),
+        "dedup skip must not increment forwarded count"
+    );
+    assert_eq!(handle.forwarded_count(), 2);
+
+    let second_event =
+        policy.destinations(&make_frame(make_raw(0, 0x31), Some("wss://content-relay/")));
+    assert_eq!(second_event.len(), 2);
+    assert_eq!(handle.forwarded_count(), 4);
+}
+
+#[test]
+fn forwarded_count_ignores_source_and_provenance_skips() {
+    let source_policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[
+        "wss://indexer-a/",
+        "wss://indexer-b/",
+    ]));
+    let source_skip =
+        source_policy.destinations(&make_frame(make_raw(0, 0x40), Some("wss://indexer-a/")));
+    assert!(source_skip.is_empty());
+    assert_eq!(source_policy.forwarded_count(), 0);
+
+    let slot = new_indexer_relays_slot();
+    {
+        let mut guard = slot.lock().expect("indexer slot");
+        guard.replace(vec!["wss://indexer/".to_string()]);
+    }
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let raw = make_raw(10_002, 0x41);
+    seed_store_with_provenance(&store, &raw, "wss://indexer/");
+    let policy = IndexerRepublishPolicy::enabled(RawEventForwardPolicyContext::new(store, slot));
+
+    let provenance_skip = policy.destinations(&make_frame(raw, Some("wss://content-relay/")));
+
+    assert!(provenance_skip.is_empty());
+    assert_eq!(policy.forwarded_count(), 0);
 }

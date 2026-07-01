@@ -181,16 +181,27 @@ fn install_returns_live_indexer_republish_handle() {
     assert_eq!(policies.len(), 1);
 
     assert!(handles.indexer_republish.is_enabled());
+    assert_eq!(handles.indexer_republish.forwarded_count(), 0);
     assert_eq!(
         policies[0].destinations(&frame(0x31)).len(),
         1,
         "initially enabled substrate policy forwards"
+    );
+    assert_eq!(
+        handles.indexer_republish.forwarded_count(),
+        1,
+        "returned substrate handle observes installed policy forwards"
     );
 
     handles.indexer_republish.set_enabled(false);
     assert!(
         policies[0].destinations(&frame(0x32)).is_empty(),
         "returned substrate handle disables the installed policy"
+    );
+    assert_eq!(
+        handles.indexer_republish.forwarded_count(),
+        1,
+        "disabled substrate policy must not increment forwarded count"
     );
 
     handles.indexer_republish.set_enabled(true);
@@ -199,4 +210,5 @@ fn install_returns_live_indexer_republish_handle() {
         1,
         "returned substrate handle re-enables the installed policy"
     );
+    assert_eq!(handles.indexer_republish.forwarded_count(), 2);
 }

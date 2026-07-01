@@ -65,7 +65,16 @@ fn fan_out_relays(
                     let handle = rt
                         .pool
                         .ensure_open_with_role(&target.relay_url, target.relay_role);
-                    let _ = rt.pool.send(handle, WireFrame::Text(text.clone()));
+                    let enqueued = rt.pool.send(handle, WireFrame::Text(text.clone()));
+                    tracing::debug!(
+                        target: "nmp.external_event_sink.worker",
+                        event_id = %work.frame.raw.id,
+                        kind = work.frame.raw.kind,
+                        relay_url = %target.relay_url,
+                        relay_role = ?target.relay_role,
+                        enqueued,
+                        "forwarded external event sink frame to relay"
+                    );
                 }
             }
         }

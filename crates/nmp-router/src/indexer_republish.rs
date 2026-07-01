@@ -5,7 +5,7 @@
 //! and pool send; this crate owns the routing/provenance decision.
 
 use std::collections::{HashSet, VecDeque};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::IndexerRelaysSlot;
@@ -27,6 +27,7 @@ const DEDUP_CAPACITY: usize = 4096;
 #[derive(Clone, Debug)]
 pub struct IndexerRepublishPolicyHandle {
     enabled: Arc<AtomicBool>,
+    forwarded: Arc<AtomicU64>,
 }
 
 impl IndexerRepublishPolicyHandle {
@@ -34,6 +35,7 @@ impl IndexerRepublishPolicyHandle {
     pub fn new(enabled: bool) -> Self {
         Self {
             enabled: Arc::new(AtomicBool::new(enabled)),
+            forwarded: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -44,6 +46,20 @@ impl IndexerRepublishPolicyHandle {
     #[must_use]
     pub fn is_enabled(&self) -> bool {
         self.enabled.load(Ordering::Acquire)
+    }
+
+    /// Count of event x indexer forwarding decisions emitted by this policy.
+    ///
+    /// The worker owns the actual relay-channel send; this counter stays on the
+    /// policy handle because the indexer-republish concept owns the meaning of
+    /// the forwarding decision.
+    #[must_use]
+    pub fn forwarded_count(&self) -> u64 {
+        self.forwarded.load(Ordering::Relaxed)
+    }
+
+    fn inc_forwarded(&self) {
+        self.forwarded.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -111,6 +127,11 @@ impl IndexerRepublishPolicy {
         KindFilter::from_kinds(kinds)
     }
 
+    #[must_use]
+    pub fn forwarded_count(&self) -> u64 {
+        self.handle.forwarded_count()
+    }
+
     fn indexer_urls(&self) -> Vec<String> {
         self.indexer_relays
             .lock()
@@ -143,28 +164,76 @@ impl ExternalEventSinkPolicy for IndexerRepublishPolicy {
         let raw = frame.raw.as_ref();
         let source_relay_url = frame.source_relay.as_deref();
 
-        if !self.handle.is_enabled() || (!raw.is_replaceable() && !raw.is_param_replaceable()) {
+        if !self.handle.is_enabled() {
+            tracing::debug!(
+                target: "nmp.router.indexer_republish",
+                event_id = %raw.id,
+                kind = raw.kind,
+                reason = "disabled",
+                "skipping indexer republish"
+            );
+            return Vec::new();
+        }
+
+        if !raw.is_replaceable() && !raw.is_param_replaceable() {
+            tracing::debug!(
+                target: "nmp.router.indexer_republish",
+                event_id = %raw.id,
+                kind = raw.kind,
+                reason = "not_replaceable",
+                "skipping indexer republish"
+            );
             return Vec::new();
         }
 
         let indexer_urls = self.indexer_urls();
         if indexer_urls.is_empty() {
+            tracing::debug!(
+                target: "nmp.router.indexer_republish",
+                event_id = %raw.id,
+                kind = raw.kind,
+                reason = "no_indexers",
+                "skipping indexer republish"
+            );
             return Vec::new();
         }
 
         if let Some(source) = source_relay_url {
             if indexer_urls.iter().any(|url| url == source) {
+                tracing::debug!(
+                    target: "nmp.router.indexer_republish",
+                    event_id = %raw.id,
+                    kind = raw.kind,
+                    source_relay = %source,
+                    reason = "source_is_indexer",
+                    "skipping indexer republish"
+                );
                 return Vec::new();
             }
         }
 
         if self.event_has_indexer_provenance(raw, &indexer_urls) {
+            tracing::debug!(
+                target: "nmp.router.indexer_republish",
+                event_id = %raw.id,
+                kind = raw.kind,
+                reason = "indexer_provenance",
+                "skipping indexer republish"
+            );
             return Vec::new();
         }
 
         let mut targets = Vec::new();
         for target in indexer_urls {
             if source_relay_url.is_some_and(|source| source == target.as_str()) {
+                tracing::debug!(
+                    target: "nmp.router.indexer_republish",
+                    event_id = %raw.id,
+                    kind = raw.kind,
+                    relay_url = %target,
+                    reason = "source_target_match",
+                    "skipping indexer republish target"
+                );
                 continue;
             }
             let key = (raw.id.clone(), target.clone());
@@ -174,10 +243,27 @@ impl ExternalEventSinkPolicy for IndexerRepublishPolicy {
                 .map(|mut guard| guard.insert(key))
                 .unwrap_or(false);
             if should_forward {
+                self.handle.inc_forwarded();
+                tracing::debug!(
+                    target: "nmp.router.indexer_republish",
+                    event_id = %raw.id,
+                    kind = raw.kind,
+                    relay_url = %target,
+                    "forwarding event to indexer relay"
+                );
                 targets.push(SinkDestination::Relay(RawEventForwardTarget::new(
                     target,
                     RelayRole::Indexer,
                 )));
+            } else {
+                tracing::debug!(
+                    target: "nmp.router.indexer_republish",
+                    event_id = %raw.id,
+                    kind = raw.kind,
+                    relay_url = %target,
+                    reason = "dedup_hit",
+                    "skipping indexer republish target"
+                );
             }
         }
         targets
