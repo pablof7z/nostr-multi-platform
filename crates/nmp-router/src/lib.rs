@@ -60,7 +60,7 @@ pub use block_relay::{
 };
 pub use blocked_relays::{InMemoryBlockedRelayCache, Kind10006Parser};
 pub use cache::InMemoryMailboxCache;
-pub use indexer_republish::IndexerRepublishPolicy;
+pub use indexer_republish::{IndexerRepublishPolicy, IndexerRepublishPolicyHandle};
 pub use ingest::Kind10002Parser;
 pub use nip65_resolver::{
     is_discovery_kind, Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD,

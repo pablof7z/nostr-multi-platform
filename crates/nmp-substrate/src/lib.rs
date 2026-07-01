@@ -25,7 +25,7 @@ use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
     GenericOutboxRouter, InMemoryBlockedRelayCache, InMemoryMailboxCache, IndexerRepublishPolicy,
-    Kind10006Parser, Nip65OutboxResolver,
+    IndexerRepublishPolicyHandle, Kind10006Parser, Nip65OutboxResolver,
 };
 use nmp_store::EventStore;
 
@@ -58,6 +58,12 @@ pub struct SubstrateHandles {
     /// This is the same instance installed as the NIP-19 encoder reader, the
     /// routing factory cache, and the kind:10002 parser writer.
     pub mailbox_cache: Arc<dyn MailboxCache>,
+    /// Runtime control handle for indexer republishing.
+    ///
+    /// The handle is the same `Arc<AtomicBool>` captured by the installed
+    /// `IndexerRepublishPolicy`, so toggles affect subsequent destination
+    /// resolution without resetting the kernel or replacing the policy factory.
+    pub indexer_republish: IndexerRepublishPolicyHandle,
 }
 
 /// Shared substrate read-model wiring.
@@ -255,8 +261,13 @@ pub fn install(
         },
     );
 
-    app.set_external_event_sink_policy_factory(|context| {
-        vec![Arc::new(IndexerRepublishPolicy::enabled(context)) as Arc<dyn ExternalEventSinkPolicy>]
+    let indexer_republish = IndexerRepublishPolicyHandle::new(true);
+    let indexer_republish_for_policy = indexer_republish.clone();
+    app.set_external_event_sink_policy_factory(move |context| {
+        vec![Arc::new(IndexerRepublishPolicy::new(
+            indexer_republish_for_policy.clone(),
+            context,
+        )) as Arc<dyn ExternalEventSinkPolicy>]
     });
 
     let gate = config.coverage_gate;
@@ -277,5 +288,11 @@ pub fn install(
     #[cfg(feature = "native")]
     nmp_nip11::register(app);
 
-    SubstrateHandles { mailbox_cache }
+    SubstrateHandles {
+        mailbox_cache,
+        indexer_republish,
+    }
 }
+
+#[cfg(test)]
+mod tests;

@@ -8,7 +8,7 @@ use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext}
 use nmp_network::role::RelayRole;
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
-use super::IndexerRepublishPolicy;
+use super::{IndexerRepublishPolicy, IndexerRepublishPolicyHandle};
 
 fn make_raw(kind: u32, id_byte: u8) -> RawEvent {
     let id = format!("{:02x}{}", id_byte, "00".repeat(31));
@@ -207,12 +207,32 @@ fn addressable_kind_dedup_on_event_id_and_target() {
 
 #[test]
 fn disabled_policy_is_a_noop() {
-    let policy = IndexerRepublishPolicy::new(false, context_with_indexers(&["wss://indexer/"]));
+    let handle = IndexerRepublishPolicyHandle::new(false);
+    let policy = IndexerRepublishPolicy::new(handle, context_with_indexers(&["wss://indexer/"]));
     let frame = make_frame(make_raw(0, 0x05), Some("wss://content-relay/"));
 
     let dests = policy.destinations(&frame);
 
     assert!(dests.is_empty());
+}
+
+#[test]
+fn runtime_handle_toggles_policy_without_replacing_it() {
+    let handle = IndexerRepublishPolicyHandle::new(true);
+    let policy =
+        IndexerRepublishPolicy::new(handle.clone(), context_with_indexers(&["wss://indexer/"]));
+
+    let first = policy.destinations(&make_frame(make_raw(0, 0x08), Some("wss://content-relay/")));
+    assert_eq!(first.len(), 1, "initially enabled policy must forward");
+
+    handle.set_enabled(false);
+    let disabled =
+        policy.destinations(&make_frame(make_raw(0, 0x09), Some("wss://content-relay/")));
+    assert!(disabled.is_empty(), "disabled policy must stop forwarding");
+
+    handle.set_enabled(true);
+    let resumed = policy.destinations(&make_frame(make_raw(0, 0x0a), Some("wss://content-relay/")));
+    assert_eq!(resumed.len(), 1, "re-enabled policy must resume forwarding");
 }
 
 #[test]
