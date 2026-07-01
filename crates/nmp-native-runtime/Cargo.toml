@@ -70,3 +70,4 @@ zeroize = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-nip23 = { path = "../nmp-nip23" }

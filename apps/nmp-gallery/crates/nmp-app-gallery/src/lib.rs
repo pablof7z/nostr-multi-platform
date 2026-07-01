@@ -185,6 +185,15 @@ fn register_gallery_composition(app: &mut nmp_native_runtime::NmpApp) -> bool {
     true
 }
 
+/// Install gallery content adapters that are normally wired by full composition.
+///
+/// The live gallery app calls this through [`install_gallery_composition`], but
+/// focused renderer tests can install the same owner-provided adapters without
+/// constructing a runtime.
+pub fn register_gallery_embed_projection_adapters() {
+    nmp_nip23::register_content_embed_projection_adapter();
+}
+
 fn install_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
@@ -212,6 +221,7 @@ fn install_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
     nmp_nip17::register_actions(app);
     nmp_nip17::register_runtime(app);
 
+    register_gallery_embed_projection_adapters();
     nmp_nip23::register_longform_projection(app);
 }
 

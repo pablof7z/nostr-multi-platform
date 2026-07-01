@@ -180,7 +180,10 @@ fn convert_embed(uri: &str, entry: EmbedEntry) -> WireEmbedEnvelope {
     WireEmbedEnvelope {
         collapsed: false,
         collapse_reason: None,
-        projection: Some(resolve_embed_projection(&kernel_event, &ctx)),
+        projection: {
+            nmp_nip23::register_content_embed_projection_adapter();
+            Some(resolve_embed_projection(&kernel_event, &ctx))
+        },
     }
 }
 

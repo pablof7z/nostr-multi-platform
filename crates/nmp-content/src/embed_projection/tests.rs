@@ -70,7 +70,7 @@ fn resolves_short_note() {
 }
 
 #[test]
-fn resolves_article_with_d_tag() {
+fn article_without_owner_adapter_falls_back_to_unknown() {
     let tags = vec![vec!["d".to_string(), "my-article".to_string()]];
     let ev = make_event(
         "art456",
@@ -83,11 +83,14 @@ fn resolves_article_with_d_tag() {
     let proj = resolve_embed_projection(&ev, &ctx);
 
     match proj {
-        EmbedKindProjection::Article(a) => {
-            assert_eq!(a.d_tag, "my-article");
-            assert_eq!(a.id, "art456");
+        EmbedKindProjection::Unknown(u) => {
+            assert_eq!(u.kind, 30023);
+            assert_eq!(
+                u.tags,
+                vec![vec!["d".to_string(), "my-article".to_string()]]
+            );
         }
-        _ => panic!("expected Article"),
+        other => panic!("expected Unknown without owner adapter, got {other:?}"),
     }
 }
 
@@ -290,11 +293,14 @@ fn derives_envelope_map_from_refs_event_rows() {
     assert_eq!(env.render_context.depth, 0);
     assert_eq!(env.render_context.max_depth, 4);
     match &env.projection {
-        EmbedKindProjection::Article(article) => {
-            assert_eq!(article.id, event_id);
-            assert_eq!(article.d_tag, "my-article");
+        EmbedKindProjection::Unknown(unknown) => {
+            assert_eq!(unknown.kind, 30023);
+            assert_eq!(
+                unknown.tags,
+                vec![vec!["d".to_string(), "my-article".to_string()]]
+            );
         }
-        other => panic!("expected article projection, got {other:?}"),
+        other => panic!("expected Unknown without owner adapter, got {other:?}"),
     }
 }
 

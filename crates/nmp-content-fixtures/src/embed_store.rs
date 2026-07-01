@@ -74,6 +74,7 @@ fn to_kernel_event(ev: &SignedEvent) -> KernelEvent {
 /// fixture store carries this so native registries dispatch on the same shape
 /// the runtime resolver emits — no parallel article/list projection here.
 fn kind_projection(ev: &SignedEvent) -> EmbedKindProjection {
+    nmp_nip23::register_content_embed_projection_adapter();
     resolve_embed_projection(&to_kernel_event(ev), &RenderContext::new())
 }
 

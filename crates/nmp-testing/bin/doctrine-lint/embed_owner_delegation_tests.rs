@@ -1,5 +1,5 @@
 //! Ratchet for #2594: `nmp-content` may dispatch embed kinds, but it must not
-//! parse protocol-owner artifact semantics for kind:0 or kind:9802 locally.
+//! parse protocol-owner artifact semantics for owned protocol kinds locally.
 
 use std::fs;
 
@@ -19,6 +19,10 @@ fn nmp_content_embed_projection_delegates_owned_protocol_kinds() {
         body.contains("nmp_nip84::highlight_projection_from_event"),
         "kind:9802 embed projection must call the NIP-84 owner adapter"
     );
+    assert!(
+        body.contains("ARTICLE_PROJECTION_ADAPTER"),
+        "kind:30023 embed projection must use the registered NIP-23 owner adapter"
+    );
 
     for banned in [
         "parse_profile_metadata",
@@ -28,6 +32,10 @@ fn nmp_content_embed_projection_delegates_owned_protocol_kinds() {
         "let source_event_addr = tag_value(\"a\")",
         "let source_url = tag_value(\"r\")",
         "let context = tag_value(\"context\")",
+        "let title = tag_value(\"title\")",
+        "let summary = tag_value(\"summary\")",
+        "let hero_image_url = tag_value(\"image\")",
+        "let d_tag = tag_value(\"d\")",
     ] {
         assert!(
             !body.contains(banned),

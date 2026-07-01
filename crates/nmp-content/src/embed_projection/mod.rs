@@ -8,6 +8,8 @@
 //! D0-clean: lives in nmp-content (a rendering sidecar), not nmp-core substrate.
 //! See ADR-0034 (`docs/decisions/0034-kind-dispatch-content-rendering.md`) for the full contract.
 
+use std::sync::OnceLock;
+
 mod derived;
 mod envelope;
 mod variants;
@@ -31,6 +33,26 @@ use crate::context::RenderContext;
 use crate::mode::RenderMode;
 use crate::tokenize_with_kind;
 use crate::wire::ContentTreeWire;
+
+/// Owner-provided adapter for a NIP-23 kind:30023 article embed.
+///
+/// `nmp-content` owns the rendering envelope and content tree; the protocol
+/// owner owns article tag/content semantics and returns the typed payload to
+/// place inside the envelope.
+pub type ArticleProjectionAdapter =
+    fn(event: &KernelEvent, content_tree: ContentTreeWire) -> Option<ArticleProjection>;
+
+static ARTICLE_PROJECTION_ADAPTER: OnceLock<ArticleProjectionAdapter> = OnceLock::new();
+
+/// Register the NIP-23 owner adapter used for kind:30023 article embeds.
+///
+/// This is intentionally a registration seam instead of a direct dependency on
+/// `nmp-nip23`: `nmp-nip23` already composes the content renderer for its typed
+/// long-form projection, so a direct dependency in this crate would create a
+/// cycle. Re-registering is idempotent after the first adapter wins.
+pub fn register_article_projection_adapter(adapter: ArticleProjectionAdapter) {
+    let _ = ARTICLE_PROJECTION_ADAPTER.set(adapter);
+}
 
 /// Resolve a known event into the correct `EmbedKindProjection` variant.
 /// This is the single `match event.kind` dispatch point for embed content
@@ -128,24 +150,22 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
                 context: highlight.context,
             })
         }
-        KIND_LONG_FORM_ARTICLE => {
-            // Long-form article (NIP-23)
-            let title = tag_value("title");
-            let summary = tag_value("summary");
-            let hero_image_url = tag_value("image");
-            let d_tag = tag_value("d").unwrap_or_default();
-
-            EmbedKindProjection::Article(ArticleProjection {
-                id,
-                author_pubkey,
-                created_at,
-                title,
-                summary,
-                hero_image_url,
-                d_tag,
-                content_tree,
-            })
-        }
+        KIND_LONG_FORM_ARTICLE => ARTICLE_PROJECTION_ADAPTER
+            .get()
+            .and_then(|adapter| adapter(event, content_tree.clone()))
+            .map(EmbedKindProjection::Article)
+            .unwrap_or_else(|| {
+                let alt_text = tag_value("alt");
+                EmbedKindProjection::Unknown(UnknownProjection {
+                    kind: event.kind,
+                    author_pubkey,
+                    created_at,
+                    content: event.content.clone(),
+                    content_tree,
+                    tags: event.tags.clone(),
+                    alt_text,
+                })
+            }),
         _ => {
             // Unknown / extensibility escape hatch.
             // Native code can further dispatch on `projection.kind` and read raw
