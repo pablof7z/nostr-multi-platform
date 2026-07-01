@@ -119,7 +119,10 @@ impl ActiveFollowGraph {
         };
         debug_assert!(self.graph.assert_incremental_equals_full().is_ok());
 
-        if result.changed_derived_nodes.contains(&self.perspective.id()) {
+        if result
+            .changed_derived_nodes
+            .contains(&self.perspective.id())
+        {
             vec![ActiveFollowGraphEffect::PerspectiveChanged {
                 follows: self.current_follows(),
             }]
