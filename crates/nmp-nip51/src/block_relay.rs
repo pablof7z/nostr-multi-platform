@@ -1,10 +1,9 @@
 //! `nmp.nip51.block_relay` / `nmp.nip51.unblock_relay` — kind:10006 (NIP-51
 //! "blocked relays" list) publish action.
 //!
-//! Structural sibling of [`crate::publish_relay_list`] (kind:10002). Just as
-//! routing owns the kind:10002 publish path end-to-end, it owns the kind:10006
-//! publish path end-to-end: `nmp-core` stays wire-shape-agnostic (D0 — no
-//! kind numbers, no tag names, no protocol nouns in the kernel crate).
+//! NIP-51 owns the kind:10006 publish path end-to-end. `nmp-core` stays
+//! wire-shape-agnostic, and `nmp-router` consumes only the generic
+//! [`BlockedRelayLookup`] substrate seam.
 //!
 //! # Tag shape — NIP-51 § kind:10006
 //!
@@ -22,7 +21,7 @@
 //! The action namespaces are `nmp.nip51.block_relay` and
 //! `nmp.nip51.unblock_relay`. `nmp-core` never names the kind:10006 wire
 //! shape; the event builder lives here alongside the ingest parser and the
-//! in-memory cache so routing owns the protocol end-to-end.
+//! in-memory cache so NIP-51 owns the protocol artifact end-to-end.
 //!
 //! # D7 — `created_at` sentinel
 //!
@@ -69,7 +68,14 @@ use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::blocked_relays::InMemoryBlockedRelayCache;
-use crate::canonical::canonicalize_relay_url;
+
+fn canonicalize_relay_url(url: &str) -> Option<String> {
+    debug_assert!(
+        url.starts_with("wss://"),
+        "canonicalize_relay_url expects a wss:// URL"
+    );
+    nmp_core::substrate::canonicalize_relay_url(url)
+}
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 

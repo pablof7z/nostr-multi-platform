@@ -1,19 +1,19 @@
 //! `canonicalize_relay_url` — the single canonical-form helper shared by every
 //! routing-side relay-URL consumer in `nmp-router`.
 //!
-//! Two NIP-51-adjacent parsers must agree on one canonical form so their URL
-//! keys collide cleanly:
+//! Routing-side parsers and policy consumers must agree on one canonical form
+//! so their URL keys collide cleanly:
 //!
 //! - [`crate::ingest`] (kind:10002 NIP-65 relay list → [`crate::InMemoryMailboxCache`])
-//! - [`crate::blocked_relays`] (kind:10006 NIP-51 blocked relays → `InMemoryBlockedRelayCache`)
+//! - NIP-51 blocked-relay lookups supplied through
+//!   [`nmp_core::substrate::BlockedRelayLookup`]
 //!
-//! Before this module existed, `blocked_relays.rs` canonicalised its URLs
-//! (lowercase host, strip empty-path trailing slash) but `ingest.rs` stored
-//! NIP-65 URLs verbatim. A blocked entry `wss://Block.Example` therefore never
-//! matched a kind:10002 write entry `wss://block.example/` — the blocked
-//! filter silently failed (a privacy regression: a relay the user told us to
-//! never publish to / subscribe through still received their traffic). Routing
-//! both through one function closes that gap structurally.
+//! Before this module existed, blocked-relay facts were canonicalised but
+//! `ingest.rs` stored NIP-65 URLs verbatim. A blocked entry
+//! `wss://Block.Example` therefore never matched a kind:10002 write entry
+//! `wss://block.example/` — the blocked filter silently failed. Routing both
+//! sides through the same substrate canonical authority closes that gap
+//! structurally.
 //!
 //! ## Canonical form
 //!

@@ -20,6 +20,7 @@ nmp-core = { path = "../nmp-core", default-features = false }
 nmp-ownership = { workspace = true }
 nmp-nip11 = { path = "../nmp-nip11", optional = true }
 nmp-nip01 = { path = "../nmp-nip01", default-features = false }
+nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip77 = { path = "../nmp-nip77" }
 nmp-router = { path = "../nmp-router", default-features = false }
 nmp-store = { path = "../nmp-store" }

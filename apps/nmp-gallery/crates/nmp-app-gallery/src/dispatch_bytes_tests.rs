@@ -194,7 +194,7 @@ fn namespace_nip65_publish_relay_list_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_block_relay_encodes_and_decodes() {
-    use nmp_router::BlockRelayInput;
+    use nmp_nip51::BlockRelayInput;
     let decoded: BlockRelayInput = encode_then_decode(
         "nmp.nip51.block_relay",
         r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
@@ -205,7 +205,7 @@ fn namespace_nip51_block_relay_encodes_and_decodes() {
 
 #[test]
 fn namespace_nip51_unblock_relay_encodes_and_decodes() {
-    use nmp_router::UnblockRelayInput;
+    use nmp_nip51::UnblockRelayInput;
     let decoded: UnblockRelayInput = encode_then_decode(
         "nmp.nip51.unblock_relay",
         r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,

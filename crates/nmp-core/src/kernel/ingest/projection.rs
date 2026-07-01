@@ -142,7 +142,7 @@ impl Kernel {
     /// GAP-3 — blocked-relay-set-change observer.
     ///
     /// Called when the active account's kind:10006 blocked-relay list is
-    /// updated by an ingest parser (typically `Kind10006Parser` in `nmp-router`).
+    /// updated by an ingest parser (typically `Kind10006Parser` in `nmp-nip51`).
     /// Enqueues an `InvalidateCompile` trigger so System-A's SPLIT B re-runs on
     /// the next drain and drops the newly-blocked relay's REQ from the wire plan.
     fn on_blocked_relays_changed(&mut self) {

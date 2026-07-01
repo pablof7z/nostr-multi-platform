@@ -137,7 +137,7 @@ impl PublishEngine {
 
     /// Swap the engine's [`BlockedRelayLookup`] in-place. Production
     /// composition (`explicit owner composition` → kernel wiring)
-    /// installs the router-side `InMemoryBlockedRelayCache` so the outbox
+    /// installs the NIP-51-owned `InMemoryBlockedRelayCache` so the outbox
     /// resolver excludes the active account's kind:10006 blocked relays. The
     /// default is [`empty_blocked_relay_lookup`] (no blocks — a kernel built
     /// without the router-side cache behaves exactly as before this seam

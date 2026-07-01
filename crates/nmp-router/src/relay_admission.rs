@@ -2,7 +2,7 @@
 //! to connect to at all.
 //!
 //! This is a *structural* check, distinct from [`nmp_core::substrate::BlockedRelayLookup`]
-//! (which is per-account, user-declared, kind:10006-driven). The admission
+//! (which is per-account and supplied through `BlockedRelayLookup`). The admission
 //! policy is system-wide and URL-property-based: it answers "would we ever
 //! connect to this URL regardless of who declared it?"
 //!

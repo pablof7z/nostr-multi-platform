@@ -418,6 +418,16 @@ fn audit_descriptors(descriptors: &[OwnershipDescriptor]) -> Vec<OwnershipAuditI
     let mut issues = Vec::new();
     let mut crate_names = BTreeSet::new();
     let mut exclusive_scopes: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let nip_namespace_owners: BTreeSet<String> = descriptors
+        .iter()
+        .filter_map(|descriptor| {
+            descriptor
+                .owner_id
+                .strip_prefix("nmp.nip")
+                .filter(|suffix| suffix.chars().all(|c| c.is_ascii_digit()))
+                .map(|_| descriptor.owner_id.clone())
+        })
+        .collect();
     for descriptor in descriptors {
         if descriptor.summary.trim().is_empty() {
             issues.push(OwnershipAuditIssue {
@@ -432,6 +442,19 @@ fn audit_descriptors(descriptors: &[OwnershipDescriptor]) -> Vec<OwnershipAuditI
             });
         }
         for claim in &descriptor.claims {
+            if claim.scope_kind == "action" {
+                if let Some(owner_id) = nip_owner_for_action(&claim.scope_value) {
+                    if nip_namespace_owners.contains(&owner_id) && descriptor.owner_id != owner_id {
+                        issues.push(OwnershipAuditIssue {
+                            code: "NMP-OWNERSHIP-NIP-ACTION-OWNER".to_string(),
+                            message: format!(
+                                "{} claims action {} but {} is the protocol owner",
+                                descriptor.crate_name, claim.scope_value, owner_id
+                            ),
+                        });
+                    }
+                }
+            }
             if claim.exclusive {
                 let key = format!(
                     "{}\t{}\t{}\t{}",
@@ -457,6 +480,18 @@ fn audit_descriptors(descriptors: &[OwnershipDescriptor]) -> Vec<OwnershipAuditI
         }
     }
     issues
+}
+
+fn nip_owner_for_action(action: &str) -> Option<String> {
+    let rest = action.strip_prefix("nmp.nip")?;
+    let digits = rest
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>();
+    if digits.is_empty() || !rest[digits.len()..].starts_with('.') {
+        return None;
+    }
+    Some(format!("nmp.nip{digits}"))
 }
 
 fn filtered_descriptors<'a>(
@@ -496,4 +531,85 @@ fn push_tsv_row(out: &mut String, fields: &[&str]) {
             .join("\t"),
     );
     out.push('\n');
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audit_rejects_nip_action_claim_outside_declared_protocol_owner() {
+        let descriptors = vec![
+            descriptor(
+                "nmp.nip51",
+                "nmp-nip51",
+                vec![claim("artifact", "nostr.nip51.lists", "kind", "10006")],
+            ),
+            descriptor(
+                "nmp.router",
+                "nmp-router",
+                vec![claim(
+                    "namespace",
+                    "action.nmp.nip51.block_relay",
+                    "action",
+                    "nmp.nip51.block_relay",
+                )],
+            ),
+        ];
+        let issues = audit_descriptors(&descriptors);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "NMP-OWNERSHIP-NIP-ACTION-OWNER"),
+            "expected NIP action owner issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn audit_allows_legacy_nip_namespace_without_protocol_owner() {
+        let descriptors = vec![descriptor(
+            "nmp.router",
+            "nmp-router",
+            vec![claim(
+                "namespace",
+                "action.nmp.nip65.publish_relay_list",
+                "action",
+                "nmp.nip65.publish_relay_list",
+            )],
+        )];
+        let issues = audit_descriptors(&descriptors);
+        assert!(
+            issues
+                .iter()
+                .all(|issue| issue.code != "NMP-OWNERSHIP-NIP-ACTION-OWNER"),
+            "nmp.nip65 has no separate protocol owner; got {issues:?}"
+        );
+    }
+
+    fn descriptor(
+        owner_id: &str,
+        crate_name: &str,
+        claims: Vec<OwnershipClaim>,
+    ) -> OwnershipDescriptor {
+        OwnershipDescriptor {
+            owner_id: owner_id.to_string(),
+            crate_name: crate_name.to_string(),
+            summary: "summary".to_string(),
+            claims,
+            notes: Vec::new(),
+            source_path: PathBuf::new(),
+        }
+    }
+
+    fn claim(claim_type: &str, id: &str, scope_kind: &str, scope_value: &str) -> OwnershipClaim {
+        OwnershipClaim {
+            claim_type: claim_type.to_string(),
+            id: id.to_string(),
+            exclusive: true,
+            scope_kind: scope_kind.to_string(),
+            scope_value: scope_value.to_string(),
+            context: String::new(),
+            owns: vec!["test ownership".to_string()],
+        }
+    }
 }

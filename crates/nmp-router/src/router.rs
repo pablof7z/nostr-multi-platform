@@ -28,8 +28,9 @@
 //! - **Lane 7 — AppRelay.** Fallback when no earlier lane resolved
 //!   anything.
 //!
-//! Blocked-relay (kind:10006) is a subtractive post-filter applied via
-//! per-lane `blocked_relays.contains` guards.
+//! Blocked-relay policy is a subtractive post-filter applied via per-lane
+//! `blocked_relays.contains` guards. The router consumes the generic lookup
+//! result and never parses the source wire artifact.
 
 use std::sync::Arc;
 

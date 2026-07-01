@@ -1,9 +1,9 @@
-//! Bug 1 (privacy) — `Nip65OutboxResolver` must exclude kind:10006 blocked
-//! relays from EVERY publish resolution lane.
+//! Bug 1 (privacy) — `Nip65OutboxResolver` must exclude blocked relays from
+//! EVERY publish resolution lane.
 //!
 //! Before the fix the publish-side outbox resolver had no blocked set and
 //! returned every relay unfiltered — so an author's events leaked to relays
-//! they explicitly blocked (kind:10006). The subscribe-side
+//! they explicitly blocked. The subscribe-side
 //! `GenericOutboxRouter` always filtered blocked relays per-lane; the
 //! publish-side resolver now matches that behaviour via a `blocked` param.
 //!
@@ -11,7 +11,7 @@
 //! pre-existing over-500-LOC `tests.rs` does not grow further (AGENTS.md
 //! file-size ceiling).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
@@ -171,8 +171,8 @@ fn blocked_relay_excluded_with_differing_case() {
     // write entry `wss://Block.Example` is stored as `wss://block.example`.
     // A blocked set carrying `wss://block.example` must therefore match —
     // even though the originating kind:10002 tag used mixed case. This proves
-    // the canonicalisation parity between kind:10002 ingest and kind:10006
-    // blocking (Bug 2 ⇄ Bug 1 interaction).
+    // the canonicalisation parity between kind:10002 ingest and blocked
+    // lookup entries (Bug 2 ⇄ Bug 1 interaction).
     //
     // NOTE: `Nip65OutboxResolver` reads kind:10002 from the EventStore, not
     // the ingest parser, so we store the ALREADY-canonical form here (the
@@ -193,7 +193,7 @@ fn blocked_relay_excluded_with_differing_case() {
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
     // Block set built from the canonical (lowercase) form — the same form the
-    // kind:10006 ingest parser produces from a `wss://Block.Example` tag.
+    // blocked-relay lookup produces from a `wss://Block.Example` source.
     let blocked = blocked_with(&["wss://block.example"]);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &blocked);
     let urls = urls_of(&out);
@@ -238,7 +238,7 @@ fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
     );
     let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
 
-    // Blocked set uses the canonical form (as kind:10006 ingest produces).
+    // Blocked set uses the canonical form.
     let blocked = blocked_with(&["wss://block.example"]);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &blocked);
     let urls = urls_of(&out);

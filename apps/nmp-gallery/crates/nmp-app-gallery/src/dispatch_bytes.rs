@@ -34,9 +34,9 @@ use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp};
 use nmp_nip02::{FollowManyAction, PubkeyAction};
 use nmp_nip17::{PublishDmRelayListInput, SendDmInput};
 use nmp_nip25::{ReactAction, UnreactAction};
-use nmp_nip51::BookmarkUpdateInput;
+use nmp_nip51::{BlockRelayInput, BookmarkUpdateInput, UnblockRelayInput};
 use nmp_replies::ReplyAction;
-use nmp_router::{BlockRelayInput, PublishRelayListInput, UnblockRelayInput};
+use nmp_router::PublishRelayListInput;
 
 /// Process-local correlation-id source.
 ///

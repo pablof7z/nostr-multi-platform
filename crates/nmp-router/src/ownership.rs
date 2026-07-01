@@ -29,32 +29,6 @@ nmp_ownership::declare_crate_ownership! {
                 "NIP-65 relay-list publish action namespace",
             ],
         },
-        {
-            claim_type: "namespace",
-            id: "action.nmp.nip51.block_relay",
-            exclusive: true,
-            scope: {
-                kind: "action",
-                value: "nmp.nip51.block_relay",
-                context: "",
-            },
-            owns: [
-                "blocked-relay action namespace",
-            ],
-        },
-        {
-            claim_type: "namespace",
-            id: "action.nmp.nip51.unblock_relay",
-            exclusive: true,
-            scope: {
-                kind: "action",
-                value: "nmp.nip51.unblock_relay",
-                context: "",
-            },
-            owns: [
-                "blocked-relay action namespace",
-            ],
-        },
     ],
     notes: [
     ],

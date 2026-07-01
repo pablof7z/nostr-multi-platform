@@ -37,15 +37,13 @@
 //! the router treats as "no relays blocked" (fail-open — the user
 //! explicitly cleared the list, so the prior blocks must NOT linger).
 //!
-//! # D0 — why this lives in `nmp-router`
+//! # D0 — owner boundary
 //!
 //! `nmp-core` is the substrate; it owns the wire-shape-agnostic
 //! [`nmp_core::substrate::BlockedRelayLookup`] trait and the
-//! [`nmp_core::substrate::BlockedRelaySet`] value type, but it must
-//! never name the kind:10006 wire shape (D0 — no NIP-specific nouns
-//! in the kernel crate). The concrete cache + the kind:10006 ingest
-//! parser live here so the kernel reads through the substrate trait
-//! and the cache reads / writes happen in a router-layer module.
+//! [`nmp_core::substrate::BlockedRelaySet`] value type. This crate owns
+//! the concrete kind:10006 parser and cache writer. Router code consumes
+//! only the generic lookup and never names the NIP-51 wire shape.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::RwLock;
@@ -54,7 +52,13 @@ use nmp_core::substrate::{BlockedRelayLookup, BlockedRelaySet, IngestParser};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 use nmp_store::VerifiedEvent;
 
-use crate::canonical::canonicalize_relay_url;
+fn canonicalize_relay_url(url: &str) -> Option<String> {
+    debug_assert!(
+        url.starts_with("wss://"),
+        "canonicalize_relay_url expects a wss:// URL"
+    );
+    nmp_core::substrate::canonicalize_relay_url(url)
+}
 
 // ─── InMemoryBlockedRelayCache ──────────────────────────────────────────────
 
@@ -63,9 +67,9 @@ use crate::canonical::canonicalize_relay_url;
 /// the [`BlockedRelayLookup`] trait) and any future diagnostic that wants
 /// to read the set without the trait shape.
 ///
-/// Lock-poisoning policy mirrors [`crate::cache::InMemoryMailboxCache`]:
-/// degrade gracefully on poison (treat as "no data") rather than amplify
-/// a background-thread panic into an actor-wide kill switch (D15).
+/// Lock-poisoning policy degrades gracefully on poison (treat as "no data")
+/// rather than amplify a background-thread panic into an actor-wide kill
+/// switch.
 #[derive(Default)]
 pub struct InMemoryBlockedRelayCache {
     inner: RwLock<HashMap<String, Vec<String>>>,

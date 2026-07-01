@@ -271,15 +271,14 @@ impl OutboxResolver for Nip65OutboxResolver {
             }
         }
 
-        // 5. Blocked-relay post-filter (kind:10006). The author told us to
+        // 5. Blocked-relay post-filter. The author told us to
         //    never publish to these relays; honour it across EVERY lane above
         //    (author write set, local-config fallback, discovery indexers,
         //    recipient inboxes). Without this an author's events leaked to a
         //    relay they explicitly blocked — the subscribe-side router has
         //    always filtered blocked relays per-lane; the publish-side
-        //    resolver must too. Canonicalisation parity (kind:10002 ingest now
-        //    canonicalises URLs, matching the blocked cache's canonical keys)
-        //    makes this `contains` check match across host-case differences.
+        //    resolver must too. Canonicalisation parity makes this `contains`
+        //    check match across host-case differences.
         out.retain(|r| !blocked.contains(&r.url));
 
         out

@@ -1,4 +1,4 @@
-namespace nmp.router;
+namespace nmp.nip_51;
 
 // ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.nip51.unblock_relay`
 // `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
@@ -10,8 +10,8 @@ namespace nmp.router;
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19):
-//   flatc --rust -o crates/nmp-router/src/wire/generated \
-//         crates/nmp-router/schema/unblock_relay.fbs
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/unblock_relay.fbs
 
 table UnblockRelayPayload {
   // Fail-closed schema_version tripwire (read RAW before decode).

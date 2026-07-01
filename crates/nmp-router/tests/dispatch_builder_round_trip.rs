@@ -15,11 +15,12 @@ use std::sync::Arc;
 
 use nmp_core::__ffi_internal::ActionRegistry;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRegistrar, ActionRejection};
-use nmp_router::publish_relay_list::{RelayListEntry, RelayMarker};
-use nmp_router::{
-    BlockRelayAction, BlockRelayInput, InMemoryBlockedRelayCache, PublishRelayListAction,
-    PublishRelayListInput, UnblockRelayAction, UnblockRelayInput,
+use nmp_nip51::{
+    BlockRelayAction, BlockRelayInput, InMemoryBlockedRelayCache, UnblockRelayAction,
+    UnblockRelayInput,
 };
+use nmp_router::publish_relay_list::{RelayListEntry, RelayMarker};
+use nmp_router::{PublishRelayListAction, PublishRelayListInput};
 
 const PUBKEY: &str = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
 
