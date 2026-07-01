@@ -14,7 +14,7 @@
 pub mod generated;
 
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
-use generated::nmp::relations as fb;
+use generated::nmp::notifications as fb;
 
 use super::super::projection::{
     NotificationRow, NotificationsSnapshot, NOTIFICATIONS_FILE_IDENTIFIER,

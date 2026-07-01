@@ -17,11 +17,11 @@ impl NmpRuntimeCore {
             key: req.session_id,
         }) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
-                action_type: "nmp.relations.notifications.open".to_string(),
+                action_type: "nmp.notifications.open".to_string(),
                 correlation_id: req.correlation_id,
             }],
             Err(reason) => vec![WorkerEvent::CapabilityFailure {
-                capability: "nmp.relations.notifications.open".to_string(),
+                capability: "nmp.notifications.open".to_string(),
                 correlation_id: req.correlation_id,
                 reason,
             }],
@@ -39,7 +39,7 @@ impl NmpRuntimeCore {
             req.session_id,
         ));
         vec![WorkerEvent::ActionAccepted {
-            action_type: "nmp.relations.notifications.close".to_string(),
+            action_type: "nmp.notifications.close".to_string(),
             correlation_id: req.correlation_id,
         }]
     }
@@ -57,11 +57,11 @@ impl NmpRuntimeCore {
             req.all_visible,
         ) {
             Ok(_) => vec![WorkerEvent::ActionAccepted {
-                action_type: "nmp.relations.notifications.mark_read".to_string(),
+                action_type: "nmp.notifications.mark_read".to_string(),
                 correlation_id: req.correlation_id,
             }],
             Err(reason) => vec![WorkerEvent::CapabilityFailure {
-                capability: "nmp.relations.notifications.mark_read".to_string(),
+                capability: "nmp.notifications.mark_read".to_string(),
                 correlation_id: req.correlation_id,
                 reason,
             }],

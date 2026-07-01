@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
+import { Show, createEffect, createMemo, createSignal, type JSX } from "solid-js";
 import {
   NmpComponentHostProvider,
   NostrArticleCard,
@@ -42,12 +42,9 @@ const runtime = createGalleryRuntime();
 void runtime.start(SHOWCASE_RELAYS);
 
 export default function App(): JSX.Element {
-  // Claim the showcase profile once an indexer relay is connected. The kernel
-  // auto-rebatches a pending kind:0 REQ when a relay reconnects (profile claims
-  // are deferred-reconnect-safe — profile.rs §"compiler handles deferred relay
-  // reconnect"), so a single claim self-heals if the profile's indexer wasn't
-  // the first relay to connect. No manual release-reclaim — that would cancel an
-  // in-flight kind:0 and is unnecessary for profiles (unlike event claims).
+  // Claim the showcase profile once an indexer relay is connected. The runtime
+  // owns socket buffering, lifecycle drains, reconnect replay, and snapshots;
+  // the gallery owns only the demand edge.
   let claimed = false;
   createEffect(() => {
     if (runtime.anyIndexerConnected() && !claimed) {
@@ -69,17 +66,9 @@ export default function App(): JSX.Element {
     }
   });
 
-  // Claim the showcase events for the content-view component. Event-id fetches
-  // route through the content lane, so gate on a CONTENT relay being connected —
-  // claiming before the content socket is open drops the REQ (the wasm transport
-  // has no on-demand dial or retry). Same edge-trigger discipline as the
-  // indexer-gated profile claim above.
-  // Claim the showcase events, retrying any that haven't resolved. A claim can
-  // be dropped if its hint relay's socket isn't open yet when the REQ is sent
-  // (the wasm transport drops a frame to a not-yet-connected relay, no retry),
-  // and a relay can be transiently slow. So we re-claim each unresolved event on
-  // an interval with a FRESH consumer id (forcing a new REQ) until it resolves
-  // or we exhaust the budget. Idempotent and self-stopping.
+  // Claim the showcase events once for the content-view component. Event-id
+  // fetches route through the content lane, so gate on a CONTENT relay being
+  // connected; the runtime/transport owns the request mechanics after that.
   let claimStarted = false;
   const claimTargets = [
     { id: SHOWCASE_NOTE.primaryId, hints: SHOWCASE_NOTE.relayHints, consumer: "gallery-note" },
@@ -89,37 +78,9 @@ export default function App(): JSX.Element {
   createEffect(() => {
     if (!runtime.anyContentConnected() || claimStarted) return;
     claimStarted = true;
-    let attempt = 0;
-    // Per-event last-(re)claim tick. As with profiles, we only release-reclaim
-    // after RECLAIM_AFTER idle ticks so we don't cancel an in-flight fetch that
-    // takes longer than one interval.
-    const lastClaimAt = new Map<string, number>();
-    const RECLAIM_AFTER = 3;
-    const tick = () => {
-      let allResolved = true;
-      for (const t of claimTargets) {
-        if (runtime.claimedEvent(t.id)) continue;
-        allResolved = false;
-        // resolve_ref dedupes ("already requested → no fetch"), so a first REQ
-        // dropped because its hint relay wasn't connected yet would never retry.
-        // Release (drops the last consumer → clears the requested state) then
-        // resolve again to force a FRESH REQ once more relays are connected.
-        const claimedAt = lastClaimAt.get(t.id);
-        if (claimedAt === undefined) {
-          runtime.claimEvent(t.id, t.consumer, t.hints);
-          lastClaimAt.set(t.id, attempt);
-        } else if (attempt - claimedAt >= RECLAIM_AFTER) {
-          runtime.releaseEvent(t.id, t.consumer);
-          runtime.claimEvent(t.id, t.consumer, t.hints);
-          lastClaimAt.set(t.id, attempt);
-        }
-      }
-      attempt += 1;
-      if (allResolved || attempt >= 30) clearInterval(timer);
-    };
-    tick();
-    const timer = setInterval(tick, 4000);
-    onCleanup(() => clearInterval(timer));
+    for (const t of claimTargets) {
+      runtime.claimEvent(t.id, t.consumer, t.hints);
+    }
   });
 
   // Ask the kernel (Rust NIP-19 encoder) for the showcase identity's npub once

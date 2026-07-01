@@ -39,6 +39,10 @@ fn matchers_are_correct() {
         rejected_relation_token("pub relation_counts: NoteRelationCounts,"),
         Some("NoteRelationCounts")
     );
+    assert_eq!(
+        rejected_relation_token(r#"const SCHEMA: &str = "nmp.relations.notifications";"#),
+        Some("nmp.relations")
+    );
     assert!(rejected_relation_token("// NoteRelationCounts docs").is_none());
     assert_eq!(
         storage_aggregation_token("CounterKind::Zap"),

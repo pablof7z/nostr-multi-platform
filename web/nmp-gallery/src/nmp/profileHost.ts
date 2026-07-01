@@ -63,18 +63,15 @@ export type GalleryRuntime = {
    *  profile REQs route to the indexer lane, so claims must wait for this. */
   anyIndexerConnected: Accessor<boolean>;
   /** Reactive — true once a connected relay carries the `content` role. Event-id
-   *  fetches route to the content lane, so event claims must wait
-   *  for this — claiming before the content socket is open drops the REQ (the
-   *  wasm transport has no retry/on-demand dial). */
+   *  fetches route to the content lane, so the gallery issues its demand after
+   *  this edge and leaves buffering/lifecycle mechanics to the runtime. */
   anyContentConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
   /** Claim a single event by raw event key. `hints` and `eventAuthor` are
    *  optional metadata decoded by the app boundary from a NIP-19/NIP-21 URI. */
   claimEvent(key: string, consumerId: string, hints?: string[], eventAuthor?: string): void;
-  /** Release an event claim. Dropping the last consumer clears the kernel's
-   *  "already requested" dedupe state, so a subsequent `claimEvent` re-issues a
-   *  fresh REQ — the basis of the cold-start re-claim retry. */
+  /** Release an event claim when the owning component/view no longer needs it. */
   releaseEvent(key: string, consumerId: string): void;
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */

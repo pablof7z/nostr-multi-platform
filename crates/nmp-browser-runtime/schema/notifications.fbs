@@ -1,4 +1,4 @@
-namespace nmp.relations;
+namespace nmp.notifications;
 
 // Typed FlatBuffers wire for the cross-protocol notification snapshot.
 //

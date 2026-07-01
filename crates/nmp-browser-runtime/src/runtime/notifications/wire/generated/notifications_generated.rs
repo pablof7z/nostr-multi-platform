@@ -6,7 +6,7 @@ extern crate alloc;
 pub mod nmp {
 
     #[allow(unused_imports, dead_code)]
-    pub mod relations {
+    pub mod notifications {
 
         pub enum NotificationRowOffset {}
         #[derive(Copy, Clone, PartialEq)]
@@ -669,5 +669,5 @@ pub mod nmp {
         ) {
             fbb.finish_size_prefixed(root, Some(NOTIFICATIONS_SNAPSHOT_IDENTIFIER));
         }
-    } // pub mod relations
+    } // pub mod notifications
 } // pub mod nmp
