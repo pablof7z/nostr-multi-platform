@@ -53,17 +53,24 @@ pub fn register_bookmark_runtime(
 
     // ── 3. Snapshot projection (typed sidecar) ────────────────────────────
     let projection_for_typed = Arc::clone(&projection);
-    app.register_typed_snapshot_projection("nmp.nip51.bookmarks", move || {
-        let snapshot = projection_for_typed.snapshot();
-        Some(nmp_core::TypedProjectionData {
-            key: "nmp.nip51.bookmarks".to_string(),
-            schema_id: BOOKMARK_LIST_SCHEMA_ID.to_string(),
-            schema_version: BOOKMARK_LIST_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(BOOKMARK_LIST_FILE_IDENTIFIER).into_owned(),
-            payload: encode_bookmark_list(&snapshot),
-            ..Default::default()
-        })
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            "nmp.nip51.bookmarks",
+            "projection.nmp.nip51.bookmarks",
+        ),
+        move || {
+            let snapshot = projection_for_typed.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: "nmp.nip51.bookmarks".to_string(),
+                schema_id: BOOKMARK_LIST_SCHEMA_ID.to_string(),
+                schema_version: BOOKMARK_LIST_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(BOOKMARK_LIST_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload: encode_bookmark_list(&snapshot),
+                ..Default::default()
+            })
+        },
+    );
 
     // ── 4. Active observed-projection reconciler ─────────────────────────
     //

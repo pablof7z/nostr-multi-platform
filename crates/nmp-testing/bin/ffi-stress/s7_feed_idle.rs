@@ -71,7 +71,7 @@ use crate::s7_feed_oracle::{run_feed_oracle, FeedFrameRecord};
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const FEED_KEY: &str = "nmp.testing.feed_idle";
+const FEED_KEY: &str = "app.testing.feed_idle";
 const FEED_EVENT_COUNT: u32 = 120;
 const IDLE_TICKS: usize = 8;
 const TICK_SETTLE_MS: u64 = 600;
@@ -277,7 +277,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],
-            nmp_feed::ProjectionKey(FEED_KEY.to_string()),
+            nmp_feed::ProjectionKey::app_owned(FEED_KEY).unwrap(),
         );
 
         let (signal_a, probe_a) = FrameProbe::new();
@@ -326,7 +326,7 @@ pub(crate) fn run(_cfg: S7Config, report: &mut ScenarioMetrics) {
             unsafe { &*app },
             VIEWER_PUBKEY.to_string(),
             vec![1],
-            nmp_feed::ProjectionKey(FEED_KEY.to_string()),
+            nmp_feed::ProjectionKey::app_owned(FEED_KEY).unwrap(),
         );
 
         let (signal_b, probe_b) = FrameProbe::new();

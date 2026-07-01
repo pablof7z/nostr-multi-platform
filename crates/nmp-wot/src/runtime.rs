@@ -42,9 +42,13 @@ pub fn register_runtime(
         return None;
     }
     let projection_runtime = Arc::clone(&runtime);
-    app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
-        projection_runtime.snapshot_typed()
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            crate::wire::typed_fb::PROJECTION_KEY,
+            "projection.nmp.wot.bootstrap",
+        ),
+        move || projection_runtime.snapshot_typed(),
+    );
     Some(runtime)
 }
 

@@ -14,6 +14,7 @@ crate-type = ["rlib"]
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-ownership = { workspace = true }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestScope / InterestLifecycle /
 # LogicalInterest / PTagRouting / stable_hash64 — used by `interests.rs` for

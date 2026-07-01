@@ -17,7 +17,7 @@ use crate::params::ProjectionKey;
 
 fn build_with<F: FnOnce() + Send + 'static>(key: &str, teardown: F) -> FeedSessionBuild {
     FeedSessionBuild {
-        projection_key: ProjectionKey(key.to_string()),
+        projection_key: ProjectionKey::app_owned(key).unwrap(),
         teardown: vec![Box::new(teardown)],
     }
 }
@@ -26,7 +26,7 @@ fn build_with<F: FnOnce() + Send + 'static>(key: &str, teardown: F) -> FeedSessi
 fn open_mints_distinct_ids_and_records_projection_key() {
     let reg = FeedSessionRegistry::default();
     let a = reg.open(build_with("test.feed.following", || {}));
-    let b = reg.open(build_with("nmp.feed.author.alice", || {}));
+    let b = reg.open(build_with("app.feed.author.alice", || {}));
     assert_ne!(a, b, "each open mints a distinct id");
     assert_ne!(
         a,
@@ -35,7 +35,7 @@ fn open_mints_distinct_ids_and_records_projection_key() {
     );
     assert_eq!(
         reg.projection_key(&a),
-        Some(ProjectionKey("test.feed.following".into()))
+        Some(ProjectionKey::app_owned("test.feed.following").unwrap())
     );
     assert_eq!(reg.live_count(), 2, "two live sessions");
 }
@@ -94,7 +94,7 @@ fn teardown_runs_in_reverse_registration_order() {
     let order = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
     let (o1, o2, o3) = (Arc::clone(&order), Arc::clone(&order), Arc::clone(&order));
     let build = FeedSessionBuild {
-        projection_key: ProjectionKey("test.feed.following".into()),
+        projection_key: ProjectionKey::app_owned("test.feed.following").unwrap(),
         teardown: vec![
             Box::new(move || o1.lock().unwrap().push(1)),
             Box::new(move || o2.lock().unwrap().push(2)),
@@ -122,7 +122,7 @@ fn dropping_the_registry_drops_unclosed_session_closures() {
         // The teardown closure holds `guard`; when the registry drops, the
         // closure (and its Arc clone) drop too. We assert via Arc strong count.
         let _id = reg.open(FeedSessionBuild {
-            projection_key: ProjectionKey("test.feed.following".into()),
+            projection_key: ProjectionKey::app_owned("test.feed.following").unwrap(),
             teardown: vec![Box::new(move || {
                 // Never invoked (registry dropped without close), but `guard` is
                 // captured and must drop with the registry.

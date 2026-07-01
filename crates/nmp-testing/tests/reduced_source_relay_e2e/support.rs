@@ -198,7 +198,7 @@ pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey(projection.into()),
+        projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
 
@@ -210,7 +210,7 @@ pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey(projection.into()),
+        projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
 
@@ -224,7 +224,7 @@ pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey(projection.into()),
+        projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
 
@@ -238,7 +238,7 @@ pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey(projection.into()),
+        projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
 

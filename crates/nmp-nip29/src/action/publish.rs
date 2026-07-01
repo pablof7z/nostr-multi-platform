@@ -130,7 +130,11 @@ pub(crate) fn reject_caller_envelope_tags(tags: &[Vec<String>]) -> Result<(), Ac
 pub struct PublishGroupEventAction;
 
 impl ActionModule for PublishGroupEventAction {
-    const NAMESPACE: &'static str = "nmp.nip29.publish_group_event";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.publish_group_event",
+            "action.nmp.nip29.publish_group_event",
+        );
     type Action = PublishGroupEventInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the

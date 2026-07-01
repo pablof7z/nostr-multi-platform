@@ -5,6 +5,12 @@
 //! protected semantic surface of its own.
 
 mod macros;
+mod surface;
+
+pub use surface::{
+    DeclaredActionNamespace, DeclaredProjectionKey, DeclaredSchemaId, DynamicProjectionKey,
+    FrameworkProjectionKey, ProjectionRegistrationKey, SurfaceTokenError,
+};
 
 /// One crate's ownership descriptor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

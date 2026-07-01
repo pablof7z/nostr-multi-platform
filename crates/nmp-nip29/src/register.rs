@@ -29,7 +29,7 @@
 use nmp_core::substrate::{ActionRegistrar, RegistrationError};
 
 use crate::action::{
-    CreateInviteAction, CreateGroupAction, DiscoverGroupsAction, EditMetadataAction,
+    CreateGroupAction, CreateInviteAction, DiscoverGroupsAction, EditMetadataAction,
     JoinGroupAction, LeaveGroupAction, PublishGroupEventAction, PutUserAction, SetParentAction,
 };
 

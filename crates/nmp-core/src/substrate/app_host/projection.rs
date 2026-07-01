@@ -5,6 +5,7 @@
 //! hard ceiling — this is the single largest narrow registration concern.
 
 use crate::update_envelope::TypedProjectionData;
+use nmp_ownership::ProjectionRegistrationKey;
 
 /// Error returned by [`SnapshotProjectionRegistrar::declare_incremental_apply`]
 /// when the pre-start invariant is violated or the registry is unavailable.
@@ -52,7 +53,7 @@ pub trait SnapshotProjectionRegistrar {
     /// snapshot tick — it MUST be non-blocking (D8).
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static;
 
     /// Register a typed projection closure that receives kernel-authored
@@ -69,7 +70,7 @@ pub trait SnapshotProjectionRegistrar {
     /// wall-clock reads inside projection code.
     fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static;
 
     /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP

@@ -170,7 +170,11 @@ fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reas
 }
 
 impl ActionModule for ZapAction {
-    const NAMESPACE: &'static str = "nmp.nip57.zap";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip57.zap",
+            "action.nmp.nip57.zap",
+        );
     type Action = ZapInput;
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the

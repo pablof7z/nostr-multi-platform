@@ -54,7 +54,11 @@ fn join_group_plan(action: &JoinGroupInput) -> PublishPlan {
 #[derive(Default)]
 pub struct JoinGroupAction;
 impl ActionModule for JoinGroupAction {
-    const NAMESPACE: &'static str = "nmp.nip29.join";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.join",
+            "action.nmp.nip29.join",
+        );
     type Action = JoinGroupInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the

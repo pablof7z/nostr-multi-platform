@@ -163,7 +163,8 @@ fn correlation_ids_are_unique_across_calls() {
 fn panicking_validator_is_rejected_not_unwound() {
     struct PanickingStartModule;
     impl ActionModule for PanickingStartModule {
-        const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+            crate::substrate::DeclaredActionNamespace::app_owned("host.boom_start");
         type Action = serde_json::Value;
         fn start(
             &self,
@@ -207,7 +208,8 @@ fn panicking_validator_is_rejected_not_unwound() {
 fn panicking_executor_returns_err_not_unwound() {
     struct PanickingExecuteModule;
     impl ActionModule for PanickingExecuteModule {
-        const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+            crate::substrate::DeclaredActionNamespace::app_owned("host.boom");
         type Action = serde_json::Value;
         fn start(
             &self,
@@ -285,7 +287,11 @@ mod adr_0049_yield {
     struct DefaultModule;
     impl ActionModule for DefaultModule {
         type Action = serde_json::Value;
-        const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
+        const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+            crate::substrate::DeclaredActionNamespace::framework(
+                "nmp.test.adr0049.ns",
+                "test.action.nmp.test.adr0049.ns",
+            );
         fn execute(
             &self,
             _ctx: &ActionContext,
@@ -300,7 +306,11 @@ mod adr_0049_yield {
     struct AppModule;
     impl ActionModule for AppModule {
         type Action = serde_json::Value;
-        const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
+        const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+            crate::substrate::DeclaredActionNamespace::framework(
+                "nmp.test.adr0049.ns",
+                "test.action.nmp.test.adr0049.ns",
+            );
         fn execute(
             &self,
             _ctx: &ActionContext,
@@ -315,7 +325,11 @@ mod adr_0049_yield {
     struct OtherAppModule;
     impl ActionModule for OtherAppModule {
         type Action = serde_json::Value;
-        const NAMESPACE: &'static str = "nmp.test.adr0049.other";
+        const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+            crate::substrate::DeclaredActionNamespace::framework(
+                "nmp.test.adr0049.other",
+                "test.action.nmp.test.adr0049.other",
+            );
         fn execute(
             &self,
             _ctx: &ActionContext,

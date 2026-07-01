@@ -52,7 +52,11 @@ pub struct UploadInput {
 pub struct UploadAction;
 
 impl ActionModule for UploadAction {
-    const NAMESPACE: &'static str = "nmp.blossom.upload";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.blossom.upload",
+            "action.nmp.blossom.upload",
+        );
     type Action = UploadInput;
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the

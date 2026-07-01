@@ -20,7 +20,8 @@ use crate::new_app;
 /// Always-succeeds bytes-capable action module (echo test).
 struct EchoModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for EchoModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.echo"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.echo");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -48,7 +49,8 @@ impl ActionModule for EchoModule {
 /// Coded-rejection action module.
 struct CodedRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for CodedRejectModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.coded_reject"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.coded_reject");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -79,7 +81,8 @@ impl ActionModule for CodedRejectModule {
 /// Plain-reject action module.
 struct PlainRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for PlainRejectModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.plain_reject"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.plain_reject");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],

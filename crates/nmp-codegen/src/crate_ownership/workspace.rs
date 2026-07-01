@@ -6,6 +6,7 @@ use std::process::Command;
 use crate::crate_ownership_parse::descriptor_for_package;
 
 use super::audit::audit_descriptors;
+use super::source_surface::audit_source_surfaces;
 use super::{OwnershipAuditIssue, OwnershipWorkspace};
 
 #[derive(Debug, Deserialize)]
@@ -58,6 +59,10 @@ pub fn load_workspace_ownership(
     }
     descriptors.sort_unstable_by(|a, b| a.crate_name.cmp(&b.crate_name));
     audit_issues.extend(audit_descriptors(&descriptors));
+    audit_issues.extend(audit_source_surfaces(
+        &metadata.workspace_root,
+        &descriptors,
+    ));
     Ok(OwnershipWorkspace {
         workspace_root: metadata.workspace_root,
         descriptors,

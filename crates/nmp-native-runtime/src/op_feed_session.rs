@@ -200,7 +200,7 @@ pub fn open_active_follows_op_feed_with_mute(
     if session.handle.is_some() {
         let registry = app.feed_registry_handle();
         let sender = app.command_sender();
-        let projection_key = projection.0.clone();
+        let projection_key = projection.as_str().to_string();
         mute.on_change(Box::new(move || {
             if registry.reset(&projection_key) {
                 sender.mark_changed_since_emit();

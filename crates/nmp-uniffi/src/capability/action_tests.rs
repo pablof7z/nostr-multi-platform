@@ -47,7 +47,8 @@ impl ActionResultObserver for BlockingActionResultObserver {
 struct SucceedModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 
 impl ActionModule for SucceedModule {
-    const NAMESPACE: &'static str = "test.uniffi_c4.succeed"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.uniffi_c4.succeed");
     type Action = serde_json::Value;
 
     fn decode_payload(

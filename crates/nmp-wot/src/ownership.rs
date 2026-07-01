@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "follow/mute graph scoring and WoT bootstrap interests",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.wot.bootstrap",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.wot.bootstrap",
+                context: "",
+            },
+            owns: [
+                "WoT bootstrap typed projection key and schema identity",
+            ],
+        },
     ],
     notes: [
     ],

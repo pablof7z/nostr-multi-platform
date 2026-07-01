@@ -128,7 +128,7 @@ pub(super) fn compile_feed_params_with_suppression_and_artifacts(
 
     session_engine::build_scope_session_with_artifacts(
         app,
-        &params.projection.0,
+        params.projection.as_str(),
         &params.render,
         resolved,
         suppression,

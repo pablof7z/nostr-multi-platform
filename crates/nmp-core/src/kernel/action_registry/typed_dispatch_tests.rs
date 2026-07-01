@@ -224,7 +224,11 @@ fn start_bytes_unknown_namespace_is_rejected() {
 
 struct JsonOnlyModule;
 impl ActionModule for JsonOnlyModule {
-    const NAMESPACE: &'static str = "nmp.test.json_only";
+    const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+        crate::substrate::DeclaredActionNamespace::framework(
+            "nmp.test.json_only",
+            "test.action.nmp.test.json_only",
+        );
     type Action = serde_json::Value;
     fn execute(
         &self,

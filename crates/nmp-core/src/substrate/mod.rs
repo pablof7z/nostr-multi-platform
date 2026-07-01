@@ -84,7 +84,7 @@ pub(crate) use view::{observed_shape_matches_event, observed_shape_matches_field
 pub use action::ProtocolDescriptor;
 pub use action::{
     ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, ActionResult, RegistrationError,
+    ActionRejection, ActionResult, DeclaredActionNamespace, RegistrationError,
 };
 pub use action_context::{
     ActionContext, ActionLocalStore, ActionReadError, ACTION_LOCAL_STORE_MAX_EVENTS,

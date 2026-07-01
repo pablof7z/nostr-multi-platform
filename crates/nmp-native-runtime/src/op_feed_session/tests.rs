@@ -192,7 +192,7 @@ fn active_follows_projection_renders_followed_note_from_stored_kind3() {
     let bob_note_id = bob_note.id.to_hex();
 
     let app = crate::new_app();
-    let projection = nmp_feed::ProjectionKey(TEST_FEED_KEY.to_string());
+    let projection = nmp_feed::ProjectionKey::app_owned(TEST_FEED_KEY).unwrap();
     let session =
         crate::open_active_follows_op_feed(&app, alice_pk.clone(), vec![1], projection.clone());
     assert!(
@@ -202,7 +202,7 @@ fn active_follows_projection_renders_followed_note_from_stored_kind3() {
     assert!(
         app.registered_typed_projection_keys()
             .iter()
-            .any(|key| key == &projection.0),
+            .any(|key| key == projection.as_str()),
         "feed session registers the caller-owned typed projection"
     );
 
@@ -234,7 +234,7 @@ fn active_follows_projection_renders_followed_note_from_stored_kind3() {
         "signed followed-author note verifies and enters ingest"
     );
     wait_for(&rx, "visible active-follows feed row", || {
-        visible_feed_ids(&app, &projection.0) == vec![bob_note_id.clone()]
+        visible_feed_ids(&app, projection.as_str()) == vec![bob_note_id.clone()]
     });
 
     app.set_update_listener(None);

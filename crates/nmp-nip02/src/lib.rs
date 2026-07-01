@@ -73,6 +73,12 @@ pub use wire::typed_fb::{
     SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID, SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION,
 };
 
+const FOLLOW_LIST_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.follow_list",
+        "projection.nmp.follow_list",
+    );
+
 // ---------------------------------------------------------------------------
 // Wire shapes
 // ---------------------------------------------------------------------------
@@ -299,7 +305,7 @@ pub fn register_follow_state_runtime(
     // and encodes. Wire shape is preserved: key = "nmp.follow_list",
     // schema_id = "nmp.nip02.follow_list". D8: non-blocking lookup.
     let projection_typed = Arc::clone(&projection);
-    app.register_typed_snapshot_projection("nmp.follow_list", move || {
+    app.register_typed_snapshot_projection(FOLLOW_LIST_PROJECTION_KEY, move || {
         let snapshot = projection_typed.snapshot();
         Some(nmp_core::TypedProjectionData {
             key: "nmp.follow_list".to_string(),

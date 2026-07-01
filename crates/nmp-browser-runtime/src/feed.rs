@@ -121,7 +121,7 @@ fn compile_feed(
     let follow_observer = ObservedProjectionReconciler::new(
         Arc::clone(&registrar),
         follow_set.clone() as Arc<dyn ObservedProjectionSink>,
-        format!("{}.follow_set", projection.0),
+        format!("{}.follow_set", projection.as_str()),
         1,
         64,
         active_contact_list_shape(active_account_slot.clone()),
@@ -129,7 +129,7 @@ fn compile_feed(
     let feed_observer = ObservedProjectionReconciler::new(
         registrar,
         observer as Arc<dyn ObservedProjectionSink>,
-        format!("{}.engine", projection.0),
+        format!("{}.engine", projection.as_str()),
         1,
         512,
         active_follow_feed_shape(
@@ -160,13 +160,17 @@ fn compile_feed(
         }
     }));
 
-    register_feed_render_source(access.reducer, projection.0.clone(), Arc::clone(&engine));
+    register_feed_render_source(
+        access.reducer,
+        projection.as_str().to_string(),
+        Arc::clone(&engine),
+    );
 
     let teardown: Vec<TeardownAction> = vec![
         mark_changed(access.command_sender.clone()),
         access
             .reducer
-            .remove_feed_snapshot_projection_action(projection.0.clone()),
+            .remove_feed_snapshot_projection_action(projection.as_str().to_string()),
         close_reconciler(feed_observer.clone()),
         close_reconciler(follow_observer.clone()),
     ];
@@ -198,7 +202,10 @@ fn register_feed_render_source(
     let tick_rev_for_typed = Arc::clone(&tick_rev);
     let consumer_for_typed = format!("feed-author:{key}");
     let typed_key = key.clone();
-    reducer.register_typed_snapshot_projection(key.clone(), move || {
+    let Ok(registration_key) = nmp_ownership::DynamicProjectionKey::app_owned(key.clone()) else {
+        return;
+    };
+    reducer.register_typed_snapshot_projection(registration_key, move || {
         let rev = tick_rev_for_typed.load(std::sync::atomic::Ordering::Acquire);
         let snapshot = source_for_typed.snapshot_for_tick(rev);
         nmp_core::record_emitted_feed_authors(

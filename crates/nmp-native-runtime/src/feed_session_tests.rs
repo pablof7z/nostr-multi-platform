@@ -62,7 +62,7 @@ fn following_params() -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey("test.feed.following".into()),
+        projection: ProjectionKey::app_owned("test.feed.following").unwrap(),
     }
 }
 
@@ -88,7 +88,7 @@ fn following_compiler(
                 scope: "test-only-compiler",
             });
         }
-        let key = params.projection.0.clone();
+        let key = params.projection.as_str().to_string();
         // Register over the EXISTING mechanics, exactly as the feed-session path does:
         // a permanent controller (output) + a declared observed projection
         // (returns an id) + a typed sidecar projection under the same key.
@@ -102,7 +102,7 @@ fn following_compiler(
             params.primary_kinds.iter().copied(),
             params.window.initial_limit,
         ));
-        app.register_typed_snapshot_projection(key.clone(), || None);
+        app.register_typed_snapshot_projection(params.projection.dynamic_token(), || None);
 
         // Teardown captures the registry SLOTS (not `&app`) via `FeedTeardown`
         // and reuses the same underlying unregister primitives — handle-based,
@@ -111,7 +111,7 @@ fn following_compiler(
         // then a final mark-changed.
         let teardown = app.feed_teardown();
         Ok(FeedSessionBuild {
-            projection_key: ProjectionKey(key.clone()),
+            projection_key: ProjectionKey::app_owned(key.clone()).unwrap(),
             teardown: vec![
                 teardown.unregister_feed(key.clone()),
                 teardown.revoke_observer(observer_id),
@@ -135,7 +135,7 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
 
         assert_eq!(
             handle.projection_key,
-            ProjectionKey("test.feed.following".into()),
+            ProjectionKey::app_owned("test.feed.following").unwrap(),
             "handle carries the projection key"
         );
         assert_ne!(handle.session_id.0, 0, "minted a real session id");
@@ -343,7 +343,7 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
         // Registration order = the REVERSE of intended execution order, EXACTLY
         // as the session compiler builds it.
         let build = FeedSessionBuild {
-            projection_key: ProjectionKey(key.into()),
+            projection_key: ProjectionKey::app_owned(key).unwrap(),
             teardown: vec![
                 rec("mark_changed", teardown.mark_changed()),
                 rec("clear_acquisition", clear_acquisition),

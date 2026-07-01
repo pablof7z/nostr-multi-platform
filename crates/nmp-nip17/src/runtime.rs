@@ -16,6 +16,17 @@ use crate::{
     DM_RELAY_LIST_FILE_IDENTIFIER, DM_RELAY_LIST_SCHEMA_ID, DM_RELAY_LIST_SCHEMA_VERSION,
 };
 
+const DM_RELAY_LIST_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.nip17.dm_relay_list",
+        "projection.nmp.nip17.dm_relay_list",
+    );
+const DM_INBOX_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.nip17.dm_inbox",
+        "projection.nmp.nip17.dm_inbox",
+    );
+
 /// Wire the NIP-17 DM runtime into `app`.
 ///
 /// Registers [`DmInboxProjection`] as an `IngestParser` for kind:1059
@@ -66,7 +77,7 @@ pub fn register_runtime(
     controller.sync();
 
     let controller_typed = Arc::clone(&controller);
-    app.register_typed_snapshot_projection("nmp.nip17.dm_relay_list", move || {
+    app.register_typed_snapshot_projection(DM_RELAY_LIST_PROJECTION_KEY, move || {
         let relay_list = controller_typed.typed_relay_list();
         Some(nmp_core::TypedProjectionData {
             key: "nmp.nip17.dm_relay_list".to_string(),
@@ -108,7 +119,7 @@ fn register_inbox_projection(
     });
 
     let projection_typed = Arc::clone(&projection);
-    app.register_typed_snapshot_projection("nmp.nip17.dm_inbox", move || {
+    app.register_typed_snapshot_projection(DM_INBOX_PROJECTION_KEY, move || {
         let snapshot = projection_typed.snapshot();
         Some(nmp_core::TypedProjectionData {
             key: "nmp.nip17.dm_inbox".to_string(),

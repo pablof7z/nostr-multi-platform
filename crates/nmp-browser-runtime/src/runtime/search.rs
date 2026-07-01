@@ -141,9 +141,15 @@ impl BrowserRuntimeHandle {
         projection: Arc<Mutex<SearchResultsProjection>>,
     ) {
         let key_for_row = key.to_string();
+        let Ok(projection_key) = nmp_ownership::FrameworkProjectionKey::declared(
+            key_for_row.clone(),
+            "projection.nmp.nip50.search",
+        ) else {
+            return;
+        };
         self.runtime
             .reducer
-            .register_typed_snapshot_projection(key.to_string(), move || {
+            .register_typed_snapshot_projection(projection_key, move || {
                 let snapshot = projection.lock().ok()?.snapshot();
                 Some(TypedProjectionData {
                     key: key_for_row.clone(),

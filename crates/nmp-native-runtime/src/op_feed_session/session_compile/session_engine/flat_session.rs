@@ -167,7 +167,7 @@ pub(super) fn build_flat_scope_session(
     teardown.push(teardown_handle.unregister_feed(key.to_string()));
 
     Ok(FeedSessionBuild {
-        projection_key: nmp_feed::ProjectionKey(key.to_string()),
+        projection_key: nmp_feed::ProjectionKey::app_owned(key).unwrap(),
         teardown,
     })
 }

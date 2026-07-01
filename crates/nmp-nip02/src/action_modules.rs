@@ -18,7 +18,8 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayl
 use crate::{FollowManyAction, FollowManyModule, FollowModule, PubkeyAction, UnfollowModule};
 
 impl ActionModule for FollowModule {
-    const NAMESPACE: &'static str = "nmp.follow";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework("nmp.follow", "action.nmp.follow");
     type Action = PubkeyAction;
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
@@ -43,7 +44,11 @@ impl ActionModule for FollowModule {
 }
 
 impl ActionModule for UnfollowModule {
-    const NAMESPACE: &'static str = "nmp.unfollow";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.unfollow",
+            "action.nmp.unfollow",
+        );
     type Action = PubkeyAction;
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
@@ -68,7 +73,11 @@ impl ActionModule for UnfollowModule {
 }
 
 impl ActionModule for FollowManyModule {
-    const NAMESPACE: &'static str = "nmp.follow_many";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.follow_many",
+            "action.nmp.follow_many",
+        );
     type Action = FollowManyAction;
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the

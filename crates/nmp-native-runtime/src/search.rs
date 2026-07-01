@@ -311,18 +311,25 @@ impl NmpApp {
         {
             let projection_for_sidecar = Arc::clone(&projection);
             let key_for_encode = key.clone();
-            self.register_typed_snapshot_projection(key.clone(), move || {
-                let snapshot = projection_for_sidecar.lock().ok()?.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: key_for_encode.clone(),
-                    schema_id: SEARCH_RESULTS_SCHEMA_ID.to_string(),
-                    schema_version: SEARCH_RESULTS_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(SEARCH_RESULTS_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_search_results_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
+            self.register_typed_snapshot_projection(
+                nmp_ownership::FrameworkProjectionKey::declared(
+                    key.clone(),
+                    "projection.nmp.nip50.search",
+                )
+                .expect("search projection keys use the nmp.nip50.search family"),
+                move || {
+                    let snapshot = projection_for_sidecar.lock().ok()?.snapshot();
+                    Some(nmp_core::TypedProjectionData {
+                        key: key_for_encode.clone(),
+                        schema_id: SEARCH_RESULTS_SCHEMA_ID.to_string(),
+                        schema_version: SEARCH_RESULTS_SCHEMA_VERSION,
+                        file_identifier: String::from_utf8_lossy(SEARCH_RESULTS_FILE_IDENTIFIER)
+                            .into_owned(),
+                        payload: encode_search_results_snapshot(&snapshot),
+                        ..Default::default()
+                    })
+                },
+            );
         }
 
         // Register the projection (via the `&self` observer adapter) as a SINGLE

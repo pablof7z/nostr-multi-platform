@@ -166,14 +166,15 @@ impl ActionRegistry {
         module: M,
     ) -> Result<(), RegistrationError> {
         let provider = std::any::type_name::<M>();
-        let prior = self.provenance.get(M::NAMESPACE).copied();
+        let namespace = M::NAMESPACE.as_str();
+        let prior = self.provenance.get(namespace).copied();
         let (disposition, collision) = match prior {
             None => (Disposition::Installed, None),
             Some((Provenance::Default, _)) => (Disposition::ReplacedPrevious, None),
             Some((Provenance::App, prev_provider)) => {
                 // App-over-app collision: structured error in both dev and release.
                 let err = RegistrationError {
-                    namespace: M::NAMESPACE,
+                    namespace,
                     prior_provider: prev_provider,
                     new_provider: provider,
                 };
@@ -182,17 +183,15 @@ impl ActionRegistry {
         };
         let replaced = prior.map(|(_, prev_provider)| prev_provider.to_string());
 
-        self.modules.insert(
-            M::NAMESPACE.to_string(),
-            Box::new(ActionModuleAdapter(module)),
-        );
+        self.modules
+            .insert(namespace.to_string(), Box::new(ActionModuleAdapter(module)));
         self.provenance
-            .insert(M::NAMESPACE.to_string(), (Provenance::App, provider));
+            .insert(namespace.to_string(), (Provenance::App, provider));
 
         if let Some(ledger) = &self.ledger {
             ledger.record(
                 "action_registry",
-                M::NAMESPACE,
+                namespace,
                 provider,
                 disposition,
                 replaced,
@@ -225,12 +224,13 @@ impl ActionRegistry {
     /// exactly as before — only the storage shape changed.
     pub fn register_default<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         let provider = std::any::type_name::<M>();
-        if let Some((_, existing_provider)) = self.provenance.get(M::NAMESPACE).copied() {
+        let namespace = M::NAMESPACE.as_str();
+        if let Some((_, existing_provider)) = self.provenance.get(namespace).copied() {
             // Already claimed — yield. Record the yield for the report.
             if let Some(ledger) = &self.ledger {
                 ledger.record(
                     "action_registry",
-                    M::NAMESPACE,
+                    namespace,
                     provider,
                     Disposition::YieldedToExisting,
                     Some(existing_provider.to_string()),
@@ -238,16 +238,14 @@ impl ActionRegistry {
             }
             return false;
         }
-        self.modules.insert(
-            M::NAMESPACE.to_string(),
-            Box::new(ActionModuleAdapter(module)),
-        );
+        self.modules
+            .insert(namespace.to_string(), Box::new(ActionModuleAdapter(module)));
         self.provenance
-            .insert(M::NAMESPACE.to_string(), (Provenance::Default, provider));
+            .insert(namespace.to_string(), (Provenance::Default, provider));
         if let Some(ledger) = &self.ledger {
             ledger.record(
                 "action_registry",
-                M::NAMESPACE,
+                namespace,
                 provider,
                 Disposition::Installed,
                 None,

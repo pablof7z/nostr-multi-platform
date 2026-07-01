@@ -41,7 +41,11 @@ pub struct DeleteCommand {
 pub struct DeleteModule;
 
 impl ActionModule for DeleteModule {
-    const NAMESPACE: &'static str = "nmp.nip09.delete";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip09.delete",
+            "action.nmp.nip09.delete",
+        );
     type Action = DeleteAction;
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {

@@ -22,6 +22,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
+use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
 
 // ---------------------------------------------------------------------------
 // Acquisition source — the closed `PubkeySetExpr` algebra.
@@ -215,13 +216,59 @@ impl FeedWindow {
     }
 }
 
-/// (e) ITEM PROJECTION — the registered projection key that renders admitted
-/// rows into cards.
+/// (e) ITEM PROJECTION — the app-owned dynamic projection key that renders
+/// admitted rows into cards.
 ///
-/// The framework treats the key as opaque; the projection itself is registered
-/// out-of-band (no card-builder closure crosses FFI in this declaration).
+/// Dynamic feed keys are intentionally app/product-owned. Framework-owned
+/// `nmp.*` projection keys must use declared projection tokens instead of this
+/// dynamic lane.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct ProjectionKey(pub String);
+#[serde(try_from = "String", into = "String")]
+pub struct ProjectionKey(DynamicProjectionKey);
+
+impl ProjectionKey {
+    /// Build an app-owned dynamic feed projection key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SurfaceTokenError`] when `value` is empty or uses the reserved
+    /// `nmp.*` framework prefix.
+    pub fn app_owned(value: impl Into<String>) -> Result<Self, SurfaceTokenError> {
+        DynamicProjectionKey::app_owned(value).map(Self)
+    }
+
+    /// Borrow the projection key string.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    /// Clone the underlying dynamic projection token for registration APIs.
+    #[must_use]
+    pub fn dynamic_token(&self) -> DynamicProjectionKey {
+        self.0.clone()
+    }
+
+    /// Consume into the owned key string.
+    #[must_use]
+    pub fn into_string(self) -> String {
+        self.0.into_string()
+    }
+}
+
+impl TryFrom<String> for ProjectionKey {
+    type Error = SurfaceTokenError;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::app_owned(value)
+    }
+}
+
+impl From<ProjectionKey> for String {
+    fn from(value: ProjectionKey) -> Self {
+        value.into_string()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // FeedParams — the full typed declaration.

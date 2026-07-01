@@ -52,7 +52,11 @@ pub struct SendDmInput {
 pub struct SendDmAction;
 
 impl ActionModule for SendDmAction {
-    const NAMESPACE: &'static str = "nmp.nip17.send";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip17.send",
+            "action.nmp.nip17.send",
+        );
     type Action = SendDmInput;
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
@@ -120,7 +124,11 @@ pub struct HydratePeerRelayListInput {
 pub struct HydratePeerRelayListAction;
 
 impl ActionModule for HydratePeerRelayListAction {
-    const NAMESPACE: &'static str = "nmp.nip17.hydrate_peer_relay_list";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip17.hydrate_peer_relay_list",
+            "action.nmp.nip17.hydrate_peer_relay_list",
+        );
     type Action = HydratePeerRelayListInput;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

@@ -119,9 +119,13 @@ pub fn register_longform_projection(
         return;
     }
     let projection_for_closure = Arc::clone(&projection);
-    app.register_typed_snapshot_projection(LONGFORM_PROJECTION_KEY, move || {
-        Some(projection_for_closure.typed_projection())
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            LONGFORM_PROJECTION_KEY,
+            "projection.nmp.nip23.articles",
+        ),
+        move || Some(projection_for_closure.typed_projection()),
+    );
 }
 
 #[cfg(test)]

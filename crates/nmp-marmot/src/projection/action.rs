@@ -306,7 +306,11 @@ impl ProtocolCommand for MarmotProtocolCommand {
 }
 
 impl ActionModule for MarmotActionModule {
-    const NAMESPACE: &'static str = MARMOT_ACTION_NAMESPACE;
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            MARMOT_ACTION_NAMESPACE,
+            "action.nmp.marmot",
+        );
     type Action = MarmotAction;
 
     /// `start()` is a pure validator. The typed `MarmotAction` enum's
