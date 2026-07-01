@@ -1,10 +1,9 @@
 //! `nmp.nip65.publish_relay_list` — NIP-65 relay-list (kind:10002) publish path.
 //!
-//! Absorbed from the (now-deleted) `nmp-nip65` crate; see
-//! `docs/architecture/crate-boundaries.md` §3.
-//! `nmp-router` is the single home for both the kind:10002 ingest parser
-//! ([`crate::Kind10002Parser`]) + cache ([`crate::InMemoryMailboxCache`])
-//! **and** the kind:10002 publish action: routing owns the kind end-to-end.
+//! `nmp-router` is the single home for the kind:10002 ingest parser
+//! ([`crate::Kind10002Parser`]), cache ([`crate::InMemoryMailboxCache`]),
+//! publish action, and resolver. The tag decoder itself lives in
+//! `nmp-nip65-types` so tests and routing cannot drift.
 //!
 //! # Why this exists
 //!
@@ -39,11 +38,9 @@
 //! * `["r", <url>, "read"]`   → read-only
 //! * `["r", <url>, "write"]`  → write-only
 //!
-//! Any third-element value other than `"read"` / `"write"` is parsed by
-//! the kernel as "both" (see `nmp-core::kernel::nostr::parse_relay_list`:
-//! `let marker = tag.get(2).map(String::as_str).unwrap_or("both")`). The
-//! builder here MUST agree with that parser so a publish → ingest round
-//! trip is lossless.
+//! Any third-element value other than `"read"` / `"write"` is ignored by the
+//! canonical `nmp-nip65-types` decoder. The builder here MUST agree with that
+//! decoder so a publish → ingest round trip is lossless.
 //!
 //! # Routing
 //!
@@ -62,8 +59,8 @@
 //!
 //! # D0 — namespace
 //!
-//! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable
-//! across the move from `nmp-nip65` so callers do not need to change.
+//! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable so
+//! callers do not need to change.
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
@@ -84,10 +81,9 @@ use serde::{de, Deserialize, Deserializer, Serialize};
 /// * [`Write`] → tag `["r", url, "write"]`.
 /// * [`Indexer`] → input-only host role; skipped, never emitted in kind:10002.
 ///
-/// The kernel parser treats *any* third-element string other than `"read"`
-/// or `"write"` as "both", but to keep the publish → ingest round-trip
-/// stable in the canonical case the builder OMITS the third element for
-/// [`Both`] rather than emitting `"both"`.
+/// The canonical decoder ignores any third-element string other than `"read"`
+/// or `"write"`, so the builder omits the third element for [`Both`] rather
+/// than emitting `"both"`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum RelayMarker {

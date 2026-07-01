@@ -196,12 +196,7 @@ mod tests {
         let primary_id = event_id(0x22);
 
         // Seed a kind:10002 write relay so the planner can route the REQ.
-        kernel.seed_mailbox_relay_list(
-            &author,
-            vec![],
-            vec!["wss://w6-write-relay.example/".to_string()],
-            vec![],
-        );
+        kernel.seed_kind10002_for_test(&author, &["wss://w6-write-relay.example/"]);
 
         // Install a follow interest so the planner compile has targets.
         install_follow_interest(&mut kernel, 99, &author);

@@ -3,7 +3,7 @@
 //! optional-string PRESENCE invariant asserts both `None` and `Some("")`.
 
 use crate::action::{
-    CreateInviteInput, CreateGroupInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
+    CreateGroupInput, CreateInviteInput, DiscoverGroupsInput, EditMetadataInput, GroupAccess,
     GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
     SetParentInput,
 };

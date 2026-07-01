@@ -14,10 +14,11 @@
 use std::sync::Arc;
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
+use crate::{InMemoryMailboxCache, Kind10002Parser};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
 use nmp_core::slots::{new_indexer_relays_slot, IndexerRelaysSlot};
-use nmp_core::substrate::BlockedRelaySet;
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache};
+use nmp_store::{RawEvent, VerifiedEvent};
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const RECIPIENT_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
@@ -34,7 +35,7 @@ fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
     slot
 }
 
-fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<String>>) {
+fn seed_kind10002(cache: &Arc<InMemoryMailboxCache>, author_hex: &str, tags: Vec<Vec<String>>) {
     let prefix = &author_hex[..2];
     let id = format!("{:0<64}", format!("{}e10002", prefix));
     let raw = RawEvent {
@@ -47,9 +48,12 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
         sig: "0".repeat(128),
     };
     let verified = VerifiedEvent::from_raw_unchecked(raw);
-    store
-        .insert(verified, &"wss://test".to_string(), 1_700_000_000_000)
-        .expect("insert");
+    Kind10002Parser::new(Arc::clone(cache)).parse_event(&verified);
+}
+
+fn resolver(cache: &Arc<InMemoryMailboxCache>) -> Nip65OutboxResolver {
+    let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+    Nip65OutboxResolver::new(mailbox_cache, new_indexer_relays_slot())
 }
 
 fn urls_of(resolved: &[ResolvedRelay]) -> Vec<String> {
@@ -67,16 +71,16 @@ fn blocked_with(urls: &[&str]) -> BlockedRelaySet {
 #[test]
 fn blocked_relay_excluded_from_publish_resolution() {
     // Author's kind:10002 write set has two relays; one is blocked.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![
             vec!["r".into(), "wss://good.example".into(), "write".into()],
             vec!["r".into(), "wss://blocked.example".into(), "write".into()],
         ],
     );
-    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+    let resolver = resolver(&cache);
 
     let blocked = blocked_with(&["wss://blocked.example"]);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &blocked);
@@ -96,9 +100,9 @@ fn blocked_relay_excluded_from_publish_resolution() {
 fn blocked_relay_excluded_from_recipient_inbox() {
     // Author writes to a good relay; recipient's kind:10002 read set has a
     // blocked relay that must not appear in the recipient-inbox fan-out.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -106,8 +110,8 @@ fn blocked_relay_excluded_from_recipient_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -115,7 +119,7 @@ fn blocked_relay_excluded_from_recipient_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+    let resolver = resolver(&cache);
 
     let blocked = blocked_with(&["wss://blocked-inbox.example"]);
     let out = resolver.resolve(
@@ -141,9 +145,12 @@ fn blocked_relay_excluded_from_recipient_inbox() {
 fn blocked_relay_excluded_from_indexer_fanout() {
     // Discovery kind (kind:0) fans out to the indexer relays; a blocked
     // indexer must be excluded from the output.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let cache = Arc::new(InMemoryMailboxCache::new());
     let resolver = Nip65OutboxResolver::new(
-        store,
+        {
+            let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+            mailbox_cache
+        },
         indexer_slot_with(vec![
             "wss://good-indexer.example".to_string(),
             "wss://blocked-indexer.example".to_string(),
@@ -174,23 +181,17 @@ fn blocked_relay_excluded_with_differing_case() {
     // the canonicalisation parity between kind:10002 ingest and blocked
     // lookup entries (Bug 2 ⇄ Bug 1 interaction).
     //
-    // NOTE: `Nip65OutboxResolver` reads kind:10002 from the EventStore, not
-    // the ingest parser, so we store the ALREADY-canonical form here (the
-    // store is what the resolver scans). The canonicalisation-on-ingest path
-    // is covered by `ingest.rs::parse_relay_list_canonicalizes_urls`; this
-    // test locks in that a lowercase blocked entry filters a lowercase write
-    // entry regardless of the case the *block list* author typed.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
-            "wss://block.example".into(),
+            "wss://Block.Example".into(),
             "write".into(),
         ]],
     );
-    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+    let resolver = resolver(&cache);
 
     // Block set built from the canonical (lowercase) form — the same form the
     // blocked-relay lookup produces from a `wss://Block.Example` source.
@@ -209,24 +210,15 @@ fn blocked_relay_excluded_with_differing_case() {
 }
 
 #[test]
-fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
+fn non_canonical_source_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
     // Security: the blocked set stores canonical (lowercase) relay URLs.  A
-    // kind:10002 tag stored with a non-canonical spelling (e.g. mixed-case
-    // host `wss://Block.Example/`) must be canonicalized by the resolver
-    // BEFORE the blocked-set filter runs — otherwise the non-canonical
-    // spelling escapes the filter and the relay receives publish traffic.
-    //
-    // This test stores a NON-canonical tag directly in the store (bypassing
-    // the ingest canonicalization that production events go through, to
-    // simulate the gap) and asserts that the resolver still filters it out
-    // when the blocked set carries the canonical form.
-    //
-    // Pre-fix this test FAILS: the raw `wss://Block.Example/` tag survives
-    // `is_relay_url` (starts_with "wss://") and is pushed as-is; the
-    // blocked-set `contains("wss://block.example")` misses it.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    // kind:10002 tag with a non-canonical spelling (e.g. mixed-case host
+    // `wss://Block.Example/`) must be canonicalized by `Kind10002Parser`
+    // before the resolver ever reads the mailbox cache. Otherwise the
+    // non-canonical spelling could escape the blocked-set filter.
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         // Intentionally NON-canonical: uppercase host + trailing slash.
         // Canonical form is `wss://block.example` (no trailing slash, lowercase).
@@ -236,7 +228,7 @@ fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
             "write".into(),
         ]],
     );
-    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+    let resolver = resolver(&cache);
 
     // Blocked set uses the canonical form.
     let blocked = blocked_with(&["wss://block.example"]);
@@ -245,7 +237,7 @@ fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
 
     assert!(
         !urls.contains(&"wss://Block.Example/".to_string()),
-        "non-canonical raw form must not appear in output (resolver canonicalized it), got {urls:?}"
+        "non-canonical raw form must not appear in output; parser canonicalization feeds the resolver, got {urls:?}"
     );
     assert!(
         !urls.contains(&"wss://block.example".to_string()),
@@ -259,13 +251,13 @@ fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
 
 #[test]
 fn non_canonical_tag_without_matching_block_canonicalizes_and_is_included() {
-    // Complement of the above: a non-canonical stored tag for an UNBLOCKED
-    // relay must still resolve (after canonicalization) to the canonical form
-    // and be included in the output.  Fail-closed does not mean all
-    // non-canonical URLs are dropped — only un-canonicalizable ones are.
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    // Complement of the above: a non-canonical source tag for an UNBLOCKED
+    // relay must resolve from the parser-owned cache to the canonical form.
+    // Fail-closed does not mean all non-canonical URLs are dropped — only
+    // un-canonicalizable ones are.
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         // Non-canonical: uppercase host + trailing slash.
         vec![vec![
@@ -274,7 +266,7 @@ fn non_canonical_tag_without_matching_block_canonicalizes_and_is_included() {
             "write".into(),
         ]],
     );
-    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+    let resolver = resolver(&cache);
 
     // Nothing blocked.
     let out = resolver.resolve(
@@ -286,13 +278,13 @@ fn non_canonical_tag_without_matching_block_canonicalizes_and_is_included() {
     );
     let urls = urls_of(&out);
 
-    // The resolver must return the CANONICAL form, not the raw stored form.
+    // The resolver must return the CANONICAL form, not the raw source form.
     assert!(
         urls.contains(&"wss://good.example".to_string()),
         "non-canonical tag for unblocked relay must resolve to its canonical form, got {urls:?}"
     );
     assert!(
         !urls.contains(&"wss://Good.Example/".to_string()),
-        "raw non-canonical form must not appear in output; resolver must canonicalize, got {urls:?}"
+        "raw non-canonical form must not appear in output; parser canonicalization feeds the resolver, got {urls:?}"
     );
 }

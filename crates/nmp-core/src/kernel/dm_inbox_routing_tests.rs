@@ -28,13 +28,12 @@ fn pk(label: &str) -> String {
     format!("{label:0>64}").chars().take(64).collect()
 }
 
-fn seed_read_relay_list(kernel: &Kernel, account: &str, read: &[&str]) {
-    kernel.seed_mailbox_relay_list(
-        account,
-        read.iter().map(|s| s.to_string()).collect(),
-        Vec::new(),
-        Vec::new(),
-    );
+fn seed_read_relay_list(kernel: &mut Kernel, account: &str, read: &[&str]) {
+    let tags = read
+        .iter()
+        .map(|url| vec!["r".to_string(), (*url).to_string(), "read".to_string()])
+        .collect();
+    kernel.seed_kind10002_tags_for_test(account, tags, u64::MAX);
 }
 
 /// Logical interest that requests `#p`-tagged gift-wrap (kind:1059) for the
@@ -64,7 +63,7 @@ fn active_dm_inbox_interest(pubkey: &str) -> LogicalInterest {
 fn active_dm_inbox_uses_lookup_relays_not_nip65_read_relays() {
     let account = pk("account");
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    seed_read_relay_list(&kernel, &account, &["wss://public-read.example"]);
+    seed_read_relay_list(&mut kernel, &account, &["wss://public-read.example"]);
     // Seed the kernel's substrate `DmInboxRelayLookup` (`TestDmInboxRelayCache`
     // under the hood). The helper still names kind:10050 because that is the
     // concrete NIP-17 binding the production composition wires in via

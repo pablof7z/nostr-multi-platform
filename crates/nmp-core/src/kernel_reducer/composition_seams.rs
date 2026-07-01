@@ -37,7 +37,8 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::substrate::{
-    IngestParser, ObservedProjectionCommandHandle, ObservedProjectionSessionMap, ProfileLookup,
+    IngestParser, MailboxCache, ObservedProjectionCommandHandle, ObservedProjectionSessionMap,
+    ProfileLookup,
 };
 use crate::{EmittedFeedAuthorsSlot, ObservedProjectionId, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
@@ -302,6 +303,17 @@ impl super::KernelReducer {
     #[must_use]
     pub fn event_store_handle(&self) -> Arc<dyn EventStore> {
         self.kernel.event_store_handle()
+    }
+
+    /// Return the kernel-owned NIP-65 mailbox cache handle currently installed
+    /// on the reducer.
+    ///
+    /// Browser publish-resolver composition passes this to
+    /// `nmp_router::Nip65OutboxResolver` so publish routing reads the same
+    /// parsed cache that the kind:10002 ingest parser writes.
+    #[must_use]
+    pub fn mailbox_cache_handle(&self) -> Arc<dyn MailboxCache> {
+        self.kernel.mailbox_cache_arc()
     }
 
     /// Return the kernel-owned indexer relay slot.

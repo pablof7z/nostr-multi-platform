@@ -24,7 +24,7 @@ crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576
 crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	685
 crates/nmp-core/src/kernel/discovery_tests.rs	602
 crates/nmp-core/src/kernel/ingest_tests.rs	644
-crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	840
+crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	816
 crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/routing_trace_dto.rs	527
 crates/nmp-core/src/kernel/state_projection_tests.rs	584
@@ -39,7 +39,7 @@ crates/nmp-nip60/src/nip60_wallet.rs	714
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-planner/src/interest.rs	583
-crates/nmp-router/src/nip65_resolver/tests.rs	543
+crates/nmp-router/src/nip65_resolver/tests.rs	535
 crates/nmp-router/src/router/tests_v75.rs	509
 crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
 crates/nmp-store/src/lmdb/tests_gc.rs	747

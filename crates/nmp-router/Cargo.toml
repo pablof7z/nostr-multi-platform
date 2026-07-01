@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailbox + relay hints + p-tag inbox + indexer eligibility), the NIP-65-only InMemoryMailboxCache, kind:10002 IngestParser, and indexer-republish policy. Step 2 of docs/architecture/crate-boundaries.md."
+description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailbox + relay hints + p-tag inbox + indexer eligibility), the NIP-65-only InMemoryMailboxCache, kind:10002 IngestParser/cache writer, and indexer-republish policy. Step 2 of docs/architecture/crate-boundaries.md."
 
 [dependencies]
 nmp-ownership = { workspace = true }
@@ -31,6 +31,7 @@ nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-store = { path = "../nmp-store" }
 # Layer-0 kind helpers used by routing discovery and p-tag recipient handling.
 nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip65-types = { path = "../nmp-nip65-types" }
 serde = { workspace = true, features = ["derive"] }
 # Typed FlatBuffers action payloads (ADR-0064 / #1756) for the router-owned
 # NIP-65 publish relay-list action. Pinned

@@ -71,6 +71,8 @@ mod req_intercept;
 mod routing;
 mod routing_trace;
 mod suppression;
+#[cfg(any(test, feature = "test-support"))]
+mod test_nip65_parser;
 // #1811 — crate-registered full-text search scopes (protocol-aware
 // SearchIndexSpec + SearchScopeProvider; compiled into nmp-store's noun-free
 // CompiledIndexSpec at composition time).
@@ -177,6 +179,8 @@ pub use routing_trace::{
     truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane, RoutingTraceObserver,
     SubscriptionTrace,
 };
+#[cfg(any(test, feature = "test-support"))]
+pub use test_nip65_parser::TestNip65RelayListParser;
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 pub use active_observed_projection::ObservedProjectionReconciler;

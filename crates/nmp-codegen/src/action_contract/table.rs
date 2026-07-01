@@ -11,8 +11,7 @@ use super::{
 // NIP-29 entries (split out for 500-LOC cap): discover, publish_group_event,
 // join, create_group, edit_metadata.
 use super::nip29::{
-    NIP29_CREATE_GROUP, NIP29_DISCOVER, NIP29_EDIT_METADATA, NIP29_JOIN,
-    NIP29_PUBLISH_GROUP_EVENT,
+    NIP29_CREATE_GROUP, NIP29_DISCOVER, NIP29_EDIT_METADATA, NIP29_JOIN, NIP29_PUBLISH_GROUP_EVENT,
 };
 
 const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::OwnerCratePayload;

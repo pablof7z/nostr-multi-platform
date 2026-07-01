@@ -37,18 +37,18 @@ fn local_kind1_note_read_your_writes_before_relay_ack() {
     let signed = signed_kind(&keys, 1, "my first post", 1_700_000_000);
     let event_id = signed.id.clone();
 
-    let slot = new_event_observer_slot();
-    let observer = CapturingObserver::new();
-    register_rust_observer(&slot, observer.clone());
-
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.set_event_observers_handle(slot);
     kernel.active_account = Some(author.clone());
     // Keep the author in `timeline_authors`; local publish no longer writes the
     // home timeline cache directly, so the assertions below are about the
     // core-owned chokepoint effects.
     kernel.timeline_authors.insert(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
+    let slot = new_event_observer_slot();
+    let observer = CapturingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+    kernel.set_event_observers_handle(slot);
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert!(!outbound.is_empty(), "publish should have an outbox target");
@@ -81,14 +81,14 @@ fn local_kind7_reaction_read_your_writes() {
     let signed = signed_kind(&keys, 7, "+", 1_700_000_000);
     let event_id = signed.id.clone();
 
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(author.clone());
+    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
-    kernel.active_account = Some(author.clone());
-    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     let _ = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 

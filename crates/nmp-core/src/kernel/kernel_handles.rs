@@ -52,23 +52,11 @@ impl Kernel {
         &*self.mailbox_cache
     }
 
-    /// Test-only: push a NIP-65 cache entry without going through the kind:10002 ingest path.
-    #[cfg(test)]
-    pub(crate) fn seed_mailbox_relay_list(
-        &self,
-        pubkey: &str,
-        read: Vec<String>,
-        write: Vec<String>,
-        both: Vec<String>,
-    ) {
-        self.mailbox_cache.upsert(
-            pubkey.to_string(),
-            crate::substrate::ParsedRelayList { read, write, both },
-        );
-    }
-
-    /// Test-only: shared handle to the substrate `MailboxCache`.
-    #[cfg(test)]
+    /// Shared handle to the substrate `MailboxCache`.
+    ///
+    /// Production composition passes this to the publish resolver after the
+    /// routing substrate installs the parser-owned cache. Tests also use it to
+    /// assert cache transitions without reaching through private fields.
     pub(crate) fn mailbox_cache_arc(&self) -> Arc<dyn MailboxCache> {
         Arc::clone(&self.mailbox_cache)
     }

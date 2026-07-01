@@ -139,7 +139,7 @@ pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
 /// silently wipe the user's contacts.
 ///
 /// Preservation contract:
-/// - Every **non-`p`** tag (legacy relay-list `["r", …]`, `["d", …]`, etc.) is
+/// - Every **non-`p`** tag (relay-list `["r", …]`, `["d", …]`, etc.) is
 ///   carried through verbatim, in document order.
 /// - Every existing `["p", pk, relay?, petname?]` entry keeps its relay-hint
 ///   (column 2) and petname (column 3) columns — the edit never strips them.

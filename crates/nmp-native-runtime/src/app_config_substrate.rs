@@ -350,12 +350,11 @@ impl NmpApp {
     /// with the produced `Arc<dyn OutboxResolver>`; `Reset` re-invokes the
     /// same snapped factory against fresh kernel handles.
     ///
-    /// `factory` receives the four kernel-owned handles the router-side
-    /// `Nip65OutboxResolver` needs (`EventStore` + the indexer /
-    /// local-write / active-account slots). Production composition writes
-    /// a closure returning `Arc::new(Nip65OutboxResolver::with_local_relays(...))`
-    /// over those handles, so the resolver reads through the same shared
-    /// state the kernel actor writes to (D4 sole-writer preserved).
+    /// `factory` receives the kernel-owned handles publish resolvers may need.
+    /// Production `Nip65OutboxResolver` reads the same `MailboxCache` instance
+    /// that `Kind10002Parser` writes; `EventStore` remains available for other
+    /// resolver implementations. D4 holds because the actor remains the sole
+    /// writer for the shared slots and parser-dispatched cache updates.
     ///
     /// MUST be called BEFORE `nmp_app_start` AND BEFORE any kind:10002
     /// event is ingested. `D6`: a poisoned slot is a silent no-op (the
@@ -369,6 +368,7 @@ impl NmpApp {
     where
         F: Fn(
                 std::sync::Arc<dyn nmp_store::EventStore>,
+                std::sync::Arc<dyn nmp_core::substrate::MailboxCache>,
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,

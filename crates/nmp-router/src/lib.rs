@@ -7,19 +7,19 @@
 //!    ingest parser is its single writer; the router and the planner are
 //!    the only readers.
 //! 2. [`Kind10002Parser`] — an [`nmp_core::substrate::IngestParser`] that
-//!    decodes kind:10002 tags and upserts into the cache.
+//!    delegates tag decoding to `nmp-nip65-types` and upserts into the cache.
 //! 3. [`GenericOutboxRouter`] — the single generic
 //!    [`nmp_core::substrate::OutboxRouter`] impl. Ships the generic
 //!    algorithm (NIP-65 write/read sets, hints, provenance,
 //!    user-configured relays, indexers, and AppRelay fallback).
 //! 4. [`publish_relay_list::PublishRelayListAction`] — the
-//!    `nmp.nip65.publish_relay_list` action module, absorbed from the
-//!    (deleted) `nmp-nip65` crate at step 3. Routing owns kind:10002
+//!    `nmp.nip65.publish_relay_list` action module. Routing owns kind:10002
 //!    end-to-end: ingest (parser → cache), routing (router reads cache),
 //!    publish (action builds the event).
 //! 5. [`Nip65OutboxResolver`] — the publish-side concrete
 //!    [`nmp_core::publish::OutboxResolver`] impl that reads kind:10002 from
-//!    an `EventStore` (crate-boundary spec §271; moved out of
+//!    the shared [`MailboxCache`](nmp_core::substrate::MailboxCache)
+//!    (crate-boundary spec §271; moved out of
 //!    `nmp-core::publish::nip65` so the substrate stays NIP-neutral per D0).
 //!    Production composition installs it via
 //!    `AppHost::set_publish_resolver_factory` →
@@ -41,7 +41,6 @@
 //! [`InMemoryMailboxCache`] held as `Arc<dyn MailboxCache>`.
 
 mod cache;
-mod canonical;
 mod discovery;
 mod indexer_republish;
 mod ingest;

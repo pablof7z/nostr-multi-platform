@@ -22,13 +22,28 @@ use std::collections::BTreeSet;
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
-fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str], read: &[&str], both: &[&str]) {
-    kernel.seed_mailbox_relay_list(
-        author,
-        read.iter().map(|s| s.to_string()).collect(),
-        write.iter().map(|s| s.to_string()).collect(),
-        both.iter().map(|s| s.to_string()).collect(),
+fn install_relay_list(
+    kernel: &mut Kernel,
+    author: &str,
+    write: &[&str],
+    read: &[&str],
+    both: &[&str],
+) {
+    let mut tags = Vec::new();
+    tags.extend(
+        write
+            .iter()
+            .map(|url| vec!["r".to_string(), (*url).to_string(), "write".to_string()]),
     );
+    tags.extend(
+        read.iter()
+            .map(|url| vec!["r".to_string(), (*url).to_string(), "read".to_string()]),
+    );
+    tags.extend(
+        both.iter()
+            .map(|url| vec!["r".to_string(), (*url).to_string()]),
+    );
+    kernel.seed_kind10002_tags_for_test(author, tags, u64::MAX);
 }
 
 fn open_author_interest(kernel: &mut Kernel, owner: &str, authors: &[&str], kinds: &[u32]) {
@@ -61,9 +76,9 @@ fn multi_author_interest_fans_out_per_author_write_relays_not_constants() {
     kernel
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
-    install_relay_list(&kernel, ALICE, &["wss://alice.relay/"], &[], &[]);
+    install_relay_list(&mut kernel, ALICE, &["wss://alice.relay/"], &[], &[]);
     install_relay_list(
-        &kernel,
+        &mut kernel,
         BOB,
         &["wss://bob.write/"],
         &[],
@@ -102,19 +117,19 @@ fn multi_author_interest_fans_out_per_author_write_relays_not_constants() {
     // (both-marker) relay also appears.
     let urls: BTreeSet<String> = reqs.iter().map(|(u, _)| (*u).clone()).collect();
     assert!(
-        urls.contains("wss://alice.relay/"),
+        urls.contains("wss://alice.relay"),
         "alice's write relay must be a routing target, got {urls:?}"
     );
     assert!(
-        urls.contains("wss://bob.write/"),
+        urls.contains("wss://bob.write"),
         "bob's write relay must be a routing target, got {urls:?}"
     );
     assert!(
-        urls.contains("wss://shared.relay/"),
+        urls.contains("wss://shared.relay"),
         "bob's both-marker relay must be a routing target, got {urls:?}"
     );
 
-    // (3) D3 enforcement: a REQ targeting "wss://alice.relay/" MUST carry
+    // (3) D3 enforcement: a REQ targeting "wss://alice.relay" MUST carry
     // alice but NOT bob (and vice versa). The shared relay carries bob (his
     // "both" marker), not alice. Any kind:10002 discovery probe rides the
     // indexer set (bootstrap) and must NOT carry the resolved authors.
@@ -122,11 +137,11 @@ fn multi_author_interest_fans_out_per_author_write_relays_not_constants() {
         let carries_alice = filter.contains(ALICE);
         let carries_bob = filter.contains(BOB);
         match url.as_str() {
-            "wss://alice.relay/" => {
+            "wss://alice.relay" => {
                 assert!(carries_alice, "alice's relay must carry alice");
                 assert!(!carries_bob, "alice's relay must NOT carry bob");
             }
-            "wss://bob.write/" | "wss://shared.relay/" => {
+            "wss://bob.write" | "wss://shared.relay" => {
                 assert!(carries_bob, "bob's relay must carry bob");
                 assert!(!carries_alice, "bob's relay must NOT carry alice");
             }
@@ -179,7 +194,7 @@ fn cold_start_routes_to_bootstrap_then_replans_after_nip65_arrives() {
         })
         .collect();
     assert!(
-        !first_req_urls.iter().any(|u| u == "wss://alice.write/"),
+        !first_req_urls.iter().any(|u| u == "wss://alice.write"),
         "pre-NIP65 drain must NOT route to alice's resolved relay; got {first_req_urls:?}"
     );
 
@@ -200,7 +215,7 @@ fn cold_start_routes_to_bootstrap_then_replans_after_nip65_arrives() {
         .collect();
 
     assert!(
-        second_req_urls.iter().any(|u| u == "wss://alice.write/"),
+        second_req_urls.iter().any(|u| u == "wss://alice.write"),
         "post-NIP65 M2 drain must route to alice's resolved write relay; \
          got req_urls = {second_req_urls:?}, all frames = {second_frames:?}"
     );
@@ -212,13 +227,12 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
     // frames — one per resolved write relay from Nip65OutboxResolver. This
     // is the publish-side enforcement of D3: no `RelayRole::Content`
     // hardcoded constant lands the event on a single fixed socket.
-    use crate::store::{RawEvent, VerifiedEvent};
     use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-    // Author Alice has two write relays declared via NIP-65. Inject the
-    // kind:10002 through the store so Nip65OutboxResolver reads it back.
+    // Author Alice has two write relays declared via NIP-65. Seed both the
+    // store fixture and parsed mailbox cache; the resolver reads the latter.
     let nip65_tags = vec![
         vec![
             "r".to_string(),
@@ -231,19 +245,7 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
             "write".to_string(),
         ],
     ];
-    let kind10002 = RawEvent {
-        id: "2222222222222222222222222222222222222222222222222222222222222222".to_string(),
-        pubkey: ALICE.to_string(),
-        created_at: 2_000,
-        kind: 10002,
-        tags: nip65_tags,
-        content: String::new(),
-        sig: "a".repeat(128),
-    };
-    let verified = VerifiedEvent::from_raw_unchecked(kind10002);
-    let _ = kernel
-        .store
-        .insert(verified, &"wss://bootstrap/".to_string(), 2_000_000);
+    kernel.seed_kind10002_tags_for_test(ALICE, nip65_tags, 2_000);
 
     // Build a synthetic signed kind:1 from Alice. The publish path doesn't
     // verify the signature itself; the store does (and we bypass it via

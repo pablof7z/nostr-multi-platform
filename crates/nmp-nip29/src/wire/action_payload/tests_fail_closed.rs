@@ -3,7 +3,7 @@
 //! Every assertion is the NEGATIVE — a reject, never a silent decode.
 
 use crate::action::{
-    CreateInviteInput, CreateGroupInput, DiscoverGroupsInput, GroupAccess, GroupVisibility,
+    CreateGroupInput, CreateInviteInput, DiscoverGroupsInput, GroupAccess, GroupVisibility,
     JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput, SetParentInput,
 };
 use crate::group_id::GroupId;

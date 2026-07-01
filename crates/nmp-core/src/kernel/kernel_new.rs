@@ -181,10 +181,14 @@ impl Kernel {
         let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
         let content_parser: Arc<dyn crate::substrate::ContentParser> =
             Arc::new(crate::substrate::NoopContentParser::new());
+        #[cfg(any(test, feature = "test-support"))]
+        let mailbox_cache: Arc<dyn MailboxCache> = Arc::new(TestInMemoryMailboxCache::new());
+        #[cfg(not(any(test, feature = "test-support")))]
+        let mailbox_cache: Arc<dyn MailboxCache> = Arc::new(EmptyMailboxCache::new());
 
         // Spec §271 (2026-05-25): under `cfg(test)` / `feature="test-support"`
         // the kernel auto-installs the in-crate `TestKind10002OutboxResolver`
-        // (a minimal kind:10002 reader) so the dozens of in-tree publish
+        // (a minimal parsed-mailbox reader) so the dozens of in-tree publish
         // tests (`publish_engine_tests`, `outbox_tests`, `action_failure_tests`,
         // `publish_terminal_status_tests`, `eose_ok_notice_ingest_tests`,
         // `actor::commands::tests`, `kernel::test_support::seed_kind10002_for_test`
@@ -200,10 +204,11 @@ impl Kernel {
         // dep on `nmp-core`).
         #[cfg(any(test, feature = "test-support"))]
         let test_publish_resolver: Arc<dyn crate::publish::OutboxResolver> = Arc::new(
-            crate::publish::TestKind10002OutboxResolver::new(Arc::clone(&store)).with_local_relays(
-                Arc::clone(&local_write_relays_handle),
-                Arc::clone(&active_account_handle),
-            ),
+            crate::publish::TestKind10002OutboxResolver::new(Arc::clone(&mailbox_cache))
+                .with_local_relays(
+                    Arc::clone(&local_write_relays_handle),
+                    Arc::clone(&active_account_handle),
+                ),
         );
         #[cfg(any(test, feature = "test-support"))]
         let mut publish_engine = publish_engine;
@@ -251,10 +256,7 @@ impl Kernel {
             diagnostic_firehose: DiagnosticFirehoseState::default(),
             deferred_outbound: VecDeque::new(),
             pending_backoff_hints: Vec::new(),
-            #[cfg(any(test, feature = "test-support"))]
-            mailbox_cache: Arc::new(TestInMemoryMailboxCache::new()),
-            #[cfg(not(any(test, feature = "test-support")))]
-            mailbox_cache: Arc::new(EmptyMailboxCache::new()),
+            mailbox_cache,
             outbox_router,
             content_parser,
             routing_trace,
@@ -357,6 +359,13 @@ impl Kernel {
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
+                crate::substrate::TestNip65RelayListParser::new(kernel.mailbox_cache_arc()),
+            );
+            kernel.register_ingest_parser(crate::kinds::KIND_RELAY_LIST, parser);
+        }
         if let Some(store) = store_bundle.relay_score_store {
             kernel.set_relay_score_store(store);
         }

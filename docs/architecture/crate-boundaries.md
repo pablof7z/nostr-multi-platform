@@ -37,7 +37,7 @@ implementation is injected at composition time.
 
 | Layer | Owns | Durable crate owners |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip65-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
@@ -137,9 +137,11 @@ result ranking, domain target classes, or result projection — those belong to
 ## 4. Router Ownership
 
 `nmp-router` is the single home for NIP-65 mailbox routing and generic relay
-selection. There is no standalone `nmp-nip65` crate in this architecture.
-The action namespace `nmp.nip65.publish_relay_list` remains byte-stable for
-callers, but its implementation belongs to `nmp-router`.
+selection. There is no standalone routing/action-owning `nmp-nip65` crate in
+this architecture. The dependency-light `nmp-nip65-types` crate owns only the
+canonical kind:10002 tag decoder so router and test fixtures cannot drift. The
+action namespace `nmp.nip65.publish_relay_list` remains byte-stable for callers,
+but its implementation belongs to `nmp-router`.
 
 `nmp-router` owns:
 

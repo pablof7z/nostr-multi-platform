@@ -56,7 +56,7 @@ Finished `test` profile in 2.35s
 fixture_todo_core: 2 passed
 nmp_codegen: 2 passed (+ 1 integration: generation_is_byte_deterministic)
 nmp_core: 5 passed
-  - parse_relay_list_splits_nip65_markers
+  - kind10002_parser_splits_nip65_markers
   - profile_claims_are_ui_driven_and_deduped_by_pubkey
   - open_thread_emits_context_and_reply_reqs
   - open_author_emits_profile_and_note_reqs

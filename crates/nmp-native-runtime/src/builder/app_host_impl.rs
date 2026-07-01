@@ -218,6 +218,7 @@ impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
     where
         F: Fn(
                 Arc<dyn nmp_store::EventStore>,
+                Arc<dyn nmp_core::substrate::MailboxCache>,
                 nmp_core::slots::IndexerRelaysSlot,
                 nmp_core::slots::LocalWriteRelaysSlot,
                 nmp_core::slots::ActiveAccountSlot,

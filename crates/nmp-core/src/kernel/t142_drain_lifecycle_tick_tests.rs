@@ -24,13 +24,8 @@ use std::collections::BTreeSet;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str]) {
-    kernel.seed_mailbox_relay_list(
-        author,
-        vec![],
-        write.iter().map(|s| s.to_string()).collect(),
-        vec![],
-    );
+fn install_relay_list(kernel: &mut Kernel, author: &str, write: &[&str]) {
+    kernel.seed_kind10002_for_test(author, write);
 }
 
 fn follow_interest(id: u64, author: &str) -> LogicalInterest {
@@ -95,7 +90,7 @@ fn t142_drain_lifecycle_tick_with_trigger_emits_frames() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Register alice's kind:10002 write relay in the kernel cache.
-    install_relay_list(&kernel, ALICE, &["wss://alice-t142.relay/"]);
+    install_relay_list(&mut kernel, ALICE, &["wss://alice-t142.relay/"]);
 
     // Register a follow interest for alice via the test-only seam.
     {
@@ -144,13 +139,13 @@ fn t142_drain_lifecycle_tick_with_trigger_emits_frames() {
     let alice_relay_frames: Vec<_> = req_frames
         .iter()
         .filter(|f| match f {
-            WireFrame::Req { relay_url, .. } => relay_url == "wss://alice-t142.relay/",
+            WireFrame::Req { relay_url, .. } => relay_url == "wss://alice-t142.relay",
             _ => false,
         })
         .collect();
     assert!(
         !alice_relay_frames.is_empty(),
-        "REQ must be aimed at alice's resolved write relay wss://alice-t142.relay/ \
+        "REQ must be aimed at alice's resolved write relay wss://alice-t142.relay \
          (got frames: {frames:?})",
     );
 }

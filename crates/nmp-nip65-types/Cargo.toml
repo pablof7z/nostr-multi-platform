@@ -1,0 +1,12 @@
+[package]
+name = "nmp-nip65-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Dependency-light NIP-65 relay-list tag decoder shared by routing and test-support fixtures."
+
+[dependencies]
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-ownership = { workspace = true }
+nmp-relay-url = { path = "../nmp-relay-url" }

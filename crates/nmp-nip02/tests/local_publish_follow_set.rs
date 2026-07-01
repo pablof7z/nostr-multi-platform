@@ -122,32 +122,9 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // SAFETY: `app` is a live pointer from `nmp_app_new`; sole `&mut` for the
     // registration call, dropped before any other access.
     unsafe {
+        nmp_substrate::install(&mut *app, nmp_substrate::SubstrateConfig::default());
         nmp_nip02::register_actions(&mut *app);
     }
-
-    // Wire the in-tree NIP-65 outbox resolver BEFORE start. The default FFI
-    // `NmpApp` ships a `NoopOutboxResolver`, so every `Auto` publish fails
-    // closed with `PublishEngineError::NoTargets` — the production-correct
-    // fail-closed behaviour, NOT something to weaken. The local kind:3 fan-out
-    // under test runs ONLY on the publish engine's accept arm
-    // (`record_local_publish_intent` is gated on `start_publish` returning
-    // `Ok`), so without a resolver the dispatched follow resolves no target, the
-    // accept arm is skipped, and the observer never fires (the pre-fix hang).
-    // We install the canonical in-tree `TestKind10002OutboxResolver` — the same
-    // resolver every nmp-core publish test auto-installs. The actor re-invokes
-    // this factory against the kernel's OWN store + slot handles at Start (and on
-    // Reset), so the resolver reads the exact shared state the kernel actor
-    // writes (D4 sole-writer preserved). It resolves the active account's write
-    // targets from the kind:10002 we inject below; wiring the local-write-relays
-    // + active-account slots also enables the active-account fallback.
-    unsafe { &*app }.set_publish_resolver_factory(
-        |store, _indexer, local_write_relays, active_account| {
-            std::sync::Arc::new(
-                nmp_core::publish::TestKind10002OutboxResolver::new(store)
-                    .with_local_relays(local_write_relays, active_account),
-            )
-        },
-    );
 
     // Register both observed projections BEFORE start. ADR-0049:
     // the actor reads every wiring slot once at kernel construction

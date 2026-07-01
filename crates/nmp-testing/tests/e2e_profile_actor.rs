@@ -58,9 +58,7 @@ pub fn spawn_actor_with_nip01_profile_cache() -> (
                 nmp_core::substrate::empty_dm_inbox_relay_lookup(),
             )),
             profile_lookup: Arc::new(Mutex::new(profile_lookup)),
-            blocked_relays: Arc::new(Mutex::new(
-                nmp_core::substrate::empty_blocked_relay_lookup(),
-            )),
+            blocked_relays: Arc::new(Mutex::new(nmp_core::substrate::empty_blocked_relay_lookup())),
             bootstrap_self_kinds: Arc::new(Mutex::new(None)),
             routing_substrate: nmp_core::slots::new_routing_substrate_slot(),
             publish_resolver: nmp_core::slots::new_publish_resolver_slot(),

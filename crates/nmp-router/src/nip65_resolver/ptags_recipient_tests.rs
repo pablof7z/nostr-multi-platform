@@ -12,10 +12,11 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::{Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
+use crate::{InMemoryMailboxCache, Kind10002Parser};
 use nmp_core::publish::{OutboxResolver, PublishTarget, ResolvedRelay};
 use nmp_core::slots::new_indexer_relays_slot;
-use nmp_core::substrate::BlockedRelaySet;
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::{BlockedRelaySet, MailboxCache};
+use nmp_store::{RawEvent, VerifiedEvent};
 
 fn no_block() -> BlockedRelaySet {
     BlockedRelaySet::new()
@@ -28,7 +29,7 @@ fn urls_of(resolved: &[ResolvedRelay]) -> BTreeSet<String> {
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const RECIPIENT_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
-fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<String>>) {
+fn seed_kind10002(cache: &Arc<InMemoryMailboxCache>, author_hex: &str, tags: Vec<Vec<String>>) {
     let prefix = &author_hex[..2];
     let id = format!("{:0<64}", format!("{}e10002", prefix));
     let raw = RawEvent {
@@ -41,13 +42,12 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
         sig: "0".repeat(128),
     };
     let verified = VerifiedEvent::from_raw_unchecked(raw);
-    store
-        .insert(verified, &"wss://test".to_string(), 1_700_000_000_000)
-        .expect("insert");
+    Kind10002Parser::new(Arc::clone(cache)).parse_event(&verified);
 }
 
-fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store, new_indexer_relays_slot())
+fn mk_resolver(cache: &Arc<InMemoryMailboxCache>) -> Nip65OutboxResolver {
+    let mailbox_cache: Arc<dyn MailboxCache> = cache.clone();
+    Nip65OutboxResolver::new(mailbox_cache, new_indexer_relays_slot())
 }
 
 fn pk(n: u8) -> String {
@@ -65,9 +65,9 @@ fn threshold_recipients() -> Vec<String> {
 /// followee's read relay must NOT appear in the resolve output.
 #[test]
 fn kind3_does_not_fan_out_to_followee_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -75,8 +75,8 @@ fn kind3_does_not_fan_out_to_followee_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -84,7 +84,7 @@ fn kind3_does_not_fan_out_to_followee_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     // kind=3, one followee — below threshold, but ptags_are_recipients(3) == false
     let out = resolver.resolve(
         AUTHOR_HEX,
@@ -108,9 +108,9 @@ fn kind3_does_not_fan_out_to_followee_inbox() {
 /// kind:10000 mute list — the muted pubkeys are SUBJECTS, not recipients.
 #[test]
 fn kind10000_mute_list_does_not_fan_out_to_subject_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -118,8 +118,8 @@ fn kind10000_mute_list_does_not_fan_out_to_subject_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -127,7 +127,7 @@ fn kind10000_mute_list_does_not_fan_out_to_subject_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -147,9 +147,9 @@ fn kind10000_mute_list_does_not_fan_out_to_subject_inbox() {
 /// Proves the gate covers the full addressable range, not just regular-replaceable.
 #[test]
 fn kind30000_follow_set_does_not_fan_out_to_subject_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -157,8 +157,8 @@ fn kind30000_follow_set_does_not_fan_out_to_subject_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -166,7 +166,7 @@ fn kind30000_follow_set_does_not_fan_out_to_subject_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -185,9 +185,9 @@ fn kind30000_follow_set_does_not_fan_out_to_subject_inbox() {
 /// kind:0 profile metadata — replaceable, any p-tag is a subject, not a recipient.
 #[test]
 fn kind0_profile_does_not_fan_out_to_ptag_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -195,8 +195,8 @@ fn kind0_profile_does_not_fan_out_to_ptag_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -204,7 +204,7 @@ fn kind0_profile_does_not_fan_out_to_ptag_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -225,9 +225,9 @@ fn kind0_profile_does_not_fan_out_to_ptag_inbox() {
 /// the new gate cannot accidentally break regular note routing.
 #[test]
 fn kind1_mention_still_fans_out_to_mentioned_pubkey_inbox() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -235,8 +235,8 @@ fn kind1_mention_still_fans_out_to_mentioned_pubkey_inbox() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -244,7 +244,7 @@ fn kind1_mention_still_fans_out_to_mentioned_pubkey_inbox() {
             "read".into(),
         ]],
     );
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
@@ -269,9 +269,9 @@ fn kind1_mention_still_fans_out_to_mentioned_pubkey_inbox() {
 /// replacement for the volume gate.
 #[test]
 fn kind1_at_threshold_still_skips_inbox_fanout() {
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store_kind10002(
-        store.as_ref(),
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_kind10002(
+        &cache,
         AUTHOR_HEX,
         vec![vec![
             "r".into(),
@@ -279,8 +279,8 @@ fn kind1_at_threshold_still_skips_inbox_fanout() {
             "write".into(),
         ]],
     );
-    store_kind10002(
-        store.as_ref(),
+    seed_kind10002(
+        &cache,
         RECIPIENT_HEX,
         vec![vec![
             "r".into(),
@@ -289,7 +289,7 @@ fn kind1_at_threshold_still_skips_inbox_fanout() {
         ]],
     );
     let recipients = threshold_recipients();
-    let resolver = mk_resolver(store);
+    let resolver = mk_resolver(&cache);
     // kind=1 (recipient semantics) but at/above threshold — no inbox fan-out
     let out = resolver.resolve(
         AUTHOR_HEX,

@@ -45,6 +45,10 @@ name = "nmp-planner"
 path = "crates/nmp-planner"
 
 [[public_crates]]
+name = "nmp-nip65-types"
+path = "crates/nmp-nip65-types"
+
+[[public_crates]]
 name = "nmp-router"
 path = "crates/nmp-router"
 

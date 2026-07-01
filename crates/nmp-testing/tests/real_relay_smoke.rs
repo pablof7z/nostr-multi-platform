@@ -17,7 +17,7 @@
 //!   sentinel nonce, REQ it back by id+author, assert the content matches.
 //!   **Proves M7 + M8 over a real socket.**
 //! - **`outbox_resolves_to_kind10002_writes`** (spec §5 scenario 5) —
-//!   construct a Nip65OutboxResolver over an in-memory store seeded with a
+//!   construct a Nip65OutboxResolver over a parser-owned mailbox cache seeded with a
 //!   kind:10002 listing `nos.lol` as the sole write-relay, verify
 //!   `PublishTarget::Auto` resolves to exactly nos.lol. **Proves
 //!   Nip65OutboxResolver decision logic against realistic inputs.** The
@@ -40,10 +40,11 @@ use std::sync::Once;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use nmp_core::publish::{OutboxResolver, PublishTarget};
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use nmp_core::substrate::MailboxCache;
+use nmp_store::{RawEvent, VerifiedEvent};
 // Spec §271 (2026-05-25): `Nip65OutboxResolver` was moved from
 // `nmp_core::publish::nip65` into `nmp-router`.
-use nmp_router::Nip65OutboxResolver;
+use nmp_router::{InMemoryMailboxCache, Kind10002Parser, Nip65OutboxResolver};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
 
@@ -179,8 +180,9 @@ fn damus_round_trip_kind1() {
 }
 
 /// Spec §5 scenario 5 (substrate slice): construct a Nip65OutboxResolver over
-/// an in-memory store seeded with a kind:10002 listing exactly one write-relay
-/// (`nos.lol`), assert `PublishTarget::Auto` resolves to exactly that relay.
+/// a parser-owned mailbox cache seeded with a kind:10002 listing exactly one
+/// write-relay (`nos.lol`), assert `PublishTarget::Auto` resolves to exactly
+/// that relay.
 ///
 /// **Proves the resolver decision logic against realistic kind:10002 shape.**
 /// The full "publish lands ONLY on nos.lol, observable cross-relay" assertion
@@ -207,12 +209,11 @@ fn outbox_resolves_to_kind10002_writes() {
     let raw: RawEvent = serde_json::from_str(&json).expect("RawEvent decode");
     let verified = VerifiedEvent::try_from_raw(raw).expect("verify kind:10002");
 
-    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
-    store
-        .insert(verified, &"wss://test".to_string(), 1_700_000_000_000)
-        .expect("insert kind:10002");
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    Kind10002Parser::new(Arc::clone(&cache)).parse_event(&verified);
 
-    let resolver = Nip65OutboxResolver::with_default_fallback(store);
+    let mailbox_cache: Arc<dyn MailboxCache> = cache;
+    let resolver = Nip65OutboxResolver::with_default_fallback(mailbox_cache);
     let resolved = resolver.resolve(
         &author_hex,
         &[],

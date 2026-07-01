@@ -89,6 +89,7 @@ impl BrowserRuntimeHandle {
         if let Some(factory) = inner.publish_resolver_factory.take() {
             let resolver = factory(
                 inner.reducer.event_store_handle(),
+                inner.reducer.mailbox_cache_handle(),
                 inner.reducer.indexer_relays_handle(),
                 inner.reducer.local_write_relays_handle(),
                 inner.reducer.active_account_handle(),
