@@ -16,6 +16,10 @@ use nmp_planner::{InterestScope, InterestShape};
 /// underlying set's change signal.
 pub(super) type ResetHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
 
+/// A closure that installs the session reconciler on a graph-proven source
+/// effect.
+pub(super) type SourceEffectHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
+
 /// The single render/pull acquisition shape, re-read live.
 pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
 
@@ -87,17 +91,19 @@ pub(super) struct ReducedSource {
     pub live_shape: LiveShape,
     /// Extra acquisition that may change as the source projection changes.
     pub extra_acquisition: ExtraAcquisition,
-    /// Reactive-reset installers.
+    /// Legacy reactive-reset installers for sources not yet on graph effects.
     pub reset_hooks: Vec<ResetHook>,
+    /// Graph source-effect installers. These carry source-set changes through
+    /// the same dependent acquisition replacement and feed reset path.
+    pub source_effect_hooks: Vec<SourceEffectHook>,
     /// Resolver observer ids the session must revoke on close.
     pub resolver_observer_ids: Vec<ObservedProjectionId>,
     /// Identity-change observer ids the session must revoke on close.
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
-    /// Graph source-effect owner for the active-follows source, consumed by
-    /// session engines that must reconcile acquisition and reset when the
-    /// active follow perspective changes.
+    /// Active-follow owner retained for the default home-feed artifact surface.
+    /// Session reactivity is carried by `source_effect_hooks`.
     pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }
 

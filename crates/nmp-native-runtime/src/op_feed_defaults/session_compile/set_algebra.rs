@@ -125,6 +125,8 @@ pub(super) fn resolve_set_op(
     // right side must stay reactive so its exclusion (AndNot) tracks changes.
     let mut reset_hooks = l.reset_hooks;
     reset_hooks.extend(r.reset_hooks);
+    let mut source_effect_hooks = l.source_effect_hooks;
+    source_effect_hooks.extend(r.source_effect_hooks);
     let mut resolver_observer_ids = l.resolver_observer_ids;
     resolver_observer_ids.extend(r.resolver_observer_ids);
     let mut identity_observer_ids = l.identity_observer_ids;
@@ -141,6 +143,7 @@ pub(super) fn resolve_set_op(
         live_shape,
         extra_acquisition,
         reset_hooks,
+        source_effect_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,

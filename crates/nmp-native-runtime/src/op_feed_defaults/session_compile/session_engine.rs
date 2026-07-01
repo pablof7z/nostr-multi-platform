@@ -98,6 +98,7 @@ fn build_op_scope_session(
         live_shape,
         extra_acquisition,
         reset_hooks,
+        source_effect_hooks,
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
@@ -252,8 +253,8 @@ fn build_op_scope_session(
     sync_acquisition(&extra_acquisition);
 
     // Wire each legacy underlying-set change to re-sync acquisition for the new
-    // members, then reset the window/cursor. `ActiveUserFollows` no longer uses
-    // this bridge; it installs a graph source-effect sink below.
+    // members, then reset the window/cursor. Graph-backed sources use the
+    // source-effect hook path below instead.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
@@ -270,19 +271,20 @@ fn build_op_scope_session(
         hook(reset_trigger);
     }
 
-    if let Some(active_follow_set_for_effects) = active_follow_set.as_ref() {
+    for hook in source_effect_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
         let sync_observer = engine_observer.clone();
         let notify = sender.clone();
-        active_follow_set_for_effects.on_source_effect(Box::new(move |_| {
+        let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             sync_acquisition(&extra);
             if controller_for_reset.reset() {
                 notify.mark_changed_since_emit();
             }
-        }));
+        });
+        hook(source_effect_trigger);
     }
 
     // ── 6. Teardown recipe (registration order = reverse of execution) ───

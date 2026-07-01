@@ -1,9 +1,8 @@
 //! `FeedScope` → [`ReducedSource`] for the perspective compiler (#1740 step 3).
 //!
-//! This is the ONLY module that touches the resolution snapshots — kind:3
-//! follows ([`nmp_nip02::ActiveFollowSet`]), NIP-51 pubkey lists
-//! ([`nmp_nip51::PeopleListProjection`] plus the kind:10000 source in
-//! `nip51_sources`), and ranked WoT candidates (the #1698
+//! This module and its cohesive submodules touch the resolution snapshots —
+//! kind:3 follows ([`nmp_nip02::ActiveFollowSet`]), NIP-51 pubkey lists
+//! (`nip51_sources`), and ranked WoT candidates (the #1698
 //! [`nmp_wot::score::WotGraph`] query). It reuses those single-source
 //! mechanisms; it never re-derives a follow graph or list parser (D4).
 //!
@@ -16,8 +15,10 @@
 //! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
 //! * `reset_hooks` — closures that install a window-reset on legacy reactive
-//!   sources that have not moved to graph source effects yet, plus the observer
-//!   ids to revoke. `ActiveUserFollows` uses graph-owned source effects.
+//!   sources that have not moved to graph source effects yet.
+//! * `source_effect_hooks` — graph-proven source changes that drive the same
+//!   acquisition replacement and reset path. `ActiveUserFollows` and ordinary
+//!   `ListMembers` use this lane.
 //!
 //! Deferred / fail-closed (typed `ScopeNotSupportedYet`, no registration):
 //! * `RelaySet` — no framework relay-set-id resolver exists; relay-pinned
@@ -36,11 +37,11 @@ use nmp_core::substrate::{
 };
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
-use nmp_kinds::KIND_FOLLOW_SET;
 use nmp_planner::InterestShape;
 
 use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
+    SourceEffectHook,
 };
 use super::wot_graph::SessionWotGraph;
 
@@ -58,7 +59,7 @@ pub(super) fn resolve_scope(
         S::Authors { authors } => super::resolve_static::resolve_authors(authors, kinds),
         S::ActiveUserFollows => resolve_active_user_follows(app, kinds),
         S::ContactList { owner } => resolve_contact_list(app, owner, kinds),
-        S::ListMembers { list } => resolve_list_members(app, &list.0, kinds),
+        S::ListMembers { list } => super::nip51_sources::resolve_list_members(app, &list.0, kinds),
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
         S::Tag { term } => Ok(super::resolve_static::resolve_tag(&term.0, kinds)),
         S::Referrer { event_id } => super::resolve_static::resolve_referrer(event_id, kinds),
@@ -189,6 +190,12 @@ fn resolve_active_follow_set(
     let interests = Vec::new();
     let extra_acquisition =
         active_contact_list_extra_acquisition(app.active_account_handle(), &live_shape);
+    let source_effect_hooks = {
+        let follow_set = Arc::clone(&follow_set);
+        vec![Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
+            follow_set.on_source_effect(Box::new(move |_| trigger()));
+        }) as SourceEffectHook]
+    };
 
     Ok(ReducedSource {
         op_session_identity,
@@ -198,111 +205,11 @@ fn resolve_active_follow_set(
         extra_acquisition,
         live_shape,
         reset_hooks: Vec::new(),
+        source_effect_hooks,
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: Some(follow_set),
-    })
-}
-
-// ── ListMembers { list } (NIP-51 pubkey sources) ─────────────────────────
-
-fn resolve_list_members(
-    app: &NmpApp,
-    list_id: &str,
-    kinds: &BTreeSet<u32>,
-) -> Result<ReducedSource, FeedOpenError> {
-    if list_id == nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID {
-        return super::nip51_sources::resolve_active_mute_list_members(app, kinds);
-    }
-
-    // The list owner is the active viewer (the projection is owner-gated). No
-    // active account ⇒ fail closed (no list to resolve).
-    let viewer = super::super::read_active(&app.active_account_handle())
-        .ok_or_else(|| not_supported("ListMembers-no-active-account"))?;
-
-    let projection = Arc::new(nmp_nip51::PeopleListProjection::new(
-        app.active_account_handle(),
-    ));
-    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
-        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
-        "nmp.feed.resolver.people_list",
-        0,
-        viewer_list_shape(&viewer),
-        64,
-    ));
-    let projection_for_identity = Arc::clone(&projection);
-    let projection_for_replay = Arc::clone(&projection);
-    let replay_slot = app.active_account_handle();
-    let replay_pull = app.feed_pull_fn();
-    let identity_observer_id = app.register_identity_change_observer(move |_| {
-        projection_for_identity.notify_account_changed();
-        if let Some(viewer) = super::super::read_active(&replay_slot) {
-            super::source_replay::replay_source_shape_with_pull(
-                &replay_pull,
-                projection_for_replay.as_ref(),
-                viewer_list_shape(&viewer),
-            );
-        }
-    });
-    super::source_replay::replay_source_shape(app, projection.as_ref(), viewer_list_shape(&viewer));
-
-    // LIVE predicate over the projection's current members. NIP-51 has not
-    // moved to source-graph effects yet, so its projection still uses the
-    // legacy reset hook below.
-    let admission: RootAdmission = {
-        let projection = Arc::clone(&projection);
-        let list_id = list_id.to_string();
-        Arc::new(move |event: &KernelEvent| projection.members(&list_id).contains(&event.author))
-    };
-    let attribution: nmp_feed::FollowPredicate = {
-        let projection = Arc::clone(&projection);
-        let list_id = list_id.to_string();
-        Arc::new(move |pubkey: &str| projection.members(&list_id).contains(pubkey))
-    };
-
-    let interests = Vec::new();
-
-    let live_shape: LiveShape = {
-        let projection = Arc::clone(&projection);
-        let list_id = list_id.to_string();
-        let kinds = kinds.clone();
-        Arc::new(move || {
-            let members = projection.members(&list_id);
-            if members.is_empty() || kinds.is_empty() {
-                return None;
-            }
-            Some(InterestShape::timeline_for(
-                members.into_iter().collect(),
-                kinds.clone(),
-            ))
-        })
-    };
-
-    let reset_proj = Arc::clone(&projection);
-    let reset_hook: ResetHook = Box::new(move |reset| {
-        reset_proj.on_change(Box::new(move || reset()));
-    });
-    let extra_acquisition = list_members_extra_acquisition(
-        app.active_account_handle(),
-        &projection,
-        list_id,
-        kinds,
-        &live_shape,
-    );
-
-    Ok(ReducedSource {
-        op_session_identity: OpSessionIdentity::RequireActive,
-        admission,
-        attribution,
-        interests,
-        extra_acquisition,
-        live_shape,
-        reset_hooks: vec![reset_hook],
-        resolver_observer_ids: vec![observer_id],
-        identity_observer_ids: vec![identity_observer_id],
-        resolver_teardown: Vec::new(),
-        active_follow_set: None,
     })
 }
 
@@ -398,6 +305,7 @@ fn resolve_wot(
         live_shape,
         extra_acquisition,
         reset_hooks: vec![reset_hook],
+        source_effect_hooks: Vec::new(),
         resolver_observer_ids: vec![observer_id],
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
@@ -406,13 +314,6 @@ fn resolve_wot(
 }
 
 // ── Typed acquisition shape helpers ───────────────────────────────────────
-
-fn viewer_list_shape(viewer: &str) -> InterestShape {
-    InterestShape::timeline_for(
-        [viewer.to_string()].into_iter().collect(),
-        [KIND_FOLLOW_SET].into_iter().collect(),
-    )
-}
 
 fn seed_contacts_shape(seed: &str) -> InterestShape {
     InterestShape::timeline_for(
@@ -454,33 +355,6 @@ fn active_contact_list_extra_acquisition(
         }
         if let Some(shape) = live_shape() {
             shapes.push(AcquisitionInterest::active_account(shape));
-        }
-        shapes
-    })
-}
-
-fn list_members_extra_acquisition(
-    slot: nmp_core::slots::ActiveAccountSlot,
-    projection: &Arc<nmp_nip51::PeopleListProjection>,
-    list_id: &str,
-    kinds: &BTreeSet<u32>,
-    live_shape: &LiveShape,
-) -> ExtraAcquisition {
-    let projection = Arc::clone(projection);
-    let list_id = list_id.to_string();
-    let kinds = kinds.clone();
-    let live_shape = Arc::clone(live_shape);
-    Arc::new(move || {
-        let mut shapes = Vec::new();
-        if let Some(viewer) = super::super::read_active(&slot) {
-            shapes.push(AcquisitionInterest::active_account(viewer_list_shape(
-                &viewer,
-            )));
-        }
-        if !projection.members(&list_id).is_empty() && !kinds.is_empty() {
-            if let Some(shape) = live_shape() {
-                shapes.push(AcquisitionInterest::active_account(shape));
-            }
         }
         shapes
     })

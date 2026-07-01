@@ -149,6 +149,36 @@ fn active_user_follows_uses_source_effects_not_legacy_reset_hooks() {
         resolved.active_follow_set.is_some(),
         "ActiveUserFollows must expose the graph-backed source effect owner"
     );
+    assert_eq!(
+        resolved.source_effect_hooks.len(),
+        1,
+        "ActiveUserFollows must install one graph source-effect hook"
+    );
+}
+
+#[test]
+fn list_members_uses_source_effects_not_legacy_reset_hooks() {
+    let app = crate::new_app();
+    *app.active_account_handle().lock().unwrap() = Some(ALICE.to_string());
+    let kinds = std::collections::BTreeSet::from([1u32]);
+    let resolved = super::resolve::resolve_scope(
+        &app,
+        &nmp_feed::FeedScope::ListMembers {
+            list: nmp_feed::ListId("team".to_string()),
+        },
+        &kinds,
+    )
+    .expect("ListMembers resolves with active account");
+
+    assert!(
+        resolved.reset_hooks.is_empty(),
+        "ListMembers must not install the legacy reset-hook bridge"
+    );
+    assert_eq!(
+        resolved.source_effect_hooks.len(),
+        1,
+        "ListMembers must expose the graph-backed source effect hook"
+    );
 }
 
 // ── Authors { authors } — static author-set timeline ─────────────────────

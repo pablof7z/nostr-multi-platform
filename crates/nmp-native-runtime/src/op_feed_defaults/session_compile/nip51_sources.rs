@@ -2,15 +2,122 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::{FeedOpenError, NmpApp};
-use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::substrate::{KernelEvent, ObservedProjectionReconciler, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
-use nmp_kinds::KIND_MUTE_LIST;
+use nmp_kinds::{KIND_FOLLOW_SET, KIND_MUTE_LIST};
 use nmp_planner::InterestShape;
 
 use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
+    SourceEffectHook,
 };
+
+pub(super) fn resolve_list_members(
+    app: &NmpApp,
+    list_id: &str,
+    kinds: &BTreeSet<u32>,
+) -> Result<ReducedSource, FeedOpenError> {
+    if list_id == nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID {
+        return resolve_active_mute_list_members(app, kinds);
+    }
+
+    let viewer = super::super::read_active(&app.active_account_handle())
+        .ok_or_else(|| super::resolve::not_supported("ListMembers-no-active-account"))?;
+
+    let projection = Arc::new(nmp_nip51::PeopleListProjection::new(
+        app.active_account_handle(),
+    ));
+    let resolver_shape_slot = app.active_account_handle();
+    let resolver_live_shape: LiveShape = Arc::new(move || {
+        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        Some(viewer_list_shape(&viewer))
+    });
+    let projection_observer: Arc<dyn ObservedProjectionSink> = projection.clone();
+    let resolver_reconciler = ObservedProjectionReconciler::new(
+        app.observed_projection_registrar_handle(),
+        projection_observer,
+        "nmp.feed.resolver.people_list",
+        0,
+        64,
+        resolver_live_shape,
+    );
+    resolver_reconciler.sync();
+    let resolver_for_identity = resolver_reconciler.clone();
+    let resolver_for_teardown = resolver_reconciler.clone();
+    let projection_for_identity = Arc::clone(&projection);
+    let projection_for_replay = Arc::clone(&projection);
+    let replay_slot = app.active_account_handle();
+    let replay_pull = app.feed_pull_fn();
+    let identity_observer_id = app.register_identity_change_observer(move |_| {
+        projection_for_identity.notify_account_changed();
+        resolver_for_identity.sync();
+        if let Some(viewer) = super::super::read_active(&replay_slot) {
+            super::source_replay::replay_source_shape_with_pull(
+                &replay_pull,
+                projection_for_replay.as_ref(),
+                viewer_list_shape(&viewer),
+            );
+        }
+    });
+    super::source_replay::replay_source_shape(app, projection.as_ref(), viewer_list_shape(&viewer));
+
+    let admission: RootAdmission = {
+        let projection = Arc::clone(&projection);
+        let list_id = list_id.to_string();
+        Arc::new(move |event: &KernelEvent| projection.members(&list_id).contains(&event.author))
+    };
+    let attribution: nmp_feed::FollowPredicate = {
+        let projection = Arc::clone(&projection);
+        let list_id = list_id.to_string();
+        Arc::new(move |pubkey: &str| projection.members(&list_id).contains(pubkey))
+    };
+
+    let live_shape: LiveShape = {
+        let projection = Arc::clone(&projection);
+        let list_id = list_id.to_string();
+        let kinds = kinds.clone();
+        Arc::new(move || {
+            let members = projection.members(&list_id);
+            if members.is_empty() || kinds.is_empty() {
+                return None;
+            }
+            Some(InterestShape::timeline_for(
+                members.into_iter().collect(),
+                kinds.clone(),
+            ))
+        })
+    };
+
+    let source_effect_hooks = {
+        let projection = Arc::clone(&projection);
+        vec![Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
+            projection.on_source_effect(Box::new(move |_| trigger()));
+        }) as SourceEffectHook]
+    };
+    let extra_acquisition = list_members_extra_acquisition(
+        app.active_account_handle(),
+        &projection,
+        list_id,
+        kinds,
+        &live_shape,
+    );
+
+    Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
+        admission,
+        attribution,
+        interests: Vec::new(),
+        extra_acquisition,
+        live_shape,
+        reset_hooks: Vec::new(),
+        source_effect_hooks,
+        resolver_observer_ids: Vec::new(),
+        identity_observer_ids: vec![identity_observer_id],
+        resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
+        active_follow_set: None,
+    })
+}
 
 pub(super) fn resolve_active_mute_list_members(
     app: &NmpApp,
@@ -23,19 +130,30 @@ pub(super) fn resolve_active_mute_list_members(
     let projection = Arc::new(nmp_nip51::MuteListProjection::new(
         app.active_account_handle(),
     ));
-    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
-        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+    let resolver_shape_slot = app.active_account_handle();
+    let resolver_live_shape: LiveShape = Arc::new(move || {
+        let viewer = super::super::read_active(&resolver_shape_slot)?;
+        Some(active_mute_list_shape(&viewer))
+    });
+    let projection_observer: Arc<dyn ObservedProjectionSink> = projection.clone();
+    let resolver_reconciler = ObservedProjectionReconciler::new(
+        app.observed_projection_registrar_handle(),
+        projection_observer,
         "nmp.feed.resolver.active_mute_list",
         0,
-        active_mute_list_shape(&viewer),
         64,
-    ));
+        resolver_live_shape,
+    );
+    resolver_reconciler.sync();
+    let resolver_for_identity = resolver_reconciler.clone();
+    let resolver_for_teardown = resolver_reconciler.clone();
     let projection_for_identity = Arc::clone(&projection);
     let projection_for_replay = Arc::clone(&projection);
     let replay_slot = app.active_account_handle();
     let replay_pull = app.feed_pull_fn();
     let identity_observer_id = app.register_identity_change_observer(move |_| {
         projection_for_identity.notify_account_changed();
+        resolver_for_identity.sync();
         if let Some(viewer) = super::super::read_active(&replay_slot) {
             super::source_replay::replay_source_shape_with_pull(
                 &replay_pull,
@@ -93,11 +211,19 @@ pub(super) fn resolve_active_mute_list_members(
         extra_acquisition,
         live_shape,
         reset_hooks: vec![reset_hook],
-        resolver_observer_ids: vec![observer_id],
+        source_effect_hooks: Vec::new(),
+        resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
-        resolver_teardown: Vec::new(),
+        resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: None,
     })
+}
+
+fn viewer_list_shape(viewer: &str) -> InterestShape {
+    InterestShape::timeline_for(
+        [viewer.to_string()].into_iter().collect(),
+        [KIND_FOLLOW_SET].into_iter().collect(),
+    )
 }
 
 fn active_mute_list_shape(viewer: &str) -> InterestShape {
@@ -105,6 +231,33 @@ fn active_mute_list_shape(viewer: &str) -> InterestShape {
         [viewer.to_string()].into_iter().collect(),
         [KIND_MUTE_LIST].into_iter().collect(),
     )
+}
+
+fn list_members_extra_acquisition(
+    slot: nmp_core::slots::ActiveAccountSlot,
+    projection: &Arc<nmp_nip51::PeopleListProjection>,
+    list_id: &str,
+    kinds: &BTreeSet<u32>,
+    live_shape: &LiveShape,
+) -> ExtraAcquisition {
+    let projection = Arc::clone(projection);
+    let list_id = list_id.to_string();
+    let kinds = kinds.clone();
+    let live_shape = Arc::clone(live_shape);
+    Arc::new(move || {
+        let mut shapes = Vec::new();
+        if let Some(viewer) = super::super::read_active(&slot) {
+            shapes.push(AcquisitionInterest::active_account(viewer_list_shape(
+                &viewer,
+            )));
+        }
+        if !projection.members(&list_id).is_empty() && !kinds.is_empty() {
+            if let Some(shape) = live_shape() {
+                shapes.push(AcquisitionInterest::active_account(shape));
+            }
+        }
+        shapes
+    })
 }
 
 fn active_mute_list_extra_acquisition(

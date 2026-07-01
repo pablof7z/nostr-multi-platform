@@ -10,7 +10,9 @@ use nmp_nip09::AddressCoordinate;
 use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::resolve::{not_supported, resolve_scope};
-use super::source::{AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook};
+use super::source::{
+    AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook, SourceEffectHook,
+};
 
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
 
@@ -67,6 +69,18 @@ pub(super) fn resolve_pointer_targets(
     reset_hooks.push(Box::new(move |reset| {
         *lock(&reset_slot) = Some(reset);
     }));
+    let mut source_effect_hooks = Vec::new();
+    for hook in pointer_source.source_effect_hooks {
+        let model = Arc::clone(&model);
+        let pointer_dynamic = pointer_dynamic.clone();
+        source_effect_hooks.push(Box::new(move |trigger: Arc<dyn Fn() + Send + Sync>| {
+            hook(Arc::new(move || {
+                lock(&model).clear();
+                pointer_dynamic.sync();
+                trigger();
+            }));
+        }) as SourceEffectHook);
+    }
 
     let extra_acquisition =
         pointer_target_extra_acquisition(pointer_source.extra_acquisition, &model, primary_kinds);
@@ -79,6 +93,7 @@ pub(super) fn resolve_pointer_targets(
         live_shape,
         extra_acquisition,
         reset_hooks,
+        source_effect_hooks,
         resolver_observer_ids: pointer_source.resolver_observer_ids,
         identity_observer_ids: pointer_source.identity_observer_ids,
         resolver_teardown: {

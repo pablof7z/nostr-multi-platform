@@ -152,6 +152,25 @@ pub(crate) fn signed_mute_list(keys: &Keys, muted_pubkeys: &[String], created_at
         .expect("sign kind:10000")
 }
 
+pub(crate) fn signed_people_list(
+    keys: &Keys,
+    list_id: &str,
+    members: &[String],
+    created_at: u64,
+) -> Event {
+    let mut tags: Vec<Tag> = vec![Tag::parse(["d", list_id]).expect("valid d tag")];
+    tags.extend(
+        members
+            .iter()
+            .map(|pk| Tag::parse(["p", pk.as_str()]).expect("valid p tag")),
+    );
+    EventBuilder::new(Kind::from(30_000u16), "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind:30000")
+}
+
 pub(crate) fn signed_relay_list(keys: &Keys, relays: &[&str], created_at: u64) -> Event {
     let tags: Vec<Tag> = relays
         .iter()
@@ -201,6 +220,20 @@ pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
         render: FeedRender::Flat,
         acquisition: FeedScope::ListMembers {
             list: ListId(nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID.to_string()),
+        },
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow { initial_limit: 80 },
+        projection: ProjectionKey(projection.into()),
+    }
+}
+
+pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams {
+    FeedParams {
+        primary_kinds: vec![1],
+        render: FeedRender::Flat,
+        acquisition: FeedScope::ListMembers {
+            list: ListId(list_id.to_string()),
         },
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
