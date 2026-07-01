@@ -1,4 +1,4 @@
-//! `register_op_feed_defaults` — the V-80 rung 6 (Stage 5) composition root
+//! `open_active_follows_op_feed` — the V-80 rung 6 (Stage 5) composition root
 //! that wires the OP-centric feed renderer together.
 //!
 //! This is the one place in the system that names `NmpApp` (native runtime) and
@@ -72,7 +72,7 @@
 //! # Active-account source of truth
 //!
 //! `ActiveFollowSet::new` needs the kernel's [`ActiveAccountSlot`] plus a
-//! store-derived latest-kind:3 reader. `register_op_feed_defaults` reads both
+//! store-derived latest-kind:3 reader. `open_active_follows_op_feed` reads both
 //! directly from [`NmpApp::active_account_handle`](crate::NmpApp::active_account_handle)
 //! and [`NmpApp::event_store_handle`](crate::NmpApp::event_store_handle), so
 //! the follow predicate and identity-change observer derive from the same
@@ -129,9 +129,9 @@ use nmp_core::slots::ActiveAccountSlot;
 
 type Pubkey = String;
 
-/// What [`register_op_feed_defaults`] hands back to the composition caller.
-pub struct OpFeedDefaults {
-    /// The ordinary feed-session handle for the default home projection.
+/// What [`open_active_follows_op_feed`] hands back to the composition caller.
+pub struct ActiveFollowsOpFeedSession {
+    /// The ordinary feed-session handle for the caller-owned projection.
     ///
     /// `None` means the typed declaration failed closed before registration
     /// (for example because `primary_feed_kinds` named a derived wrapper kind).
@@ -152,24 +152,24 @@ impl FeedController for NoopFeedController {
     }
 }
 
-/// Wire the OP-centric home feed into `app`.
+/// Wire an OP-centric active-follows feed session into `app`.
 ///
-/// Builds the default home [`FeedParams`] and opens it through the ordinary
+/// Builds active-follows [`FeedParams`] and opens them through the ordinary
 /// typed feed-session compiler. The session engine owns the OP engine,
 /// follow-set resolver, observed projection, pull controller, typed sidecar,
-/// and teardown recipe under the default projection key.
+/// and teardown recipe under the caller's projection key.
 ///
 /// # Ordering
 ///
 /// Call before `nmp_app_start`: the engine and the follow-set observer must be
 /// visible to the kernel when the first event arrives.
-pub fn register_op_feed_defaults(
+pub fn open_active_follows_op_feed(
     app: &NmpApp,
     viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
     projection: ProjectionKey,
-) -> OpFeedDefaults {
-    register_op_feed_defaults_inner(
+) -> ActiveFollowsOpFeedSession {
+    open_active_follows_op_feed_inner(
         app,
         viewer,
         primary_feed_kinds,
@@ -178,26 +178,26 @@ pub fn register_op_feed_defaults(
     )
 }
 
-/// Wire the OP-centric home feed with the default NIP-51 mute read model.
+/// Wire an OP-centric active-follows feed with the NIP-51 mute read model.
 ///
 /// Uses the caller-supplied `MuteListProjection` and resets the current feed
 /// window whenever the active account's mute list replacement changes.
-pub fn register_op_feed_defaults_with_mute(
+pub fn open_active_follows_op_feed_with_mute(
     app: &NmpApp,
     viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
     projection: ProjectionKey,
     mute: Arc<MuteListProjection>,
-) -> OpFeedDefaults {
+) -> ActiveFollowsOpFeedSession {
     let suppression: Arc<dyn SuppressionLookup> = mute.clone();
-    let defaults = register_op_feed_defaults_inner(
+    let session = open_active_follows_op_feed_inner(
         app,
         viewer,
         primary_feed_kinds,
         projection.clone(),
         suppression,
     );
-    if defaults.handle.is_some() {
+    if session.handle.is_some() {
         let registry = app.feed_registry_handle();
         let sender = app.command_sender();
         let projection_key = projection.0.clone();
@@ -207,16 +207,16 @@ pub fn register_op_feed_defaults_with_mute(
             }
         }));
     }
-    defaults
+    session
 }
 
-fn register_op_feed_defaults_inner(
+fn open_active_follows_op_feed_inner(
     app: &NmpApp,
     _viewer: Pubkey,
     primary_feed_kinds: Vec<u32>,
     projection: ProjectionKey,
     suppression: Arc<dyn SuppressionLookup>,
-) -> OpFeedDefaults {
+) -> ActiveFollowsOpFeedSession {
     let params = active_follows_op_feed_params(primary_feed_kinds, projection);
     let compiler = move |app: &NmpApp,
                          params: &FeedParams,
@@ -236,13 +236,13 @@ fn register_op_feed_defaults_inner(
         )?;
         let Some(artifacts) = detailed.artifacts else {
             return Err(FeedOpenError::ScopeNotSupportedYet {
-                scope: "default-home-feed-artifacts",
+                scope: "active-follows-op-feed-artifacts",
             });
         };
         Ok((detailed.build, artifacts))
     };
     match app.open_feed_with_output(&params, compiler) {
-        Ok((handle, artifacts)) => OpFeedDefaults {
+        Ok((handle, artifacts)) => ActiveFollowsOpFeedSession {
             handle: Some(handle),
             engine: artifacts.engine,
             controller: artifacts.controller,
@@ -250,7 +250,7 @@ fn register_op_feed_defaults_inner(
                 .follow_set
                 .unwrap_or_else(|| fallback_follow_set(app)),
         },
-        Err(_) => fallback_defaults(app),
+        Err(_) => fallback_session(app),
     }
 }
 
@@ -272,7 +272,7 @@ pub fn active_follows_op_feed_params(
     }
 }
 
-fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
+fn fallback_session(app: &NmpApp) -> ActiveFollowsOpFeedSession {
     let follow_set = fallback_follow_set(app);
     let event_store = app.event_store_handle();
     let event_lookup: nmp_feed::EventLookup =
@@ -282,7 +282,7 @@ fn fallback_defaults(app: &NmpApp) -> OpFeedDefaults {
         follow_set.predicate(),
         event_lookup,
     );
-    OpFeedDefaults {
+    ActiveFollowsOpFeedSession {
         handle: None,
         engine,
         controller: Arc::new(NoopFeedController),
@@ -302,5 +302,5 @@ mod session_compile;
 pub use session_compile::compile_feed_params;
 
 #[cfg(test)]
-#[path = "op_feed_defaults/tests.rs"]
+#[path = "op_feed_session/tests.rs"]
 mod tests;

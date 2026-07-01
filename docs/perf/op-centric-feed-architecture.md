@@ -1,4 +1,4 @@
-# OP-Centric Home Feed Architecture
+# OP-Centric Feed Architecture
 
 > **Status:** Shipped. Design record for ADR-0035/ADR-0036/ADR-0037/ADR-0038.
 > The shipped invariants are: `nmp-feed` provides bounded feed mechanics only;
@@ -16,7 +16,7 @@
 
 ## 1. Executive summary
 
-The home feed is a **stream of thread roots** produced by a generic engine
+An OP-centric following timeline is a **stream of thread roots** produced by a generic engine
 `RootIndexedFeed<R: ParentResolver, A: AttributionPayload>` in `nmp-feed`.
 Each root carries an attribution list of follows' replies, exposed as raw data
 so every render surface chooses its own enumeration policy.
@@ -103,7 +103,7 @@ active account author and switches that projection on account changes.
 **App/runtime composition root:**
 
 ```rust
-pub fn register_op_feed_defaults(
+pub fn open_active_follows_op_feed(
     app: &NmpApp,
     viewer: Pubkey,
     primary_kinds: Vec<u32>,

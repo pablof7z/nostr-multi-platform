@@ -47,7 +47,7 @@ mod storage;
 mod testing;
 
 pub mod builder;
-pub mod op_feed_defaults;
+pub mod op_feed_session;
 #[cfg(test)]
 pub(crate) mod op_pointer_source;
 
@@ -76,9 +76,9 @@ pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_feed::FeedSessionBuild;
 pub use nmp_nip18::PrimaryKindError;
 pub use nmp_nip50::SearchRequest;
-pub use op_feed_defaults::{
-    active_follows_op_feed_params, compile_feed_params, register_op_feed_defaults,
-    register_op_feed_defaults_with_mute, OpFeedDefaults,
+pub use op_feed_session::{
+    active_follows_op_feed_params, compile_feed_params, open_active_follows_op_feed,
+    open_active_follows_op_feed_with_mute, ActiveFollowsOpFeedSession,
 };
 pub use prestart_config::NmpConfigStatus;
 pub use search::{parse_search_request, Nip50SearchHandle, Nip50SearchSession};

@@ -4,7 +4,7 @@
 //! ONE [`NmpApp::open_feed`] call owns a feed's full lifecycle: it mints a
 //! session id + projection key, drives a caller-supplied [`FeedCompiler`] to
 //! perform the actual registration over the EXISTING feed mechanics
-//! (`register_op_feed_defaults` etc.), records the resulting teardown recipe in
+//! (`open_active_follows_op_feed` etc.), records the resulting teardown recipe in
 //! the engine-agnostic [`nmp_feed::FeedSessionRegistry`], and returns a
 //! [`nmp_feed::FeedHandle`]. [`NmpApp::close_feed`] looks the session up by the
 //! handle's id and tears it ALL down — observer, projection, pull controller,

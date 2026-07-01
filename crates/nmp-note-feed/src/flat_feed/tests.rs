@@ -380,7 +380,7 @@ fn grow_visible_window_reveals_rows_past_the_default_first_page() {
 }
 
 #[test]
-fn feed_controller_emits_home_feed_wire_shape() {
+fn feed_controller_emits_op_feed_wire_shape() {
     // The snapshot must produce the RootFeedSnapshot shape the OP feed emits,
     // so app-owned feed readers decode it through the note-feed typed sidecar.
     let feed = FlatFeed::new(author_feed_predicate(

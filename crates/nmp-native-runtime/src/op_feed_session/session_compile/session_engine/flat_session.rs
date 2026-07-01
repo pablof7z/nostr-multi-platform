@@ -13,7 +13,7 @@ use super::{
     clear_acquisition_set, observed_projection_scope, session_acquisition_owner,
     visible_flat_payload,
 };
-use crate::op_feed_defaults::session_compile::source::{
+use crate::op_feed_session::session_compile::source::{
     acquisition_children, ExtraAcquisition, ReducedSource,
 };
 
@@ -39,7 +39,7 @@ pub(super) fn build_flat_scope_session(
 
     let feed = nmp_note_feed::FlatFeed::new(admission);
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
-    let engine_observer = crate::op_feed_defaults::dynamic_observer::DynamicObservedProjection::new(
+    let engine_observer = crate::op_feed_session::dynamic_observer::DynamicObservedProjection::new(
         app.observed_projection_handle(),
         observer_for_registry,
         format!("{key}.observer"),

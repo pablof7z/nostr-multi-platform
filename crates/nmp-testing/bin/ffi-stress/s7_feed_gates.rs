@@ -4,7 +4,7 @@
 //!
 //! This is the capstone measurement that empirically proves the whole-product
 //! feed-gating win: once incremental apply is set and the feed
-//! has been registered via `register_op_feed_defaults`, idle ticks produce ~0
+//! has been registered via `open_active_follows_op_feed`, idle ticks produce ~0
 //! feed bytes (the byte-equality gate fires and omits the `nmp.testing.feed_idle` row).
 //!
 //! The R3-S5 measurement (18%/68.8%) understated the real win because it did not

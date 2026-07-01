@@ -11,8 +11,8 @@ feed lifecycle beside typed sessions.
 
 ## Context
 
-The home feed product model is changing from "threaded notes (replies + roots)
-over the follow-set" to **"thread roots only, with follows' replies as
+The following-timeline product model is changing from "threaded notes (replies + roots)
+over the active follow set" to **"thread roots only, with follows' replies as
 attribution metadata on their root"** (former tracker V-80; full design in
 [`docs/perf/op-centric-feed-architecture.md`](../perf/op-centric-feed-architecture.md)).
 A followed user's reply to a *non-followed* root must surface that root with an

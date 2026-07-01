@@ -44,27 +44,27 @@ owners:
 - concept-owned reply/reaction/repost/zap reads;
 - optional NIP-47 wallet runtime;
 - visible-target zap counts through zap-owned or app-owned read composition;
-- home-feed projection under `app.feed.home`;
-- typed home-feed sidecar emission for the same feed window.
+- following-feed projection under an app-owned key;
+- typed following-feed sidecar emission for the same feed window.
 
 The iOS shell links the aggregate app crate, but the grouping, concept-owned
 read, visible-target zap, feed, and routing decisions remain in Rust.
 
-## `app.feed.home`
+## App-Owned Following Projection
 
-The current Chirp home feed is registered from
+The current Chirp following feed is registered from
 `ModularTimelineProjection`. It is exposed in two ways:
 
-- as a generic feed controller under `"app.feed.home"`;
+- as a generic feed controller under an app-owned projection key;
 - as a typed snapshot projection with schema id `nmp.nip01.timeline`.
 
 Both read from the same projection instance. This matters because a typed
 transport sidecar must not become a second source of feed truth. It is another
 encoding of the bounded current window.
 
-## OP-Feed Defaults
+## OP-Feed Active-Follows Session
 
-`register_op_feed_defaults` is a separate helper for the OP-centric feed
+`open_active_follows_op_feed` is a separate helper for the OP-centric feed
 engine. It wires an `ActiveFollowSet`, `OpFeedEngine`, event lookup closure,
 claim sink, and account-switch reset callback.
 

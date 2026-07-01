@@ -1,6 +1,6 @@
 //! `FlatFeed` — a predicate-gated flat note feed (ADR-0042 §5.1).
 //!
-//! The M2 author/thread read-path replacement. Unlike the OP-centric home feed
+//! The M2 author/thread read-path replacement. Unlike the OP-centric root-indexed feed
 //! ([`crate::OpFeedEngine`] / [`crate::register_op_feed`]), which is a stream of
 //! **thread roots only** with a followed author's replies rolled up as
 //! *attribution* metadata, a profile screen and a thread screen each render a
@@ -16,8 +16,8 @@
 //!
 //! Both are the same machine: a flat, newest-first, D5-windowed list of
 //! [`NoteFeedItem`]s, gated by an injected admission predicate. The
-//! emitted snapshot is the **same** [`RootFeedSnapshot`] wire shape the home
-//! feed emits (`RootCard { card, attribution }`), with `attribution` always
+//! emitted snapshot is the **same** [`RootFeedSnapshot`] wire shape OP-centric
+//! feeds emit (`RootCard { card, attribution }`), with `attribution` always
 //! empty — so the iOS/Android shells decode it through the same NNFS
 //! `OpFeedSnapshot` schema with zero new FlatBuffers schema or codegen. Apps
 //! supply their own projection keys and declare primary kinds (`[1]` for Chirp);
@@ -45,7 +45,7 @@ use crate::{Nip10ReplyAttribution, NoteFeedItem, RepostAttribution};
 
 pub use nmp_feed::FlatFeedPredicate;
 
-/// A flat, predicate-gated note feed. Wire-compatible with the home feed's
+/// A flat, predicate-gated note feed. Wire-compatible with OP-centric feeds'
 /// [`RootFeedSnapshot`] (empty `attribution`).
 pub struct FlatFeed {
     inner: Arc<GenericFlatFeed<NoteFeedItem>>,

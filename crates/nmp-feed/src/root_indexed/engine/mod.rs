@@ -1,4 +1,4 @@
-//! [`RootIndexedFeed`] — the generic OP-centric home-feed engine.
+//! [`RootIndexedFeed`] — the generic OP-centric root-indexed feed engine.
 //!
 //! Consumes `KernelEvent`s through the kernel observer fan-out and produces a
 //! feed of **thread roots only**, each carrying the raw list of attributions
@@ -55,14 +55,15 @@ pub type EventGate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 /// It is EVENT-AWARE (not author-only) so author-scope perspectives and
 /// `#t` tag-scope perspectives compose faithfully: `Intersection(Tag,
 /// ContactList)` checks BOTH the event's author membership AND its `#t` tags.
-/// The home feed passes [`admit_all_roots`] (acquisition filtering already gates
-/// which roots arrive); a session passes its compiled perspective predicate.
+/// Active-follows sessions can pass [`admit_all_roots`] when acquisition already
+/// gates which roots arrive; scoped sessions pass their compiled predicate.
 pub type RootAdmission = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
-/// The home-feed root admission: admit every root the acquisition delivers. The
-/// home perspective gates roots via its acquisition filter (followed authors'
-/// timeline), not via an engine-level admission predicate, so the engine admits
-/// all roots and lets the `FollowPredicate` gate only reply attribution.
+/// Root admission for sources whose acquisition already gates every root.
+///
+/// Active-follows feeds use this for the root lane: followed authors' timelines
+/// are selected by acquisition, while the `FollowPredicate` gates reply
+/// attribution.
 #[must_use]
 pub fn admit_all_roots() -> RootAdmission {
     Arc::new(|_event: &KernelEvent| true)
@@ -168,8 +169,8 @@ where
     /// component that wants to render the target must claim it through that
     /// component's own dependency path.
     /// * `root_admission` — the compiled perspective gate for ROOT insertion;
-    ///   pass [`admit_all_roots`] for the home feed (acquisition gates roots) or
-    ///   the session's compiled perspective predicate for a scoped feed.
+    ///   pass [`admit_all_roots`] when acquisition gates roots or the session's
+    ///   compiled perspective predicate for a scoped feed.
     /// * `card_builder` — `(root_event, Option<target_event>) -> C`.
     pub fn new(
         resolver: R,

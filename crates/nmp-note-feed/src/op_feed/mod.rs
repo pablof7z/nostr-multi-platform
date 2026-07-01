@@ -1,4 +1,4 @@
-//! `op_feed` — the NIP-10 instance of the generic OP-centric home-feed engine
+//! `op_feed` — the NIP-10 instance of the generic OP-centric root-indexed engine
 //! (`nmp_feed::RootIndexedFeed`), V-80 rung 5 (Stage 3b).
 //!
 //! The generic engine in `nmp-feed` (rung 3) knows no protocol convention. This

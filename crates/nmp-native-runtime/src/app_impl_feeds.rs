@@ -107,10 +107,10 @@ impl NmpApp {
     ///    author provider, so it stops emitting a stale empty subtree per tick.
     ///
     /// CALLER CONTRACT — this is **destructive on any key** that has a live
-    /// `FeedController` / projection, including the permanent home-feed key
-    /// (`app.feed.home`): calling it there WOULD drop the home feed's controller
-    /// and projection. It is "safe" only in the sense that it never panics, not
-    /// that it preserves the feed.
+    /// `FeedController` / projection, including app-owned long-lived feed keys
+    /// such as `app.feed.following`: calling it there WOULD drop that feed's
+    /// controller and projection. It is "safe" only in the sense that it never
+    /// panics, not that it preserves the feed.
     ///
     /// Returns `true` when any registration was removed. D6 — poisoned locks
     /// degrade to partial teardown (best-effort); the `nmp_app_free` actor
