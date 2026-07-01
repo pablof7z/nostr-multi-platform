@@ -51,7 +51,11 @@ pub struct RepostModule;
 pub struct QuoteRepostModule;
 
 impl ActionModule for RepostModule {
-    const NAMESPACE: &'static str = "nmp.nip18.repost";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip18.repost",
+            "action.nmp.nip18.repost",
+        );
     type Action = RepostAction;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
@@ -78,7 +82,11 @@ impl ActionModule for RepostModule {
 }
 
 impl ActionModule for QuoteRepostModule {
-    const NAMESPACE: &'static str = "nmp.nip18.quote_repost";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip18.quote_repost",
+            "action.nmp.nip18.quote_repost",
+        );
     type Action = QuoteRepostAction;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

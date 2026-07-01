@@ -17,7 +17,7 @@ use crate::app_struct::NmpApp;
 
 use super::{
     Nip29GroupRosterHandle, Nip29GroupRosterSession, GROUP_ROSTER_CONSUMER, GROUP_ROSTER_KEY,
-    SCOPE_GLOBAL,
+    GROUP_ROSTER_PROJECTION_TOKEN, SCOPE_GLOBAL,
 };
 
 impl NmpApp {
@@ -58,7 +58,7 @@ impl NmpApp {
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_ROSTER_KEY, move || {
+            app.register_typed_snapshot_projection(GROUP_ROSTER_PROJECTION_TOKEN, move || {
                 let snapshot = projection_for_sidecar.snapshot();
                 Some(nmp_core::TypedProjectionData {
                     key: GROUP_ROSTER_KEY.to_string(),

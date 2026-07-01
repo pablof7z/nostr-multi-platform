@@ -47,7 +47,8 @@ impl ActionResultObserver for BlockingActionResultObserver {
 struct SucceedModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 
 impl ActionModule for SucceedModule {
-    const NAMESPACE: &'static str = "test.uniffi_c4.succeed"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.uniffi_c4.succeed");
     type Action = serde_json::Value;
 
     fn decode_payload(
@@ -89,7 +90,7 @@ fn action_result_observer_fires_on_dispatch() {
 
     let envelope = encode_dispatch_envelope(
         "corr-obs-1",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -120,7 +121,7 @@ fn action_result_observer_replace_is_safe() {
 
     let env1 = encode_dispatch_envelope(
         "corr-obs-2a",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -136,7 +137,7 @@ fn action_result_observer_replace_is_safe() {
 
     let env2 = encode_dispatch_envelope(
         "corr-obs-2b",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -173,7 +174,7 @@ fn action_result_observer_panic_is_contained() {
 
     let envelope = encode_dispatch_envelope(
         "corr-obs-panic",
-        SucceedModule::NAMESPACE,
+        SucceedModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );
@@ -204,7 +205,7 @@ fn action_result_observer_clear_waits_for_in_flight() {
     let dispatch = thread::spawn(move || {
         let envelope = encode_dispatch_envelope(
             "corr-obs-clear",
-            SucceedModule::NAMESPACE,
+            SucceedModule::NAMESPACE.as_str(),
             DISPATCH_ENVELOPE_SCHEMA_VERSION,
             &[0u8; 4],
         );

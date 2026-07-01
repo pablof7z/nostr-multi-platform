@@ -167,35 +167,41 @@ pub fn register_signer_state_projection(
     slot: BrowserSignerStateSlot,
 ) {
     let file_id = String::from_utf8_lossy(SIGNER_STATE_FILE_IDENTIFIER).into_owned();
-    reducer.register_typed_snapshot_projection(SIGNER_STATE_SCHEMA_ID, move || {
-        // D6: poisoned slot → no sidecar (None). We deliberately do NOT recover
-        // and serialize poisoned data here (that would present possibly-torn
-        // state); the prior good value (if any) stays in the host's merge cache.
-        let mut guard = slot.lock().ok()?;
-        if let Some(model) = guard.model.clone() {
-            // Active: a Changed row supersedes any pending clear.
-            guard.needs_clear = false;
-            return Some(TypedProjectionData {
-                key: SIGNER_STATE_SCHEMA_ID.to_string(),
-                schema_id: SIGNER_STATE_SCHEMA_ID.to_string(),
-                schema_version: SIGNER_STATE_SCHEMA_VERSION,
-                file_identifier: file_id.clone(),
-                payload: encode_signer_state(&model),
-                // state defaults to Changed; rev stamped by make_update.
-                ..Default::default()
-            });
-        }
-        if guard.needs_clear {
-            // One-shot explicit Cleared so the merge cache drops the key.
-            guard.needs_clear = false;
-            return Some(TypedProjectionData {
-                key: SIGNER_STATE_SCHEMA_ID.to_string(),
-                state: WireProjectionState::Cleared,
-                ..Default::default()
-            });
-        }
-        None
-    });
+    reducer.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            SIGNER_STATE_SCHEMA_ID,
+            "projection.signer_state",
+        ),
+        move || {
+            // D6: poisoned slot → no sidecar (None). We deliberately do NOT recover
+            // and serialize poisoned data here (that would present possibly-torn
+            // state); the prior good value (if any) stays in the host's merge cache.
+            let mut guard = slot.lock().ok()?;
+            if let Some(model) = guard.model.clone() {
+                // Active: a Changed row supersedes any pending clear.
+                guard.needs_clear = false;
+                return Some(TypedProjectionData {
+                    key: SIGNER_STATE_SCHEMA_ID.to_string(),
+                    schema_id: SIGNER_STATE_SCHEMA_ID.to_string(),
+                    schema_version: SIGNER_STATE_SCHEMA_VERSION,
+                    file_identifier: file_id.clone(),
+                    payload: encode_signer_state(&model),
+                    // state defaults to Changed; rev stamped by make_update.
+                    ..Default::default()
+                });
+            }
+            if guard.needs_clear {
+                // One-shot explicit Cleared so the merge cache drops the key.
+                guard.needs_clear = false;
+                return Some(TypedProjectionData {
+                    key: SIGNER_STATE_SCHEMA_ID.to_string(),
+                    state: WireProjectionState::Cleared,
+                    ..Default::default()
+                });
+            }
+            None
+        },
+    );
 }
 
 /// Write a new signer-state model into the slot (the sole writer seam).

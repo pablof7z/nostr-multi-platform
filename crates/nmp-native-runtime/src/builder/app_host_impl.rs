@@ -20,13 +20,14 @@ use nmp_core::substrate::{
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
+use nmp_ownership::ProjectionRegistrationKey;
 
 use super::*;
 
 impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         let app: &NmpApp = unsafe { &*self.app };
@@ -38,7 +39,7 @@ impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
 
     fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         let app: &NmpApp = unsafe { &*self.app };

@@ -44,7 +44,11 @@ fn leave_group_plan(action: &LeaveGroupInput) -> PublishPlan {
 #[derive(Default)]
 pub struct LeaveGroupAction;
 impl ActionModule for LeaveGroupAction {
-    const NAMESPACE: &'static str = "nmp.nip29.leave";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.leave",
+            "action.nmp.nip29.leave",
+        );
     type Action = LeaveGroupInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the

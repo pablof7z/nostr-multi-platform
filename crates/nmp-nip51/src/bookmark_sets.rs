@@ -256,7 +256,11 @@ impl AddBookmarkSetItemAction {
 }
 
 impl ActionModule for AddBookmarkSetItemAction {
-    const NAMESPACE: &'static str = "nmp.nip51.add_bookmark_set_item";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip51.add_bookmark_set_item",
+            "action.nmp.nip51.add_bookmark_set_item",
+        );
     type Action = BookmarkSetUpdateInput;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
@@ -323,7 +327,11 @@ impl RemoveBookmarkSetItemAction {
 }
 
 impl ActionModule for RemoveBookmarkSetItemAction {
-    const NAMESPACE: &'static str = "nmp.nip51.remove_bookmark_set_item";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip51.remove_bookmark_set_item",
+            "action.nmp.nip51.remove_bookmark_set_item",
+        );
     type Action = BookmarkSetUpdateInput;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

@@ -70,7 +70,11 @@ pub struct PublishHighlightCommand {
 pub struct PublishHighlightModule;
 
 impl ActionModule for PublishHighlightModule {
-    const NAMESPACE: &'static str = "nmp.nip84.publish_highlight";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip84.publish_highlight",
+            "action.nmp.nip84.publish_highlight",
+        );
     type Action = PublishHighlightAction;
 
     /// Opt into the typed payload doorway; the fail-closed `schema_version`

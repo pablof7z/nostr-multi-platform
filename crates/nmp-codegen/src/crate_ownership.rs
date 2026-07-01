@@ -6,6 +6,7 @@
 
 mod audit;
 mod render;
+mod source_surface;
 mod workspace;
 
 use serde::Serialize;

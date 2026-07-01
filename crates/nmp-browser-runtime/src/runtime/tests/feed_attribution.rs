@@ -157,7 +157,7 @@ fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHan
         window: nmp_feed::FeedWindow {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
-        projection: nmp_feed::ProjectionKey(BROWSER_FEED_KEY.to_string()),
+        projection: nmp_feed::ProjectionKey::app_owned(BROWSER_FEED_KEY).unwrap(),
     };
     handle
         .open_feed(params)

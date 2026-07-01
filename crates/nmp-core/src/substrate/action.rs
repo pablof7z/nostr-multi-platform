@@ -50,6 +50,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use super::ActionContext;
 
 pub use crate::kernel::RegistrationError;
+pub use nmp_ownership::DeclaredActionNamespace;
 
 pub type ActionId = String;
 
@@ -126,7 +127,7 @@ pub trait ActionPayload: Sized {
 }
 
 pub trait ActionModule: Send + Sync + 'static {
-    const NAMESPACE: &'static str;
+    const NAMESPACE: DeclaredActionNamespace;
 
     type Action: Clone + Serialize + DeserializeOwned + Send + 'static;
 

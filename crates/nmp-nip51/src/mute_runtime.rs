@@ -12,6 +12,12 @@ use nmp_core::ObservedProjectionSink;
 
 use crate::{active_mute_list_interest, MuteListProjection};
 
+const MUTE_LIST_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.nip51.mute_list",
+        "projection.nmp.nip51.mute_list",
+    );
+
 /// Wire the NIP-51 mute-list observer into `app` and return the
 /// [`MuteListProjection`] so the caller can connect it to a timeline
 /// projection via [`nmp_nip01::ModularTimelineProjection::set_suppression`].
@@ -71,7 +77,7 @@ pub fn register_mute_runtime(
 
     // ── 2. Snapshot projection (typed sidecar) ────────────────────────────────
     let mute_for_typed = Arc::clone(&mute);
-    app.register_typed_snapshot_projection("nmp.nip51.mute_list", move || {
+    app.register_typed_snapshot_projection(MUTE_LIST_PROJECTION_KEY, move || {
         let snapshot = mute_for_typed.snapshot();
         Some(nmp_core::TypedProjectionData {
             key: "nmp.nip51.mute_list".to_string(),

@@ -7,7 +7,11 @@ use crate::actor::ActorCommand;
 struct AppModule;
 impl ActionModule for AppModule {
     type Action = serde_json::Value;
-    const NAMESPACE: &'static str = "nmp.test.reg_err.ns";
+    const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+        crate::substrate::DeclaredActionNamespace::framework(
+            "nmp.test.reg_err.ns",
+            "test.action.nmp.test.reg_err.ns",
+        );
     fn execute(
         &self,
         _ctx: &ActionContext,
@@ -22,7 +26,11 @@ impl ActionModule for AppModule {
 struct OtherAppModuleSameNs;
 impl ActionModule for OtherAppModuleSameNs {
     type Action = serde_json::Value;
-    const NAMESPACE: &'static str = "nmp.test.reg_err.ns";
+    const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+        crate::substrate::DeclaredActionNamespace::framework(
+            "nmp.test.reg_err.ns",
+            "test.action.nmp.test.reg_err.ns",
+        );
     fn execute(
         &self,
         _ctx: &ActionContext,

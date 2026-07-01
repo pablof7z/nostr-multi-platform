@@ -10,7 +10,7 @@ use nmp_core::dispatch_envelope::{
     encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
 };
 use nmp_core::substrate::ActionContext;
-use nmp_core::substrate::{ActionModule, ActionPayload, ActionRejection};
+use nmp_core::substrate::{ActionModule, ActionRejection};
 
 use super::dispatch_action_bytes_typed;
 use crate::new_app;
@@ -20,7 +20,8 @@ use crate::new_app;
 /// Always-succeeds bytes-capable action module (echo test).
 struct EchoModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for EchoModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.echo"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.echo");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -48,7 +49,8 @@ impl ActionModule for EchoModule {
 /// Coded-rejection action module.
 struct CodedRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for CodedRejectModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.coded_reject"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.coded_reject");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -79,7 +81,8 @@ impl ActionModule for CodedRejectModule {
 /// Plain-reject action module.
 struct PlainRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for PlainRejectModule {
-    const NAMESPACE: &'static str = "test.dispatch_core.plain_reject"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.dispatch_core.plain_reject");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -151,7 +154,7 @@ fn oversize_bytes_produce_error_outcome() {
 fn dispatch_preserves_host_supplied_correlation_id() {
     let mut app = new_app();
     let _ = app.register_action(EchoModule);
-    let envelope = make_envelope("corr-typed-core-1", EchoModule::NAMESPACE);
+    let envelope = make_envelope("corr-typed-core-1", EchoModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert_eq!(
         outcome.correlation_id.as_deref(),
@@ -168,7 +171,7 @@ fn dispatch_preserves_host_supplied_correlation_id() {
 fn coded_rejection_carries_both_error_and_code() {
     let mut app = new_app();
     let _ = app.register_action(CodedRejectModule);
-    let envelope = make_envelope("corr-coded", CodedRejectModule::NAMESPACE);
+    let envelope = make_envelope("corr-coded", CodedRejectModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert!(
         outcome
@@ -194,7 +197,7 @@ fn coded_rejection_carries_both_error_and_code() {
 fn plain_rejection_has_error_but_no_code() {
     let mut app = new_app();
     let _ = app.register_action(PlainRejectModule);
-    let envelope = make_envelope("corr-plain", PlainRejectModule::NAMESPACE);
+    let envelope = make_envelope("corr-plain", PlainRejectModule::NAMESPACE.as_str());
     let outcome = dispatch_action_bytes_typed(&app, &envelope);
     assert!(
         outcome.error.is_some(),

@@ -41,7 +41,11 @@ pub struct ReplyCommand {
 pub struct ReplyModule;
 
 impl ActionModule for ReplyModule {
-    const NAMESPACE: &'static str = "nmp.replies.reply";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.replies.reply",
+            "action.nmp.replies.reply",
+        );
     type Action = ReplyAction;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

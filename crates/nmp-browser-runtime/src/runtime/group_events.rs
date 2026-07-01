@@ -154,9 +154,15 @@ impl BrowserRuntimeHandle {
 
     fn register_group_events_sidecar(&mut self, key: &str, projection: Arc<GroupEventsProjection>) {
         let key_for_row = key.to_string();
+        let Ok(projection_key) = nmp_ownership::FrameworkProjectionKey::declared(
+            key_for_row.clone(),
+            "projection.nmp.nip29.group_events",
+        ) else {
+            return;
+        };
         self.runtime
             .reducer
-            .register_typed_snapshot_projection(key.to_string(), move || {
+            .register_typed_snapshot_projection(projection_key, move || {
                 let snapshot = projection.snapshot();
                 Some(TypedProjectionData {
                     key: key_for_row.clone(),

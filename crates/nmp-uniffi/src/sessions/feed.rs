@@ -175,7 +175,7 @@ mod tests {
             "admission": "All",
             "ranking": "ChronologicalDesc",
             "window": {"initial_limit": 50},
-            "projection": "nmp.feed.test.invalid"
+            "projection": "app.feed.test.invalid"
         }"#;
         let result = app.open_feed_json(params_json.to_string());
         assert!(
@@ -199,7 +199,7 @@ mod tests {
             "admission": "All",
             "ranking": "ChronologicalDesc",
             "window": {"initial_limit": 50},
-            "projection": "nmp.feed.test"
+            "projection": "app.feed.test"
         }"#;
         let result = app.open_feed_json(params_json.to_string());
         let handle = result.expect("valid ActiveUserFollows/kind:1 params must succeed");
@@ -223,7 +223,7 @@ mod tests {
             "admission": "All",
             "ranking": "ChronologicalDesc",
             "window": {"initial_limit": 50},
-            "projection": "nmp.feed.test.teardown"
+            "projection": "app.feed.test.teardown"
         }"#;
         let handle = app
             .open_feed_json(params_json.to_string())

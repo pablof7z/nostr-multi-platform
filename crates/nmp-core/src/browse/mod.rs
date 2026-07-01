@@ -115,7 +115,11 @@ fn browse_identity(interest_id: u64) -> SubIdentity {
 pub struct BrowseRelayModule;
 
 impl ActionModule for BrowseRelayModule {
-    const NAMESPACE: &'static str = "nmp.browse_relay";
+    const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+        crate::substrate::DeclaredActionNamespace::framework(
+            "nmp.browse_relay",
+            "action.nmp.browse_relay",
+        );
 
     type Action = BrowseRelayAction;
 

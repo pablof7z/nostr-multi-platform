@@ -77,7 +77,12 @@ impl NmpApp {
         let source_for_typed = std::sync::Arc::clone(&source);
         let tick_rev_for_typed = std::sync::Arc::clone(&tick_rev);
         let consumer_for_typed = consumer_id;
-        self.register_typed_snapshot_projection(feed_key.clone(), move || {
+        let Ok(feed_projection_key) =
+            nmp_ownership::DynamicProjectionKey::app_owned(feed_key.clone())
+        else {
+            return;
+        };
+        self.register_typed_snapshot_projection(feed_projection_key, move || {
             let rev = tick_rev_for_typed.load(Ordering::Acquire);
             // The SAME per-tick materialization the provider used (no gap).
             let snapshot = source_for_typed.snapshot_for_tick(rev);

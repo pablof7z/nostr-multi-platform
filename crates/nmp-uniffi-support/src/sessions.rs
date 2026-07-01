@@ -62,7 +62,7 @@ pub fn open_feed_session(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, 
 
     app.open_feed(&params, &compile_feed_params)
         .map(|handle| OpenedFeed {
-            projection_key: handle.projection_key.0,
+            projection_key: handle.projection_key.into_string(),
             session_id: handle.session_id.0,
         })
         .map_err(|_| FeedSessionError::OpenFailed)
@@ -80,7 +80,7 @@ pub fn close_feed_session(app: &NmpApp, session_id: u64) -> bool {
     let handle = FeedHandle {
         // Only `session_id` is read by `close_feed`; the projection key is not
         // re-derived (close addresses the recorded teardown by id, not a filter).
-        projection_key: ProjectionKey(String::new()),
+        projection_key: ProjectionKey::app_owned("app.feed.close.placeholder").unwrap(),
         session_id: FeedSessionId(session_id),
     };
     app.close_feed(&handle)
@@ -133,7 +133,7 @@ mod tests {
         "admission": "All",
         "ranking": "ChronologicalDesc",
         "window": {"initial_limit": 50},
-        "projection": "nmp.feed.support.test"
+        "projection": "app.feed.support.test"
     }"#;
 
     #[test]
@@ -155,7 +155,7 @@ mod tests {
             "admission": "All",
             "ranking": "ChronologicalDesc",
             "window": {"initial_limit": 50},
-            "projection": "nmp.feed.support.invalid"
+            "projection": "app.feed.support.invalid"
         }"#;
         assert_eq!(
             open_feed_session(&app, json),

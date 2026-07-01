@@ -95,17 +95,23 @@ pub fn register_mute_runtime(
     // `nmp-core` — the composition root (this crate) is entitled to name NIP
     // constants directly per ADR-0046.
     let mute_for_typed = Arc::clone(&mute);
-    app.register_typed_snapshot_projection("nmp.nip51.mute_list", move || {
-        let snapshot = mute_for_typed.snapshot();
-        Some(nmp_core::TypedProjectionData {
-            key: "nmp.nip51.mute_list".to_string(),
-            schema_id: MUTE_LIST_SCHEMA_ID.to_string(),
-            schema_version: MUTE_LIST_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(MUTE_LIST_FILE_IDENTIFIER).into_owned(),
-            payload: encode_mute_list(&snapshot),
-            ..Default::default()
-        })
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            "nmp.nip51.mute_list",
+            "projection.nmp.nip51.mute_list",
+        ),
+        move || {
+            let snapshot = mute_for_typed.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: "nmp.nip51.mute_list".to_string(),
+                schema_id: MUTE_LIST_SCHEMA_ID.to_string(),
+                schema_version: MUTE_LIST_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(MUTE_LIST_FILE_IDENTIFIER).into_owned(),
+                payload: encode_mute_list(&snapshot),
+                ..Default::default()
+            })
+        },
+    );
 
     // ── 3. Account-change reader notification ───────────────────────────────
     let mute_for_identity = Arc::clone(&mute);

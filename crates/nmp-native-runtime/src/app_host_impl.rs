@@ -20,13 +20,14 @@ use nmp_core::substrate::{
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
     SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
+use nmp_ownership::ProjectionRegistrationKey;
 
 use super::*;
 
 impl SnapshotProjectionRegistrar for NmpApp {
     fn register_typed_snapshot_projection<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         NmpApp::register_typed_snapshot_projection(self, key, f);
@@ -34,7 +35,7 @@ impl SnapshotProjectionRegistrar for NmpApp {
 
     fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         NmpApp::register_typed_snapshot_projection_with_time(self, key, f);

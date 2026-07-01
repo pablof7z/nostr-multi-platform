@@ -29,6 +29,12 @@ use crate::{
     WebBookmarksProjection,
 };
 
+const BOOKMARKS_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.nip51.bookmarks",
+        "projection.nmp.nip51.bookmarks",
+    );
+
 /// Wire active-account kind:10003 bookmark projection and safe write actions,
 /// and register the identity-change interest reconciler.
 ///
@@ -53,7 +59,7 @@ pub fn register_bookmark_runtime(
 
     // ── 3. Snapshot projection (typed sidecar) ────────────────────────────
     let projection_for_typed = Arc::clone(&projection);
-    app.register_typed_snapshot_projection("nmp.nip51.bookmarks", move || {
+    app.register_typed_snapshot_projection(BOOKMARKS_PROJECTION_KEY, move || {
         let snapshot = projection_for_typed.snapshot();
         Some(nmp_core::TypedProjectionData {
             key: "nmp.nip51.bookmarks".to_string(),

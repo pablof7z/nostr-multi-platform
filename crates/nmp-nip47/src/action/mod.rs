@@ -92,7 +92,11 @@ impl WalletPayInvoiceModule {
 }
 
 impl ActionModule for WalletPayInvoiceModule {
-    const NAMESPACE: &'static str = "nmp.wallet.pay_invoice";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.wallet.pay_invoice",
+            "action.nmp.wallet.pay_invoice",
+        );
 
     type Action = WalletAction;
 

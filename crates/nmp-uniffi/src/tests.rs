@@ -384,7 +384,8 @@ fn dispatch_wrapper_passes_through_correlation_id() {
 /// Bytes-capable coded-rejection module for the UniFFI wrapper smoke test.
 struct UniffiCodedRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]
 impl ActionModule for UniffiCodedRejectModule {
-    const NAMESPACE: &'static str = "test.uniffi_wrapper.coded_reject"; // doctrine-allow: action_namespace — test fixture
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned("test.uniffi_wrapper.coded_reject");
     type Action = serde_json::Value;
     fn decode_payload(
         _bytes: &[u8],
@@ -430,7 +431,7 @@ fn dispatch_wrapper_passes_through_code_field() {
 
     let envelope = encode_dispatch_envelope(
         "corr-code-wrap",
-        UniffiCodedRejectModule::NAMESPACE,
+        UniffiCodedRejectModule::NAMESPACE.as_str(),
         DISPATCH_ENVELOPE_SCHEMA_VERSION,
         &[0u8; 4],
     );

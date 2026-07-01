@@ -216,7 +216,11 @@ impl PublishWebBookmarkAction {
 }
 
 impl ActionModule for PublishWebBookmarkAction {
-    const NAMESPACE: &'static str = "nmp.nip51.publish_web_bookmark";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip51.publish_web_bookmark",
+            "action.nmp.nip51.publish_web_bookmark",
+        );
     type Action = PublishWebBookmarkInput;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

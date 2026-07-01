@@ -110,7 +110,7 @@ pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<St
         app,
         viewer_pubkey_hex.into(),
         FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),
-        ProjectionKey(FOLLOWING_TIMELINE_PROJECTION_KEY.to_string()),
+        ProjectionKey::app_owned(FOLLOWING_TIMELINE_PROJECTION_KEY).unwrap(),
     );
 }
 

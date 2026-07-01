@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "NIP-50 search request and result projection semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip50.search",
+            exclusive: true,
+            scope: {
+                kind: "projection_family",
+                value: "nmp.nip50.search.*",
+                context: "",
+            },
+            owns: [
+                "per-session NIP-50 search result projection family",
+            ],
+        },
     ],
     notes: [
     ],

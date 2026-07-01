@@ -77,7 +77,11 @@ fn set_parent_plan(action: &SetParentInput) -> PublishPlan {
 /// `nmp.nip29.set_parent` — adopt/detach a NIP-29 subgroup (nips PR #2319).
 pub struct SetParentAction;
 impl ActionModule for SetParentAction {
-    const NAMESPACE: &'static str = "nmp.nip29.set_parent";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.set_parent",
+            "action.nmp.nip29.set_parent",
+        );
     type Action = SetParentInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway;

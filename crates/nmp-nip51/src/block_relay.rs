@@ -182,7 +182,11 @@ impl BlockRelayAction {
 }
 
 impl ActionModule for BlockRelayAction {
-    const NAMESPACE: &'static str = "nmp.nip51.block_relay";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip51.block_relay",
+            "action.nmp.nip51.block_relay",
+        );
     type Action = BlockRelayInput;
 
     /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
@@ -278,7 +282,11 @@ impl UnblockRelayAction {
 }
 
 impl ActionModule for UnblockRelayAction {
-    const NAMESPACE: &'static str = "nmp.nip51.unblock_relay";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip51.unblock_relay",
+            "action.nmp.nip51.unblock_relay",
+        );
     type Action = UnblockRelayInput;
 
     /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the

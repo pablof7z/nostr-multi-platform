@@ -51,29 +51,35 @@ fn with_store_uses_the_injected_event_store_handle() {
 #[test]
 fn remove_feed_snapshot_projection_drops_typed_projection_and_author_provider() {
     let mut r = KernelReducer::new();
-    let feed_key = "nmp.feed.author.alice";
+    let feed_key = "app.feed.author.alice";
     let sibling_key = "test.feed.home";
 
-    r.register_typed_snapshot_projection(feed_key, || {
-        Some(crate::TypedProjectionData {
-            key: feed_key.to_string(),
-            schema_id: feed_key.to_string(),
-            schema_version: 1,
-            file_identifier: "TEST".to_string(),
-            payload: vec![0xab],
-            ..Default::default()
-        })
-    });
-    r.register_typed_snapshot_projection(sibling_key, || {
-        Some(crate::TypedProjectionData {
-            key: sibling_key.to_string(),
-            schema_id: sibling_key.to_string(),
-            schema_version: 1,
-            file_identifier: "TEST".to_string(),
-            payload: vec![0xcd],
-            ..Default::default()
-        })
-    });
+    r.register_typed_snapshot_projection(
+        nmp_ownership::DynamicProjectionKey::app_owned(feed_key).unwrap(),
+        || {
+            Some(crate::TypedProjectionData {
+                key: feed_key.to_string(),
+                schema_id: feed_key.to_string(),
+                schema_version: 1,
+                file_identifier: "TEST".to_string(),
+                payload: vec![0xab],
+                ..Default::default()
+            })
+        },
+    );
+    r.register_typed_snapshot_projection(
+        nmp_ownership::DynamicProjectionKey::app_owned(sibling_key).unwrap(),
+        || {
+            Some(crate::TypedProjectionData {
+                key: sibling_key.to_string(),
+                schema_id: sibling_key.to_string(),
+                schema_version: 1,
+                file_identifier: "TEST".to_string(),
+                payload: vec![0xcd],
+                ..Default::default()
+            })
+        },
+    );
     r.register_feed_author_provider(feed_key, || vec!["a".repeat(64)]);
     r.register_feed_author_provider(sibling_key, || vec!["b".repeat(64)]);
 

@@ -124,7 +124,11 @@ fn validate(action: &EditMetadataInput) -> Result<(), ActionRejection> {
 /// visibility/access (kind:9002 edit-metadata).
 pub struct EditMetadataAction;
 impl ActionModule for EditMetadataAction {
-    const NAMESPACE: &'static str = "nmp.nip29.edit_metadata";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.edit_metadata",
+            "action.nmp.nip29.edit_metadata",
+        );
     type Action = EditMetadataInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway;

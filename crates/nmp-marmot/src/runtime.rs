@@ -291,7 +291,10 @@ pub fn install(
 
     let runtime_for_projection = Arc::clone(&runtime);
     app.register_typed_snapshot_projection_with_time(
-        snapshot_fb::PROJECTION_KEY,
+        nmp_ownership::DeclaredProjectionKey::framework(
+            snapshot_fb::PROJECTION_KEY,
+            "projection.nmp.marmot.snapshot",
+        ),
         move |now_secs| {
             Some(snapshot_fb::typed_projection(
                 &runtime_for_projection.snapshot(now_secs),
@@ -300,11 +303,17 @@ pub fn install(
     );
 
     let runtime_for_messages = Arc::clone(&runtime);
-    app.register_typed_snapshot_projection(messages_fb::PROJECTION_KEY, move || {
-        Some(messages_fb::typed_projection(
-            &runtime_for_messages.messages(),
-        ))
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            messages_fb::PROJECTION_KEY,
+            "projection.nmp.marmot.messages",
+        ),
+        move || {
+            Some(messages_fb::typed_projection(
+                &runtime_for_messages.messages(),
+            ))
+        },
+    );
 
     let runtime_for_identity = Arc::clone(&runtime);
     app.register_identity_change_observer(move |active_pubkey| {

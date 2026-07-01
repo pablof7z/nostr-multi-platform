@@ -124,7 +124,8 @@ pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
         admission: nmp_native_runtime::FeedAdmission::All,
         ranking: nmp_native_runtime::FeedRanking::ChronologicalDesc,
         window: nmp_native_runtime::FeedWindow { initial_limit: 80 },
-        projection: nmp_native_runtime::ProjectionKey(HOME_TIMELINE_PROJECTION.to_string()),
+        projection: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
+            .expect("starter home timeline projection is app-owned"),
     }
 }
 
@@ -291,7 +292,8 @@ pub enum Action {
 pub struct EntryActionModule;
 
 impl ActionModule for EntryActionModule {
-    const NAMESPACE: &'static str = "{{name}}.entries.action";
+    const NAMESPACE: DeclaredActionNamespace =
+        DeclaredActionNamespace::app_owned("{{name}}.entries.action");
 
     type Action = Action;
 
@@ -328,7 +330,7 @@ impl ActionModule for EntryActionModule {
 pub fn module_namespaces() -> [&'static str; 2] {
     [
         EntryViewModule::NAMESPACE,
-        EntryActionModule::NAMESPACE,
+        EntryActionModule::NAMESPACE.as_str(),
     ]
 }
 
@@ -400,7 +402,8 @@ mod tests {
         assert_eq!(feed.primary_kinds, vec![1]);
         assert_eq!(
             feed.projection,
-            nmp_native_runtime::ProjectionKey("{{name}}.timeline.home".to_string())
+            nmp_native_runtime::ProjectionKey::app_owned("{{name}}.timeline.home")
+                .expect("starter home timeline projection is app-owned")
         );
         assert_eq!(feed.acquisition, nmp_native_runtime::FeedScope::ActiveUserFollows);
     }

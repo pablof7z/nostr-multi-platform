@@ -275,9 +275,10 @@ fn time_aware_typed_projection_uses_injected_time_on_emit() {
     let mut reducer = crate::KernelReducer::new();
     let kernel_clock: Arc<dyn crate::Clock> = clock.clone();
     reducer.set_clock_for_test(kernel_clock);
-    reducer.register_typed_snapshot_projection_with_time(KEY, |now_secs| {
-        Some(typed_entry(KEY, &now_secs.to_le_bytes()))
-    });
+    reducer.register_typed_snapshot_projection_with_time(
+        nmp_ownership::DynamicProjectionKey::app_owned(KEY).unwrap(),
+        |now_secs| Some(typed_entry(KEY, &now_secs.to_le_bytes())),
+    );
 
     let payload_for = |frame: &crate::UpdateFrameBytes| {
         crate::decode_snapshot_typed_projections(frame)

@@ -112,7 +112,11 @@ fn validate_group_id(group: &GroupId) -> Result<(), String> {
 
 pub struct CreateGroupAction;
 impl ActionModule for CreateGroupAction {
-    const NAMESPACE: &'static str = "nmp.nip29.create_group";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.create_group",
+            "action.nmp.nip29.create_group",
+        );
     type Action = CreateGroupInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the

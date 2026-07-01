@@ -200,9 +200,10 @@ pub fn register_wallet(
 
     // 5/6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
     //    generic `Value` projection above, never replacing it.
-    app.register_typed_snapshot_projection("wallet", move || {
-        wallet_typed_projection(&typed_projection_slot)
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework("wallet", "projection.wallet"),
+        move || wallet_typed_projection(&typed_projection_slot),
+    );
 
     // Hand the per-app handle back so the caller can thread it into the NIP-57
     // zap auto-chain (ADR-0052 rung 5.2; `nmp-nip47` must not depend on

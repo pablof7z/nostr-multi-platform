@@ -54,7 +54,8 @@ struct PublishStatusCommand {
 }
 
 impl ActionModule for PublishStatusModule {
-    const NAMESPACE: &'static str = ACTION_NAMESPACE;
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned(ACTION_NAMESPACE);
     type Action = PublishStatusAction;
 
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

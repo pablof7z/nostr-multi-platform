@@ -6,6 +6,7 @@ use mdk_sqlite_storage::MdkSqliteStorage;
 use nmp_core::actor::ActorMail;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nmp_core::substrate::{ActionModule, IncrementalApplyError};
+use nmp_ownership::ProjectionRegistrationKey;
 use nostr::RelayUrl;
 
 use super::*;
@@ -49,7 +50,7 @@ impl ActionRegistrar for FakeHost {
         &mut self,
         _module: M,
     ) -> Result<(), RegistrationError> {
-        self.actions.push(M::NAMESPACE);
+        self.actions.push(M::NAMESPACE.as_str());
         Ok(())
     }
 }
@@ -92,24 +93,24 @@ impl IngestParserRegistrar for FakeHost {
 impl SnapshotProjectionRegistrar for FakeHost {
     fn register_typed_snapshot_projection<K, F>(&self, key: K, _f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         self.typed
             .lock()
             .expect("typed registrations")
-            .push(key.into());
+            .push(key.into().into_string());
     }
 
     fn register_typed_snapshot_projection_with_time<K, F>(&self, key: K, _f: F)
     where
-        K: Into<String>,
+        K: Into<ProjectionRegistrationKey>,
         F: Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     {
         self.typed_time
             .lock()
             .expect("typed registrations")
-            .push(key.into());
+            .push(key.into().into_string());
     }
 
     fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError> {

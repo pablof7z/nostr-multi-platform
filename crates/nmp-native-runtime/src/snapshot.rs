@@ -6,6 +6,7 @@
 //! the typed FlatBuffers sidecar (ADR-0037).
 
 use super::NmpApp;
+use nmp_ownership::ProjectionRegistrationKey;
 
 // Issue #1283 / ADR-0034 — the `refs.event.envelopes` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);
@@ -44,7 +45,7 @@ impl NmpApp {
     /// condition for typed snapshot projections.
     pub fn register_typed_snapshot_projection(
         &self,
-        key: impl Into<String>,
+        key: impl Into<ProjectionRegistrationKey>,
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
         self.register_typed_snapshot_projection_with_time(key, move |_| f());
@@ -58,11 +59,11 @@ impl NmpApp {
     /// from actor/kernel time rather than reading the host wall clock.
     pub fn register_typed_snapshot_projection_with_time(
         &self,
-        key: impl Into<String>,
+        key: impl Into<ProjectionRegistrationKey>,
         f: impl Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
         use nmp_core::__ffi_internal::TypedAdmission;
-        let key = key.into();
+        let key = key.into().into_string();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             // ADR-0049 / Blocker C — derive the ledger disposition from the
             // ACTUAL admission result returned by `register_typed` rather than

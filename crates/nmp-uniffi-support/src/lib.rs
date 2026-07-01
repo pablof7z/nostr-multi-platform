@@ -270,7 +270,7 @@ mod tests {
             "admission": "All",
             "ranking": "ChronologicalDesc",
             "window": {"initial_limit": 50},
-            "projection": "nmp.feed.support.reopen"
+            "projection": "app.feed.support.reopen"
         }"#;
 
         // 1. Projection/feed-session registration through the shared mechanic.

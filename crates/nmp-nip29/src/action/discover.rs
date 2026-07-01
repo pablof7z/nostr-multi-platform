@@ -48,7 +48,11 @@ fn validate_relay_url(url: &str) -> Result<(), String> {
 #[derive(Default)]
 pub struct DiscoverGroupsAction;
 impl ActionModule for DiscoverGroupsAction {
-    const NAMESPACE: &'static str = "nmp.nip29.discover";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.discover",
+            "action.nmp.nip29.discover",
+        );
     type Action = DiscoverGroupsInput;
 
     /// ADR-0064 / Cut-B (#1756): opt into the typed FlatBuffers payload doorway;

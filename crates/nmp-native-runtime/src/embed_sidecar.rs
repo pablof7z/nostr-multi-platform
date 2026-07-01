@@ -242,29 +242,35 @@ pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedS
         incremental_apply,
     )));
 
-    app.register_typed_snapshot_projection(EMBED_SIDECAR_PROJECTION_KEY, move || {
-        let typed_data = read_embed_sidecar_typed(&slot);
-        // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
-        let identity = FrameIdentity {
-            session_id: frame_session_id.load(Ordering::Acquire),
-            snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
-        };
-        let Ok(mut state) = emission_state.lock() else {
-            // Poisoned mutex — degrade to always-emit (D6: safe fallback).
-            return Some(typed_data);
-        };
-        let payload = typed_data.payload.clone();
-        let emit_decision = state.should_emit(payload, identity);
-        drop(state);
-        match emit_decision {
-            None => None,
-            Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
-                payload,
-                projection_rev,
-                ..typed_data
-            }),
-        }
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            EMBED_SIDECAR_PROJECTION_KEY,
+            "projection.refs.event.envelopes",
+        ),
+        move || {
+            let typed_data = read_embed_sidecar_typed(&slot);
+            // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
+            let identity = FrameIdentity {
+                session_id: frame_session_id.load(Ordering::Acquire),
+                snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
+            };
+            let Ok(mut state) = emission_state.lock() else {
+                // Poisoned mutex — degrade to always-emit (D6: safe fallback).
+                return Some(typed_data);
+            };
+            let payload = typed_data.payload.clone();
+            let emit_decision = state.should_emit(payload, identity);
+            drop(state);
+            match emit_decision {
+                None => None,
+                Some((payload, projection_rev)) => Some(nmp_core::TypedProjectionData {
+                    payload,
+                    projection_rev,
+                    ..typed_data
+                }),
+            }
+        },
+    );
 }
 
 // ── Unit tests ──────────────────────────────────────────────────────────────

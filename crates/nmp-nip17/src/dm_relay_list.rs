@@ -129,7 +129,11 @@ pub struct PublishDmRelayListInput {
 pub struct PublishDmRelayListAction;
 
 impl ActionModule for PublishDmRelayListAction {
-    const NAMESPACE: &'static str = "nmp.nip17.publish_relay_list";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip17.publish_relay_list",
+            "action.nmp.nip17.publish_relay_list",
+        );
     type Action = PublishDmRelayListInput;
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the

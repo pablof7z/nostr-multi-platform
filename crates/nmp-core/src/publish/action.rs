@@ -145,7 +145,8 @@ pub enum PublishOutcome {
 pub struct PublishModule;
 
 impl ActionModule for PublishModule {
-    const NAMESPACE: &'static str = "nmp.publish";
+    const NAMESPACE: crate::substrate::DeclaredActionNamespace =
+        crate::substrate::DeclaredActionNamespace::framework("nmp.publish", "action.nmp.publish");
 
     type Action = PublishAction;
 

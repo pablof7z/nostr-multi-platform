@@ -40,6 +40,7 @@ use crate::substrate::{
     IngestParser, ObservedProjectionCommandHandle, ObservedProjectionSessionMap, ProfileLookup,
 };
 use crate::{EmittedFeedAuthorsSlot, ObservedProjectionId, TypedProjectionData};
+use nmp_ownership::ProjectionRegistrationKey;
 
 impl super::KernelReducer {
     /// Construct a reducer around an externally-opened event store.
@@ -198,11 +199,11 @@ impl super::KernelReducer {
     /// `NmpApp::register_typed_snapshot_projection`.
     pub fn register_typed_snapshot_projection(
         &self,
-        key: impl Into<String>,
+        key: impl Into<ProjectionRegistrationKey>,
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
     ) {
         if let Ok(mut guard) = self.snapshot_slot.lock() {
-            guard.register_typed(key, f);
+            guard.register_typed(key.into().into_string(), f);
         }
         // Poisoned mutex: D6 silent fail. The projection simply never
         // appears in snapshots — same graceful-degrade as a missing
@@ -212,11 +213,11 @@ impl super::KernelReducer {
     /// Register a typed projection closure that receives reducer/kernel time.
     pub fn register_typed_snapshot_projection_with_time(
         &self,
-        key: impl Into<String>,
+        key: impl Into<ProjectionRegistrationKey>,
         f: impl Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static,
     ) {
         if let Ok(mut guard) = self.snapshot_slot.lock() {
-            guard.register_typed_with_time(key, f);
+            guard.register_typed_with_time(key.into().into_string(), f);
         }
     }
 

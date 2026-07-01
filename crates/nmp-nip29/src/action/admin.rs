@@ -139,7 +139,11 @@ fn is_valid_invite_code(code: &str) -> bool {
 pub struct PutUserAction;
 
 impl ActionModule for PutUserAction {
-    const NAMESPACE: &'static str = "nmp.nip29.put_user";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.put_user",
+            "action.nmp.nip29.put_user",
+        );
     type Action = PutUserInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
@@ -168,7 +172,11 @@ impl ActionModule for PutUserAction {
 pub struct CreateInviteAction;
 
 impl ActionModule for CreateInviteAction {
-    const NAMESPACE: &'static str = "nmp.nip29.create_invite";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip29.create_invite",
+            "action.nmp.nip29.create_invite",
+        );
     type Action = CreateInviteInput;
 
     /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the

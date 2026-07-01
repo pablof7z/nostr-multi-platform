@@ -45,7 +45,11 @@ impl WalletConnectModule {
 }
 
 impl ActionModule for WalletConnectModule {
-    const NAMESPACE: &'static str = "nmp.wallet.connect";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.wallet.connect",
+            "action.nmp.wallet.connect",
+        );
     type Action = WalletConnectAction;
 
     /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
@@ -132,7 +136,11 @@ impl WalletDisconnectModule {
 }
 
 impl ActionModule for WalletDisconnectModule {
-    const NAMESPACE: &'static str = "nmp.wallet.disconnect";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.wallet.disconnect",
+            "action.nmp.wallet.disconnect",
+        );
     type Action = WalletDisconnectAction;
 
     /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the

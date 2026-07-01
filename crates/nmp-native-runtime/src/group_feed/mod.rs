@@ -99,15 +99,40 @@ const SCOPE_GLOBAL: u32 = 1;
 
 /// Snapshot key + singleton session key for the group-chat view.
 pub const GROUP_EVENTS_KEY: &str = "nmp.nip29.group_events";
+pub(crate) const GROUP_EVENTS_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        GROUP_EVENTS_KEY,
+        "projection.nmp.nip29.group_events",
+    );
 /// Snapshot key + singleton session key for the discovered-groups view.
 pub const DISCOVERED_GROUPS_KEY: &str = "nmp.nip29.discovered_groups";
+pub(crate) const DISCOVERED_GROUPS_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        DISCOVERED_GROUPS_KEY,
+        "projection.nmp.nip29.discovered_groups",
+    );
 /// Snapshot key + singleton session key for the joined-groups view.
 pub const JOINED_GROUPS_KEY: &str = "nmp.nip29.joined_groups";
+pub(crate) const JOINED_GROUPS_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        JOINED_GROUPS_KEY,
+        "projection.nmp.nip29.joined_groups",
+    );
 /// Snapshot key + singleton session key for the group-roster view.
 pub const GROUP_ROSTER_KEY: &str = "nmp.nip29.group_roster";
+pub(crate) const GROUP_ROSTER_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        GROUP_ROSTER_KEY,
+        "projection.nmp.nip29.group_roster",
+    );
 /// Snapshot key + singleton session key for the group-scoped reaction-aggregate
 /// view (NIP-25 kind:7 folded by target id, scoped to one group's `h` tag).
 pub const GROUP_REACTIONS_KEY: &str = "nmp.nip25.reactions";
+pub(crate) const GROUP_REACTIONS_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        GROUP_REACTIONS_KEY,
+        "projection.nmp.nip25.reactions",
+    );
 
 /// Refcount-owner id for each (singleton) NIP-29 view's pinned interest.
 const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
@@ -180,7 +205,7 @@ impl NmpApp {
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_EVENTS_KEY, move || {
+            app.register_typed_snapshot_projection(GROUP_EVENTS_PROJECTION_TOKEN, move || {
                 let snapshot = projection_for_sidecar.snapshot();
                 Some(nmp_core::TypedProjectionData {
                     key: GROUP_EVENTS_KEY.to_string(),
@@ -256,7 +281,7 @@ impl NmpApp {
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(DISCOVERED_GROUPS_KEY, move || {
+            app.register_typed_snapshot_projection(DISCOVERED_GROUPS_PROJECTION_TOKEN, move || {
                 let snapshot = projection_for_sidecar.snapshot();
                 Some(nmp_core::TypedProjectionData {
                     key: DISCOVERED_GROUPS_KEY.to_string(),
@@ -349,7 +374,7 @@ impl NmpApp {
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(JOINED_GROUPS_KEY, move || {
+            app.register_typed_snapshot_projection(JOINED_GROUPS_PROJECTION_TOKEN, move || {
                 let snapshot = projection_for_sidecar.snapshot();
                 Some(nmp_core::TypedProjectionData {
                     key: JOINED_GROUPS_KEY.to_string(),

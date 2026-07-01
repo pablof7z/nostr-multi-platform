@@ -311,7 +311,7 @@ fn build_op_scope_session(
 
     Ok(ScopeSessionBuild {
         build: FeedSessionBuild {
-            projection_key: nmp_feed::ProjectionKey(key.to_string()),
+            projection_key: nmp_feed::ProjectionKey::app_owned(key).unwrap(),
             teardown,
         },
         artifacts: Some(OpScopeSessionArtifacts {

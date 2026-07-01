@@ -320,6 +320,58 @@ nmp_ownership::declare_crate_ownership! {
                 "group metadata edit action namespace",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.put_user",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.put_user",
+                context: "",
+            },
+            owns: [
+                "group user permission update action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.create_invite",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.create_invite",
+                context: "",
+            },
+            owns: [
+                "group invite creation action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.leave",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.leave",
+                context: "",
+            },
+            owns: [
+                "group leave action namespace",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "action.nmp.nip29.set_parent",
+            exclusive: true,
+            scope: {
+                kind: "action",
+                value: "nmp.nip29.set_parent",
+                context: "",
+            },
+            owns: [
+                "group parent link action namespace",
+            ],
+        },
     ],
     notes: [
         {

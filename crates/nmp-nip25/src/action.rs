@@ -49,7 +49,11 @@ pub struct ReactModule;
 pub struct UnreactModule;
 
 impl ActionModule for ReactModule {
-    const NAMESPACE: &'static str = "nmp.nip25.react";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip25.react",
+            "action.nmp.nip25.react",
+        );
     type Action = ReactAction;
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
@@ -79,7 +83,11 @@ impl ActionModule for ReactModule {
 }
 
 impl ActionModule for UnreactModule {
-    const NAMESPACE: &'static str = "nmp.nip25.unreact";
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::framework(
+            "nmp.nip25.unreact",
+            "action.nmp.nip25.unreact",
+        );
     type Action = UnreactAction;
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the

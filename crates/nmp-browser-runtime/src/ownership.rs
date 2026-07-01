@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "browser worker runtime and host bridge semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.notifications",
+            exclusive: true,
+            scope: {
+                kind: "projection_family",
+                value: "nmp.notifications*",
+                context: "",
+            },
+            owns: [
+                "browser notification typed projection family",
+            ],
+        },
     ],
     notes: [
     ],
