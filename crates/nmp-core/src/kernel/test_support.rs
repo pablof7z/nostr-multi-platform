@@ -99,14 +99,11 @@ impl Kernel {
                     });
                     self.project_accepted_event(&verified);
                 }
-                // ADR-0057 PR 3 — kind:3 flows through the GENUINE post-store
-                // projection path (like kind:0 above): reconstruct the
-                // `VerifiedEvent` (the store above already accepted it) and run
-                // the shared `project_accepted_event`, which dispatches to the
-                // registered kind:3 parser (`TestKind3Parser` in test builds,
-                // the real `nmp_nip01::Kind3Parser` in production) → writes the
-                // contacts cache → the active-account contacts-transition signal
-                // drives the kernel-owned follow-feed effects. No parallel fake
+                // Kind:3 flows through the genuine post-store projection path
+                // (like kind:0 above): reconstruct the `VerifiedEvent` (the
+                // store above already accepted it) and run the shared
+                // `project_accepted_event`, which derives the active-account
+                // contacts transition from the accepted event. No parallel fake
                 // writer.
                 3 => {
                     let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
@@ -290,18 +287,15 @@ impl Kernel {
         self.project_accepted_event(&verified);
     }
 
-    /// Test seam for delivering a kind:3 contact list through the GENUINE
-    /// post-store projection path (ADR-0057 PR 3) — NOT a parallel fake writer.
+    /// Test seam for delivering a kind:3 contact list through the genuine
+    /// store-first projection path — NOT a parallel fake writer.
     ///
-    /// Reconstructs a `VerifiedEvent` from `event` and runs the shared
-    /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
-    /// kind:3 parser (`TestKind3Parser` in test builds, `nmp_nip01::Kind3Parser`
-    /// in production) → the parser writes the capability-owned contacts cache →
-    /// the contacts-transition signal for the ACTIVE account enqueues the
-    /// source recompile trigger (`on_active_contacts_changed`). This is the SAME path a
-    /// relay-delivered, locally-published, or cache-served kind:3 takes; there
-    /// is no separate cache writer. Callers keep the convenient
-    /// `NostrEvent`-taking signature.
+    /// Reconstructs a `VerifiedEvent` from `event`, inserts it into the event
+    /// store, and only then runs [`Kernel::project_accepted_event`] for accepted
+    /// inserts/replacements. The active-account contacts-transition signal
+    /// derives from the accepted event and enqueues the source recompile trigger
+    /// (`on_active_contacts_changed`). This is the SAME ordering a
+    /// relay-delivered, locally-published, or cache-served kind:3 takes.
     ///
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
     // Test-support helper: `pub(in crate::kernel)` so kernel-submodule test code
@@ -322,20 +316,19 @@ impl Kernel {
                 event.sig.clone()
             },
         });
-        self.project_accepted_event(&verified);
-    }
-
-    /// Test seam: install a FRESH empty `TestContactsCache` behind the kernel's
-    /// `contacts_lookup` slot — the in-crate equivalent of a cold restart losing
-    /// the in-memory contacts cache (which production rebuilds from the store via
-    /// cache-serve). Used by the ADR-0057 PR 3 cold-restart cache-serve test.
-    #[cfg(test)]
-    pub(crate) fn clear_test_contacts_cache(&mut self) {
-        // Clear the CONTENTS in place (not swap the `Arc`) so the registered
-        // `TestKind3Parser` (which holds the same `Arc`) keeps writing the cache
-        // the kernel's `contacts_lookup` reader reads — the parser→cache→reader
-        // identity that the contacts-transition detection depends on.
-        self.test_contacts_cache.clear();
+        let outcome = self.store.insert(
+            verified.clone(),
+            &"wss://test.invalid/".to_string(),
+            event.created_at.saturating_mul(1_000),
+        );
+        if matches!(
+            outcome,
+            Ok(crate::store::InsertOutcome::Inserted { .. })
+                | Ok(crate::store::InsertOutcome::Replaced { .. })
+                | Ok(crate::store::InsertOutcome::Ephemeral { .. })
+        ) {
+            self.project_accepted_event(&verified);
+        }
     }
 
     /// Lazily install (and return) the test-only

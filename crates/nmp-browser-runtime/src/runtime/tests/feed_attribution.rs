@@ -5,6 +5,7 @@ use nmp_core::RelayFrame;
 use nostr::JsonUtil;
 
 const RELAY: &str = "wss://relay.example";
+const BROWSER_FEED_KEY: &str = "test.browser.feed.attribution";
 
 #[test]
 fn browser_home_feed_projection_exports_reply_attribution() {
@@ -29,6 +30,7 @@ fn browser_home_feed_projection_exports_reply_attribution() {
     );
     handle.fan_out_outbound(connected);
 
+    open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
     handle.fan_out_outbound(outbound);
     let first_pump = handle.pump();
@@ -145,6 +147,23 @@ fn relay_event_frame(sub_id: &str, event_json: String) -> String {
     format!(r#"["EVENT","{sub_id}",{event_json}]"#)
 }
 
+fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHandle {
+    let params = nmp_feed::FeedParams {
+        primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
+        render: nmp_feed::FeedRender::OpCentric,
+        acquisition: nmp_feed::FeedScope::ActiveUserFollows,
+        admission: nmp_feed::FeedAdmission::All,
+        ranking: nmp_feed::FeedRanking::ChronologicalDesc,
+        window: nmp_feed::FeedWindow {
+            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        },
+        projection: nmp_feed::ProjectionKey(BROWSER_FEED_KEY.to_string()),
+    };
+    handle
+        .open_feed(params)
+        .expect("test-owned browser feed session opens")
+}
+
 fn req_sub_for_kind(outbound: &[nmp_core::OutboundMessage], kind: u32) -> Option<String> {
     outbound.iter().find_map(|message| {
         let value = serde_json::from_str::<serde_json::Value>(message.text()).ok()?;
@@ -175,7 +194,7 @@ fn decode_home_feed(
     let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
     let row = typed
         .into_iter()
-        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
-        .expect("home feed projection must be present");
+        .find(|row| row.key == BROWSER_FEED_KEY)
+        .expect("caller-owned feed projection must be present");
     nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
 }

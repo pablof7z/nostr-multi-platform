@@ -32,7 +32,6 @@ pub use op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, op_feed_observer, register_op_feed,
     register_op_feed_with_admission, Nip10ReplyAttribution, OpFeedEngine, OpFeedObserver,
     OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
-    OP_FEED_SNAPSHOT_KEY,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.

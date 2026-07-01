@@ -397,7 +397,8 @@ with the runtime registration API. Runtime ownership stays in Rust and is
 projected through the public bindings as typed output. The closure returns
 `Option<TypedProjectionData>`:
 
-- `Some(Changed row)` contains the projection key, e.g. `nmp.feed.home`;
+- `Some(Changed row)` contains the app/protocol-owned projection key, e.g.
+  `myapp.timeline.home`;
   `schema_id`, `schema_version`, and FlatBuffers `file_identifier`; and the
   projection payload bytes, owned by the app/protocol crate that owns the
   schema.

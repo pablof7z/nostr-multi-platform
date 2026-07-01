@@ -161,10 +161,7 @@ fn unreact_protocol_publishes_kind5_deletion() {
             assert_eq!(event.kind, KIND_REACTION_DELETE);
             // Provenance now comes from nmp-nip09 (ADR-0074): nip25 delegates
             // kind:5 artifact construction to the deletion owner.
-            assert_eq!(
-                ownership,
-                nmp_nip09::ownership::DELETION_EVENT_PROVENANCE
-            );
+            assert_eq!(ownership, nmp_nip09::ownership::DELETION_EVENT_PROVENANCE);
             assert_eq!(
                 event.tags,
                 vec![vec!["e".to_string(), REACTION.to_string()]]

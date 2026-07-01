@@ -18,9 +18,10 @@
 //! [`NoteFeedItem`]s, gated by an injected admission predicate. The
 //! emitted snapshot is the **same** [`RootFeedSnapshot`] wire shape the home
 //! feed emits (`RootCard { card, attribution }`), with `attribution` always
-//! empty — so the iOS/Android shells decode it through the existing
-//! `nmp.feed.home` reader with zero new FlatBuffers schema or codegen. Apps
-//! declare primary kinds (`[1]` for Chirp); the NIP-18 adapter derives the
+//! empty — so the iOS/Android shells decode it through the same NNFS
+//! `OpFeedSnapshot` schema with zero new FlatBuffers schema or codegen. Apps
+//! supply their own projection keys and declare primary kinds (`[1]` for Chirp);
+//! the NIP-18 adapter derives the
 //! compiled acquisition set (`{1,6}`), and this protocol adapter renders those
 //! admitted events. `nmp-core` never owns the primary-kind policy.
 //!

@@ -1,22 +1,20 @@
 //! Kind:3 contact-list transition hooks.
 //!
-//! NIP-specific parsing lives in adapter crates. `nmp-core` only observes that
-//! the active account's contact-derived capability cache changed and wakes the
-//! generic subscription compiler. Dynamic feed sessions own any reduced-source
-//! re-expansion through their registered observers and dependent-interest sets.
+//! The event store is the source of truth. `nmp-core` observes accepted
+//! active-account kind:3 events and wakes the generic subscription compiler.
+//! Dynamic feed sessions own any reduced-source re-expansion through their
+//! registered observers and dependent-interest sets.
 
 use super::super::{short_hex, Kernel};
 use crate::subs::{AccountId, CompileTrigger};
 
 impl Kernel {
-    /// ADR-0057 PR 3 — active-account contacts transition.
+    /// Active-account contact-list transition.
     ///
-    /// The parser that writes the contacts cache is registered outside this
-    /// module. When `project_accepted_event` detects that the active account's
-    /// contact cache changed, this hook logs the transition and enqueues one
-    /// compile trigger. It does not register a follow-feed interest and does not
-    /// derive an author set; those are owned by reduced-source sessions above
-    /// core.
+    /// When `project_accepted_event` sees an accepted kind:3 for the active
+    /// account, this hook logs the transition and enqueues one compile trigger.
+    /// It does not register a follow-feed interest; those are owned by
+    /// reduced-source sessions above core.
     pub(in crate::kernel) fn on_active_contacts_changed(
         &mut self,
         author: &str,

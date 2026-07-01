@@ -24,7 +24,9 @@ mod builder;
 mod read;
 
 pub use action::{DeleteAction, DeleteModule, Nip09Descriptor};
-pub use builder::{build_deletion_draft, build_deletion_event, DeletionRequest, OwnedDeletionDraft};
+pub use builder::{
+    build_deletion_draft, build_deletion_event, DeletionRequest, OwnedDeletionDraft,
+};
 pub use read::{deletion_targets, DeletionTargets};
 
 /// NIP-09 deletion event kind.

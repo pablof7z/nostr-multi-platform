@@ -88,8 +88,9 @@ fn tag_scope_admits_only_tagged_rows() {
 #[test]
 fn contact_list_admits_follows_rejects_strangers() {
     let slot = Arc::new(Mutex::new(Some(VIEWER.to_string())));
+    let store_slot = nmp_core::slots::new_event_store_slot();
     let follow_set =
-        nmp_nip02::ActiveFollowSet::new(slot, nmp_core::substrate::empty_contacts_lookup());
+        nmp_nip02::ActiveFollowSet::new(slot, nmp_nip02::LatestKind3FollowSet::new(store_slot));
     follow_set.on_kernel_event(&event(VIEWER, 3, &[MEMBER], None));
     let admit = follow_set.predicate();
 

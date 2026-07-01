@@ -8,9 +8,10 @@ const ACCOUNT_PK: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const FOLLOW_A_PK: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const FOLLOW_NOTE_ID: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const RELAY: &str = "wss://relay.example";
+const BROWSER_FEED_KEY: &str = "test.browser.feed.home";
 
 #[test]
-fn browser_home_feed_startup_is_not_builder_observer_wiring() {
+fn browser_startup_does_not_open_framework_owned_feed() {
     let handle = BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
@@ -20,8 +21,8 @@ fn browser_home_feed_startup_is_not_builder_observer_wiring() {
 
     assert_eq!(
         handle.feed_sessions.live_count(),
-        1,
-        "browser home-feed startup must open one ordinary typed feed session"
+        0,
+        "browser startup must not open a framework-owned default feed session"
     );
 }
 
@@ -31,8 +32,7 @@ fn browser_home_feed_has_no_production_register_path() {
     assert!(
         !builder_source.contains("register_browser_home_feed"),
         "BrowserAppBuilder::start must not install browser home feed through the \
-         production register_browser_home_feed path; startup should open the \
-         typed home-feed session instead"
+         production register_browser_home_feed path"
     );
 }
 
@@ -45,6 +45,7 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
         .decide_providers(BrowserRunConfig::default())
         .start();
 
+    let feed_handle = open_test_feed(&mut handle);
     assert_eq!(handle.feed_sessions.live_count(), 1);
     assert!(
         handle
@@ -52,21 +53,21 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
             .reducer
             .registered_feed_author_provider_keys()
             .iter()
-            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
-        "opening the home feed session must pair the typed projection with a \
+            .any(|key| key == BROWSER_FEED_KEY),
+        "opening the caller-owned feed session must pair the typed projection with a \
          feed-author provider"
     );
 
-    assert!(handle.close_home_feed_session());
+    assert!(handle.close_feed(&feed_handle));
     assert_eq!(handle.feed_sessions.live_count(), 0);
-    assert!(!handle.close_home_feed_session());
+    assert!(!handle.close_feed(&feed_handle));
     assert!(
         !handle
             .runtime
             .reducer
             .registered_feed_author_provider_keys()
             .iter()
-            .any(|key| key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY),
+            .any(|key| key == BROWSER_FEED_KEY),
         "closing the session must remove the paired feed-author provider"
     );
 
@@ -74,8 +75,8 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
     let rows = nmp_core::decode_snapshot_typed_projections(&bytes).expect("frame decodes");
     let row = rows
         .iter()
-        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
-        .expect("closed home feed projection emits a Cleared row");
+        .find(|row| row.key == BROWSER_FEED_KEY)
+        .expect("closed caller-owned feed projection emits a Cleared row");
     assert_eq!(row.state, nmp_core::WireProjectionState::Cleared);
 }
 
@@ -88,6 +89,7 @@ fn browser_home_feed_observer_opens_on_active_account_change() {
         .decide_providers(BrowserRunConfig::default())
         .start();
 
+    open_test_feed(&mut handle);
     for role in [
         nmp_network::role::RelayRole::Content,
         nmp_network::role::RelayRole::Indexer,
@@ -141,6 +143,7 @@ fn browser_home_feed_projection_renders_public_note_before_sign_in() {
     );
     handle.fan_out_outbound(connected);
 
+    open_test_feed(&mut handle);
     let first_pump = handle.pump();
     let (feed_sub, req_text) =
         req_frame_for_kind(&first_pump.outbound, nmp_kinds::KIND_SHORT_TEXT_NOTE)
@@ -184,6 +187,7 @@ fn browser_home_feed_projection_renders_followed_note() {
         .decide_providers(BrowserRunConfig::default())
         .start();
 
+    open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(ACCOUNT_PK.to_string());
     handle.fan_out_outbound(outbound);
     handle.pump();
@@ -208,7 +212,7 @@ fn browser_home_feed_projection_renders_followed_note() {
 }
 
 #[test]
-fn browser_home_feed_exports_follow_list_projection_from_contacts_lookup() {
+fn browser_home_feed_reads_follow_set_from_stored_kind3() {
     let viewer_keys = nostr::Keys::generate();
     let follow_keys = nostr::Keys::generate();
     let viewer_pk = viewer_keys.public_key().to_hex();
@@ -221,6 +225,7 @@ fn browser_home_feed_exports_follow_list_projection_from_contacts_lookup() {
         .decide_providers(BrowserRunConfig::default())
         .start();
 
+    open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
     handle.fan_out_outbound(outbound);
     handle.pump();
@@ -236,16 +241,13 @@ fn browser_home_feed_exports_follow_list_projection_from_contacts_lookup() {
     );
     handle.fan_out_outbound(outbound);
 
-    let frame = handle.next_frame(true);
-    let follows = decode_follow_list(&frame);
+    let follows = latest_kind3_reader(&handle)
+        .follows(&viewer_pk)
+        .expect("stored kind:3 exists for active account");
     assert_eq!(
-        follows
-            .follows
-            .iter()
-            .map(|entry| entry.pubkey.as_str())
-            .collect::<Vec<_>>(),
+        follows.iter().map(String::as_str).collect::<Vec<_>>(),
         vec![follow_pk.as_str()],
-        "browser follow button state must be backed by the Rust NIP-02 projection"
+        "browser feed follow admission must be backed by the event-store kind:3"
     );
 }
 
@@ -263,6 +265,7 @@ fn browser_home_feed_projection_renders_followed_note_from_relay_frames() {
         .decide_providers(BrowserRunConfig::default())
         .start();
 
+    open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
     handle.fan_out_outbound(outbound);
     handle.pump();
@@ -322,6 +325,7 @@ fn browser_home_feed_projection_renders_followed_note_from_runtime_wire_subs() {
     );
     handle.fan_out_outbound(connected);
 
+    open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
     handle.fan_out_outbound(outbound);
     let first_pump = handle.pump();
@@ -414,6 +418,29 @@ fn relay_event_frame(sub_id: &str, event_json: String) -> String {
     format!(r#"["EVENT","{sub_id}",{event_json}]"#)
 }
 
+fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHandle {
+    let params = nmp_feed::FeedParams {
+        primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
+        render: nmp_feed::FeedRender::OpCentric,
+        acquisition: nmp_feed::FeedScope::ActiveUserFollows,
+        admission: nmp_feed::FeedAdmission::All,
+        ranking: nmp_feed::FeedRanking::ChronologicalDesc,
+        window: nmp_feed::FeedWindow {
+            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        },
+        projection: nmp_feed::ProjectionKey(BROWSER_FEED_KEY.to_string()),
+    };
+    handle
+        .open_feed(params)
+        .expect("test-owned browser feed session opens")
+}
+
+fn latest_kind3_reader(handle: &crate::BrowserRuntimeHandle) -> nmp_nip02::LatestKind3FollowSet {
+    let slot = nmp_core::slots::new_event_store_slot();
+    *slot.lock().expect("event-store slot") = Some(handle.event_store_handle());
+    nmp_nip02::LatestKind3FollowSet::new(slot)
+}
+
 fn req_sub_for_kind(outbound: &[nmp_core::OutboundMessage], kind: u32) -> Option<String> {
     req_frame_for_kind(outbound, kind).map(|(sub_id, _)| sub_id)
 }
@@ -452,20 +479,7 @@ fn decode_home_feed(
     let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
     let row = typed
         .into_iter()
-        .find(|row| row.key == nmp_note_feed::op_feed::OP_FEED_SNAPSHOT_KEY)
-        .expect("home feed projection must be present");
+        .find(|row| row.key == BROWSER_FEED_KEY)
+        .expect("caller-owned feed projection must be present");
     nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
-}
-
-fn decode_follow_list(frame: &crate::runtime::SnapshotOutcome) -> nmp_nip02::FollowListSnapshot {
-    let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
-        panic!("expected snapshot frame, got {frame:?}");
-    };
-    let typed = nmp_core::decode_snapshot_typed_projections(bytes).expect("frame decodes");
-    let row = typed
-        .into_iter()
-        .find(|row| row.key == "nmp.follow_list")
-        .expect("follow-list projection must be present");
-    assert_eq!(row.schema_id, nmp_nip02::FOLLOW_LIST_SCHEMA_ID);
-    nmp_nip02::decode_follow_list(&row.payload).expect("NF02 payload decodes")
 }

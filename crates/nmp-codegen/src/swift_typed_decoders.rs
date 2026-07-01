@@ -36,8 +36,8 @@
 //!   `<reader> -> <domain>` mapping, declared as a `TypedProjectionGlue`
 //!   static. The generated decoder calls into it. For thin keys the glue is a
 //!   few lines (`active_account`: `reader.hasActiveAccount ? reader.pubkey :
-//!   nil`); for thick keys (nested sub-buffers) it is the bespoke decoder the
-//!   `nmp.feed.home` precedent already hand-writes.
+//!   nil`); for thick keys (nested sub-buffers) it is a bespoke decoder owned
+//!   by the consuming app/runtime.
 //!
 //! ## Only keys with a checked-in `flatc --swift` binding are emitted
 //!

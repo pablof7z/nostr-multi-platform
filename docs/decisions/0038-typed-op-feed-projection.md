@@ -6,8 +6,8 @@
 
 ## Context
 
-`nmp.feed.home` is the highest-volume projection in the Chirp-style app surface.
-After the OP-centric feed migration, the projection shape is a root-indexed feed:
+Chirp-style home timelines are high-volume app-owned feed projections. After
+the OP-centric feed migration, their payload shape is a root-indexed feed:
 thread-root cards plus reply attribution and feed-window metadata.
 
 That shape needs its own typed descriptor because it is not the same schema as
@@ -16,8 +16,8 @@ schema versions evolve one identity.
 
 ## Decision
 
-The OP-centric home feed is emitted under projection key `nmp.feed.home` with a
-typed FlatBuffers sidecar owned by `nmp-note-feed`:
+OP-centric product feeds are emitted under caller/app-owned projection keys with
+a typed FlatBuffers sidecar whose schema/codec is owned by `nmp-note-feed`:
 
 - `schema_id = "nmp.note_feed.opfeed"`
 - `file_identifier = "NNFS"`
@@ -50,13 +50,15 @@ no separate display count is encoded.
 
 ## Host Behavior
 
-For `nmp.feed.home`, a host validates the `NNFS` descriptor and decodes
-`OpFeedSnapshot`. Descriptor mismatch or decode failure means the projection is
-absent for that tick.
+For an app-owned OP-feed projection, a host routes by the projection key it
+opened, validates the `NNFS` descriptor, and decodes `OpFeedSnapshot`.
+Descriptor mismatch or decode failure means the projection is absent for that
+tick.
 
 ## Consequences
 
-- The home feed stays on the typed sidecar path from ADR-0037.
+- App home feeds stay on the typed sidecar path from ADR-0037 without reserving
+  a framework-owned product key.
 - The feed-window and content-tree ownership boundaries stay intact.
 - `nmp-nip01` remains a lower-level note/thread fact owner.
 - `nmp-core` remains unaware of OP-feed nouns.

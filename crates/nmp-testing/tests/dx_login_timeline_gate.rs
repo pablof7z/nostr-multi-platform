@@ -11,9 +11,9 @@
 //!
 //! Every event is a real Schnorr-signed Nostr event routed through the kernel's
 //! production ingest gate (verify → store → observer fan-out → OP-feed engine →
-//! `nmp.feed.home` typed projection). The shell decodes that projection with the
-//! NMP-provided `decode_op_feed_snapshot` and renders rows. The shell writes ZERO
-//! relay/cache/subscription/replaceable-policy code — proven structurally by
+//! an app-owned NNFS typed projection). The shell decodes that projection with
+//! the NMP-provided `decode_op_feed_snapshot` and renders rows. The shell writes
+//! ZERO relay/cache/subscription/replaceable-policy code — proven structurally by
 //! `g6_example_shell_is_doctrine_clean` (banned-substring scan of the example's
 //! `lib.rs`), the same check `dx_scaffold_gate` G2/G4 apply to the scaffold.
 //!
@@ -67,7 +67,7 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
     let result = run_demo();
 
     // G1 — at least one row rendered after login, and it is the followed
-    // author's note, decoded out of the typed `nmp.feed.home` projection.
+    // author's note, decoded out of the app-owned typed feed projection.
     assert!(
         !result.after_login.is_empty(),
         "G1 DX GAP: login → following-timeline rendered ZERO rows. The aim.md §1 \

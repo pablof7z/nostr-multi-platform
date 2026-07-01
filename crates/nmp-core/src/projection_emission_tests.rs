@@ -1,7 +1,7 @@
 //! Cardinal-trap tests for [`TypedProjectionEmissionState`] — ADR-0055 Rung 6 S2.
 //!
 //! These tests validate the generic whole-value omit mechanism that is SHARED
-//! by `nmp.feed.home` (R6-S1), `refs.event.envelopes` (R6-S2), and
+//! by `app.feed.home` (R6-S1), `refs.event.envelopes` (R6-S2), and
 //! `nip46_onboarding` (R6-S2). One implementation, one test suite.
 //!
 //! Group A: value changes → emit + rev bump (trap-proof: any byte change emits).

@@ -260,8 +260,8 @@ pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VER
 // Substrate-grade (D0): no app/protocol nouns.
 pub use kernel::{
     kernel_ports::{
-        FollowPort, IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort,
-        PullCursorPort, ReferencePort, RelayLifecyclePort, UiPort,
+        IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort, PullCursorPort,
+        ReferencePort, RelayLifecyclePort, UiPort,
     },
     RelayFrame,
 };

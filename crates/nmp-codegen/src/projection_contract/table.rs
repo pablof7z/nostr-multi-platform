@@ -293,21 +293,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        key: "nmp.feed.home",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-note-feed op-feed",
-        owner_claim: "projection.nmp.feed.home",
-        // The projection key stays stable while the feed-owned schema identity
-        // lives with the composition crate.
-        schema_id: "nmp.note_feed.opfeed",
-        file_identifier: "NNFS",
-        // nmp-note-feed op_feed/typed_wire::OP_FEED_SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
         key: "nmp.follow_list",
         tier: ProjectionTier::HostRegistered,
         producer: "apps/chirp ffi/register follow_list (NIP-02)",

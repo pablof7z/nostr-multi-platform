@@ -69,7 +69,7 @@ fn snapshot_json_carries_new_projections() {
     // the `projections` map. `profile` is always present.
     // V-112 (ADR-0042): `author_view` / `thread_view` deleted from projections.
     // #1610: `timeline`, `inserted`, `updated`, `removed` removed from the
-    // codegen registry (JSON-era vestigials; typed feed ships via `nmp.feed.home`).
+    // codegen registry (JSON-era vestigials; typed feed ships via `app.feed.home`).
     // These asserts confirm the kernel never emits those legacy keys.
     assert!(projections.get("profile").is_some());
     // Kernel never emits the JSON-era timeline/delta keys (#1610).

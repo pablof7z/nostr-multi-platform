@@ -4,26 +4,25 @@
 //!
 //! 1. After `evict_ram_caches` fires, `events.len() ≤ EVENTS_RAM_HWM`.
 //! 2. After `evict_ram_caches` fires, `profiles.len() ≤ PROFILES_RAM_HWM`.
-//! 3. After `evict_ram_caches` fires, `the contacts cache len ≤ CONTACTS_RAM_HWM`.
-//! 4. **Live-ref invariant** — entries that are claimed / in the timeline /
-//!    followed / owned by the active account are NEVER evicted.
-//! 5. `metric_stored_events` is decremented for every evicted `events` entry.
-//! 6. Maps that are already under the HWM are not touched.
-//! 7. `run_gc_step` drives `evict_ram_caches` (integration path).
-//! 8. **Open-view invariant** (Opus review on PR #1096) — an open thread
+//! 3. **Live-ref invariant** — entries that are claimed / in the timeline /
+//!    owned by the active account are NEVER evicted.
+//! 4. `metric_stored_events` is decremented for every evicted `events` entry.
+//! 5. Maps that are already under the HWM are not touched.
+//! 6. `run_gc_step` drives `evict_ram_caches` (integration path).
+//! 7. **Open-view invariant** (Opus review on PR #1096) — an open thread
 //!    view's root + replies + hydration-requested ids, an open author view's
 //!    notes (non-followed author), and the open views' author profiles all
 //!    survive eviction, and `thread_items()`/`author_items()` still return
 //!    the full set afterwards.  `open_thread`/`open_author` write NOTHING to
 //!    `event_claims`, so these pins must derive from the live view state.
 //!
-//! Test strategy: insert events/profiles/contacts through the real
-//! ingest path (using `ingest_pre_verified_event` / `inject_replaceable_event`
-//! to stay signature-free in unit-test builds), drive the clock with
-//! `FixedClock`, call `evict_ram_caches`, and assert.
+//! Test strategy: insert events/profiles through the real ingest path (using
+//! `ingest_pre_verified_event` / `inject_replaceable_event` to stay
+//! signature-free in unit-test builds), drive the clock with `FixedClock`, call
+//! `evict_ram_caches`, and assert.
 
 use super::clock::FixedClock;
-use super::ram_eviction::{EVENTS_RAM_HWM, PROFILES_RAM_HWM, CONTACTS_RAM_HWM};
+use super::ram_eviction::{EVENTS_RAM_HWM, PROFILES_RAM_HWM};
 use super::*;
 use crate::relay::{DEFAULT_VISIBLE_LIMIT};
 use nmp_network::role::RelayRole;
@@ -168,37 +167,7 @@ fn profiles_eviction_caps_at_hwm() {
     assert!(report.profiles_evicted > 0);
 }
 
-// ─── 3. contacts cache cap ──────────────────────────────────────────────────
-
-/// Inserting more than `CONTACTS_RAM_HWM` contacts and calling
-/// `evict_ram_caches` must bring `the contacts cache len` down.
-#[test]
-fn contacts_eviction_caps_at_hwm() {
-    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
-    pin_clock(&mut kernel, T0_SECS);
-
-    let over = CONTACTS_RAM_HWM + 64 + 5;
-    for i in 0..over {
-        let pk = make_pubkey(2_000 + i + 1);
-        kernel.prepopulate_contacts(pk, vec![]);
-    }
-
-    assert!(
-        kernel.contacts_lookup().len() > CONTACTS_RAM_HWM,
-        "precondition: contacts cache must exceed HWM (len={})",
-        kernel.contacts_lookup().len()
-    );
-
-    let report = kernel.evict_ram_caches();
-    assert!(
-        kernel.contacts_lookup().len() <= CONTACTS_RAM_HWM,
-        "after eviction the contacts cache len must be ≤ HWM={CONTACTS_RAM_HWM}, got {}",
-        kernel.contacts_lookup().len()
-    );
-    assert!(report.contacts_evicted > 0);
-}
-
-// ─── 4. live-ref invariant ─────────────────────────────────────────────────
+// ─── 3. live-ref invariant ─────────────────────────────────────────────────
 
 /// Events in `timeline` must NEVER be evicted.
 #[test]
@@ -355,36 +324,7 @@ fn active_account_profile_is_never_evicted() {
     );
 }
 
-/// Active account.s contacts entry must NEVER be evicted.
-#[test]
-fn active_account_contacts_are_never_evicted() {
-    let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);
-    pin_clock(&mut kernel, T0_SECS);
-
-    let active_pk = make_pubkey(9999);
-    kernel.active_account = Some(active_pk.clone());
-    kernel.prepopulate_contacts(active_pk.clone(), vec!["follow1".to_string()]);
-
-    let over = CONTACTS_RAM_HWM + 64 + 5;
-    for i in 0..over {
-        let pk = make_pubkey(3_000 + i + 1);
-        kernel.prepopulate_contacts(pk, vec![]);
-    }
-
-    assert!(
-        kernel.contacts_lookup().len() > CONTACTS_RAM_HWM,
-        "precondition: must exceed HWM"
-    );
-
-    kernel.evict_ram_caches();
-
-    assert!(
-        kernel.contacts_lookup().follows(&active_pk).is_some(),
-        "active account contacts must survive eviction"
-    );
-}
-
-// ─── 5. metric_stored_events decremented ───────────────────────────────────
+// ─── 4. metric_stored_events decremented ───────────────────────────────────
 
 /// `metric_stored_events` must be decremented for every event evicted.
 #[test]

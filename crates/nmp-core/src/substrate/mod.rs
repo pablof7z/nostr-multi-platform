@@ -49,7 +49,6 @@ mod app_host;
 mod blocked_relays;
 mod bounded;
 mod capability;
-mod contacts_lookup;
 pub mod content_parser;
 mod dm_inbox_relays;
 mod empty_routing;
@@ -107,11 +106,6 @@ pub use search::{
 // #1804 — input-intent recognizer substrate surface.
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
-pub use contacts_lookup::{
-    empty_contacts_lookup, ContactsLookup, ContactsView, EmptyContactsLookup,
-};
-#[cfg(any(test, feature = "test-support"))]
-pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 #[cfg(any(test, feature = "test-support"))]
 pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use dm_inbox_relays::{

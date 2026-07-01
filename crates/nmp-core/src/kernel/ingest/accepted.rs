@@ -29,12 +29,11 @@ impl Kernel {
     ///    is `should_store_event` (which no longer has any power over
     ///    persistence).
     ///
-    /// ADR-0057 PR 3 finishes D0: profiles (kind:0) AND contacts (kind:3) are
-    /// both parser-fed (`nmp_nip01::Kind0Parser` / `Kind3Parser` writing the
-    /// capability-owned `ProfileCache` / `ContactsCache`), detected via a
-    /// before/after cache snapshot in [`Self::project_accepted_event`]. The
-    /// ingest path now names ZERO NIP kind literals; gift-wrap is excluded via
-    /// the parser registry, not a literal.
+    /// Profiles (kind:0) are parser-fed into the profile cache. Contacts
+    /// (kind:3) are store-derived: [`Self::project_accepted_event`] derives the
+    /// active-account transition from the accepted event and enqueues the source
+    /// recompile trigger. Gift-wrap is excluded via the parser registry, not a
+    /// literal.
     ///
     /// Returns the store outcome so a source wrapper can apply source-specific
     /// post-processing (e.g. the relay path's claim-hit scoring).

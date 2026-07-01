@@ -25,7 +25,7 @@ fn build_with<F: FnOnce() + Send + 'static>(key: &str, teardown: F) -> FeedSessi
 #[test]
 fn open_mints_distinct_ids_and_records_projection_key() {
     let reg = FeedSessionRegistry::default();
-    let a = reg.open(build_with("nmp.feed.home", || {}));
+    let a = reg.open(build_with("test.feed.home", || {}));
     let b = reg.open(build_with("nmp.feed.author.alice", || {}));
     assert_ne!(a, b, "each open mints a distinct id");
     assert_ne!(
@@ -35,7 +35,7 @@ fn open_mints_distinct_ids_and_records_projection_key() {
     );
     assert_eq!(
         reg.projection_key(&a),
-        Some(ProjectionKey("nmp.feed.home".into()))
+        Some(ProjectionKey("test.feed.home".into()))
     );
     assert_eq!(reg.live_count(), 2, "two live sessions");
 }
@@ -45,7 +45,7 @@ fn close_runs_teardown_exactly_once_and_frees_the_entry() {
     let reg = FeedSessionRegistry::default();
     let calls = Arc::new(AtomicUsize::new(0));
     let calls_t = Arc::clone(&calls);
-    let id = reg.open(build_with("nmp.feed.home", move || {
+    let id = reg.open(build_with("test.feed.home", move || {
         calls_t.fetch_add(1, Ordering::SeqCst);
     }));
 
@@ -64,7 +64,7 @@ fn double_close_is_idempotent_no_panic_no_second_teardown() {
     let reg = FeedSessionRegistry::default();
     let calls = Arc::new(AtomicUsize::new(0));
     let calls_t = Arc::clone(&calls);
-    let id = reg.open(build_with("nmp.feed.home", move || {
+    let id = reg.open(build_with("test.feed.home", move || {
         calls_t.fetch_add(1, Ordering::SeqCst);
     }));
 
@@ -94,7 +94,7 @@ fn teardown_runs_in_reverse_registration_order() {
     let order = Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
     let (o1, o2, o3) = (Arc::clone(&order), Arc::clone(&order), Arc::clone(&order));
     let build = FeedSessionBuild {
-        projection_key: ProjectionKey("nmp.feed.home".into()),
+        projection_key: ProjectionKey("test.feed.home".into()),
         teardown: vec![
             Box::new(move || o1.lock().unwrap().push(1)),
             Box::new(move || o2.lock().unwrap().push(2)),
@@ -122,7 +122,7 @@ fn dropping_the_registry_drops_unclosed_session_closures() {
         // The teardown closure holds `guard`; when the registry drops, the
         // closure (and its Arc clone) drop too. We assert via Arc strong count.
         let _id = reg.open(FeedSessionBuild {
-            projection_key: ProjectionKey("nmp.feed.home".into()),
+            projection_key: ProjectionKey("test.feed.home".into()),
             teardown: vec![Box::new(move || {
                 // Never invoked (registry dropped without close), but `guard` is
                 // captured and must drop with the registry.

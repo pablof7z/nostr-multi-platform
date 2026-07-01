@@ -180,7 +180,7 @@ fn feed_params_round_trips_through_serde() {
 #[test]
 fn feed_handle_pairs_projection_key_and_opaque_session_id() {
     let handle = FeedHandle {
-        projection_key: ProjectionKey("nmp.feed.home".into()),
+        projection_key: ProjectionKey("test.feed.home".into()),
         session_id: FeedSessionId(42),
     };
     let json = serde_json::to_string(&handle).expect("serialize");
@@ -197,6 +197,6 @@ fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow::default(),
-        projection: ProjectionKey("nmp.feed.home".into()),
+        projection: ProjectionKey("test.feed.home".into()),
     }
 }

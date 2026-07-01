@@ -3,8 +3,7 @@
 //! This crate owns the shared construction that must not be hand-copied by app
 //! roots: one mailbox cache shared by the NIP-65 reader, router factory, and
 //! kind:10002 parser; one profile cache shared by the kernel profile reader and
-//! kind:0 parser; one contacts cache shared by the kernel contacts reader and
-//! kind:3 parser; plus the routing, publish resolver, raw forwarding, coverage,
+//! kind:0 parser; plus the routing, publish resolver, raw forwarding, coverage,
 //! NIP-77, blocked-relay, and native NIP-11 hooks that make the kernel routable.
 //!
 //! Protocol and app features are deliberately not installed here. App/runtime
@@ -15,11 +14,10 @@ use std::sync::Arc;
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::substrate::{
-    ActionRegistrar, BlockedRelayLookupRegistrar, ContactsLookup, CoverageHookRegistrar,
-    ExternalEventSinkPolicy, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
-    MailboxCache, OutboxRouter, ProfileLookup, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    RoutingTraceObserver,
+    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
+    IngestParser, IngestParserRegistrar, KernelReaderRegistrar, MailboxCache, OutboxRouter,
+    ProfileLookup, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
 };
 use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
@@ -71,7 +69,6 @@ pub struct SubstrateHandles {
 pub struct SubstrateWiring {
     mailbox_cache: Arc<InMemoryMailboxCache>,
     profile_cache: Arc<nmp_nip01::ProfileCache>,
-    contacts_cache: Arc<nmp_nip01::ContactsCache>,
 }
 
 impl Default for SubstrateWiring {
@@ -87,7 +84,6 @@ impl SubstrateWiring {
         Self {
             mailbox_cache: Arc::new(InMemoryMailboxCache::new()),
             profile_cache: Arc::new(nmp_nip01::ProfileCache::new()),
-            contacts_cache: Arc::new(nmp_nip01::ContactsCache::new()),
         }
     }
 
@@ -153,7 +149,7 @@ impl SubstrateWiring {
         ));
         reducer.register_ingest_parser(10_002, kind10002_parser);
 
-        self.install_profile_contacts_on_reducer(reducer);
+        self.install_profiles_on_reducer(reducer);
     }
 
     fn install_reader_parser_pairs(
@@ -170,28 +166,14 @@ impl SubstrateWiring {
         let kind0_parser: Arc<dyn IngestParser> =
             Arc::new(nmp_nip01::Kind0Parser::new(Arc::clone(&self.profile_cache)));
         app.register_ingest_parser(0, kind0_parser);
-
-        let contacts_lookup: Arc<dyn ContactsLookup> = self.contacts_cache.clone();
-        app.set_contacts_lookup(contacts_lookup);
-        let kind3_parser: Arc<dyn IngestParser> = Arc::new(nmp_nip01::Kind3Parser::new(
-            Arc::clone(&self.contacts_cache),
-        ));
-        app.register_ingest_parser(3, kind3_parser);
     }
 
-    fn install_profile_contacts_on_reducer(&self, reducer: &mut KernelReducer) {
+    fn install_profiles_on_reducer(&self, reducer: &mut KernelReducer) {
         let profile_lookup: Arc<dyn ProfileLookup> = self.profile_cache.clone();
         reducer.set_profile_lookup(profile_lookup);
         let kind0_parser: Arc<dyn IngestParser> =
             Arc::new(nmp_nip01::Kind0Parser::new(Arc::clone(&self.profile_cache)));
         reducer.register_ingest_parser(0, kind0_parser);
-
-        let contacts_lookup: Arc<dyn ContactsLookup> = self.contacts_cache.clone();
-        reducer.set_contacts_lookup(contacts_lookup);
-        let kind3_parser: Arc<dyn IngestParser> = Arc::new(nmp_nip01::Kind3Parser::new(
-            Arc::clone(&self.contacts_cache),
-        ));
-        reducer.register_ingest_parser(3, kind3_parser);
     }
 }
 

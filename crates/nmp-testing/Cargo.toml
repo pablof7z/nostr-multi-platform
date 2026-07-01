@@ -26,6 +26,7 @@ nmp-planner = { path = "../nmp-planner" }
 # InsertOutcome / MemEventStore — the nmp_core::store compat facade is
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
 nmp-store = { path = "../nmp-store" }
+nmp-feed = { path = "../nmp-feed" }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"] }
 nmp-nip77 = { path = "../nmp-nip77" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }

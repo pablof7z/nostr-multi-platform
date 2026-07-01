@@ -122,10 +122,10 @@ const RELAY: &str = "wss://test.relay/";
 
 /// D4 — kind:3 regression: deliver v2 then re-deliver stale v1.
 ///
-/// The store must supersede v1 (older created_at) and the contacts cache
-/// must stay at the v2 content.
+/// The store must supersede v1 (older created_at) and the derived latest
+/// follow set must stay at the v2 content.
 #[test]
-fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
+fn kind3_stale_redelivery_does_not_overwrite_latest_follow_set() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // v2 — newer event with two follows.
@@ -140,9 +140,7 @@ fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
         matches!(o2, InsertOutcome::Inserted { .. }),
         "v2 must be freshly inserted, got {o2:?}"
     );
-    let contacts_after_v2 = kernel
-        .contacts_lookup()
-        .follows(PK_A)
+    let contacts_after_v2 = crate::slots::latest_kind3_follows_from_arc(&kernel.store, PK_A)
         .expect("contacts must be populated after v2");
     assert_eq!(
         contacts_after_v2.len(),
@@ -160,15 +158,14 @@ fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
         "stale v1 must be Superseded by the store, got {o1:?}"
     );
 
-    // Cache must still reflect v2 — the stale v1 must not have overwritten it.
-    let contacts_after_v1 = kernel
-        .contacts_lookup()
-        .follows(PK_A)
+    // Derived latest must still reflect v2 — the stale v1 must not have
+    // overwritten it.
+    let contacts_after_v1 = crate::slots::latest_kind3_follows_from_arc(&kernel.store, PK_A)
         .expect("contacts must still be populated");
     assert_eq!(
         contacts_after_v1.len(),
         2,
-        "D4 violation: stale v1 overwrote v2 contacts cache"
+        "D4 violation: stale v1 overwrote the latest kind:3"
     );
 }
 

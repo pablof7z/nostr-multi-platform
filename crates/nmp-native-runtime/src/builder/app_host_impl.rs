@@ -191,11 +191,6 @@ impl<S> KernelReaderRegistrar for NmpAppBuilder<S> {
         app.set_profile_lookup(lookup);
     }
 
-    fn set_contacts_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ContactsLookup>) {
-        let app: &NmpApp = unsafe { &*self.app };
-        app.set_contacts_lookup(lookup);
-    }
-
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_mailbox_cache_reader(cache);

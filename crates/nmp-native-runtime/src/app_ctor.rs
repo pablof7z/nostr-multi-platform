@@ -166,10 +166,6 @@ pub fn new_app() -> NmpApp {
     let profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_profile_lookup()));
     let actor_profile_lookup = Arc::clone(&profile_lookup_slot);
-    // ADR-0057 PR 3 — substrate `ContactsLookup` slot.
-    let contacts_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ContactsLookup>>> =
-        Arc::new(Mutex::new(nmp_core::substrate::empty_contacts_lookup()));
-    let actor_contacts_lookup = Arc::clone(&contacts_lookup_slot);
     // Blocked-relay lookup slot.
     let blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_blocked_relay_lookup()));
@@ -230,7 +226,6 @@ pub fn new_app() -> NmpApp {
             search_scope_registry: actor_search_scope_registry,
             dm_inbox_relays: actor_dm_inbox_relays,
             profile_lookup: actor_profile_lookup,
-            contacts_lookup: actor_contacts_lookup,
             blocked_relays: actor_blocked_relays,
             bootstrap_self_kinds: actor_bootstrap_self_kinds,
             routing_substrate: actor_routing_substrate,
@@ -363,7 +358,6 @@ pub fn new_app() -> NmpApp {
             bootstrap_self_kinds,
             dm_inbox_relays_slot,
             profile_lookup_slot,
-            contacts_lookup_slot,
             blocked_relays_slot,
             mailbox_cache_reader: Mutex::new(None),
             search_scope_registry,

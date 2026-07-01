@@ -62,7 +62,7 @@ fn home_params() -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey("nmp.feed.home".into()),
+        projection: ProjectionKey("test.feed.home".into()),
     }
 }
 
@@ -135,7 +135,7 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
 
         assert_eq!(
             handle.projection_key,
-            ProjectionKey("nmp.feed.home".into()),
+            ProjectionKey("test.feed.home".into()),
             "handle carries the projection key"
         );
         assert_ne!(handle.session_id.0, 0, "minted a real session id");
@@ -145,7 +145,7 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
         // The session produces rows/sidecar via the existing mechanics: the
         // registered controller is reachable.
         assert!(
-            app.load_older_feed("nmp.feed.home"),
+            app.load_older_feed("test.feed.home"),
             "registered controller reachable through the existing feed registry"
         );
     }
@@ -165,7 +165,7 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         // Before close: controller reachable, session live, and the feed `Arc`
         // is held by BOTH the controller and the observer registry (plus the
         // local `feed` binding) → strong count > 1.
-        assert!(app.load_older_feed("nmp.feed.home"));
+        assert!(app.load_older_feed("test.feed.home"));
         let strong_before = Arc::strong_count(&feed);
         assert!(
             strong_before >= 3,
@@ -185,7 +185,7 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         );
         // 2. the controller is unreachable (registry dropped it).
         assert!(
-            !app.load_older_feed("nmp.feed.home"),
+            !app.load_older_feed("test.feed.home"),
             "controller unreachable after close"
         );
         // 3. the observer registry released its `Arc` clone — strong count fell.
@@ -243,7 +243,7 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         // Nothing was registered and no session minted.
         assert_eq!(app.live_feed_session_count(), 0, "no session leaked");
         assert!(
-            !app.load_older_feed("nmp.feed.home"),
+            !app.load_older_feed("test.feed.home"),
             "no controller registered for a fail-closed open"
         );
     }
@@ -330,7 +330,7 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
             })
         };
 
-        let key = "nmp.feed.home";
+        let key = "test.feed.home";
         let clear_acquisition: TeardownAction = Box::new(move || {
             let _ = clear_sender.send(ActorCommand::Interests(
                 InterestsCommand::ReplaceDependentInterestSet {

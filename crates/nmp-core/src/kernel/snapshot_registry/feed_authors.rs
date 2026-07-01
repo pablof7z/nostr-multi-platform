@@ -15,7 +15,7 @@ use super::{record_emitted_feed_authors, EmittedFeedAuthorsSlot, SnapshotRegistr
 
 impl SnapshotRegistry {
     /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for
-    /// `feed_key` (e.g. `"nmp.feed.home"`).
+    /// `feed_key` (e.g. `"app.feed.home"`).
     ///
     /// Last-writer-wins on the key (a re-register replaces the closure, no
     /// duplicate). Bounded by the same `MAX_SNAPSHOT_PROJECTIONS` ceiling as the

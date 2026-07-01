@@ -1,10 +1,8 @@
-//! #1088 — Bounded RAM-tier eviction for `events`, `profiles`, and the
-//! capability-owned contacts cache (`Arc<dyn ContactsLookup>`).
+//! #1088 — Bounded RAM-tier eviction for `events` and profiles.
 //!
 //! ## Problem
 //!
-//! The kernel `events` map, the profile cache, and the contacts cache are
-//! insert-only: a long session
+//! The kernel `events` map and the profile cache are insert-only: a long session
 //! accumulates every unique event/profile ever ingested, violating D8
 //! ("working-set bounded").  The LMDB tier was capped in #1069; this module
 //! closes the RAM-tier half.
@@ -45,17 +43,12 @@
 //!   event. These feed profile refs for open feeds through the in-memory
 //!   profile lookup, which has no store fallback.
 //!
-//! ### contacts-cache pin set (pubkey → follow list)
-//! - The pubkey is `self.active_account` (follow/unfollow actions and the
-//!   ReducedSource active-follows feed-session compiler both read
-//!   `contacts_lookup().follows(active_account)`).
-//!
 //! ## LMDB safety
 //!
-//! All three maps are populated ONLY after `verify_and_persist` (or
+//! Both maps are populated ONLY after `verify_and_persist` (or
 //! `store.insert`) returns `Inserted | Replaced` — persisting to LMDB first
 //! (D4 single-writer ordering in `ingest/mod.rs`, `ingest/timeline.rs`,
-//! `ingest/profile.rs`, `ingest/contacts.rs`).  Evicting from the RAM cache
+//! `ingest/profile.rs`).  Evicting from the RAM cache
 //! therefore loses no data: the store holds the authoritative copy, and the
 //! kernel reloads on demand (via the claim / snapshot / fallback paths).
 //!
@@ -80,7 +73,6 @@
 //! |-----|---------------|-----------|
 //! | `events` | 2 × `TIMELINE_CACHE_LIMIT` = 1 000 | 500 timeline entries + up to 500 thread/author/oneshot extras. |
 //! | `profiles` | 4 000 (`PROFILES_RAM_HWM`) | Plain bounded LRU, decoupled from the follow count (#1497 amendment 6). Comfortably holds a large follow set plus browsed profiles; over-bound entries evict oldest-first and re-serve from the store on demand. |
-//! | contacts cache | 32 | In practice ≤ a handful (active account + a few peers whose kind:3 arrived). |
 //!
 //! ## Interaction with #1085 / #957
 //!
@@ -127,11 +119,6 @@ pub(super) const EVENTS_RAM_HWM: usize = 1_000;
 /// oldest-first and re-serve from the store on demand (kind:0 is store-first).
 pub(super) const PROFILES_RAM_HWM: usize = 4_000;
 
-/// High-watermark for the contacts cache.  Small: it keys on unique
-/// pubkeys whose kind:3 was ingested — almost always ≤ a handful in
-/// production.  32 is generous.
-pub(super) const CONTACTS_RAM_HWM: usize = 32;
-
 /// Summary returned by [`Kernel::evict_ram_caches`] for diagnostics.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct RamEvictionReport {
@@ -139,8 +126,6 @@ pub(crate) struct RamEvictionReport {
     pub events_evicted: usize,
     /// Number of entries removed from the profile cache.
     pub profiles_evicted: usize,
-    /// Number of entries removed from the contacts cache.
-    pub contacts_evicted: usize,
 }
 
 /// Pins derived from the live active-interest registry at eviction time.
@@ -157,8 +142,8 @@ struct OpenViewPins {
 }
 
 impl Kernel {
-    /// Evict stale entries from the three unbounded in-memory caches
-    /// (`events`, the profile cache, the contacts cache) — #1088 RAM-tier half of D8.
+    /// Evict stale entries from the unbounded in-memory caches
+    /// (`events` and the profile cache) — #1088 RAM-tier half of D8.
     ///
     /// Called from [`Kernel::run_gc_step`] once per GC pass (60-second
     /// wall-clock gate in the actor).  Each call brings each map down to its
@@ -178,10 +163,9 @@ impl Kernel {
 
         report.events_evicted = self.evict_events_cache(&view_pins);
         report.profiles_evicted = self.evict_profiles_cache(&view_pins);
-        report.contacts_evicted = self.evict_contacts_cache();
 
         // Invalidate the memoised byte-estimate when any map shrank.
-        if report.events_evicted + report.profiles_evicted + report.contacts_evicted > 0 {
+        if report.events_evicted + report.profiles_evicted > 0 {
             self.cached_estimated_store_bytes.set(None);
         }
 
@@ -456,19 +440,5 @@ impl Kernel {
             self.projection_rev_tracker.source_versions.bump_profiles();
         }
         removed
-    }
-
-    // ─── contacts (kind:3) ───────────────────────────────────────────────────
-
-    fn evict_contacts_cache(&mut self) -> usize {
-        // ADR-0057 PR 3 — the contacts cache is capability-owned
-        // (`nmp_nip01::ContactsCache` behind `Arc<dyn ContactsLookup>`); the
-        // cache owns the eviction *mechanism* (oldest-`created_at`-first,
-        // lexicographic-pubkey tiebreak), the kernel owns the *policy* (the pin
-        // set + the HWM). Pin the active account's entry — all safety-critical
-        // reads are against this key only; every other entry is a speculative
-        // extra (a peer's kind:3 that happened to arrive during the session).
-        let pinned: HashSet<String> = self.active_account.clone().into_iter().collect();
-        self.contacts_lookup().evict_to(&pinned, CONTACTS_RAM_HWM)
     }
 }

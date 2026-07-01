@@ -11,17 +11,18 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 27 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
+    // 26 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
     // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR),
     // `resolved_profiles` (KRPR), and the host-visible `claimed_events`
     // whole-map projection. KCEV remains only as the refs.event row codec.
     // Profile/event data is now served via refs.profile / refs.event NRRD
-    // row-delta sidecars; minus the deleted global zaps sidecar (#2091).
+    // row-delta sidecars; minus the deleted global zaps sidecar (#2091);
+    // minus the deleted framework-owned OP-feed product key (#2574).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        27,
+        26,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }
@@ -59,8 +60,7 @@ fn projection_keys_are_unique() {
 
 /// Every dotted projection key in this registry must be mirrored in the
 /// conformance test (`SnapshotProjectionsConformanceTests.swift`) and vice
-/// versa — except `nmp.feed.home`, the typed sidecar (see below). Adding a
-/// dotted key requires updating both sides (and the renderer emits a
+/// versa. Adding a dotted key requires updating both sides (and the renderer emits a
 /// matching `CodingKeys` case for JSON-decoded keys).
 #[test]
 fn all_dotted_keys_are_present() {
@@ -69,10 +69,8 @@ fn all_dotted_keys_are_present() {
         .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
-    // Ten dotted keys. `nmp.feed.home` is an NNFS typed sidecar decoded by
-    // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
-    // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
-    // in the Swift conformance test, but it IS a dotted registry key.
+    // Nine dotted keys. App-owned NNFS OP-feed sessions are decoded by their
+    // caller-selected projection keys and are not shared registry members.
     let expected = [
         "nmp.nip29.group_events",
         "nmp.nip29.discovered_groups",
@@ -83,7 +81,6 @@ fn all_dotted_keys_are_present() {
         "refs.event.envelopes",
         "nmp.marmot.snapshot",
         "nmp.marmot.messages",
-        "nmp.feed.home",
     ];
     for key in expected {
         assert!(

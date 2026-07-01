@@ -7,7 +7,7 @@ use nmp_core::slots::{
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
-    ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar, ContactsLookup,
+    ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
     CoverageHookRegistrar, ExternalEventSinkPolicy, IngestOutcomeKind, IngestParser,
     IngestParserRegistrar, KernelReaderRegistrar, MailboxCache, OutboxRouter, ProfileLookup,
     RawEventForwardPolicyContext, RegistrationError, RelayConnectedHook,
@@ -64,8 +64,6 @@ impl IngestParserRegistrar for CapturingHost {
 
 impl KernelReaderRegistrar for CapturingHost {
     fn set_profile_lookup(&self, _lookup: Arc<dyn ProfileLookup>) {}
-
-    fn set_contacts_lookup(&self, _lookup: Arc<dyn ContactsLookup>) {}
 
     fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {}
 }

@@ -27,7 +27,7 @@ pub use typed_wire::{
 };
 pub use wiring::{
     op_feed_observer, register_op_feed, register_op_feed_with_admission, OpFeedEngine,
-    OpFeedObserver, OP_FEED_SNAPSHOT_KEY,
+    OpFeedObserver,
 };
 
 #[cfg(test)]

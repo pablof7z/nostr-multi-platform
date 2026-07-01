@@ -70,8 +70,6 @@ pub(crate) struct CompositionConfig {
     pub(crate) dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
     /// ADR-0057 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
     pub(crate) profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
-    /// ADR-0057 PR 3 — shared [`nmp_core::substrate::ContactsLookup`] slot.
-    pub(crate) contacts_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ContactsLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.
     pub(crate) blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the

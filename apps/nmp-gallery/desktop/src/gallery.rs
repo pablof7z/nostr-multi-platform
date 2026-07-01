@@ -235,7 +235,9 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             // projections. Event/content identity and media URL discovery stay
             // Rust-owned; iced stores stable handles for drawing.
             for url in content_media_urls(app) {
-                if app.media_handles.contains_key(&url) || !app.media_url_fetching.insert(url.clone()) {
+                if app.media_handles.contains_key(&url)
+                    || !app.media_url_fetching.insert(url.clone())
+                {
                     continue;
                 }
                 let pending = Arc::clone(&app.media_pending);

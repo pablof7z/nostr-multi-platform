@@ -103,14 +103,20 @@ active account author and switches that projection on account changes.
 **App/runtime composition root:**
 
 ```rust
-pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
+pub fn register_op_feed_defaults(
+    app: &NmpApp,
+    viewer: Pubkey,
+    primary_kinds: Vec<u32>,
+    projection: ProjectionKey,
+) {
     let follow_set = nmp_nip02::ActiveFollowSet::new(
         app.active_account_handle(),
-        app.contacts_lookup(),
+        nmp_nip02::LatestKind3FollowSet::new(app.event_store_handle()),
     );
     app.open_feed(FeedParams {
         acquisition: FeedScope::ActiveUserFollows,
         primary_kinds,
+        projection,
         render: FeedRender::OpCentric { /* ... */ },
         /* ... */
     });
@@ -160,7 +166,7 @@ pub enum TimelineBlock {
 | D7 | ✅ | Closure-shaped capabilities (`Arc<dyn Fn(...)>`). |
 | D8 | ✅ | Observer-driven; no poll. |
 | D11 | ✅ | No new bespoke C-ABI symbol. |
-| D14 | ✅ | `nmp.feed.home` is a typed projection. |
+| D14 | ✅ | App-owned OP-feed keys emit the shared typed NNFS projection schema. |
 
 **ADRs:** ADR-0035 (generic root-indexed feed engine), ADR-0036 (composition-root
 followset expansion). See also ADR-0037 and ADR-0038 for the shipped implementation.

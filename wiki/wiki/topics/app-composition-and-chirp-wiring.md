@@ -44,18 +44,18 @@ owners:
 - concept-owned reply/reaction/repost/zap reads;
 - optional NIP-47 wallet runtime;
 - visible-target zap counts through zap-owned or app-owned read composition;
-- home-feed projection under `nmp.feed.home`;
+- home-feed projection under `app.feed.home`;
 - typed home-feed sidecar emission for the same feed window.
 
 The iOS shell links the aggregate app crate, but the grouping, concept-owned
 read, visible-target zap, feed, and routing decisions remain in Rust.
 
-## `nmp.feed.home`
+## `app.feed.home`
 
 The current Chirp home feed is registered from
 `ModularTimelineProjection`. It is exposed in two ways:
 
-- as a generic feed controller under `"nmp.feed.home"`;
+- as a generic feed controller under `"app.feed.home"`;
 - as a typed snapshot projection with schema id `nmp.nip01.timeline`.
 
 Both read from the same projection instance. This matters because a typed

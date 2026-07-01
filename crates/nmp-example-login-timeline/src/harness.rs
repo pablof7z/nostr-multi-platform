@@ -4,7 +4,7 @@
 //! "headless equivalent that proves the projection→render contract"). It does
 //! what `KernelBridge.swift` does on iOS: construct an [`NmpApp`] through
 //! [`NmpAppBuilder`], inherit the canonical composition, start the kernel, sign
-//! in, open the following timeline, and read the typed `nmp.feed.home`
+//! in, open the following timeline, and read the typed `example.login_timeline.following`
 //! projection — reacting to the kernel's update ticks, never polling.
 //!
 //! The seeding seam is the test-only synthetic-injection path

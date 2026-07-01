@@ -156,7 +156,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // declares the event kinds it needs before receiving fan-out.
     let follow_set = nmp_nip02::ActiveFollowSet::new(
         unsafe { &*app }.active_account_handle(),
-        unsafe { &*app }.contacts_lookup(),
+        nmp_nip02::LatestKind3FollowSet::new(unsafe { &*app }.event_store_handle()),
     );
     let _set_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
         follow_set.clone(),

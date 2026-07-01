@@ -12,7 +12,7 @@ use crate::slots::{
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
-    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, EventIngestDispatcher, HostOpHandler,
+    BlockedRelayLookup, DmInboxRelayLookup, EventIngestDispatcher, HostOpHandler,
     HostOpHandlerSlot, ProfileLookup, RelayConnectedHook, RelayConnectedHookSlot,
     RelayTextInterceptor, RelayTextInterceptorSlot, ReqFrameInterceptor, ReqFrameInterceptorSlot,
     SearchScopeRegistry,
@@ -66,7 +66,6 @@ pub struct ActorConfigSources {
     pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<Mutex<Arc<dyn DmInboxRelayLookup>>>,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
-    pub contacts_lookup: Arc<Mutex<Arc<dyn ContactsLookup>>>,
     pub blocked_relays: Arc<Mutex<Arc<dyn BlockedRelayLookup>>>,
     pub bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     pub routing_substrate: RoutingSubstrateSlot,
@@ -130,11 +129,6 @@ impl ActorConfigSources {
                 .lock()
                 .map(|guard| Arc::clone(&*guard))
                 .unwrap_or_else(|_| crate::substrate::empty_profile_lookup()),
-            contacts_lookup: self
-                .contacts_lookup
-                .lock()
-                .map(|guard| Arc::clone(&*guard))
-                .unwrap_or_else(|_| crate::substrate::empty_contacts_lookup()),
             blocked_relays: self
                 .blocked_relays
                 .lock()
@@ -190,7 +184,6 @@ pub struct ActorConfig {
     pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
-    pub contacts_lookup: Arc<dyn ContactsLookup>,
     pub blocked_relays: Arc<dyn BlockedRelayLookup>,
     pub bootstrap_self_kinds: Option<Vec<u32>>,
     pub routing_substrate: Option<Arc<RoutingSubstrateFactory>>,
@@ -264,7 +257,6 @@ impl ActorConfig {
             .install_into(&*kernel.event_store_handle());
         kernel.set_dm_inbox_relay_lookup(Arc::clone(&self.dm_inbox_relays));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));
-        kernel.set_contacts_lookup(Arc::clone(&self.contacts_lookup));
         kernel.set_blocked_relay_lookup(Arc::clone(&self.blocked_relays));
         kernel.set_bootstrap_self_kinds_override(self.bootstrap_self_kinds.clone());
         kernel.set_outbound_public_tags(self.outbound_public_tags.clone());

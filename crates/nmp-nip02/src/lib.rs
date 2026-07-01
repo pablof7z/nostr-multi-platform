@@ -52,8 +52,7 @@ use nmp_core::actor::InterestsCommand;
 #[cfg_attr(not(test), allow(unused_imports))]
 use nmp_core::substrate::ActionModule;
 use nmp_core::substrate::{
-    ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
-    SnapshotProjectionRegistrar,
+    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, SnapshotProjectionRegistrar,
 };
 use serde::{Deserialize, Serialize};
 
@@ -61,10 +60,12 @@ use serde::{Deserialize, Serialize};
 // file under the 500-LOC ceiling after the S3 typed-payload overrides).
 mod action_modules;
 pub mod active_follow_set;
+mod latest_kind3;
 pub mod projection;
 pub mod wire;
 
 pub use active_follow_set::ActiveFollowSet;
+pub use latest_kind3::LatestKind3FollowSet;
 pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{
@@ -172,10 +173,10 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// Wire the NIP-02 follow-list read runtime into `app`.
 ///
 /// Registers the `"nmp.follow_list"` typed FlatBuffers snapshot projection
-/// (ADR-0037) backed by the canonical [`ContactsLookup`] — the single source
-/// of truth for the active account's kind:3 follow set — and enqueues a
-/// `{"kinds":[3]}` kind:3 interest so the kernel's cache-serve + `Kind3Parser`
-/// pipeline populates the lookup before the first snapshot tick.
+/// (ADR-0037) backed by the canonical event store — the single source of truth
+/// for the active account's kind:3 follow set — and enqueues a `{"kinds":[3]}`
+/// kind:3 interest so the kernel's cache-serve path populates the store before
+/// the first snapshot tick.
 ///
 /// # Why this fixes the Follow button
 ///
@@ -183,9 +184,9 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// `ObservedProjectionSink` that kept a LOCAL `HashMap` of follows. This missed
 /// the startup cache-serve (runs before the lazy observer exists) so
 /// already-followed accounts appeared as "Follow" on cold start. This function
-/// replaces that approach: the projection is a PURE READ over the shared
-/// `ContactsLookup`; the kernel's demand interest drives acquisition through
-/// the standard cache-serve path.
+/// replaces that approach: the projection is a PURE READ over the event store;
+/// the kernel's demand interest drives acquisition through the standard
+/// cache-serve path.
 ///
 /// # Interest lifecycle
 ///
@@ -206,11 +207,6 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// The `"nmp.follow_list"` snapshot key and the `"nmp.nip02.follow_list"`
 /// schema id are preserved — no Swift decoder changes are needed.
 ///
-/// `contacts_lookup` MUST be the SAME `Arc` the `Kind3Parser` writes into
-/// (i.e. sourced from `app.contacts_lookup()` or the composition root's
-/// `SubstrateWiring`). Passing a different instance creates a
-/// split-brain scenario — the projection would always read the empty default.
-///
 /// # Called from Chirp FFI
 ///
 /// `nmp_app_chirp_register_follow_list` calls this function instead of
@@ -219,22 +215,22 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// reads the kernel's canonical active-account slot via `app.active_pubkey()`.
 pub fn register_follow_state_runtime(
     app: &(impl HostCapabilities + IdentityChangeRegistrar + SnapshotProjectionRegistrar),
-    contacts_lookup: Arc<dyn ContactsLookup>,
 ) {
     use crate::wire::typed_fb;
 
     let active_pubkey = app.active_pubkey();
+    let latest_kind3 = LatestKind3FollowSet::new(app.event_store_handle());
     let tx = app.actor_sender();
 
     let projection = Arc::new(crate::projection::FollowListProjection::new(
         Arc::clone(&active_pubkey),
-        Arc::clone(&contacts_lookup),
+        latest_kind3,
     ));
 
     // --- Interest registration helper ---
     // Enqueues `OpenInterest` (kind:3, authors:[pubkey]) on the actor channel
-    // so the kernel's cache-serve pipeline populates the ContactsLookup before
-    // the first snapshot tick. Uses the `scope: 0` (ActiveAccount) convention.
+    // so the kernel's cache-serve pipeline populates the event store before the
+    // first snapshot tick. Uses the `scope: 0` (ActiveAccount) convention.
     // D8: channel send is non-blocking, bounded to one command.
     const CONSUMER_ID: &str = "nmp.nip02.follow_list";
 
@@ -299,7 +295,7 @@ pub fn register_follow_state_runtime(
         }
     });
 
-    // Typed FlatBuffers sidecar (ADR-0037): PURE READ — reads the ContactsLookup
+    // Typed FlatBuffers sidecar (ADR-0037): PURE READ — reads the event store
     // and encodes. Wire shape is preserved: key = "nmp.follow_list",
     // schema_id = "nmp.nip02.follow_list". D8: non-blocking lookup.
     let projection_typed = Arc::clone(&projection);

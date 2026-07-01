@@ -5,7 +5,7 @@
 //!
 //! - The oracle proves LOSSLESSNESS: replaying the Phase B incremental stream
 //!   through `MiniProjectionCache` reconstructs the same end-state as the Phase A
-//!   full-frame reference. `"nmp.feed.home"` is present in the reconstruction from
+//!   full-frame reference. `"nmp.testing.feed_idle"` is present in the reconstruction from
 //!   the first Phase B tick (the full baseline after `declare_incremental_apply`)
 //!   and stays there, retained from cache, on subsequent idle ticks where it is
 //!   OMITTED (Unchanged → byte-equality gate fires → host retains prior value).
@@ -36,9 +36,9 @@ pub(crate) struct FeedFrameRecord {
     pub(crate) serialize_us: u64,
     /// Typed projections present in this frame (key → payload bytes).
     pub(crate) projection_payloads: HashMap<String, Vec<u8>>,
-    /// Whether `nmp.feed.home` was present (Changed) in this frame.
+    /// Whether `nmp.testing.feed_idle` was present (Changed) in this frame.
     pub(crate) feed_present: bool,
-    /// Byte count of `nmp.feed.home` in this frame (0 when absent).
+    /// Byte count of `nmp.testing.feed_idle` in this frame (0 when absent).
     pub(crate) feed_bytes: usize,
 }
 
@@ -93,7 +93,7 @@ pub(crate) struct FeedOracleResult {
 /// - `refs.event.envelopes`, `nip46_onboarding`: nondeterministic Tier-1 keys
 ///   (always-Changed by D3-7, no manifest entry; legitimate to differ between
 ///   the two independent kernel instances).
-/// - `nmp.feed.home`: the feed key IS expected to be present in the
+/// - `nmp.testing.feed_idle`: the feed key IS expected to be present in the
 ///   reconstruction (from the first Phase B full-baseline tick), so it is NOT
 ///   in the absent whitelist. Its omission from the reconstruction would mean
 ///   the first Phase B tick never emitted it — a real bug. See the module doc.
@@ -110,7 +110,7 @@ const ALLOWED_ABSENT: &[&str] = &["refs.event.envelopes", "nip46_onboarding"];
 /// - key absent + in `ALLOWED_ABSENT`          → tolerated
 /// - key absent + NOT in `ALLOWED_ABSENT`      → hard FAIL (dropped row)
 ///
-/// The `nmp.feed.home` key must be present in the reconstruction (the first
+/// The `nmp.testing.feed_idle` key must be present in the reconstruction (the first
 /// Phase B tick is always a full baseline that carries it), so a missing feed
 /// key is a hard FAIL.
 pub(crate) fn run_feed_oracle(

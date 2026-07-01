@@ -91,16 +91,7 @@ impl Kernel {
     ///    verbatim ([`Self::try_current_kind3_event`]). This preserves relay
     ///    hints, petnames, non-`p` tags, and content on re-publish (issue
     ///    #1246a). It is the synced / locally-published path.
-    /// 2. If NO raw kind:3 is in the store but the capability-owned contacts
-    ///    cache KNOWS this account's follow set (`follows()` is `Some`, the empty
-    ///    list included), rebuild a minimal `p`-only kind:3 from those follows
-    ///    with empty content. The cache is `Some` ONLY when the follow set is
-    ///    genuinely known: a brand-new account seeded at `create_account` (empty
-    ///    list), an account restored from persisted contacts, or a relay-synced
-    ///    cache. In this branch the store — the only place relay hints / petnames
-    ///    / non-`p` content ever live — holds no event, so a `p`-only
-    ///    reconstruction loses nothing recoverable.
-    /// 3. Otherwise `None` — an EXISTING account whose kind:3 has NOT synced yet
+    /// 2. Otherwise `None` — an account whose kind:3 has NOT synced yet
     ///    (cache `None`). Editing here would silently clobber an unsynced remote
     ///    contact list, so callers MUST fail closed (issue #1246b).
     ///
@@ -113,18 +104,6 @@ impl Kernel {
     pub(crate) fn try_current_kind3_event_for_edit(
         &self,
     ) -> Option<(Vec<Vec<String>>, String, u64)> {
-        if let Some(raw) = self.try_current_kind3_event() {
-            return Some(raw);
-        }
-        // No raw kind:3 in the store — fall back to the contacts cache's
-        // authoritative follow set. `None` (unknown / unsynced) fails closed;
-        // `Some(list)` (known, possibly empty) rebuilds a `p`-only baseline.
-        let author_hex = self.active_account_pubkey()?;
-        let follows = self.contacts_lookup().follows(author_hex)?;
-        let tags = follows
-            .into_iter()
-            .map(|pk| vec!["p".to_string(), pk])
-            .collect();
-        Some((tags, String::new(), 0))
+        self.try_current_kind3_event()
     }
 }

@@ -18,12 +18,12 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, ContactsLookup,
-    CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar,
-    IncrementalApplyError, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
-    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
+    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
+    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection,
+    ObservedProjectionRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
+    SnapshotProjectionRegistrar,
 };
 use nmp_core::{AppRelaySlot, CommandSender, ObservedProjectionId, TypedProjectionData};
 
@@ -264,11 +264,6 @@ impl<S> KernelReaderRegistrar for BrowserAppBuilder<S> {
     fn set_profile_lookup(&self, lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.profile_lookup = Some(lookup);
-    }
-
-    fn set_contacts_lookup(&self, lookup: Arc<dyn ContactsLookup>) {
-        let Ok(mut g) = self.inner.lock() else { return };
-        g.contacts_lookup = Some(lookup);
     }
 
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {

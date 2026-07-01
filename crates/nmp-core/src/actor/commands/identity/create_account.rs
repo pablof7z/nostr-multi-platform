@@ -53,21 +53,9 @@ pub(crate) fn create_account(
     // Operator policy (which accounts a fresh account auto-follows) is supplied
     // by the app, never hardcoded in NMP (the old `DEFAULT_FOLLOWS` const lived
     // here and baked Chirp's seed pubkeys into the framework — #1493). An empty
-    // `initial_follows` means the account starts with no contacts and no
-    // cold-start kind:3 is published.
-    //
-    // Seed the contacts cache with the (possibly empty) known follow set so the
-    // account's contact list is recorded as KNOWN rather than UNSYNCED. A
-    // brand-new local account has, by construction, no REMOTE kind:3 to wait
-    // for — its empty follow set is authoritative immediately. This is the
-    // signal the `follow` / `follow_many` fail-closed gate
-    // (`Kernel::try_current_kind3_event_for_edit`) reads to distinguish a fresh
-    // local account (safe to publish its FIRST kind:3, e.g. when onboarding
-    // applies follow packs after account creation) from an EXISTING account
-    // whose remote kind:3 has not synced (must fail closed to avoid clobbering
-    // it). Seeding the cache publishes nothing — #1493 still holds: an empty
-    // `initial_follows` emits no cold-start kind:3 and NMP hardcodes no follows.
-    kernel.prepopulate_contacts(id.clone(), initial_follows.to_vec());
+    // `initial_follows` means the account starts with no persisted contact list
+    // and no cold-start kind:3 is published. Later follow edits must derive from
+    // an existing stored kind:3 rather than a hidden cache seed.
 
     let mut publish_outbound = Vec::new();
     // ── Publish kind:0 metadata ──────────────────────────────────
@@ -364,9 +352,8 @@ fn publish_initial_follows(
             let target_relays = cold_start_publish_targets(kernel, relay_rows);
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
-                // panic. The follow set is already pre-populated locally
-                // (`prepopulate_contacts`); the user can re-publish
-                // their contacts once relays are configured.
+                // panic. The signed event was already produced; the user can
+                // re-publish their contacts once relays are configured.
                 set_create_account_error(
                     kernel,
                     crate::ui_token::codes::IDENTITY_CONTACTS_NO_COLD_START_RELAYS,

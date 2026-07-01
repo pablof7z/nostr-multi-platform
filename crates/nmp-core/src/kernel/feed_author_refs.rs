@@ -20,7 +20,7 @@
 //! ## Consumer-id scheme (dedup with explicit claims)
 //!
 //! Each feed reconciles under `feed-author:<feed_key>`:
-//! `feed-author:nmp.feed.home`, `feed-author:nmp.feed.author.<pk>`,
+//! `feed-author:app.feed.home`, `feed-author:nmp.feed.author.<pk>`,
 //! `feed-author:nmp.feed.thread.<id>`. Because the auto-resolve goes through the
 //! SAME `resolve_ref` seam as an explicit open-profile-screen claim, the two
 //! share one per-pubkey resolver slot: the feed holds `Ref`/`CacheOk`, the open
@@ -38,7 +38,7 @@ pub(crate) const FEED_AUTHOR_CONSUMER_PREFIX: &str = "feed-author:";
 
 /// Build the auto-resolve consumer id for a feed snapshot key.
 ///
-/// `feed-author:nmp.feed.home` for the permanent home feed;
+/// `feed-author:app.feed.home` for the permanent home feed;
 /// `feed-author:nmp.feed.author.<pk>` / `feed-author:nmp.feed.thread.<id>` for
 /// the transient author/thread feeds (whose `feed_key` already carries the
 /// per-screen suffix).
@@ -135,7 +135,7 @@ impl Kernel {
     /// Release EVERY auto-resolved ref a feed consumer holds (ADR-0063 D7) and
     /// drop its tracking entry.
     ///
-    /// The leak guard: the permanent home feed (`feed-author:nmp.feed.home`) is
+    /// The leak guard: the permanent home feed (`feed-author:app.feed.home`) is
     /// the #1 leak risk — without this, its visible-author refs would accumulate
     /// for the life of the process. A shell calls this when the home feed closes
     /// (the `unregister_feed` path removes the provider; the next reconcile sweep

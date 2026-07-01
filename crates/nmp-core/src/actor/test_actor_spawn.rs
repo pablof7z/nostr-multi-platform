@@ -10,25 +10,26 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 
 use super::{
-    new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_signer_state_slot, ActorChannels, ActorConfigSources,
-    ActorMail, ActorRuntimeSlots, CommandSender,
+    new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+    new_signer_state_slot, ActorChannels, ActorConfigSources, ActorMail, ActorRuntimeSlots,
+    CommandSender,
 };
+use crate::capability_socket::new_capability_callback_slot;
 
 /// Spawn the actor with test-support ingest caches and parsers wired in.
 ///
 /// This helper provides the backwards-compatible entry point shape (`run_actor`)
-/// for tests that need real parser/cache pairs for kind-0 and kind-3 events.
+/// for tests that need real parser/cache pairs for kind-0 events.
 /// Calling code must construct the actor through this function to ensure
 /// `Kernel::new`'s read-your-writes defaults are preserved (i.e., profile/contacts
-/// lookups point to the same test caches as the ingest parsers, not empty stubs).
+/// profile lookups point to the same test cache as the ingest parser, not an
+/// empty stub.
 pub fn spawn_test_actor(
     inbox_rx: Receiver<ActorMail>,
     command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
     let profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
-    let contacts_cache = Arc::new(crate::substrate::TestContactsCache::new());
     let mut dispatcher = crate::substrate::EventIngestDispatcher::new();
     dispatcher.register_kind(
         0,
@@ -36,14 +37,7 @@ pub fn spawn_test_actor(
             &profile_cache,
         ))),
     );
-    dispatcher.register_kind(
-        3,
-        Arc::new(crate::substrate::TestKind3Parser::new(Arc::clone(
-            &contacts_cache,
-        ))),
-    );
     let profile_lookup: Arc<dyn crate::substrate::ProfileLookup> = profile_cache;
-    let contacts_lookup: Arc<dyn crate::substrate::ContactsLookup> = contacts_cache;
 
     let runtime = ActorRuntimeSlots {
         lifecycle_observer: new_lifecycle_observer_slot(),
@@ -75,7 +69,6 @@ pub fn spawn_test_actor(
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
         dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         profile_lookup: Arc::new(Mutex::new(profile_lookup)),
-        contacts_lookup: Arc::new(Mutex::new(contacts_lookup)),
         blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
         bootstrap_self_kinds: Arc::new(Mutex::new(None)),
         routing_substrate: crate::slots::new_routing_substrate_slot(),

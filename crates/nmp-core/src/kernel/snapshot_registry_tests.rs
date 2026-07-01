@@ -149,14 +149,14 @@ fn builtin_projection_keys_const_matches_runtime() {
 #[test]
 fn registered_typed_projection_surfaces_through_run_typed() {
     let slot = new_snapshot_projection_slot();
-    slot.lock().unwrap().register_typed("nmp.feed.home", || {
-        Some(typed_entry("nmp.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
+    slot.lock().unwrap().register_typed("test.feed.home", || {
+        Some(typed_entry("test.feed.home", &[0xde, 0xad, 0xbe, 0xef]))
     });
 
     let mut registry = slot.lock().unwrap();
     let typed = registry.run_typed();
     assert_eq!(typed.len(), 1, "one typed projection was registered");
-    assert_eq!(typed[0].key, "nmp.feed.home");
+    assert_eq!(typed[0].key, "test.feed.home");
     assert_eq!(typed[0].payload, vec![0xde, 0xad, 0xbe, 0xef]);
 }
 
@@ -202,8 +202,8 @@ fn remove_drops_typed_and_emits_cleared_row() {
     registry.register_typed("nmp.feed.author.alice", || {
         Some(typed_entry("nmp.feed.author.alice", &[0xAB]))
     });
-    registry.register_typed("nmp.feed.home", || {
-        Some(typed_entry("nmp.feed.home", &[0x01]))
+    registry.register_typed("test.feed.home", || {
+        Some(typed_entry("test.feed.home", &[0x01]))
     });
 
     // Removing the transient key reports success.
@@ -226,7 +226,7 @@ fn remove_drops_typed_and_emits_cleared_row() {
     );
 
     // The sibling (home feed) is untouched.
-    let home = typed.iter().find(|t| t.key == "nmp.feed.home");
+    let home = typed.iter().find(|t| t.key == "test.feed.home");
     assert!(home.is_some(), "removing one key must not disturb siblings");
 
     // Idempotent: a second remove of the now-absent key reports `false`.
@@ -250,14 +250,14 @@ fn unbound_slot_yields_empty_typed_projections() {
 fn typed_projection_surfaces_through_kernel_run_typed_projections() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
-    slot.lock().unwrap().register_typed("nmp.feed.home", || {
-        Some(typed_entry("nmp.feed.home", &[0xab, 0xcd]))
+    slot.lock().unwrap().register_typed("test.feed.home", || {
+        Some(typed_entry("test.feed.home", &[0xab, 0xcd]))
     });
     kernel.set_snapshot_projection_handle(slot);
 
     let typed = kernel.run_typed_projections();
     assert_eq!(typed.len(), 1);
-    assert_eq!(typed[0].key, "nmp.feed.home");
+    assert_eq!(typed[0].key, "test.feed.home");
     assert_eq!(typed[0].payload, vec![0xab, 0xcd]);
 }
 

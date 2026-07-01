@@ -193,25 +193,46 @@ pub fn event_by_id_from_store(
 ///   so a caller can tell "no list yet" from "loaded, empty".
 #[must_use]
 pub fn following_count_from_store(slot: &EventStoreSlot, author_hex: &str) -> Option<usize> {
-    let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
     let store = slot.lock().ok()?.clone()?;
-    let mut iter = store
-        .scan_by_author_kind(&author, &[3], None, None, 1)
-        .ok()?;
-    let stored = iter.next()?.ok()?;
+    let follows = latest_kind3_follows_from_arc(&store, author_hex)?;
     let mut seen = std::collections::HashSet::new();
-    let count = stored
-        .raw
-        .tags
-        .iter()
-        .filter(|t| t.first().map(String::as_str) == Some("p"))
-        .filter_map(|t| t.get(1))
-        // Reuse the 64-hex decoder as the validity gate (drops malformed `p`
-        // values), then dedup so a duplicated follow is not double-counted.
-        .filter(|pk| crate::kernel::hex_to_pubkey_bytes(pk).is_some())
-        .filter(|pk| seen.insert((*pk).clone()))
+    let count = follows
+        .into_iter()
+        .filter(|pk| seen.insert(pk.clone()))
         .count();
     Some(count)
+}
+
+/// Resolve `author_hex`'s latest kind:3 follow set from the kernel-published
+/// event store slot.
+///
+/// `None` means malformed author, no store, store read failure, or no kind:3.
+/// `Some(vec![])` means the latest kind:3 exists and explicitly follows nobody.
+#[must_use]
+pub fn latest_kind3_follows_from_store(
+    slot: &EventStoreSlot,
+    author_hex: &str,
+) -> Option<Vec<String>> {
+    let store = slot.lock().ok()?.clone()?;
+    latest_kind3_follows_from_arc(&store, author_hex)
+}
+
+/// Resolve `author_hex`'s latest kind:3 follow set from a direct store handle.
+///
+/// This is the canonical derived read for contact-list follows. It does not
+/// cache or own contact-list state; it re-reads the latest replaceable event and
+/// parses the tags each time.
+#[must_use]
+pub fn latest_kind3_follows_from_arc(
+    store: &std::sync::Arc<dyn crate::store::EventStore>,
+    author_hex: &str,
+) -> Option<Vec<String>> {
+    let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
+    let mut iter = store
+        .scan_by_author_kind(&author, &[crate::kinds::KIND_CONTACT_LIST], None, None, 1)
+        .ok()?;
+    let stored = iter.next()?.ok()?;
+    Some(crate::tags::contact_follows(&stored.raw.tags))
 }
 
 /// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].

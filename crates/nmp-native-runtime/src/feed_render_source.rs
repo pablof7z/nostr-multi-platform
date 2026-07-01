@@ -7,7 +7,7 @@ use super::NmpApp;
 
 impl NmpApp {
     /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for a
-    /// feed snapshot key (e.g. `"nmp.feed.home"`).
+    /// feed snapshot key (e.g. `"app.feed.home"`).
     ///
     /// `f` returns the raw author keys the feed will RENDER for its CURRENT
     /// visible window; the kernel calls it INSIDE every snapshot tick and
@@ -52,7 +52,7 @@ impl NmpApp {
     /// emitted-author sink (BLOCKING 2): the structural guardrail then warns
     /// (debug-only) for any emitted author with no live resolver demand.
     ///
-    /// - `feed_key` — the feed snapshot key (`"nmp.feed.home"`,
+    /// - `feed_key` — the feed snapshot key (`"app.feed.home"`,
     ///   `"nmp.feed.author.<pk>"`, `"nmp.feed.thread.<id>"`). Both lanes key on it,
     ///   so [`NmpApp::unregister_feed`] tears BOTH down together.
     /// - `source` — the per-tick-materialized window over the feed engine.

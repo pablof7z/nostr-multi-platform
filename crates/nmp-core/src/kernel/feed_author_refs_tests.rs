@@ -24,7 +24,7 @@ use super::feed_author_consumer_id;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 
-const HOME_KEY: &str = "nmp.feed.home";
+const HOME_KEY: &str = "test.feed.home";
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()

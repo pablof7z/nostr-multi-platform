@@ -40,7 +40,7 @@ rows are ordinary Nostr content.
   "admission": "All",
   "ranking": "ChronologicalDesc",
   "window": { "initial_limit": 80 },
-  "projection": "nmp.feed.home"
+  "projection": "myapp.timeline.home"
 }
 ```
 
