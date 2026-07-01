@@ -173,6 +173,18 @@ pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
     }
 }
 
+pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
+    FeedParams {
+        primary_kinds: vec![1],
+        render: FeedRender::Flat,
+        acquisition: FeedScope::ActiveUserFollows,
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow { initial_limit: 80 },
+        projection: ProjectionKey(projection.into()),
+    }
+}
+
 pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],

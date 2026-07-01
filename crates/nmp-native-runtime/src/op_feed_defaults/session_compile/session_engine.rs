@@ -251,10 +251,9 @@ fn build_op_scope_session(
     };
     sync_acquisition(&extra_acquisition);
 
-    // Wire each underlying-set change to re-sync acquisition for the new
-    // members, then reset the window/cursor. `load_older` remains the single
-    // on-demand replay path, so a source-set change must not secretly consume
-    // the pull cursor before the host reports viewport intent.
+    // Wire each legacy underlying-set change to re-sync acquisition for the new
+    // members, then reset the window/cursor. `ActiveUserFollows` no longer uses
+    // this bridge; it installs a graph source-effect sink below.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
@@ -269,6 +268,21 @@ fn build_op_scope_session(
             }
         });
         hook(reset_trigger);
+    }
+
+    if let Some(active_follow_set_for_effects) = active_follow_set.as_ref() {
+        let controller_for_reset = controller.clone();
+        let extra = extra_acquisition.clone();
+        let sync_acquisition = sync_acquisition.clone();
+        let sync_observer = engine_observer.clone();
+        let notify = sender.clone();
+        active_follow_set_for_effects.on_source_effect(Box::new(move |_| {
+            sync_observer.sync();
+            sync_acquisition(&extra);
+            if controller_for_reset.reset() {
+                notify.mark_changed_since_emit();
+            }
+        }));
     }
 
     // ── 6. Teardown recipe (registration order = reverse of execution) ───

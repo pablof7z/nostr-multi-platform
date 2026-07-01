@@ -22,8 +22,8 @@ pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>
 /// Extra acquisition shapes a scope must subscribe to beyond the render shape.
 pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
 
-/// Whether an OP-centric session can be registered before the active-account
-/// slot is populated.
+/// Whether a session can be registered before the active-account slot is
+/// populated.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum OpSessionIdentity {
     RequireActive,
@@ -68,9 +68,9 @@ impl AcquisitionInterest {
 
 /// The compiled product of one reduced feed source.
 pub(super) struct ReducedSource {
-    /// OP-centric engine bootstrap policy. Most scopes require an active viewer
-    /// at open; `ActiveUserFollows` is intentionally view-driven and may open
-    /// before sign-in, with acquisition failing closed until identity resolves.
+    /// Session bootstrap policy. Most scopes require an active viewer at open;
+    /// `ActiveUserFollows` is intentionally view-driven and may open before
+    /// sign-in, with acquisition failing closed until identity resolves.
     pub op_session_identity: OpSessionIdentity,
     /// The engine's event-aware root-admission predicate.
     pub admission: RootAdmission,
@@ -95,7 +95,9 @@ pub(super) struct ReducedSource {
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
-    /// Diagnostic hook for the default active-follows session.
+    /// Graph source-effect owner for the active-follows source, consumed by
+    /// session engines that must reconcile acquisition and reset when the
+    /// active follow perspective changes.
     pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }
 

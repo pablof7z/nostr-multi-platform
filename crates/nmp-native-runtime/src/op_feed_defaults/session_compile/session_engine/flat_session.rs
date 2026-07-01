@@ -33,7 +33,7 @@ pub(super) fn build_flat_scope_session(
         resolver_observer_ids,
         identity_observer_ids,
         resolver_teardown,
-        active_follow_set: _,
+        active_follow_set,
     } = resolved;
 
     let feed = nmp_note_feed::FlatFeed::new(admission);
@@ -131,6 +131,22 @@ pub(super) fn build_flat_scope_session(
             }
         });
         hook(reset_trigger);
+    }
+    if let Some(active_follow_set_for_effects) = active_follow_set.as_ref() {
+        let controller_for_reset = controller.clone();
+        let extra = extra_acquisition.clone();
+        let sync_acquisition = sync_acquisition.clone();
+        let sync_observer = engine_observer.clone();
+        let notify = sender.clone();
+        active_follow_set_for_effects.on_source_effect(Box::new(move |_| {
+            sync_observer.sync();
+            sync_acquisition(&extra);
+            let reset = controller_for_reset.reset();
+            let replayed = controller_for_reset.load_older();
+            if reset || replayed {
+                notify.mark_changed_since_emit();
+            }
+        }));
     }
 
     let teardown_handle = app.feed_teardown();
