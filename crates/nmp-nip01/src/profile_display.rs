@@ -1,6 +1,8 @@
 use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 
+use crate::kind0_parser::parse_profile_view;
+
 /// Author display metadata derived from a kind:0 profile event.
 ///
 /// Per aim.md §2 (NMP is a data framework; backend ships raw protocol
@@ -32,6 +34,21 @@ pub struct ProfileDisplay {
     pub picture_url: Option<String>,
     pub created_at: u64,
     pub event_id: String,
+}
+
+/// Owner-provided render adapter for an embedded kind:0 profile event.
+///
+/// `nmp-content` may adapt this shape into its wire envelope, but the JSON
+/// parsing and field precedence stay owned by NIP-01.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ProfileMetadataProjection {
+    pub pubkey: String,
+    pub display_name: Option<String>,
+    pub picture_url: Option<String>,
+    pub about: Option<String>,
+    pub nip05: Option<String>,
+    pub lud16: Option<String>,
+    pub banner_url: Option<String>,
 }
 
 impl AuthorDisplay {
@@ -78,6 +95,25 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
     })
 }
 
+#[must_use]
+pub fn profile_metadata_projection_from_event(
+    event: &KernelEvent,
+) -> Option<ProfileMetadataProjection> {
+    if event.kind != 0 {
+        return None;
+    }
+    let view = parse_profile_view(&event.id, event.created_at, &event.content);
+    Some(ProfileMetadataProjection {
+        pubkey: event.author.clone(),
+        display_name: non_empty(view.display),
+        picture_url: view.picture_url.and_then(http_url),
+        about: non_empty(view.about),
+        nip05: non_empty(view.nip05),
+        lud16: view.lud16.and_then(non_empty),
+        banner_url: view.banner.and_then(http_url),
+    })
+}
+
 fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
     value
         .get(key)
@@ -85,6 +121,23 @@ fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
+}
+
+fn non_empty(value: String) -> Option<String> {
+    let trimmed = value.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn http_url(value: String) -> Option<String> {
+    if value.starts_with("http://") || value.starts_with("https://") {
+        Some(value)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -126,5 +179,42 @@ mod tests {
             profile_from_event(&event(0, r#"{"about":"hello"}"#, 7, "b")).expect("profile");
         assert_eq!(profile.display, None);
         assert_eq!(profile.picture_url, None);
+    }
+
+    #[test]
+    fn metadata_projection_uses_kind0_parse_contract() {
+        let projection = profile_metadata_projection_from_event(&event(
+            0,
+            r#"{"name":"name","displayName":"Camel","display_name":" Display ","picture":"https://example.com/a.png","about":" hi ","nip05":"a@example.com","lud16":"a@ln.example","banner":"https://example.com/banner.png"}"#,
+            7,
+            "b",
+        ))
+        .expect("projection");
+
+        assert_eq!(projection.display_name.as_deref(), Some("Display"));
+        assert_eq!(
+            projection.picture_url.as_deref(),
+            Some("https://example.com/a.png")
+        );
+        assert_eq!(projection.about.as_deref(), Some("hi"));
+        assert_eq!(projection.nip05.as_deref(), Some("a@example.com"));
+        assert_eq!(projection.lud16.as_deref(), Some("a@ln.example"));
+        assert_eq!(
+            projection.banner_url.as_deref(),
+            Some("https://example.com/banner.png")
+        );
+    }
+
+    #[test]
+    fn metadata_projection_empty_content_is_pubkey_only() {
+        let projection =
+            profile_metadata_projection_from_event(&event(0, "", 7, "b")).expect("projection");
+
+        assert_eq!(
+            projection.pubkey,
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+        );
+        assert_eq!(projection.display_name, None);
+        assert_eq!(projection.picture_url, None);
     }
 }

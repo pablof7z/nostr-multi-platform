@@ -42,6 +42,7 @@ mod browser_boundary_gates; // Browser runtime + runtime-web boundary smoke gate
 mod component_host_boundary_gates; // Component host package import/dependency gates.
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod deleted_defaults_tests; // Deleted nmp-defaults production/scaffold ratchet.
+mod embed_owner_delegation_tests; // nmp-content embed projection must delegate owned protocol kinds.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
 mod gallery_composition_gates; // Gallery explicit composition ratchet.

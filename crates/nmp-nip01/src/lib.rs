@@ -52,7 +52,10 @@ pub use meta_timeline::{
     Nip10ModularTimelineView, Nip10Resolver,
 };
 pub use profile_cache::ProfileCache;
-pub use profile_display::{AuthorDisplay, ProfileDisplay};
+pub use profile_display::{
+    profile_metadata_projection_from_event, AuthorDisplay, ProfileDisplay,
+    ProfileMetadataProjection,
+};
 pub use timeline_projection::{ModularTimelineProjection, ModularTimelineSnapshot};
 pub use typed_wire::{
     decode_modular_timeline_snapshot, encode_modular_timeline_snapshot,

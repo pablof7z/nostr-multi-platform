@@ -13,8 +13,8 @@ mod external_id;
 mod wire;
 
 pub use action::{
-    Nip84Descriptor, PublishHighlightAction, PublishHighlightCommand, PublishHighlightModule,
-    KIND_HIGHLIGHT,
+    highlight_projection_from_event, HighlightProjection, Nip84Descriptor, PublishHighlightAction,
+    PublishHighlightCommand, PublishHighlightModule, KIND_HIGHLIGHT,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.
