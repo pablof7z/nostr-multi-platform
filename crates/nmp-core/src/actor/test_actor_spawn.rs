@@ -10,10 +10,11 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex, RwLock};
 
 use super::{
-    new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_signer_state_slot, ActorChannels, ActorConfigSources,
-    ActorMail, ActorRuntimeSlots, CommandSender,
+    new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
+    new_signer_state_slot, ActorChannels, ActorConfigSources, ActorMail, ActorRuntimeSlots,
+    CommandSender,
 };
+use crate::capability_socket::new_capability_callback_slot;
 
 /// Spawn the actor with test-support ingest caches and parsers wired in.
 ///
