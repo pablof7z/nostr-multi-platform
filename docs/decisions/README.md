@@ -74,8 +74,8 @@ That document is the narrative companion to this ADR spine.
 ## Status Terms
 
 - **Current**: still owns a live invariant.
-- **Proposed**: records a ratified direction or target shape whose public API
-  migration is not complete yet.
+- **Proposed**: records an owner-approved target shape whose implementation or
+  public API migration is not complete yet.
 - **Amended**: still useful, but current guidance is narrowed by the listed ADR.
 - **Folded**: the surviving rule is now owned by a later ADR or durable doc.
 - **Retired**: historical or superseded; do not use as current architecture.

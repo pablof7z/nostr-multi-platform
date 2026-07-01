@@ -52,7 +52,8 @@ teardown recipe for normal product feeds.
 compile into `FeedParams`; they are not a parallel model. A feed descriptor
 contains:
 
-- an app-owned feed/projection key;
+- an app-owned feed key that determines the session's output projection
+  identity;
 - primary content kinds only;
 - a typed source expression;
 - an admission policy;
@@ -67,10 +68,12 @@ feed declares primary kind `20`; a long-form article feed declares primary kind
 facts are derived below that app boundary by protocol/defaults composition.
 
 Dynamic sources are declared as source expressions and reconciled by the
-session. The app does not pass a static copy of the active user's follows, hosted
-groups, list members, relay set membership, mute list, WoT set, or future source
-family. Empty dynamic source sets fail closed unless the descriptor explicitly
-declares a fallback.
+session. The app does not pass a static copy of the active user's follows,
+hosted groups, list members, mute list, WoT set, or other dynamic source family.
+Relay-set feeds are expressed through a typed source expression such as a
+declared `RelaySetId`; shells do not hand-roll relay routing or mutate relay
+membership as feed lifecycle state. Empty dynamic source sets fail closed unless
+the descriptor explicitly declares a fallback.
 
 Feed sessions expose stable event, author, address, tag, root, wrapper, and
 target pointers as row data when the row schema needs them. They do not own
@@ -128,7 +131,9 @@ let handle = app.feeds().open(
 )?;
 ```
 
-The serializable descriptor behind that helper has this shape:
+The target serializable descriptor behind that helper should converge to this
+shape. Current implementation still uses the lower-level field names listed in
+the naming ratchet until the migration lands:
 
 ```rust
 pub struct FeedParams {
