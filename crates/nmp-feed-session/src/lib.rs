@@ -40,6 +40,7 @@ mod dynamic_observer;
 mod flat_replay;
 mod nip29_group_sources;
 mod nip51_sources;
+mod observed_source;
 mod pointer_targets;
 mod resolve;
 mod resolve_static;
@@ -53,6 +54,7 @@ mod source_replay;
 mod source_tests;
 mod wot_graph;
 pub(crate) use active_shape::read_active;
+pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use session_engine::OpScopeSessionArtifacts;
 
 /// Compiled ownership descriptor for crate-ownership reports.
