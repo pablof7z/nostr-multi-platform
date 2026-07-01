@@ -37,6 +37,8 @@ pub const GATE_M8: &str = "M8";
 
 use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand, TestSupportCommand};
 
+mod e2e_profile_actor;
+
 fn padded_pubkey(seed: &str) -> String {
     format!("{seed:0>64}").chars().take(64).collect()
 }
@@ -95,14 +97,13 @@ fn req_filters(frames: &[nmp_core::subs::WireFrame]) -> Vec<String> {
 #[test]
 fn cold_open_profile_view_full_pipeline() {
     use nmp_core::decode_snapshot_typed_projections;
-    use nmp_core::testing::{spawn_actor, ActorCommand};
+    use nmp_core::testing::ActorCommand;
     use nmp_core::typed_projections::{decode_profile, PROFILE_SCHEMA_ID};
     use std::time::Duration;
 
-    // A fixed nsec used only in tests (same key as in c13).
     const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
-    let (tx, rx) = spawn_actor();
+    let (tx, rx) = e2e_profile_actor::spawn_actor_with_nip01_profile_cache();
     tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
@@ -114,7 +115,6 @@ fn cold_open_profile_view_full_pipeline() {
     }))
     .expect("send Start");
 
-    // Step 1: Sign in — establishes active account (alice) with local key.
     tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,

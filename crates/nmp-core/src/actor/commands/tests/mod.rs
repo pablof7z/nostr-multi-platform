@@ -324,6 +324,7 @@ pub(super) fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEve
 // ── sub-module declarations ───────────────────────────────────────────────────
 
 mod follow_relay_profile;
+mod follow_relay_profile_bunker;
 mod identity_account;
 mod publish_signed;
 mod publish_signed_d10;
