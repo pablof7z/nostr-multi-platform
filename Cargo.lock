@@ -4760,6 +4760,8 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "trellis-core",
+ "trellis-testing",
  "tungstenite",
  "uniffi_core",
  "zeroize",
@@ -7651,6 +7653,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
+]
+
+[[package]]
+name = "trellis-core"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8d08a888129960437c89c211f690aad29187f5f030b1c8b479f527259d271b8b"
+
+[[package]]
+name = "trellis-testing"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93c9e22ea5c789cc126294bb6e85a7fe02f63eec16e23cea9d8e28fdd975af8e"
+dependencies = [
+ "trellis-core",
 ]
 
 [[package]]
