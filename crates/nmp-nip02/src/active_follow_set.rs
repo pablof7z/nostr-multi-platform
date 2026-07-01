@@ -12,11 +12,14 @@
 //! root (`explicit composition`, rung 6). The rationale is recorded in
 //! [ADR-0036](../../docs/decisions/0036-composition-root-followset-expansion.md).
 //!
-//! `ActiveFollowSet` is the **producer** of that closure. It owns an
-//! `Arc<RwLock<BTreeSet<String>>>` of raw hex pubkeys for the active account's
-//! follows (plus the active account's own pubkey; see below), hydrates it from
-//! the latest kind:3 in the event store on construction/account switch, keeps it
-//! current by observing kind:3 ingest, and hands out:
+//! `ActiveFollowSet` is the **producer** of that closure. Internally it is now
+//! the first consumer of `nmp_core::reactive_source_graph`: the graph takes the
+//! active account and that account's contact-list follows as source inputs,
+//! derives the self-included active follow set, and emits one perspective-change
+//! effect when downstream consumers should reset. A small
+//! `Arc<RwLock<BTreeSet<String>>>` remains as a read cache for previously handed
+//! out predicates. The graph is the only writer that decides when that cache is
+//! replaced.
 //!
 //! * [`ActiveFollowSet::follows`] — a sorted `Vec<String>` snapshot read.
 //! * [`ActiveFollowSet::predicate`] — a closure that captures a clone of the
@@ -24,11 +27,7 @@
 //!   update reflects the update *live* (the closure-only design's load-bearing
 //!   property — verified by the `predicate_reflects_live_updates` test).
 //! * [`ActiveFollowSet::on_change`] — register a callback that fires on every
-//!   set change (kind:3 update, account switch, logout).
-//!
-//! This rung lands the producer **unwired**: no consumer yet. Rung 5
-//! (`nmp-nip01` instance) and rung 6 (`explicit composition` composition) consume
-//! it.
+//!   graph-proven perspective change (kind:3 update, account switch, logout).
 //!
 //! # Why no `&NmpApp` constructor
 //!
@@ -60,11 +59,11 @@
 //! [`ActiveFollowSet::notify_account_changed`]: the composition root calls it
 //! when the active account changes (rung 6 wires this to the same identity-
 //! change path every other subsystem already uses). It re-reads the slot,
-//! rebuilds the set for the new active account from the canonical event-store
-//! kind:3 row (clearing it entirely on logout, when the slot is `None`), and fires
-//! `on_change` when that rebuild changes membership. A kind:3 ingest does not
-//! cover logout — there is no logout-triggered kind:3 — so the explicit seam is
-//! required for correctness, not convenience.
+//! batches the new active account and its canonical event-store kind:3 follows
+//! into the source graph (clearing it entirely on logout, when the slot is
+//! `None`), and fires `on_change` when the graph proves the active perspective
+//! changed. A kind:3 ingest does not cover logout — there is no logout-triggered
+//! kind:3 — so the explicit seam is required for correctness, not convenience.
 //!
 //! # Compiled follow-feed acquisition kinds
 //!
@@ -99,10 +98,10 @@
 //! `ActiveFollowSet` and `FollowListProjection` derive the *same* (uncapped,
 //! #1497) follow membership but have different internal designs:
 //!
-//! * `ActiveFollowSet` owns a live `Arc<RwLock<BTreeSet<String>>>` that it
-//!   hydrates from the event store on construction/account change, and rebuilds
-//!   on each `on_kernel_event` (kind:3). It hands out a closure predicate that
-//!   reads the shared set live.
+//! * `ActiveFollowSet` owns a small source graph that derives active follows
+//!   from `(active account, active account contact-list follows)`. The
+//!   `Arc<RwLock<BTreeSet<String>>>` is a predicate read cache written only from
+//!   graph effects.
 //! * `FollowListProjection` is a **thin read-model** over the kernel event
 //!   store — it holds NO secondary `HashMap` or observer state. Its
 //!   `snapshot()` reads the active account's latest kind:3 from the store, so
@@ -113,9 +112,9 @@
 //!   the projection itself.
 //! * **D6** — poisoned locks and a `None` active account degrade to an empty
 //!   set / a `false` predicate, never a panic.
-//! * **D8** — `on_kernel_event` does bounded work (one kind check, one lock,
-//!   one `p`-tag scan, one set rebuild) on the actor thread between relay
-//!   frames. No I/O, no blocking, no polling.
+//! * **D8** — `on_kernel_event` does bounded work (one kind check, one active
+//!   slot read, one `p`-tag scan, one synchronous graph turn) on the actor
+//!   thread between relay frames. No I/O, no blocking, no polling.
 //! * **Raw data** — the set holds raw hex pubkeys only; display formatting is
 //!   a higher-layer concern (2026-05-25 display-separation doctrine).
 
@@ -130,8 +129,12 @@ use nmp_core::ObservedProjectionSink;
 
 use crate::LatestKind3FollowSet;
 
-/// A registered change callback. Fires on every follow-set transition
-/// (kind:3 update, account switch, logout).
+mod reactive_graph;
+
+use reactive_graph::{ActiveFollowGraph, ActiveFollowGraphEffect};
+
+/// A registered change callback. Fires on every graph-proven perspective
+/// transition (kind:3 update, account switch, logout).
 type ChangeCallback = Box<dyn Fn() + Send + Sync>;
 
 /// Observable snapshot of the active account's follow set, as raw hex pubkeys.
@@ -157,7 +160,11 @@ pub struct ActiveFollowSet {
     /// Captured (as an `Arc` clone) by every predicate handed out, so the
     /// predicate observes updates live.
     follows: Arc<RwLock<BTreeSet<String>>>,
-    /// Registered change callbacks, fired on every set transition.
+    /// Internal reactive dependency graph for active account + contact-list
+    /// source changes. The public predicate still reads `follows`; the graph is
+    /// the only writer that decides when that read cache changes.
+    graph: Mutex<ActiveFollowGraph>,
+    /// Registered change callbacks, fired on every perspective transition.
     on_change: Mutex<Vec<ChangeCallback>>,
 }
 
@@ -177,15 +184,17 @@ impl ActiveFollowSet {
     /// sign-in-prepopulated follows.
     #[must_use]
     pub fn new(active_pubkey: ActiveAccountSlot, latest_kind3: LatestKind3FollowSet) -> Arc<Self> {
+        let initial_active = active_pubkey_from_slot(&active_pubkey);
+        let initial_contacts = contact_follows_for(&latest_kind3, initial_active.as_deref());
+        let graph = ActiveFollowGraph::new(initial_active, initial_contacts);
+        let follows = graph.current_follows();
         let this = Arc::new(Self {
             active_pubkey,
             latest_kind3,
-            follows: Arc::new(RwLock::new(BTreeSet::new())),
+            follows: Arc::new(RwLock::new(follows)),
+            graph: Mutex::new(graph),
             on_change: Mutex::new(Vec::new()),
         });
-        // Seed from the slot's current active account/cache (if any).
-        // Does not fire `on_change` — there are no callbacks at construction.
-        this.rebuild_for_active_account();
         this
     }
 
@@ -224,8 +233,8 @@ impl ActiveFollowSet {
         })
     }
 
-    /// Register a callback fired on every follow-set change — kind:3 update,
-    /// account switch, and logout.
+    /// Register a callback fired on every graph-proven perspective change —
+    /// kind:3 update, account switch, and logout.
     ///
     /// Callbacks fire after the set is rebuilt, so a callback that reads
     /// [`ActiveFollowSet::follows`] sees the new state. Poisoned callback-
@@ -239,63 +248,64 @@ impl ActiveFollowSet {
 
     /// Notify the producer that the active account changed (switch or logout).
     ///
-    /// Re-reads the [`ActiveAccountSlot`] and rebuilds the set for the new
-    /// active account:
+    /// Re-reads the [`ActiveAccountSlot`] and applies one graph turn for the
+    /// new active account:
     /// * **Switch** — the prior account's follows are cleared, then the new
     ///   account's cached contacts and own pubkey are loaded immediately. Later
     ///   kind:3 ingest keeps the set current.
     /// * **Logout** (slot is `None`) — the set is cleared entirely; the
     ///   predicate returns `false` for everyone.
     ///
-    /// Fires `on_change` only when the rebuilt membership differs from the
-    /// current set. A duplicate identity notification for the same account, or
-    /// an unchanged cache hydrate, must not force downstream feed resets.
+    /// Fires `on_change` only when the active perspective changes. A duplicate
+    /// identity notification for the same account, or an unchanged cache
+    /// hydrate, must not force downstream feed resets.
     ///
     /// This is the explicit account-change seam: [`ActiveAccountSlot`] carries
     /// no push notification, so the composition root (rung 6) calls this from
     /// the identity-change path.
     pub fn notify_account_changed(&self) {
-        if self.rebuild_for_active_account() {
+        let active = active_pubkey_from_slot(&self.active_pubkey);
+        let contacts = contact_follows_for(&self.latest_kind3, active.as_deref());
+        let effects = self.apply_graph_active_source(active, contacts);
+        self.apply_graph_effects(effects);
+    }
+
+    fn apply_graph_active_source(
+        &self,
+        active: Option<String>,
+        contacts: BTreeSet<String>,
+    ) -> Vec<ActiveFollowGraphEffect> {
+        match self.graph.lock() {
+            Ok(mut graph) => graph.apply_active_source(active, contacts),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    fn apply_graph_effects(&self, effects: Vec<ActiveFollowGraphEffect>) {
+        let mut should_fire = false;
+        for effect in effects {
+            match effect {
+                ActiveFollowGraphEffect::PerspectiveChanged { follows } => {
+                    should_fire |= self.replace_follows_snapshot(follows);
+                }
+            }
+        }
+        if should_fire {
             self.fire_on_change();
         }
     }
 
-    /// Rebuild the set for the *current* active account: clear, hydrate cached
-    /// follows from the canonical contacts lookup, then re-seed self-inclusion.
-    /// Returns whether membership changed; does not fire callbacks.
-    fn rebuild_for_active_account(&self) -> bool {
-        let rebuilt = match active_pubkey(&self.active_pubkey) {
-            Some(active) => self.follow_set_for_active(active),
-            None => BTreeSet::new(),
-        };
-        self.replace_follows_if_changed(rebuilt)
-    }
-
-    /// Build membership for an active account from the canonical contacts
-    /// lookup plus self-inclusion. `None` from the lookup means no contact list
-    /// has arrived yet, not a failure.
-    fn follow_set_for_active(&self, active: String) -> BTreeSet<String> {
-        let mut rebuilt: BTreeSet<String> = self
-            .latest_kind3
-            .follows(&active)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
-        rebuilt.insert(active);
-        rebuilt
-    }
-
-    /// Replace the membership set if it changed. Returns `false` for poisoned
-    /// locks so callers fail closed without firing stale callbacks.
-    fn replace_follows_if_changed(&self, rebuilt: BTreeSet<String>) -> bool {
-        let Ok(mut guard) = self.follows.write() else {
-            return false;
-        };
-        if *guard == rebuilt {
-            return false;
+    /// Replace the predicate read cache after the graph proves a perspective
+    /// change. Returns `false` for poisoned locks so callers fail closed without
+    /// firing callbacks against stale data.
+    fn replace_follows_snapshot(&self, rebuilt: BTreeSet<String>) -> bool {
+        match self.follows.write() {
+            Ok(mut guard) => {
+                *guard = rebuilt;
+                true
+            }
+            Err(_) => false,
         }
-        *guard = rebuilt;
-        true
     }
 
     /// Fire every registered `on_change` callback. Poisoned registry lock →
@@ -313,7 +323,7 @@ impl ActiveFollowSet {
 
 /// Read the active account's hex pubkey from the slot, or `None` when no
 /// account is signed in or the lock is poisoned (D6).
-fn active_pubkey(slot: &ActiveAccountSlot) -> Option<String> {
+fn active_pubkey_from_slot(slot: &ActiveAccountSlot) -> Option<String> {
     match slot.lock() {
         Ok(guard) => guard.as_ref().cloned(),
         Err(_) => None,
@@ -323,9 +333,9 @@ fn active_pubkey(slot: &ActiveAccountSlot) -> Option<String> {
 impl ObservedProjectionSink for ActiveFollowSet {
     /// Called by the kernel once per accepted kind:3 event.
     ///
-    /// Gate by `kind == 3` **and** author == active pubkey, then rebuild the
-    /// set from the event's `p`-tagged pubkeys plus the active account's own
-    /// pubkey (self-inclusion). Fires `on_change` when membership changes.
+    /// Gate by `kind == 3` **and** author == active pubkey, then apply one
+    /// graph turn for `(active pubkey, event p-tagged follows)`. Fires
+    /// `on_change` when the graph proves the active perspective changed.
     ///
     /// # Why the author gate
     ///
@@ -344,7 +354,7 @@ impl ObservedProjectionSink for ActiveFollowSet {
         }
 
         // Author gate: only the active account's kind:3 mutates the set.
-        let active = match active_pubkey(&self.active_pubkey) {
+        let active = match active_pubkey_from_slot(&self.active_pubkey) {
             Some(pk) => pk,
             None => return,
         };
@@ -360,14 +370,21 @@ impl ObservedProjectionSink for ActiveFollowSet {
         // wire subscription cover the same authors. The shared function dedups
         // nothing and preserves order; the `BTreeSet` here de-duplicates and
         // sorts for membership lookup.
-        let mut rebuilt: BTreeSet<String> = contact_follows(&event.tags).into_iter().collect();
-        // Self-inclusion: the active account's own pubkey is always a member.
-        rebuilt.insert(active);
-
-        if self.replace_follows_if_changed(rebuilt) {
-            self.fire_on_change();
-        }
+        let contacts: BTreeSet<String> = contact_follows(&event.tags).into_iter().collect();
+        let effects = self.apply_graph_active_source(Some(active), contacts);
+        self.apply_graph_effects(effects);
     }
+}
+
+fn contact_follows_for(
+    latest_kind3: &LatestKind3FollowSet,
+    active: Option<&str>,
+) -> BTreeSet<String> {
+    active
+        .and_then(|author| latest_kind3.follows(author))
+        .unwrap_or_default()
+        .into_iter()
+        .collect()
 }
 
 #[cfg(test)]

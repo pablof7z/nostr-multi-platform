@@ -225,6 +225,80 @@ fn account_switch_hydrates_stored_contacts_for_new_account() {
     assert!(pred(CAROL), "new account's stored follows are loaded");
 }
 
+#[test]
+fn account_switch_with_same_membership_still_fires_perspective_change() {
+    let (reader, store) = reader_with_store();
+    insert_kind3(&store, ALICE, "alice-kind3", 100, &[BOB]);
+    insert_kind3(&store, BOB, "bob-kind3", 100, &[ALICE]);
+
+    let slot = slot(Some(ALICE));
+    let set = ActiveFollowSet::new(Arc::clone(&slot), reader);
+    assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
+
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_cb = Arc::clone(&fired);
+    set.on_change(Box::new(move || {
+        fired_cb.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    *slot.lock().unwrap() = Some(BOB.to_string());
+    set.notify_account_changed();
+
+    assert_eq!(
+        set.follows(),
+        vec![ALICE.to_string(), BOB.to_string()],
+        "membership can stay equal across an active-account change"
+    );
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "active account is part of the reactive perspective, even when authors are equal"
+    );
+}
+
+#[test]
+fn contact_source_change_that_preserves_derived_follows_does_not_fire() {
+    let set = active_set(Some(ALICE));
+
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_cb = Arc::clone(&fired);
+    set.on_change(Box::new(move || {
+        fired_cb.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    set.on_kernel_event(&kind3(ALICE, &[ALICE]));
+
+    assert_eq!(set.follows(), vec![ALICE.to_string()]);
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        0,
+        "source graph must suppress wakes when derived active follows are unchanged"
+    );
+}
+
+#[test]
+fn kind3_event_batches_active_slot_for_pre_signin_observer_registration() {
+    let slot = slot(None);
+    let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
+    assert!(set.follows().is_empty());
+
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_cb = Arc::clone(&fired);
+    set.on_change(Box::new(move || {
+        fired_cb.fetch_add(1, Ordering::SeqCst);
+    }));
+
+    *slot.lock().unwrap() = Some(ALICE.to_string());
+    set.on_kernel_event(&kind3(ALICE, &[BOB]));
+
+    assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "accepted kind:3 must update both active-account and contact-list graph inputs"
+    );
+}
+
 // ─── logout clears the set ───────────────────────────────────────────────────
 
 #[test]

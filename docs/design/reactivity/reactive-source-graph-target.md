@@ -1,9 +1,10 @@
 # Reactive Source Graph Target
 
-Status: WIP / draft target architecture plus initial scaffolding. This is not
-an ADR and does not claim that existing ADRs settle the matter. Existing ADRs,
-docs, and code are evidence of the architecture that exists today; this file
-sketches the re-architecture target for one first consumer.
+Status: WIP / draft target architecture plus initial scaffolding and first
+consumer adapter. This is not an ADR and does not claim that existing ADRs
+settle the matter. Existing ADRs, docs, and code are evidence of the
+architecture that exists today; this file sketches the re-architecture target
+for one first consumer.
 
 Audience: framework contributors. App APIs must not expose generic
 `Signal`/Rx/observable streams in this first step. The graph described here is
@@ -27,7 +28,8 @@ The shipped stack has most of these pieces, but the reactivity is spread across
 several mechanisms:
 
 - `ActiveAccountSlot` plus identity observers signal account changes.
-- `ContactsLookup` stores the latest parsed kind:3 truth.
+- The kernel event store owns accepted kind:3 events; latest contact-list
+  follows are read through `latest_kind3_follows_from_store`.
 - `ActiveFollowSet` mirrors active follows and fires callbacks.
 - feed-session reducers build `live_shape`, `extra_acquisition`, reset hooks,
   resolver observers, and dependent interests.
@@ -46,16 +48,16 @@ its dependency on upstream nodes.
 
 Relevant current evidence:
 
-- `crates/nmp-core/src/substrate/contacts_lookup.rs` defines the current
-  contact-list lookup seam. It distinguishes `None` (no kind:3 cached) from
-  `Some(vec![])` (real cleared follow set), which is essential for fail-closed
-  withdrawal.
+- `crates/nmp-core/src/slots.rs` defines the current latest-kind:3 store read
+  seam. `latest_kind3_follows_from_store` distinguishes no kind:3 (`None`) from
+  an explicit empty kind:3 (`Some(vec![])`).
 - `crates/nmp-nip02/src/projection.rs` keeps `FollowListProjection` as a thin
-  read model over `ContactsLookup`, with kind:3 acquisition opened by
+  read model over the event store, with kind:3 acquisition opened by
   `register_follow_state_runtime`.
-- `crates/nmp-nip02/src/active_follow_set.rs` currently owns an
-  `Arc<RwLock<BTreeSet<String>>>`, derives active follows from the active
-  account plus `ContactsLookup`/kind:3 ingest, and exposes callbacks.
+- `crates/nmp-nip02/src/active_follow_set.rs` now adapts the first source graph
+  consumer: it derives active follows from active account plus latest kind:3
+  follows, writes a predicate read cache from graph effects, and exposes the
+  existing callbacks.
 - `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/resolve.rs`
   resolves `FeedScope::ActiveUserFollows` into `ActiveFollowSet`, resolver
   observed projection, live timeline shape, extra acquisition, reset hooks, and
@@ -87,11 +89,10 @@ Relevant current evidence:
 
 Do not build the graph on top of the current accidental authorities.
 
-- `ContactsCache`/`ContactsLookup` may remain a bounded derived index, but the
-  graph's canonical contact-list input must be latest accepted/stored kind:3
+- The graph's canonical contact-list input must be latest accepted/stored kind:3
   plus any explicit reducer-owned local baseline. Production paths such as
-  contact prepopulation or follow-edit fallback should not write/read the cache
-  as the authority for follow truth.
+  contact prepopulation or follow-edit fallback must not introduce a second
+  contact-cache authority for follow truth.
 - The product feed projection key must be app/session-owned. NMP can own
   `nmp.note_feed.opfeed`, the FlatBuffer file identifier, codecs, and compiler
   mechanics. It should not own `"nmp.feed.home"` as the durable identity of an
@@ -112,8 +113,12 @@ boundaries prove stable.
 
 Initial scaffolding now lives in `nmp_core::reactive_source_graph`. It provides
 typed node ids, input updates, derived values, effect nodes, deterministic
-batched propagation, and per-node revisions. It is not wired to feed sessions
-yet.
+batched propagation, and per-node revisions. `ActiveFollowSet` is now the first
+consumer adapter. It uses the graph for active-account/contact-list dependency
+tracking while preserving the existing `follows`, `predicate`, and `on_change`
+surface that feed-session code consumes. Feed acquisition/projection effects
+still use the existing session callbacks; moving those effects behind graph
+nodes is the next runtime migration.
 
 Core concepts:
 
@@ -139,9 +144,9 @@ For the active-follows consumer, the graph nodes are:
 
 - `active_account`: value `Option<Pubkey>`, written by the existing identity
   path.
-- `active_contact_truth`: latest canonical contact-list truth for
-  `active_account`, initially adapted through `ContactsLookup` until direct
-  cache authority is replaced; `None` and empty list remain distinct.
+- `active_contact_follows`: latest canonical contact-list follows for
+  `active_account`, read from the kernel event store or from the accepted
+  kind:3 event currently being fanned out.
 - `active_follows`: value `BTreeSet<Pubkey>`, derived from contact truth plus
   self-inclusion when an active account exists.
 - `home_feed_source`: value containing admission/attribution predicates or
@@ -171,10 +176,15 @@ the internal acquisition/projection effects that keep them consistent.
 
 Migrate only `FeedScope::ActiveUserFollows` first.
 
+This PR completes the adapter half of that migration: `ActiveFollowSet` itself
+is graph-backed, batches active-account and contact-list source inputs in one
+turn, suppresses derived no-op wakes, and preserves the existing public Rust
+surface. The remaining steps move feed-session acquisition, observed projection
+sync, and reset/dirtying effects from callbacks onto graph-owned effects.
+
 1. Introduce a graph wrapper around the existing active-follow machinery.
-   `ActiveFollowSet` remains the producer initially, but its `on_change`
-   callback becomes an input invalidation to the graph instead of each consumer
-   wiring callbacks directly.
+   Implemented inside `nmp-nip02::ActiveFollowSet`: the graph derives the
+   self-included active follow set and emits perspective-change effects.
 
 2. Move the active-follow session wiring in
    `op_feed_defaults/session_compile/resolve.rs` behind a graph-owned source:
@@ -195,10 +205,10 @@ Migrate only `FeedScope::ActiveUserFollows` first.
    kinds, `FeedScope::ActiveUserFollows`, render mode, admission, ranking,
    window, and app-owned projection key.
 
-6. Once the first path is proven, collapse duplicate active-follow storage if
-   the graph value can replace the `ActiveFollowSet` internal set without
-   breaking `FollowListProjection` or the OP feed predicate. Do this in a later
-   PR only after tests prove parity.
+6. Once the runtime effect path is proven, collapse duplicate active-follow
+   storage if the graph value can replace the `ActiveFollowSet` predicate read
+   cache without breaking `FollowListProjection` or the OP feed predicate. Do
+   this in a later PR only after tests prove parity.
 
 The migration should not change public feed declarations, native facade APIs,
 UniFFI surfaces, or the typed projection schemas.
@@ -223,10 +233,11 @@ UniFFI surfaces, or the typed projection schemas.
 - Should graph node values be stored as concrete enum variants for the first
   closed set, or as generic typed slots hidden behind erased internal storage?
 - Can `ActiveFollowSet::predicate()` read directly from a graph-owned
-  `PubkeySet`, or should it remain the compatibility producer until the second
-  slice?
-- What is the exact invalidation boundary for `ContactsLookup` writes from
-  cache-serve, local follow publishes, sign-in prepopulation, and relay ingest?
+  `PubkeySet` later? In this PR it remains a compatibility read cache written
+  only from graph effects, so existing predicates stay live without making
+  feed-engine admission take graph locks.
+- What is the exact invalidation boundary for local follow publishes,
+  sign-in prepopulation, relay ingest, and future cache-serve replay sources?
 - Should graph effects run entirely on the actor thread, or can the
   native-runtime composition layer remain the owner while still preserving
   deterministic ordering?
@@ -241,13 +252,13 @@ UniFFI surfaces, or the typed projection schemas.
    synthetic nodes.
 
 2. Wrap active-account/contact truth:
-   graph nodes for active account and active contact truth, fed from existing
-   identity and contacts seams, with tests for no account, missing kind:3, empty
-   kind:3, and replacement kind:3.
+   implemented in `nmp-nip02::ActiveFollowSet` as graph nodes for active account
+   and active contact follows, fed from the existing identity slot, event-store
+   reader, and accepted kind:3 observer seam.
 
 3. Migrate active follows:
-   derive `active_follows` through the graph while keeping the existing
-   `ActiveFollowSet` public Rust surface as an adapter.
+   implemented in `nmp-nip02::ActiveFollowSet`; `active_follows` is derived
+   through the graph while the existing public Rust surface remains an adapter.
 
 4. Unify active-follows feed source compilation:
    move browser and native active-follow home feed compilation onto one
