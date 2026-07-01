@@ -5,16 +5,53 @@ name: browser-runtime-conformance
 # real OPFS-SQLite store, driven through the BrowserAppBuilder → BrowserRuntimeHandle
 # composition inside a dedicated Web Worker.
 #
-# NON-BLOCKING BY CONSTRUCTION (honest constraint — do NOT silently skip):
-#   browser-runtime.yml blocks PRs on the full runtime's wasm32 compile graph.
-#   This harness goes further: it builds the wasm bundle, installs Playwright,
-#   launches headless Chromium, and executes OPFS durability scenarios through
-#   the dedicated Worker. That browser execution cost belongs on a NIGHTLY
-#   schedule + manual dispatch rather than every PR. The coverage is NOT
-#   skipped — it runs nightly and can be triggered on any branch via
+# RELEASE GATE BY CONSTRUCTION (honest constraint — do NOT silently skip):
+#   browser-runtime.yml blocks ordinary PRs on the full runtime's wasm32 compile
+#   graph. This harness goes further: it builds the wasm bundle, installs
+#   Playwright, launches headless Chromium, and executes OPFS durability
+#   scenarios through the dedicated Worker. That browser execution cost does not
+#   belong on every ordinary PR. It DOES belong on release refs:
+#     * release/** branch pushes and PRs that touch browser runtime, OPFS/store,
+#       core reducer/hydration, feed/reactivity compiler, or this harness.
+#   The release-readiness workflow also calls this workflow on every nmp-v* tag,
+#   so public release tags fail when the exact tagged SHA fails OPFS durability.
+#   It also keeps nightly coverage and can be triggered on any branch via
 #   workflow_dispatch.
 
 on:
+  workflow_call: {}
+  push:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/browser-runtime-conformance.yml"
+      - "crates/nmp-browser-runtime-conformance/**"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-feed/**"
+      - "crates/nmp-feed-session/**"
+      - "crates/nmp-nip02/**"
+      - "crates/nmp-nip29/**"
+      - "crates/nmp-nip51/**"
+      - "crates/nmp-planner/**"
+      - "crates/nmp-store/**"
+      - "crates/nmp-sqlite-wasm/**"
+      - "crates/nmp-core/**"
+  pull_request:
+    branches:
+      - "release/**"
+    paths:
+      - ".github/workflows/browser-runtime-conformance.yml"
+      - "crates/nmp-browser-runtime-conformance/**"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-feed/**"
+      - "crates/nmp-feed-session/**"
+      - "crates/nmp-nip02/**"
+      - "crates/nmp-nip29/**"
+      - "crates/nmp-nip51/**"
+      - "crates/nmp-planner/**"
+      - "crates/nmp-store/**"
+      - "crates/nmp-sqlite-wasm/**"
+      - "crates/nmp-core/**"
   schedule:
     - cron: "30 4 * * *" # 04:30 UTC daily.
   workflow_dispatch: {}
@@ -24,7 +61,7 @@ permissions:
 
 jobs:
   opfs-durability-conformance:
-    name: OPFS durability (full runtime, headless Chromium) — non-blocking
+    name: OPFS durability (full runtime, headless Chromium)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

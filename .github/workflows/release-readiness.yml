@@ -14,6 +14,8 @@ on:
       - "ci/check-excluded-crate-standalone-builds.sh"
       - "ci/release-package-dry-run.sh"
       - ".github/workflows/release-readiness.yml"
+      - ".github/workflows/browser-runtime-conformance.yml"
+      - "crates/nmp-browser-runtime-conformance/**"
       - "apps/**/Cargo.toml"
       - "crates/**/Cargo.toml"
       - "web/package*.json"
@@ -22,6 +24,12 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Every public NMP release tag must prove the full browser-runtime OPFS path.
+  browser-runtime-conformance:
+    name: browser runtime OPFS conformance
+    if: startsWith(github.ref, 'refs/tags/nmp-v')
+    uses: ./.github/workflows/browser-runtime-conformance.yml
+
   release-readiness:
     name: release manifest + package dry-run
     runs-on: ubuntu-latest
