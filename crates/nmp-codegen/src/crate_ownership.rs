@@ -218,6 +218,46 @@ fn wrap_text(text: &str, width: usize, indent: &str) -> String {
     out
 }
 
+/// A run of claims that are identical except for `scope_kind`/`scope_value`/
+/// `context` (e.g. the same protocol-artifact responsibility declared once
+/// per Nostr event kind). Grouping these for display avoids repeating the
+/// same claim type, id, exclusivity, and `owns` text once per scope value.
+struct ClaimGroup<'a> {
+    claim_type: &'a str,
+    id: &'a str,
+    exclusive: bool,
+    owns: &'a [String],
+    scopes: Vec<(&'a str, &'a str, &'a str)>,
+}
+
+fn group_claims<'a>(claims: impl Iterator<Item = &'a OwnershipClaim>) -> Vec<ClaimGroup<'a>> {
+    let mut groups: Vec<ClaimGroup<'a>> = Vec::new();
+    for claim in claims {
+        let existing = groups.iter_mut().find(|group| {
+            group.claim_type == claim.claim_type
+                && group.id == claim.id
+                && group.exclusive == claim.exclusive
+                && group.owns == claim.owns.as_slice()
+        });
+        let scope = (
+            claim.scope_kind.as_str(),
+            claim.scope_value.as_str(),
+            claim.context.as_str(),
+        );
+        match existing {
+            Some(group) => group.scopes.push(scope),
+            None => groups.push(ClaimGroup {
+                claim_type: &claim.claim_type,
+                id: &claim.id,
+                exclusive: claim.exclusive,
+                owns: &claim.owns,
+                scopes: vec![scope],
+            }),
+        }
+    }
+    groups
+}
+
 #[must_use]
 pub fn render_ownership_human(workspace: &OwnershipWorkspace, query: &OwnershipQuery) -> String {
     let p = active_palette();
@@ -241,13 +281,13 @@ pub fn render_ownership_human(workspace: &OwnershipWorkspace, query: &OwnershipQ
         out.push_str(&wrap_text(&descriptor.summary, SUMMARY_WRAP_WIDTH, "    "));
 
         let mut wrote_claim = false;
-        for claim in descriptor
+        let claims = descriptor
             .claims
             .iter()
-            .filter(|claim| claim_matches(claim, query))
-        {
+            .filter(|claim| claim_matches(claim, query));
+        for group in group_claims(claims) {
             wrote_claim = true;
-            let badge = if claim.exclusive {
+            let badge = if group.exclusive {
                 format!("{}{}EXCLUSIVE{}", p.bold, p.exclusive, p.reset)
             } else {
                 format!("{}shared{}", p.shared, p.reset)
@@ -257,27 +297,29 @@ pub fn render_ownership_human(workspace: &OwnershipWorkspace, query: &OwnershipQ
                 bullet = p.bullet,
                 reset = p.reset,
                 ct = p.claim_type,
-                claim_type = claim.claim_type,
+                claim_type = group.claim_type,
                 ci = p.claim_id,
-                id = claim.id,
+                id = group.id,
                 badge = badge,
             ));
-            out.push_str(&format!(
-                "      {scope}{scope_kind}{reset} = {scope}{scope_value}{reset}\n",
-                scope = p.scope,
-                reset = p.reset,
-                scope_kind = claim.scope_kind,
-                scope_value = claim.scope_value,
-            ));
-            if !claim.context.is_empty() {
+            for (scope_kind, scope_value, context) in &group.scopes {
+                let context_suffix = if context.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "  {dim}(context: {ctx}){reset}",
+                        dim = p.context,
+                        ctx = context,
+                        reset = p.reset,
+                    )
+                };
                 out.push_str(&format!(
-                    "      {context}context: {ctx}{reset}\n",
-                    context = p.context,
-                    ctx = claim.context,
+                    "      {scope}{scope_kind}{reset} = {scope}{scope_value}{reset}{context_suffix}\n",
+                    scope = p.scope,
                     reset = p.reset,
                 ));
             }
-            for item in &claim.owns {
+            for item in group.owns {
                 out.push_str(&format!(
                     "      {bullet}·{reset} {item}\n",
                     bullet = p.bullet,
