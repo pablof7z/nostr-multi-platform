@@ -123,17 +123,25 @@ impl Kernel {
         self.active_account = Some(pubkey.into());
     }
 
-    /// Test-only: cache a kind:0 profile without going through the ingest chokepoint.
+    /// Test-only: seed a profile view through the core lookup seam.
     #[cfg(test)]
-    pub(crate) fn seed_profile_kind0_for_test(
-        &self,
+    pub(crate) fn seed_profile_view_for_test(
+        &mut self,
         pubkey: &str,
-        event_id: &str,
-        created_at: u64,
-        content: &str,
-    ) -> bool {
-        self.test_profile_cache
-            .ingest_kind0(pubkey, event_id, created_at, content)
+        view: crate::substrate::ProfileView,
+    ) {
+        let before = self.profile_lookup().profile(pubkey);
+        self.test_profile_lookup.seed_view(pubkey, view);
+        let after = self.profile_lookup().profile(pubkey);
+        if before != after {
+            self.cached_estimated_store_bytes.set(None);
+            self.projection_rev_tracker.source_versions.bump_profiles();
+            if self.profile_claims.contains_key(pubkey) {
+                self.projection_rev_tracker
+                    .source_versions
+                    .bump_profile_row(pubkey);
+            }
+        }
     }
 
     /// Read-only access to the injected `OutboxRouter`.

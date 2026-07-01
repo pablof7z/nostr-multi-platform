@@ -21,11 +21,49 @@ pub(crate) fn test_support_now() -> Instant {
     Instant::now()
 }
 
+#[cfg(test)]
+struct ProfileViewSeedParser {
+    lookup: std::sync::Arc<crate::substrate::TestProfileLookup>,
+    display: String,
+}
+
+#[cfg(test)]
+impl crate::substrate::IngestParser for ProfileViewSeedParser {
+    fn parse(&self, evt: &crate::store::VerifiedEvent) {
+        let raw = evt.raw();
+        self.lookup.seed_view(
+            &raw.pubkey,
+            crate::substrate::ProfileView {
+                event_id: raw.id.clone(),
+                created_at: raw.created_at,
+                display: self.display.clone(),
+                ..Default::default()
+            },
+        );
+    }
+}
+
 impl Kernel {
     /// Test-support constructor for downstream protocol crates.
     #[must_use]
     pub fn testing_new(visible_limit: usize) -> Self {
         Self::new(visible_limit)
+    }
+
+    /// Test-only: register a non-parsing writer that stores an already-owned
+    /// [`crate::substrate::ProfileView`] when the dispatcher receives kind:0.
+    ///
+    /// This exercises the core dispatch/transition seam without duplicating
+    /// NIP-01 JSON parsing or cache supersession rules.
+    #[cfg(test)]
+    pub(crate) fn install_profile_view_seed_parser_for_test(&mut self, display: &str) {
+        self.register_ingest_parser(
+            0,
+            std::sync::Arc::new(ProfileViewSeedParser {
+                lookup: std::sync::Arc::clone(&self.test_profile_lookup),
+                display: display.to_string(),
+            }),
+        );
     }
 
     /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,
@@ -80,13 +118,9 @@ impl Kernel {
                 sig: "a".repeat(128),
             };
             match kind {
-                // ADR-0057 PR 2 — kind:0 flows through the GENUINE post-store
-                // projection path: reconstruct the `VerifiedEvent` (the store
-                // above already accepted it) and run the shared
-                // `project_accepted_event`, which dispatches to the registered
-                // kind:0 parser (`TestKind0Parser` in test builds, the real
-                // `nmp_nip01::Kind0Parser` in production) → writes the profile
-                // cache → bumps `profiles_ver`. No parallel fake writer.
+                // Kind:0 flows through the same post-store projection path as
+                // every accepted event. `nmp-core` does not install a kind:0
+                // parser; NIP-01 composition owns that writer.
                 0 => {
                     let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
                         id: event.id.clone(),
@@ -252,39 +286,6 @@ impl Kernel {
             "wss://seed",
             1_700_000_000_000,
         );
-    }
-
-    /// Test seam for delivering a kind:0 profile through the GENUINE post-store
-    /// projection path (ADR-0057 PR 2) — NOT a parallel fake writer.
-    ///
-    /// Reconstructs a `VerifiedEvent` from `event` and runs the shared
-    /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
-    /// kind:0 parser (`TestKind0Parser` in test builds, `nmp_nip01::Kind0Parser`
-    /// in production) → the parser writes the capability-owned profile cache →
-    /// the transition sweep bumps `profiles_ver`. This is the SAME path a relay-delivered
-    /// or cache-served kind:0 takes; there is no separate cache writer. Callers
-    /// keep the convenient `NostrEvent`-taking signature.
-    ///
-    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
-    // Test-support helper: `pub(in crate::kernel)` so kernel-submodule test code
-    // can call it; those call sites are `#[cfg(test)]`-gated and therefore
-    // invisible to the `test-support` feature build, so the compiler warns.
-    #[allow(dead_code)]
-    pub(in crate::kernel) fn inject_profile(&mut self, event: NostrEvent) {
-        let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
-            id: event.id.clone(),
-            pubkey: event.pubkey.clone(),
-            created_at: event.created_at,
-            kind: event.kind,
-            tags: event.tags.clone(),
-            content: event.content.clone(),
-            sig: if event.sig.is_empty() {
-                "a".repeat(128)
-            } else {
-                event.sig.clone()
-            },
-        });
-        self.project_accepted_event(&verified);
     }
 
     /// Test seam for delivering a kind:3 contact list through the genuine

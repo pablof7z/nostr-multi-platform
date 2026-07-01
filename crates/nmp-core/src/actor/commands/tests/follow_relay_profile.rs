@@ -243,11 +243,34 @@ fn publish_profile_merges_edits_onto_cached_kind0_fields() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let active_pubkey = id.active_pubkey().unwrap();
-    kernel.seed_profile_kind0_for_test(
+    let mut raw_fields = serde_json::Map::new();
+    raw_fields.insert("name".into(), serde_json::Value::String("marcus".into()));
+    raw_fields.insert(
+        "display_name".into(),
+        serde_json::Value::String("Marcus Webb".into()),
+    );
+    raw_fields.insert(
+        "banner".into(),
+        serde_json::Value::String("https://example.com/banner.png".into()),
+    );
+    raw_fields.insert(
+        "website".into(),
+        serde_json::Value::String("https://example.com".into()),
+    );
+    raw_fields.insert("third_party".into(), serde_json::json!({"keep": true}));
+    kernel.seed_profile_view_for_test(
         &active_pubkey,
-        "kind0-current",
-        1_700_000_000,
-        r#"{"name":"marcus","display_name":"Marcus Webb","banner":"https://example.com/banner.png","website":"https://example.com","third_party":{"keep":true}}"#,
+        crate::substrate::ProfileView {
+            event_id: "kind0-current".to_string(),
+            created_at: 1_700_000_000,
+            display: "Marcus Webb".to_string(),
+            name: Some("marcus".to_string()),
+            raw_display_name: Some("Marcus Webb".to_string()),
+            banner: Some("https://example.com/banner.png".to_string()),
+            website: Some("https://example.com".to_string()),
+            raw_fields,
+            ..Default::default()
+        },
     );
     let mut fields = serde_json::Map::new();
     fields.insert(
@@ -404,76 +427,4 @@ fn remove_relay_canonical_matches_add_form() {
         0,
         "T-normalize-cmd-3: remove_relay with trailing-slash variant must remove the row"
     );
-}
-
-// ── bunker sign-in ────────────────────────────────────────────────────────────
-
-#[test]
-fn sign_in_bunker_seeds_handshake_progress() {
-    // Stage 3 of NIP-46 wiring: a shape-valid bunker:// URI seeds the
-    // snapshot with `"connecting"` so the SwiftUI sign-in flow can render
-    // progress immediately. The broker (Stage 4) drives the real handshake
-    // and pushes subsequent progress via `BunkerHandshakeProgress`.
-    //
-    // Stage 4 also added a fallback: if no broker hook is installed, the
-    // actor clears the seeded "connecting" stage and surfaces a toast.
-    // ADR-0052 §D3 — install a no-op hook into THIS runtime's per-app slot so
-    // the test exercises the happy path (no process-global state).
-    use std::sync::Arc;
-
-    let (mut id, mut kernel) = fresh();
-    id.install_bunker_hook_for_test(Arc::new(|_req| {}));
-    let pk = "c".repeat(64);
-    sign_in_bunker(
-        &mut id,
-        &mut kernel,
-        &format!("bunker://{pk}?relay=wss://r.example"),
-    );
-    // D0: handshake state is an app noun — it is written to the identity
-    // runtime's shared slot (read by the `"bunker_handshake"` projection),
-    // not a typed kernel field.
-    let handshake = id.bunker_handshake_for_test().expect("handshake seeded");
-    assert_eq!(handshake.stage, "connecting");
-    assert!(handshake.message.is_some());
-    // No toast on the happy path — the seeded progress is the UX signal.
-    assert!(kernel.last_error_toast_snapshot().is_none());
-}
-
-#[test]
-fn sign_in_bunker_rejects_malformed_uri() {
-    let (mut id, mut kernel) = fresh();
-    sign_in_bunker(&mut id, &mut kernel, "bunker://nope");
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("invalid bunker")));
-}
-
-#[test]
-fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
-    // Stage 4: if no broker hook is installed when a URI arrives, the actor
-    // clears the seeded "connecting" stage and surfaces a toast so the user
-    // knows the bunker subsystem is missing. In normal flow the broker installs
-    // its hook at startup, before any URI can be submitted.
-    //
-    // ADR-0052 §D3 — the hook is now a PER-APP slot (no process-global), so
-    // this test can exercise the *no-hook* path deterministically: a fresh
-    // `IdentityRuntime` starts with an empty bunker hook slot. (The old global
-    // design could not — its `OnceLock` stayed fired from a sibling test.)
-    // Deliberately install NO hook.
-    let (mut id, mut kernel) = fresh();
-    let pk = "d".repeat(64);
-    sign_in_bunker(
-        &mut id,
-        &mut kernel,
-        &format!("bunker://{pk}?relay=wss://r.example"),
-    );
-    // No broker installed → the seeded "connecting" stage is cleared and a
-    // toast naming the missing init call is surfaced (D6: error becomes state).
-    assert!(
-        id.bunker_handshake_for_test().is_none(),
-        "no-hook path must clear the seeded handshake progress"
-    );
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("broker not initialised")));
 }

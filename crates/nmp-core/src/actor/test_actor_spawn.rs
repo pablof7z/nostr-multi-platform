@@ -2,8 +2,8 @@
 //!
 //! This helper reproduces the backwards-compatible actor entry points
 //! (`run_actor` and `run_actor_with_lifecycle_observer`) for tests that need
-//! real ingest collaborators (`TestKind0Parser`, `TestProfileCache`, etc.)
-//! wired in. Production code must call `run_actor_with_observers` directly.
+//! test-support lookup collaborators wired in. Production code must call
+//! `run_actor_with_observers` directly.
 
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::{Receiver, Sender};
@@ -16,28 +16,20 @@ use super::{
 };
 use crate::capability_socket::new_capability_callback_slot;
 
-/// Spawn the actor with test-support ingest caches and parsers wired in.
+/// Spawn the actor with test-support lookup seams wired in.
 ///
 /// This helper provides the backwards-compatible entry point shape (`run_actor`)
-/// for tests that need real parser/cache pairs for kind-0 events.
+/// for tests that need the core `ProfileLookup` seam.
 /// Calling code must construct the actor through this function to ensure
-/// `Kernel::new`'s read-your-writes defaults are preserved (i.e., profile/contacts
-/// profile lookups point to the same test cache as the ingest parser, not an
-/// empty stub.
+/// `Kernel::new`'s test lookup defaults are preserved.
 pub fn spawn_test_actor(
     inbox_rx: Receiver<ActorMail>,
     command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    let profile_cache = Arc::new(crate::substrate::TestProfileCache::new());
-    let mut dispatcher = crate::substrate::EventIngestDispatcher::new();
-    dispatcher.register_kind(
-        0,
-        Arc::new(crate::substrate::TestKind0Parser::new(Arc::clone(
-            &profile_cache,
-        ))),
-    );
-    let profile_lookup: Arc<dyn crate::substrate::ProfileLookup> = profile_cache;
+    let profile_lookup = Arc::new(crate::substrate::TestProfileLookup::new());
+    let dispatcher = crate::substrate::EventIngestDispatcher::new();
+    let profile_lookup: Arc<dyn crate::substrate::ProfileLookup> = profile_lookup;
 
     let runtime = ActorRuntimeSlots {
         lifecycle_observer: new_lifecycle_observer_slot(),

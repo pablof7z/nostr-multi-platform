@@ -245,10 +245,10 @@ const C13_KIND0_ID: &str = "f1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6
 /// etc.); NMP no longer substitutes a placeholder URI.
 #[test]
 fn profile_card_picture_url_is_none_when_profile_omits_picture() {
-    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     for picture in [None, Some(String::new())] {
-        kernel.test_profile_cache.upsert_view(
+        kernel.seed_profile_view_for_test(
             C13_PK,
             crate::substrate::ProfileView {
                 event_id: C13_KIND0_ID.to_string(),
@@ -364,7 +364,7 @@ fn accounts_enriched_populates_display_name_when_kind0_lands() {
 
     // Land a kind:0 with a real display name. The enrichment branch in
     // `accounts_enriched` populates `display_name` from the cache.
-    kernel.test_profile_cache.upsert_view(
+    kernel.seed_profile_view_for_test(
         &pubkey_hex,
         crate::substrate::ProfileView {
             event_id: "kind0-event".to_string(),

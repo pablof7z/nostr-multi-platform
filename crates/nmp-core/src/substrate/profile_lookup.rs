@@ -147,65 +147,40 @@ pub fn empty_profile_lookup() -> Arc<dyn ProfileLookup> {
     Arc::new(EmptyProfileLookup)
 }
 
-/// Test-only in-memory cache for the substrate `ProfileLookup` trait.
+/// Test-only in-memory lookup for the substrate `ProfileLookup` trait.
 ///
-/// Production composition uses `nmp_nip01::ProfileCache`. This stand-in lives
-/// inside `nmp-core` so the crate's own tests (which cannot depend on
-/// `nmp-nip01`) can still exercise the profile-enrichment / claim-TTL /
-/// zap-LNURL / RAM-eviction readers end-to-end. Mirrors the production cache's
-/// shape, supersession rule, eviction ordering, and parse contract so a test
-/// that seeds through this helper produces the same cache shape the production
-/// `Kind0Parser` would.
+/// Production composition uses `nmp_nip01::ProfileCache`. This seed-only double
+/// lives inside `nmp-core` so core tests can exercise profile-enrichment /
+/// claim-TTL / zap-LNURL / RAM-eviction readers without depending on, parsing,
+/// or mirroring NIP-01 kind:0 semantics.
 #[cfg(any(test, feature = "test-support"))]
 #[derive(Default)]
-pub struct TestProfileCache {
+pub struct TestProfileLookup {
     inner: std::sync::RwLock<std::collections::HashMap<String, ProfileView>>,
 }
 
 #[cfg(any(test, feature = "test-support"))]
-impl TestProfileCache {
+impl TestProfileLookup {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Upsert a pre-built [`ProfileView`] under `pubkey`, applying the kind:0
-    /// supersession rule (newest `created_at` wins; lexicographically-smaller
-    /// event-id wins on a tie). Returns `true` iff the candidate replaced the
-    /// cached entry. Mirrors `nmp_nip01::ProfileCache::upsert_view`.
-    pub fn upsert_view(&self, pubkey: &str, candidate: ProfileView) -> bool {
+    /// Seed a pre-built [`ProfileView`] under `pubkey`.
+    ///
+    /// This intentionally does not parse kind:0 JSON or enforce NIP-01
+    /// supersession. Parser/cache semantics belong to `nmp-nip01`; core tests use
+    /// this only to populate the reader seam with already-owned values.
+    pub fn seed_view(&self, pubkey: &str, view: ProfileView) {
         let Ok(mut guard) = self.inner.write() else {
-            return false;
+            return;
         };
-        let should_replace = guard.get(pubkey).is_none_or(|current| {
-            candidate.created_at > current.created_at
-                || (candidate.created_at == current.created_at
-                    && candidate.event_id < current.event_id)
-        });
-        if should_replace {
-            guard.insert(pubkey.to_string(), candidate);
-        }
-        should_replace
-    }
-
-    /// Parse a kind:0 `content` JSON object + `(event_id, created_at)` into a
-    /// [`ProfileView`] and upsert it. The parse contract is a verbatim port of
-    /// the production `nmp_nip01::Kind0Parser` (and the kernel's former
-    /// `parse_profile`) so test-seeded profiles match production exactly.
-    /// Returns whether the candidate superseded the cached entry.
-    pub fn ingest_kind0(
-        &self,
-        pubkey: &str,
-        event_id: &str,
-        created_at: u64,
-        content: &str,
-    ) -> bool {
-        self.upsert_view(pubkey, parse_kind0_content(event_id, created_at, content))
+        guard.insert(pubkey.to_string(), view);
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
-impl ProfileLookup for TestProfileCache {
+impl ProfileLookup for TestProfileLookup {
     fn profile(&self, pubkey: &str) -> Option<ProfileView> {
         self.inner.read().ok().and_then(|g| g.get(pubkey).cloned())
     }
@@ -274,91 +249,6 @@ impl ProfileLookup for TestProfileCache {
         }
         removed
     }
-}
-
-/// Test-only kind:0 [`IngestParser`] that writes a [`TestProfileCache`].
-///
-/// Production composition registers `nmp_nip01::Kind0Parser`; this stand-in
-/// lets `nmp-core`'s own tests exercise the real chokepoint path
-/// (`verify_and_persist` → `EventIngestDispatcher` → parser) — so a local
-/// kind:0 publish gets read-your-writes through the SAME dispatcher fan-out
-/// production uses, without depending on `nmp-nip01`. Registered on the test
-/// kernel's dispatcher at construction (mirroring how the production parser is
-/// registered by `nmp_substrate::install`).
-#[cfg(any(test, feature = "test-support"))]
-pub struct TestKind0Parser {
-    cache: std::sync::Arc<TestProfileCache>,
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl TestKind0Parser {
-    #[must_use]
-    pub fn new(cache: std::sync::Arc<TestProfileCache>) -> Self {
-        Self { cache }
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl crate::substrate::IngestParser for TestKind0Parser {
-    fn parse(&self, evt: &crate::store::VerifiedEvent) {
-        let raw = evt.raw();
-        if raw.kind != 0 {
-            return;
-        }
-        self.cache
-            .ingest_kind0(&raw.pubkey, &raw.id, raw.created_at, &raw.content);
-    }
-}
-
-/// Verbatim port of the production kind:0 parse contract
-/// (`nmp_nip01::Kind0Parser` / the kernel's former `parse_profile`). Used by
-/// [`TestProfileCache::ingest_kind0`] so `nmp-core`'s own tests produce the
-/// same cache shape as production without depending on `nmp-nip01`.
-#[cfg(any(test, feature = "test-support"))]
-fn parse_kind0_content(event_id: &str, created_at: u64, content: &str) -> ProfileView {
-    let raw_fields = serde_json::from_str::<Map<String, Value>>(content).unwrap_or_default();
-    let name = string_field(&raw_fields, "name");
-    let raw_display_name = string_field(&raw_fields, "display_name");
-    let display_name_camel = string_field(&raw_fields, "displayName");
-    let picture = string_field(&raw_fields, "picture");
-    let nip05 = string_field(&raw_fields, "nip05");
-    let about = string_field(&raw_fields, "about");
-    let lud16 = string_field(&raw_fields, "lud16");
-    let lud06 = string_field(&raw_fields, "lud06");
-    let display = raw_display_name
-        .clone()
-        .or_else(|| display_name_camel.clone())
-        .or_else(|| name.clone())
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_default();
-    ProfileView {
-        event_id: event_id.to_string(),
-        created_at,
-        display,
-        name,
-        raw_display_name,
-        display_name_camel,
-        picture_url: picture.filter(|value| value.starts_with("http")),
-        banner: string_field(&raw_fields, "banner"),
-        website: string_field(&raw_fields, "website"),
-        nip05: nip05.unwrap_or_default(),
-        about: about.unwrap_or_default(),
-        lud16: lud16.clone(),
-        lud06: lud06.clone(),
-        lnurl: lud16
-            .filter(|s| !s.trim().is_empty())
-            .or_else(|| lud06.filter(|s| !s.trim().is_empty())),
-        raw_fields,
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-fn string_field(raw_fields: &Map<String, Value>, key: &str) -> Option<String> {
-    raw_fields
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_owned)
 }
 
 #[cfg(test)]

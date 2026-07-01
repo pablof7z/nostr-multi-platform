@@ -59,7 +59,27 @@ fn open_uri_serves_store_for_resolved_target() {
 #[test]
 fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
     use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
-    use crate::substrate::{ProfileLookup, TestKind0Parser, TestProfileCache};
+    use crate::store::VerifiedEvent;
+    use crate::substrate::{IngestParser, ProfileLookup, ProfileView, TestProfileLookup};
+
+    struct ProfileViewWriterParser {
+        lookup: std::sync::Arc<TestProfileLookup>,
+    }
+
+    impl IngestParser for ProfileViewWriterParser {
+        fn parse(&self, evt: &VerifiedEvent) {
+            let raw = evt.raw();
+            self.lookup.seed_view(
+                &raw.pubkey,
+                ProfileView {
+                    event_id: raw.id.clone(),
+                    created_at: raw.created_at,
+                    display: "alice".to_string(),
+                    ..Default::default()
+                },
+            );
+        }
+    }
 
     let base_ts: u64 = 1_770_000_000;
     let keys = ::nostr::Keys::generate();
@@ -74,13 +94,15 @@ fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
         "events cache must be empty after restart"
     );
 
-    let cold_cache = std::sync::Arc::new(TestProfileCache::new());
+    let cold_cache = std::sync::Arc::new(TestProfileLookup::new());
     kernel.set_profile_lookup(
         std::sync::Arc::clone(&cold_cache) as std::sync::Arc<dyn ProfileLookup>
     );
     kernel.register_ingest_parser(
         0,
-        std::sync::Arc::new(TestKind0Parser::new(std::sync::Arc::clone(&cold_cache))),
+        std::sync::Arc::new(ProfileViewWriterParser {
+            lookup: std::sync::Arc::clone(&cold_cache),
+        }),
     );
 
     assert!(

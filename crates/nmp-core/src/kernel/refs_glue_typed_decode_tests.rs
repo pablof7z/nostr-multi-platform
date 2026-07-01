@@ -35,29 +35,57 @@ fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-/// Inject a RICH kind:0 so the `card` vs `ref` narrowing is provable: it carries
+/// Seed a rich profile so the `card` vs `ref` narrowing is provable: it carries
 /// every wide-only field (`about` / `nip05` / `banner` / `website` / `lud16`) on
 /// top of the narrow `{display_name, picture}` set.
 fn inject_rich_kind0(kernel: &mut Kernel, pubkey: &str) {
-    let content = serde_json::json!({
-        "display_name": "Alice",
-        "picture": "https://example.com/a.png",
-        "about": "hello from alice",
-        "nip05": "alice@example.com",
-        "banner": "https://example.com/banner.png",
-        "website": "https://alice.example",
-        "lud16": "alice@walletofsatoshi.com",
-    })
-    .to_string();
-    kernel.inject_profile(NostrEvent {
-        id: "0".repeat(64),
-        pubkey: pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 0,
-        tags: Vec::new(),
-        content,
-        sig: String::new(),
-    });
+    let mut raw_fields = serde_json::Map::new();
+    raw_fields.insert(
+        "display_name".into(),
+        serde_json::Value::String("Alice".into()),
+    );
+    raw_fields.insert(
+        "picture".into(),
+        serde_json::Value::String("https://example.com/a.png".into()),
+    );
+    raw_fields.insert(
+        "about".into(),
+        serde_json::Value::String("hello from alice".into()),
+    );
+    raw_fields.insert(
+        "nip05".into(),
+        serde_json::Value::String("alice@example.com".into()),
+    );
+    raw_fields.insert(
+        "banner".into(),
+        serde_json::Value::String("https://example.com/banner.png".into()),
+    );
+    raw_fields.insert(
+        "website".into(),
+        serde_json::Value::String("https://alice.example".into()),
+    );
+    raw_fields.insert(
+        "lud16".into(),
+        serde_json::Value::String("alice@walletofsatoshi.com".into()),
+    );
+    kernel.seed_profile_view_for_test(
+        pubkey,
+        crate::substrate::ProfileView {
+            event_id: "0".repeat(64),
+            created_at: 1_700_000_000,
+            display: "Alice".to_string(),
+            raw_display_name: Some("Alice".to_string()),
+            picture_url: Some("https://example.com/a.png".to_string()),
+            about: "hello from alice".to_string(),
+            nip05: "alice@example.com".to_string(),
+            banner: Some("https://example.com/banner.png".to_string()),
+            website: Some("https://alice.example".to_string()),
+            lud16: Some("alice@walletofsatoshi.com".to_string()),
+            lnurl: Some("alice@walletofsatoshi.com".to_string()),
+            raw_fields,
+            ..Default::default()
+        },
+    );
 }
 
 /// A real signed kind:1 note (passes `verify_and_persist`, lands in `events`).

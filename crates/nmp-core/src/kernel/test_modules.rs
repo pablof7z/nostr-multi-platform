@@ -142,6 +142,8 @@ mod snapshot_registry_tests;
 #[cfg(test)]
 mod state_projection_tests;
 #[cfg(test)]
+mod state_projection_profile_tests;
+#[cfg(test)]
 mod t142_drain_lifecycle_tick_tests;
 #[cfg(test)]
 mod nip46_relay_persistence_tests;

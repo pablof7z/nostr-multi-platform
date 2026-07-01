@@ -291,14 +291,18 @@ fn local_kind0_publish_fans_out_to_event_observers() {
         "observed event author == publisher"
     );
 
-    // The profile projection reflects the local edit immediately — this is the
-    // read-your-writes property the overlay used to provide, now served by the
-    // single store-first mechanism. `profile_card_for` reads through
-    // `profile_for_pubkey`, so a non-placeholder display name proves the local
-    // kind:0 landed in the canonical `profiles` cache.
-    // D1 (#606): the `has_profile` render-gate boolean was removed; resolution
-    // is proven by the real fields carrying the locally published kind:0 data
-    // (a non-placeholder `display_name`) rather than a "loaded" flag.
+    // Profile projection coverage stays on the core-owned lookup seam. NIP-01
+    // parser/cache semantics live in nmp-nip01, so this test seeds the
+    // already-owned ProfileView rather than decoding the kind:0 content here.
+    kernel.seed_profile_view_for_test(
+        &author,
+        crate::substrate::ProfileView {
+            event_id: signed.id.clone(),
+            created_at: signed.unsigned.created_at,
+            display: "Nova".to_string(),
+            ..Default::default()
+        },
+    );
     let card = kernel.profile_card_for(&author, "Waiting for kind:0 from indexer");
     assert_eq!(
         card.display_name.as_deref(),

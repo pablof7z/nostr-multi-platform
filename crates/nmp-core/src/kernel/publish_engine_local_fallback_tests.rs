@@ -31,6 +31,7 @@ fn active_account_local_write_relay_routes_profile_before_kind10002() {
     let keys = nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.install_profile_view_seed_parser_for_test("Alice");
     kernel.set_configured_relays(vec![AppRelay::new(
         WRITE_RELAY.to_string(),
         "both".to_string(),

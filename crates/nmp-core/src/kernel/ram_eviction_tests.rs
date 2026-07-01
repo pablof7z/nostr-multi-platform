@@ -30,7 +30,6 @@ use crate::store::{RawEvent, VerifiedEvent};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-pub(super) const RELAY_A: &str = "wss://a.example/";
 pub(super) const T0_SECS: u64 = 1_700_000_000;
 
 pub(super) fn pin_clock(kernel: &mut Kernel, secs: u64) {
@@ -71,7 +70,7 @@ pub(super) fn inject_events(kernel: &mut Kernel, count: usize, base_created_at: 
     ids
 }
 
-/// Insert `count` unique kind:0 profile events via `inject_replaceable_event`.
+/// Seed `count` unique profile views into the test `ProfileLookup`.
 pub(super) fn inject_profiles(kernel: &mut Kernel, count: usize, base_created_at: u64) -> Vec<String> {
     let mut pubkeys = Vec::with_capacity(count);
     for i in 0..count {
@@ -79,14 +78,14 @@ pub(super) fn inject_profiles(kernel: &mut Kernel, count: usize, base_created_at
         // Event id must also be valid 64-char hex — use offset 0x10000 to
         // avoid colliding with `make_event_id` (which uses decimal-padded).
         let id = format!("{:0>64x}", 0x10000usize + i + 1);
-        kernel.inject_replaceable_event(
-            &id,
+        kernel.seed_profile_view_for_test(
             &pubkey,
-            base_created_at + i as u64,
-            0,
-            vec![],
-            RELAY_A,
-            (base_created_at + i as u64) * 1_000,
+            crate::substrate::ProfileView {
+                event_id: id,
+                created_at: base_created_at + i as u64,
+                display: format!("profile {i}"),
+                ..Default::default()
+            },
         );
         pubkeys.push(pubkey);
     }

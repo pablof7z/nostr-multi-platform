@@ -214,17 +214,16 @@ fn force_reverify_of_cached_profile_enqueues_reverify() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let alice = hex64("f0f0");
 
-    // Seed a resident kind:0 so the cached branch runs.
-    let event = nostr::NostrEvent {
-        id: hex64("c0"),
-        pubkey: alice.clone(),
-        created_at: 1_700_000_000,
-        kind: 0,
-        tags: vec![],
-        content: r#"{"display_name":"Alice"}"#.to_string(),
-        sig: String::new(),
-    };
-    kernel.inject_profile(event);
+    // Seed a resident profile so the cached branch runs.
+    kernel.seed_profile_view_for_test(
+        &alice,
+        crate::substrate::ProfileView {
+            event_id: hex64("c0"),
+            created_at: 1_700_000_000,
+            display: "Alice".to_string(),
+            ..Default::default()
+        },
+    );
 
     let before = kernel.pending_reverify_len();
     // force = true → unconditional F-TTL re-verify enqueue.

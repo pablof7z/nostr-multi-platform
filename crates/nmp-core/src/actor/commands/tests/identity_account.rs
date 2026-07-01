@@ -148,6 +148,7 @@ fn create_account_launch_override_relay_gets_rust_owned_default_role() {
 #[test]
 fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     let (mut id, mut kernel, publish_store) = fresh_with_publish_store();
+    kernel.install_profile_view_seed_parser_for_test("Signup User");
     let mut profile = std::collections::HashMap::new();
     profile.insert("name".to_string(), "Signup User".to_string());
     let relays = vec![

@@ -3,7 +3,6 @@
 //!
 //! Event-resolver tests live in `refs_tests_event.rs` (Lane D merge target).
 
-use super::nostr::NostrEvent;
 use super::refs::{
     EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolver, RefShape,
 };
@@ -28,20 +27,17 @@ fn nevent_uri(event_id: &str) -> String {
 }
 
 fn inject_kind0(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
-    let content = serde_json::json!({
-        "display_name": display_name,
-        "picture": "https://example.com/a.png",
-    })
-    .to_string();
-    kernel.inject_profile(NostrEvent {
-        id: "0".repeat(64),
-        pubkey: pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 0,
-        tags: Vec::new(),
-        content,
-        sig: String::new(),
-    });
+    kernel.seed_profile_view_for_test(
+        pubkey,
+        crate::substrate::ProfileView {
+            event_id: "0".repeat(64),
+            created_at: 1_700_000_000,
+            display: display_name.to_string(),
+            raw_display_name: Some(display_name.to_string()),
+            picture_url: Some("https://example.com/a.png".to_string()),
+            ..Default::default()
+        },
+    );
 }
 
 fn profile_card(kernel: &mut Kernel, pk: &str, consumer: &str, liveness: RefLiveness) {

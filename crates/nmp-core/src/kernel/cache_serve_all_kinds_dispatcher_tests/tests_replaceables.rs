@@ -17,10 +17,15 @@ fn cache_served_replaceables_fire_transitions_kind_agnostically() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));
     kernel.timeline_authors.insert(author.clone());
+    let profile_lookup = Arc::new(TestProfileLookup::new());
+    kernel.set_profile_lookup(Arc::clone(&profile_lookup) as Arc<dyn ProfileLookup>);
+    if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
+        d.register_kind(0, ProfileViewWriterParser::new(Arc::clone(&profile_lookup), "Nova"));
+    }
 
     // Register a kind:10002 parser writing a real mailbox cache, mirroring
-    // production composition (the kernel's test-default kind:0 parser is already
-    // registered). Use the same in-memory mailbox cache the kernel reads.
+    // production composition. Use the same in-memory mailbox cache the kernel
+    // reads.
     let mailbox = kernel.mailbox_cache_arc();
     let mailbox_parser: Arc<dyn IngestParser> = Arc::new(TestKind10002Parser { cache: mailbox });
     if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
