@@ -142,9 +142,7 @@ mod loop_context;
 #[cfg(feature = "native")]
 use loop_context::{drain_commands, run_idle_work, DrainResult, LoopContext};
 
-// V-01 Phase 1c: capability callback and identity runtime are native actor runtime only.
-#[cfg(feature = "native")]
-use crate::capability_socket::new_capability_callback_slot;
+// V-01 Phase 1c: identity runtime is native actor runtime only.
 #[cfg(feature = "native")]
 use commands::IdentityRuntime;
 // V-38: the wallet runtime + status slot moved to `crates/nmp-nip47`.
