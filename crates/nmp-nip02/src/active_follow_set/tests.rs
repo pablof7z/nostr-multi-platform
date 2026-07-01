@@ -167,20 +167,25 @@ fn predicate_reflects_live_updates() {
     assert!(pred(CAROL));
 }
 
-// ─── account switch rebuilds + fires on_change ───────────────────────────────
+fn count_source_effects(set: &ActiveFollowSet) -> Arc<AtomicUsize> {
+    let fired = Arc::new(AtomicUsize::new(0));
+    let fired_sink = Arc::clone(&fired);
+    set.on_source_effect(Box::new(move |_| {
+        fired_sink.fetch_add(1, Ordering::SeqCst);
+    }));
+    fired
+}
+
+// ─── account switch rebuilds + emits source effect ───────────────────────────
 
 #[test]
-fn account_switch_rebuilds_set_and_fires_on_change() {
+fn account_switch_rebuilds_set_and_emits_source_effect() {
     let slot = slot(Some(ALICE));
     let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
     set.on_kernel_event(&kind3(ALICE, &[BOB, CAROL]));
     assert_eq!(set.follows().len(), 3);
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     // Switch to Dave: the kernel actor rewrites the slot, then the composition
     // root calls notify_account_changed.
@@ -193,7 +198,11 @@ fn account_switch_rebuilds_set_and_fires_on_change() {
     assert_eq!(follows, vec![DAVE.to_string()]);
     assert!(!set.predicate()(BOB), "prior account's follows are cleared");
     assert!(set.predicate()(DAVE), "new active account is self-included");
-    assert_eq!(fired.load(Ordering::SeqCst), 1, "on_change fired on switch");
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "source effect emitted on switch"
+    );
 
     // Dave's kind:3 now lands and repopulates.
     set.on_kernel_event(&kind3(DAVE, &[ALICE]));
@@ -201,7 +210,7 @@ fn account_switch_rebuilds_set_and_fires_on_change() {
     assert_eq!(
         fired.load(Ordering::SeqCst),
         2,
-        "kind:3 ingest also fires on_change"
+        "kind:3 ingest also emits a source effect"
     );
 }
 
@@ -235,11 +244,7 @@ fn account_switch_with_same_membership_still_fires_perspective_change() {
     let set = ActiveFollowSet::new(Arc::clone(&slot), reader);
     assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     *slot.lock().unwrap() = Some(BOB.to_string());
     set.notify_account_changed();
@@ -260,11 +265,7 @@ fn account_switch_with_same_membership_still_fires_perspective_change() {
 fn contact_source_change_that_preserves_derived_follows_does_not_fire() {
     let set = active_set(Some(ALICE));
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     set.on_kernel_event(&kind3(ALICE, &[ALICE]));
 
@@ -282,11 +283,7 @@ fn kind3_event_batches_active_slot_for_pre_signin_observer_registration() {
     let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
     assert!(set.follows().is_empty());
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     *slot.lock().unwrap() = Some(ALICE.to_string());
     set.on_kernel_event(&kind3(ALICE, &[BOB]));
@@ -302,17 +299,13 @@ fn kind3_event_batches_active_slot_for_pre_signin_observer_registration() {
 // ─── logout clears the set ───────────────────────────────────────────────────
 
 #[test]
-fn logout_clears_set_and_fires_on_change() {
+fn logout_clears_set_and_emits_source_effect() {
     let slot = slot(Some(ALICE));
     let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
     set.on_kernel_event(&kind3(ALICE, &[BOB, CAROL]));
     assert_eq!(set.follows().len(), 3);
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     // Logout: the kernel actor clears the slot, then notify_account_changed.
     *slot.lock().unwrap() = None;
@@ -325,21 +318,21 @@ fn logout_clears_set_and_fires_on_change() {
         "predicate returns false for everyone after logout"
     );
     assert!(!pred(BOB));
-    assert_eq!(fired.load(Ordering::SeqCst), 1, "on_change fired on logout");
+    assert_eq!(
+        fired.load(Ordering::SeqCst),
+        1,
+        "source effect emitted on logout"
+    );
 }
 
-// ─── on_change fires on each change ──────────────────────────────────────────
+// ─── source effects fire on each graph-proven change ─────────────────────────
 
 #[test]
-fn on_change_fires_on_each_change() {
+fn source_effect_fires_on_each_graph_proven_change() {
     let slot = slot(Some(ALICE));
     let set = ActiveFollowSet::new(Arc::clone(&slot), empty_follow_reader());
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     // kind:3 update.
     set.on_kernel_event(&kind3(ALICE, &[BOB]));
@@ -361,14 +354,10 @@ fn on_change_fires_on_each_change() {
 }
 
 #[test]
-fn unchanged_kind3_echo_does_not_fire_on_change() {
+fn unchanged_kind3_echo_does_not_emit_source_effect() {
     let set = active_set(Some(ALICE));
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     let contacts = kind3(ALICE, &[BOB, CAROL]);
     set.on_kernel_event(&contacts);
@@ -383,7 +372,7 @@ fn unchanged_kind3_echo_does_not_fire_on_change() {
 }
 
 #[test]
-fn unchanged_account_notification_does_not_fire_on_change() {
+fn unchanged_account_notification_does_not_emit_source_effect() {
     let (reader, store) = reader_with_store();
     insert_kind3(&store, ALICE, "alice-kind3", 100, &[BOB]);
 
@@ -391,11 +380,7 @@ fn unchanged_account_notification_does_not_fire_on_change() {
     let set = ActiveFollowSet::new(Arc::clone(&slot), reader);
     assert_eq!(set.follows(), vec![ALICE.to_string(), BOB.to_string()]);
 
-    let fired = Arc::new(AtomicUsize::new(0));
-    let fired_cb = Arc::clone(&fired);
-    set.on_change(Box::new(move || {
-        fired_cb.fetch_add(1, Ordering::SeqCst);
-    }));
+    let fired = count_source_effects(&set);
 
     set.notify_account_changed();
     assert_eq!(
@@ -406,17 +391,17 @@ fn unchanged_account_notification_does_not_fire_on_change() {
 }
 
 #[test]
-fn multiple_callbacks_all_fire() {
+fn multiple_source_effect_sinks_all_fire() {
     let set = active_set(Some(ALICE));
     let a = Arc::new(AtomicUsize::new(0));
     let b = Arc::new(AtomicUsize::new(0));
-    let a_cb = Arc::clone(&a);
-    let b_cb = Arc::clone(&b);
-    set.on_change(Box::new(move || {
-        a_cb.fetch_add(1, Ordering::SeqCst);
+    let a_sink = Arc::clone(&a);
+    let b_sink = Arc::clone(&b);
+    set.on_source_effect(Box::new(move |_| {
+        a_sink.fetch_add(1, Ordering::SeqCst);
     }));
-    set.on_change(Box::new(move || {
-        b_cb.fetch_add(1, Ordering::SeqCst);
+    set.on_source_effect(Box::new(move |_| {
+        b_sink.fetch_add(1, Ordering::SeqCst);
     }));
 
     set.on_kernel_event(&kind3(ALICE, &[BOB]));

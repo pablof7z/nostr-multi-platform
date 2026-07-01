@@ -16,18 +16,19 @@
 //! the first consumer of `nmp_core::reactive_source_graph`: the graph takes the
 //! active account and that account's contact-list follows as source inputs,
 //! derives the self-included active follow set, and emits one perspective-change
-//! effect when downstream consumers should reset. A small
-//! `Arc<RwLock<BTreeSet<String>>>` remains as a read cache for previously handed
-//! out predicates. The graph is the only writer that decides when that cache is
-//! replaced.
+//! effect when downstream consumers should reconcile acquisition, observed
+//! projections, and feed windows. A small `Arc<RwLock<BTreeSet<String>>>`
+//! remains as the hot predicate read cache. The graph is the only writer that
+//! decides when that cache is replaced.
 //!
 //! * [`ActiveFollowSet::follows`] — a sorted `Vec<String>` snapshot read.
 //! * [`ActiveFollowSet::predicate`] — a closure that captures a clone of the
 //!   internal `Arc<RwLock<…>>`, so a predicate handed out *before* a kind:3
 //!   update reflects the update *live* (the closure-only design's load-bearing
 //!   property — verified by the `predicate_reflects_live_updates` test).
-//! * [`ActiveFollowSet::on_change`] — register a callback that fires on every
-//!   graph-proven perspective change (kind:3 update, account switch, logout).
+//! * [`ActiveFollowSet::on_source_effect`] — register an internal source-effect
+//!   sink that receives graph-proven perspective changes (kind:3 update,
+//!   account switch, logout).
 //!
 //! # Why no `&NmpApp` constructor
 //!
@@ -61,9 +62,10 @@
 //! change path every other subsystem already uses). It re-reads the slot,
 //! batches the new active account and its canonical event-store kind:3 follows
 //! into the source graph (clearing it entirely on logout, when the slot is
-//! `None`), and fires `on_change` when the graph proves the active perspective
-//! changed. A kind:3 ingest does not cover logout — there is no logout-triggered
-//! kind:3 — so the explicit seam is required for correctness, not convenience.
+//! `None`), and emits a source effect when the graph proves the active
+//! perspective changed. A kind:3 ingest does not cover logout — there is no
+//! logout-triggered kind:3 — so the explicit seam is required for correctness,
+//! not convenience.
 //!
 //! # Compiled follow-feed acquisition kinds
 //!
@@ -100,8 +102,8 @@
 //!
 //! * `ActiveFollowSet` owns a small source graph that derives active follows
 //!   from `(active account, active account contact-list follows)`. The
-//!   `Arc<RwLock<BTreeSet<String>>>` is a predicate read cache written only from
-//!   graph effects.
+//!   `Arc<RwLock<BTreeSet<String>>>` is a hot predicate read cache written only
+//!   from graph effects.
 //! * `FollowListProjection` is a **thin read-model** over the kernel event
 //!   store — it holds NO secondary `HashMap` or observer state. Its
 //!   `snapshot()` reads the active account's latest kind:3 from the store, so
@@ -133,9 +135,18 @@ mod reactive_graph;
 
 use reactive_graph::{ActiveFollowGraph, ActiveFollowGraphEffect};
 
-/// A registered change callback. Fires on every graph-proven perspective
-/// transition (kind:3 update, account switch, logout).
-type ChangeCallback = Box<dyn Fn() + Send + Sync>;
+/// Source effect emitted by the active-follow graph after it has proven that
+/// the active perspective changed and the predicate read cache has been
+/// updated.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ActiveFollowSourceEffect {
+    PerspectiveChanged { follows: BTreeSet<String> },
+}
+
+/// A registered graph source-effect sink. The native/browser session layer uses
+/// this to reconcile acquisition, observed projections, and feed windows for
+/// the active-follows first consumer.
+pub type ActiveFollowSourceEffectSink = Box<dyn Fn(&ActiveFollowSourceEffect) + Send + Sync>;
 
 /// Observable snapshot of the active account's follow set, as raw hex pubkeys.
 ///
@@ -146,7 +157,8 @@ type ChangeCallback = Box<dyn Fn() + Send + Sync>;
 /// and calls [`ActiveFollowSet::notify_account_changed`] on identity change.
 ///
 /// All state is `Arc`-internal so the struct is shared as `Arc<Self>` between
-/// the observer registry, the composition root, and any handed-out predicate.
+/// the observer registry, the composition root, source-effect sinks, and any
+/// handed-out predicate.
 pub struct ActiveFollowSet {
     /// The active account's hex pubkey slot, written by the kernel actor on
     /// account switch / logout. `None` means no signed-in account → empty set,
@@ -155,17 +167,18 @@ pub struct ActiveFollowSet {
     /// Canonical follow-set source derived from the event store's latest kind:3
     /// for an author.
     latest_kind3: LatestKind3FollowSet,
-    /// The active account's follow set: raw hex pubkeys plus the active
-    /// account's own pubkey (self-inclusion, mirroring `timeline_authors`).
-    /// Captured (as an `Arc` clone) by every predicate handed out, so the
-    /// predicate observes updates live.
+    /// Hot predicate read cache: raw hex pubkeys plus the active account's own
+    /// pubkey (self-inclusion, mirroring `timeline_authors`). Captured (as an
+    /// `Arc` clone) by every predicate handed out, so the predicate observes
+    /// graph updates live without taking the graph mutex on every feed event.
     follows: Arc<RwLock<BTreeSet<String>>>,
     /// Internal reactive dependency graph for active account + contact-list
     /// source changes. The public predicate still reads `follows`; the graph is
     /// the only writer that decides when that read cache changes.
     graph: Mutex<ActiveFollowGraph>,
-    /// Registered change callbacks, fired on every perspective transition.
-    on_change: Mutex<Vec<ChangeCallback>>,
+    /// Registered graph source-effect sinks, fired on every perspective
+    /// transition after the predicate read cache is updated.
+    source_effect_sinks: Mutex<Vec<ActiveFollowSourceEffectSink>>,
 }
 
 impl ActiveFollowSet {
@@ -174,9 +187,8 @@ impl ActiveFollowSet {
     ///
     /// Returns `Arc<Self>` because the same value is shared three ways: as a
     /// [`ObservedProjectionSink`] in the kernel's observer registry, as the
-    /// owner of the `on_change` registry the composition root drives, and as
-    /// the source of the captured `Arc<RwLock<…>>` inside every handed-out
-    /// predicate.
+    /// source-effect owner the session compiler drives, and as the source of
+    /// the captured `Arc<RwLock<…>>` inside every handed-out predicate.
     ///
     /// The set is seeded immediately from the slot's current value and cached
     /// contacts, so a predicate handed out before any kind:3 arrives still
@@ -193,7 +205,7 @@ impl ActiveFollowSet {
             latest_kind3,
             follows: Arc::new(RwLock::new(follows)),
             graph: Mutex::new(graph),
-            on_change: Mutex::new(Vec::new()),
+            source_effect_sinks: Mutex::new(Vec::new()),
         });
         this
     }
@@ -233,16 +245,16 @@ impl ActiveFollowSet {
         })
     }
 
-    /// Register a callback fired on every graph-proven perspective change —
-    /// kind:3 update, account switch, and logout.
+    /// Register an internal source-effect sink fired on every graph-proven
+    /// perspective change — kind:3 update, account switch, and logout.
     ///
-    /// Callbacks fire after the set is rebuilt, so a callback that reads
-    /// [`ActiveFollowSet::follows`] sees the new state. Poisoned callback-
-    /// registry lock → the callback is silently dropped (D6); registration is
+    /// Sinks fire after the graph has updated the predicate read cache, so a
+    /// sink that reads [`ActiveFollowSet::follows`] sees the new state. Poisoned
+    /// sink-registry lock → the sink is silently dropped (D6); registration is
     /// best-effort and never panics.
-    pub fn on_change(&self, callback: ChangeCallback) {
-        if let Ok(mut callbacks) = self.on_change.lock() {
-            callbacks.push(callback);
+    pub fn on_source_effect(&self, sink: ActiveFollowSourceEffectSink) {
+        if let Ok(mut sinks) = self.source_effect_sinks.lock() {
+            sinks.push(sink);
         }
     }
 
@@ -256,9 +268,9 @@ impl ActiveFollowSet {
     /// * **Logout** (slot is `None`) — the set is cleared entirely; the
     ///   predicate returns `false` for everyone.
     ///
-    /// Fires `on_change` only when the active perspective changes. A duplicate
-    /// identity notification for the same account, or an unchanged cache
-    /// hydrate, must not force downstream feed resets.
+    /// Emits a source effect only when the active perspective changes. A
+    /// duplicate identity notification for the same account, or an unchanged
+    /// cache hydrate, must not force downstream feed resets.
     ///
     /// This is the explicit account-change seam: [`ActiveAccountSlot`] carries
     /// no push notification, so the composition root (rung 6) calls this from
@@ -282,22 +294,25 @@ impl ActiveFollowSet {
     }
 
     fn apply_graph_effects(&self, effects: Vec<ActiveFollowGraphEffect>) {
-        let mut should_fire = false;
+        let mut source_effects = Vec::new();
         for effect in effects {
             match effect {
                 ActiveFollowGraphEffect::PerspectiveChanged { follows } => {
-                    should_fire |= self.replace_follows_snapshot(follows);
+                    if self.replace_follows_snapshot(follows.clone()) {
+                        source_effects
+                            .push(ActiveFollowSourceEffect::PerspectiveChanged { follows });
+                    }
                 }
             }
         }
-        if should_fire {
-            self.fire_on_change();
+        if !source_effects.is_empty() {
+            self.fire_source_effects(&source_effects);
         }
     }
 
     /// Replace the predicate read cache after the graph proves a perspective
     /// change. Returns `false` for poisoned locks so callers fail closed without
-    /// firing callbacks against stale data.
+    /// firing source effects against stale data.
     fn replace_follows_snapshot(&self, rebuilt: BTreeSet<String>) -> bool {
         match self.follows.write() {
             Ok(mut guard) => {
@@ -308,15 +323,17 @@ impl ActiveFollowSet {
         }
     }
 
-    /// Fire every registered `on_change` callback. Poisoned registry lock →
+    /// Fire every registered source-effect sink. Poisoned registry lock →
     /// silent no-op (D6).
-    fn fire_on_change(&self) {
-        let callbacks = match self.on_change.lock() {
+    fn fire_source_effects(&self, effects: &[ActiveFollowSourceEffect]) {
+        let sinks = match self.source_effect_sinks.lock() {
             Ok(guard) => guard,
             Err(_) => return,
         };
-        for cb in callbacks.iter() {
-            cb();
+        for effect in effects {
+            for sink in sinks.iter() {
+                sink(effect);
+            }
         }
     }
 }
@@ -334,8 +351,8 @@ impl ObservedProjectionSink for ActiveFollowSet {
     /// Called by the kernel once per accepted kind:3 event.
     ///
     /// Gate by `kind == 3` **and** author == active pubkey, then apply one
-    /// graph turn for `(active pubkey, event p-tagged follows)`. Fires
-    /// `on_change` when the graph proves the active perspective changed.
+    /// graph turn for `(active pubkey, event p-tagged follows)`. Emits a source
+    /// effect when the graph proves the active perspective changed.
     ///
     /// # Why the author gate
     ///

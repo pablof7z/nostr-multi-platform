@@ -126,7 +126,9 @@ pub fn register_op_feed_defaults(
         app.event_lookup(),
         app.claim_sink(),
     );
-    follow_set.on_change(Box::new(move || {
+    follow_set.on_source_effect(Box::new(move |_| {
+        engine_observer.sync();
+        replace_dependent_acquisition();
         engine.reset_for_perspective_change();
     }));
 }

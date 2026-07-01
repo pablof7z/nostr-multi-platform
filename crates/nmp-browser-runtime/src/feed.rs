@@ -43,7 +43,6 @@ impl OpenedBrowserFeedSession {
 
 struct BrowserFeedSessionRuntime {
     follow_observer: ObservedProjectionReconciler,
-    feed_observer: ObservedProjectionReconciler,
     follow_set: Arc<nmp_nip02::ActiveFollowSet>,
     _engine: Arc<nmp_note_feed::op_feed::OpFeedEngine>,
 }
@@ -52,7 +51,6 @@ impl BrowserFeedSessionRuntime {
     fn sync_identity_change(&self) {
         self.follow_set.notify_account_changed();
         self.follow_observer.sync();
-        self.feed_observer.sync();
     }
 }
 
@@ -141,16 +139,25 @@ fn compile_feed(
         ),
     );
 
-    // Eager sync for cold-start: account may already be set, or signed-out
-    // explicit public fallback may need to open immediately.
+    // Eager sync for cold-start: the account may already be set. Without an
+    // active account, ActiveUserFollows fails closed until the graph source
+    // effect from sign-in reconciles this observer.
     follow_observer.sync();
     feed_observer.sync();
 
-    let engine_for_follow_change = Arc::clone(&engine);
-    let feed_for_follow_change = feed_observer.clone();
-    follow_set.on_change(Box::new(move || {
-        engine_for_follow_change.reset_for_perspective_change();
-        feed_for_follow_change.sync();
+    let engine_for_source_effect = Arc::clone(&engine);
+    let feed_for_source_effect = feed_observer.clone();
+    let notify_for_source_effect = access.command_sender.clone();
+    follow_set.on_source_effect(Box::new(move |_| {
+        feed_for_source_effect.sync();
+        let had_rows = !engine_for_source_effect
+            .snapshot_current_window()
+            .cards
+            .is_empty();
+        engine_for_source_effect.reset_for_perspective_change();
+        if had_rows {
+            notify_for_source_effect.mark_changed_since_emit();
+        }
     }));
 
     register_feed_render_source(access.reducer, projection.0.clone(), Arc::clone(&engine));
@@ -167,7 +174,6 @@ fn compile_feed(
     (
         BrowserFeedSessionRuntime {
             follow_observer,
-            feed_observer,
             follow_set,
             _engine: engine,
         },
@@ -250,9 +256,7 @@ fn active_follow_feed_shape(
     acquisition_kinds: BTreeSet<u32>,
 ) -> LiveShape {
     Arc::new(move || {
-        let Some(active) = active_account_slot.lock().ok().and_then(|g| g.clone()) else {
-            return Some(public_home_feed_shape(acquisition_kinds.clone()));
-        };
+        let active = active_account_slot.lock().ok().and_then(|g| g.clone())?;
         let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
         authors.insert(active);
         Some(InterestShape::timeline_for(
@@ -260,10 +264,4 @@ fn active_follow_feed_shape(
             acquisition_kinds.clone(),
         ))
     })
-}
-
-fn public_home_feed_shape(kinds: BTreeSet<u32>) -> InterestShape {
-    let mut shape = InterestShape::timeline_for(BTreeSet::new(), kinds);
-    shape.limit = Some(128);
-    shape
 }

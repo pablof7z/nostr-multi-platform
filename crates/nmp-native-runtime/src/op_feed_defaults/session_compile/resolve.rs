@@ -15,8 +15,9 @@
 //!   not just reply attribution.
 //! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
-//! * `reset_hooks` — closures that install a window-reset on each underlying
-//!   set's change (reactive perspective), plus the observer ids to revoke.
+//! * `reset_hooks` — closures that install a window-reset on legacy reactive
+//!   sources that have not moved to graph source effects yet, plus the observer
+//!   ids to revoke. `ActiveUserFollows` uses graph-owned source effects.
 //!
 //! Deferred / fail-closed (typed `ScopeNotSupportedYet`, no registration):
 //! * `RelaySet` — no framework relay-set-id resolver exists; relay-pinned
@@ -189,11 +190,6 @@ fn resolve_active_follow_set(
     let extra_acquisition =
         active_contact_list_extra_acquisition(app.active_account_handle(), &live_shape);
 
-    let reset_set = Arc::clone(&follow_set);
-    let reset_hook: ResetHook = Box::new(move |reset| {
-        reset_set.on_change(Box::new(move || reset()));
-    });
-
     Ok(ReducedSource {
         op_session_identity,
         admission,
@@ -201,7 +197,7 @@ fn resolve_active_follow_set(
         interests,
         extra_acquisition,
         live_shape,
-        reset_hooks: vec![reset_hook],
+        reset_hooks: Vec::new(),
         resolver_observer_ids: Vec::new(),
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
@@ -251,8 +247,9 @@ fn resolve_list_members(
     });
     super::source_replay::replay_source_shape(app, projection.as_ref(), viewer_list_shape(&viewer));
 
-    // LIVE predicate over the projection's current members (reactive: a new
-    // kind:30000 updates the set and fires on_change → window reset).
+    // LIVE predicate over the projection's current members. NIP-51 has not
+    // moved to source-graph effects yet, so its projection still uses the
+    // legacy reset hook below.
     let admission: RootAdmission = {
         let projection = Arc::clone(&projection);
         let list_id = list_id.to_string();

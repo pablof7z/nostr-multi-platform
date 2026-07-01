@@ -125,9 +125,8 @@ fn browser_home_feed_observer_opens_on_active_account_change() {
 }
 
 #[test]
-fn browser_home_feed_projection_renders_public_note_before_sign_in() {
+fn browser_home_feed_fails_closed_before_sign_in() {
     let note_keys = nostr::Keys::generate();
-    let note_pk = note_keys.public_key().to_hex();
 
     let mut handle = BrowserAppBuilder::new()
         .in_memory()
@@ -145,36 +144,30 @@ fn browser_home_feed_projection_renders_public_note_before_sign_in() {
 
     open_test_feed(&mut handle);
     let first_pump = handle.pump();
-    let (feed_sub, req_text) =
-        req_frame_for_kind(&first_pump.outbound, nmp_kinds::KIND_SHORT_TEXT_NOTE)
-            .expect("signed-out browser start must open a public note subscription");
     assert!(
-        !req_text.contains(r#""authors""#),
-        "signed-out public feed must not require a follow author filter; req={req_text}"
+        req_frame_for_kind(&first_pump.outbound, nmp_kinds::KIND_SHORT_TEXT_NOTE).is_none(),
+        "signed-out ActiveUserFollows must not open a public note subscription; outbound={:?}",
+        first_pump
+            .outbound
+            .iter()
+            .map(|frame| frame.text())
+            .collect::<Vec<_>>()
     );
 
-    let note_json = signed_note_json(&note_keys, "hello from signed-out public feed", 20);
-    let note_id = serde_json::from_str::<serde_json::Value>(&note_json)
-        .expect("signed note json decodes")
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        .expect("signed note has id")
-        .to_string();
+    let note_json = signed_note_json(&note_keys, "signed-out active follows should ignore", 20);
     let outbound = handle.runtime.reducer.handle_relay_frame(
         nmp_network::role::RelayRole::Content,
         RELAY,
-        RelayFrame::Text(relay_event_frame(&feed_sub, note_json)),
+        RelayFrame::Text(relay_event_frame("unsigned-active-follows", note_json)),
     );
     handle.fan_out_outbound(outbound);
 
     let frame = handle.next_frame(true);
     let feed = decode_home_feed(&frame);
-    assert_eq!(feed.cards.len(), 1);
-    assert_eq!(feed.cards[0].card.id, note_id);
-    assert_eq!(feed.cards[0].card.author_pubkey, note_pk);
     assert_eq!(
-        feed.cards[0].card.content,
-        "hello from signed-out public feed"
+        feed.cards.len(),
+        0,
+        "signed-out ActiveUserFollows must fail closed instead of rendering public notes"
     );
 }
 

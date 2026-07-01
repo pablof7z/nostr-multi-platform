@@ -133,6 +133,24 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
     assert!(!admit(STRANGER), "non-follow is NOT admitted (fail-closed)");
 }
 
+#[test]
+fn active_user_follows_uses_source_effects_not_legacy_reset_hooks() {
+    let app = crate::new_app();
+    let kinds = std::collections::BTreeSet::from([1u32]);
+    let resolved =
+        super::resolve::resolve_scope(&app, &nmp_feed::FeedScope::ActiveUserFollows, &kinds)
+            .expect("ActiveUserFollows resolves before sign-in");
+
+    assert!(
+        resolved.reset_hooks.is_empty(),
+        "ActiveUserFollows must not install the legacy reset-hook bridge"
+    );
+    assert!(
+        resolved.active_follow_set.is_some(),
+        "ActiveUserFollows must expose the graph-backed source effect owner"
+    );
+}
+
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
 fn note(author: &str) -> KernelEvent {

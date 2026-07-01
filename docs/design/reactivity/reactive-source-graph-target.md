@@ -1,8 +1,8 @@
 # Reactive Source Graph Target
 
-Status: WIP / draft target architecture plus initial scaffolding and first
-consumer adapter. This is not an ADR and does not claim that existing ADRs
-settle the matter. Existing ADRs, docs, and code are evidence of the
+Status: WIP / draft target architecture plus initial scaffolding and completed
+first consumer migration. This is not an ADR and does not claim that existing
+ADRs settle the matter. Existing ADRs, docs, and code are evidence of the
 architecture that exists today; this file sketches the re-architecture target
 for one first consumer.
 
@@ -30,9 +30,10 @@ several mechanisms:
 - `ActiveAccountSlot` plus identity observers signal account changes.
 - The kernel event store owns accepted kind:3 events; latest contact-list
   follows are read through `latest_kind3_follows_from_store`.
-- `ActiveFollowSet` mirrors active follows and fires callbacks.
-- feed-session reducers build `live_shape`, `extra_acquisition`, reset hooks,
-  resolver observers, and dependent interests.
+- `ActiveFollowSet` derives active follows and emits graph source effects.
+- feed-session reducers build `live_shape`, `extra_acquisition`, resolver
+  observers, dependent interests, and legacy reset hooks for non-migrated
+  scopes.
 - `ReplaceDependentInterestSet` owns child interest withdrawal/upsert in the
   kernel.
 - observed projections replay/cache-serve matching events into feed engines.
@@ -54,21 +55,22 @@ Relevant current evidence:
 - `crates/nmp-nip02/src/projection.rs` keeps `FollowListProjection` as a thin
   read model over the event store, with kind:3 acquisition opened by
   `register_follow_state_runtime`.
-- `crates/nmp-nip02/src/active_follow_set.rs` now adapts the first source graph
+- `crates/nmp-nip02/src/active_follow_set.rs` is the first source graph
   consumer: it derives active follows from active account plus latest kind:3
-  follows, writes a predicate read cache from graph effects, and exposes the
-  existing callbacks.
+  follows, writes a hot predicate read cache from graph effects, and emits
+  typed source effects.
 - `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/resolve.rs`
   resolves `FeedScope::ActiveUserFollows` into `ActiveFollowSet`, resolver
-  observed projection, live timeline shape, extra acquisition, reset hooks, and
+  observed projection, live timeline shape, extra acquisition, and
   active-account identity observer.
 - `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/source.rs`
   defines `ReducedSource`, the current bundle of admission, attribution,
   acquisition children, live pull shape, reset hooks, and teardown ids.
 - `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/session_engine.rs`
   turns a `ReducedSource` into a feed session, including observer sync,
-  dependent-interest replacement, pull controller, reset hooks, and typed
-  projection registration.
+  dependent-interest replacement, pull controller, active-follow source-effect
+  handling, legacy reset hooks for non-migrated scopes, and typed projection
+  registration.
 - `crates/nmp-browser-runtime/src/feed.rs` has a separate home-feed compiler
   path. That duplication should be treated as authority risk, not as a second
   implementation model to preserve.
@@ -114,11 +116,12 @@ boundaries prove stable.
 Initial scaffolding now lives in `nmp_core::reactive_source_graph`. It provides
 typed node ids, input updates, derived values, effect nodes, deterministic
 batched propagation, and per-node revisions. `ActiveFollowSet` is now the first
-consumer adapter. It uses the graph for active-account/contact-list dependency
-tracking while preserving the existing `follows`, `predicate`, and `on_change`
-surface that feed-session code consumes. Feed acquisition/projection effects
-still use the existing session callbacks; moving those effects behind graph
-nodes is the next runtime migration.
+consumer. It uses the graph for active-account/contact-list dependency
+tracking, writes only graph-proven changes into its hot predicate cache, and
+emits source effects consumed by native/browser feed sessions. For
+`FeedScope::ActiveUserFollows`, acquisition replacement, observed-projection
+sync, feed reset, and projection dirtying are now driven from those source
+effects rather than a generic follow-set reset callback.
 
 Core concepts:
 
@@ -176,15 +179,15 @@ the internal acquisition/projection effects that keep them consistent.
 
 Migrate only `FeedScope::ActiveUserFollows` first.
 
-This PR completes the adapter half of that migration: `ActiveFollowSet` itself
-is graph-backed, batches active-account and contact-list source inputs in one
-turn, suppresses derived no-op wakes, and preserves the existing public Rust
-surface. The remaining steps move feed-session acquisition, observed projection
-sync, and reset/dirtying effects from callbacks onto graph-owned effects.
+This PR completes that first consumer migration: `ActiveFollowSet` itself is
+graph-backed, batches active-account and contact-list source inputs in one
+turn, suppresses derived no-op wakes, and emits source effects that drive the
+native/browser active-follows session effects. Apps keep the same declarative
+`FeedParams`; the graph remains internal Rust infrastructure.
 
 1. Introduce a graph wrapper around the existing active-follow machinery.
    Implemented inside `nmp-nip02::ActiveFollowSet`: the graph derives the
-   self-included active follow set and emits perspective-change effects.
+   self-included active follow set and emits perspective-change source effects.
 
 2. Move the active-follow session wiring in
    `op_feed_defaults/session_compile/resolve.rs` behind a graph-owned source:
@@ -200,15 +203,16 @@ sync, and reset/dirtying effects from callbacks onto graph-owned effects.
    graph effects. The resulting effects should call the same existing primitives:
    `ObservedProjectionReconciler::sync`, `ReplaceDependentInterestSet`,
    `FeedController::reset`, and `mark_changed_since_emit`.
+   Implemented for native OP-centric sessions, native flat sessions, and the
+   browser runtime's active-follows session path.
 
 5. Keep `FeedParams` and `open_feed` unchanged. The app still asks for primary
    kinds, `FeedScope::ActiveUserFollows`, render mode, admission, ranking,
    window, and app-owned projection key.
 
-6. Once the runtime effect path is proven, collapse duplicate active-follow
-   storage if the graph value can replace the `ActiveFollowSet` predicate read
-   cache without breaking `FollowListProjection` or the OP feed predicate. Do
-   this in a later PR only after tests prove parity.
+6. Keep the hot predicate read cache as implementation detail, not as a second
+   source of truth. Feed admission needs a cheap predicate; graph effects are
+   the only writer that can replace the cache.
 
 The migration should not change public feed declarations, native facade APIs,
 UniFFI surfaces, or the typed projection schemas.
@@ -232,10 +236,10 @@ UniFFI surfaces, or the typed projection schemas.
   or should a small lower crate own only the graph scheduler/types?
 - Should graph node values be stored as concrete enum variants for the first
   closed set, or as generic typed slots hidden behind erased internal storage?
-- Can `ActiveFollowSet::predicate()` read directly from a graph-owned
-  `PubkeySet` later? In this PR it remains a compatibility read cache written
-  only from graph effects, so existing predicates stay live without making
-  feed-engine admission take graph locks.
+- Can `ActiveFollowSet::predicate()` ever read directly from a graph-owned
+  `PubkeySet` without making feed-engine admission take graph locks? Today the
+  read cache is the bounded hot-path representation, written only from graph
+  effects.
 - What is the exact invalidation boundary for local follow publishes,
   sign-in prepopulation, relay ingest, and future cache-serve replay sources?
 - Should graph effects run entirely on the actor thread, or can the
@@ -258,7 +262,7 @@ UniFFI surfaces, or the typed projection schemas.
 
 3. Migrate active follows:
    implemented in `nmp-nip02::ActiveFollowSet`; `active_follows` is derived
-   through the graph while the existing public Rust surface remains an adapter.
+   through the graph and source effects replace the previous reset callback.
 
 4. Unify active-follows feed source compilation:
    move browser and native active-follow home feed compilation onto one
@@ -266,20 +270,22 @@ UniFFI surfaces, or the typed projection schemas.
    unless it is reintroduced as a separate signed-out product feed.
 
 5. Migrate active-follows feed acquisition:
-   graph effect replaces the session-owned dependent-interest set and observed
-   projection shape for `FeedScope::ActiveUserFollows`.
+   implemented for native OP-centric and flat sessions: the graph source effect
+   replaces the session-owned dependent-interest set and observed projection
+   shape for `FeedScope::ActiveUserFollows`.
 
 6. Migrate feed reset/projection dirtying:
-   graph effect resets the feed window and marks the projection dirty exactly
-   once per source turn.
+   implemented for native OP-centric sessions, native flat sessions, and browser
+   sessions: the graph source effect resets the feed window and marks the
+   projection dirty exactly once per source turn when rows were visible.
 
 7. Move off framework-owned `nmp.feed.home` identity:
    require the first graph-backed consumer to pass an app/session-owned
    projection key while reusing the OP feed schema and typed wire payload.
 
 8. Delete duplicate callback wiring:
-   remove only the active-follows-specific manual reset/sync path that the graph
-   fully owns, leaving other scopes untouched.
+   implemented for active-follows-specific manual reset/sync wiring. Other
+   scopes keep their existing reset hooks until migrated.
 
 9. Add narrow ratchets:
    block new positive app-facing examples that use framework-owned product keys

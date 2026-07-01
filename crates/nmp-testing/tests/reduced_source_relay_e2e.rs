@@ -183,6 +183,42 @@ fn active_follows_cache_first_open_still_replays_live_relay_reqs() {
 }
 
 #[test]
+fn flat_active_follows_cache_first_open_uses_source_effects() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+
+    let alice = keys_from_byte(55);
+    let bob = keys_from_byte(56);
+    let bob_pk = bob.public_key().to_hex();
+    let alice_pk = alice.public_key().to_hex();
+    let contacts = signed_contact_list(&alice, std::slice::from_ref(&bob_pk), 100);
+    let bob_note = signed_note(&bob, "flat cached before login", 110);
+    let bob_note_id = bob_note.id.to_hex();
+
+    let app = new_started_reduced_source_app();
+    let app_ref = unsafe { &*app };
+    inject_event(app, &rx, app_ref, &contacts);
+    inject_event(app, &rx, app_ref, &bob_note);
+
+    let key = "test.relay.flat-active-follows.cache-first";
+    let _handle = app_ref
+        .open_feed(&flat_active_follows_params(key), &compiler)
+        .expect("flat active follows opens from cache");
+    assert_eq!(
+        flat_feed_ids(app_ref, key),
+        Vec::<String>::new(),
+        "pre-login flat active follows must fail closed even with cached source events"
+    );
+
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice_pk);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    unsafe { drop(Box::from_raw(app)) };
+    uninstall_update_signal();
+}
+
+#[test]
 fn list_members_nip65_arrival_emits_target_author_req() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();

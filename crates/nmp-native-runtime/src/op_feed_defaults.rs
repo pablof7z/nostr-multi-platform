@@ -80,12 +80,14 @@
 //!
 //! # Perspective changes reset the feed
 //!
-//! `ActiveFollowSet::on_change` fires on active-account kind:3 replacement,
-//! account switch, and logout. All of those are feed-perspective changes: the
-//! user has changed who can cause rows to appear. The engine therefore resets
-//! immediately instead of letting stale rows D5-evict naturally. Re-population
-//! comes from the same ReducedSource acquisition/cache-serve path that
-//! materializes the current active-account source.
+//! `ActiveFollowSet` emits graph source effects on active-account kind:3
+//! replacement, account switch, and logout. All of those are feed-perspective
+//! changes: the user has changed who can cause rows to appear. The active-
+//! follows session effect therefore reconciles observed projections, replaces
+//! dependent acquisition, and resets the engine immediately instead of letting
+//! stale rows D5-evict naturally. Re-population comes from the same
+//! ReducedSource acquisition/cache-serve path that materializes the current
+//! active-account source.
 //!
 //! ## The account-change race (rung-4 flagged this)
 //!
@@ -94,12 +96,13 @@
 //! forwarding that frame to native. The callback registered here calls
 //! `notify_account_changed()`: `ActiveFollowSet` clears A's set, hydrates B's
 //! latest kind:3 follow set from the event store if one is already present,
-//! re-seeds self-inclusion of B, and fires `on_change`; this callback
-//! sees `B != A`, resets the engine, and records B. When B's kind:3 later
-//! ingests, `ActiveFollowSet`'s own observer rebuilds from the event and fires
-//! `on_change` again. The clear-then-hydrate ordering means the
-//! switch-before-kind:3 window never rebuilds against A's stale follow set, and
-//! sign-in-prepopulated follows can qualify rows immediately.
+//! re-seeds self-inclusion of B, and emits a source effect. The session effect
+//! sees `B != A`, reconciles acquisition/projection state, resets the engine,
+//! and records B. When B's kind:3 later ingests, `ActiveFollowSet`'s own
+//! observer rebuilds from the event and emits another source effect. The
+//! clear-then-hydrate ordering means the switch-before-kind:3 window never
+//! rebuilds against A's stale follow set, and sign-in-prepopulated follows can
+//! qualify rows immediately.
 //!
 //! [`ActiveAccountSlot`]: nmp_core::slots::ActiveAccountSlot
 
