@@ -1,5 +1,6 @@
-//! `Kind10002Parser` — the [`IngestParser`] that decodes kind:10002 events
-//! and upserts the resolved [`ParsedRelayList`] into [`InMemoryMailboxCache`].
+//! `Kind10002Parser` — the [`IngestParser`] that delegates kind:10002 tag
+//! decoding to `nmp-nip65-types` and upserts the resolved [`ParsedRelayList`]
+//! into [`InMemoryMailboxCache`].
 //!
 //! NIP-65 tag shape:
 //! ```text
@@ -30,7 +31,6 @@ use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
 use nmp_store::VerifiedEvent;
 
-use crate::canonical::canonicalize_relay_url;
 use crate::InMemoryMailboxCache;
 
 /// The kind:10002 ingest parser. Constructed with a shared
@@ -59,7 +59,7 @@ impl Kind10002Parser {
         if raw.kind != KIND_RELAY_LIST {
             return;
         }
-        let parsed = parse_relay_list(&raw.tags);
+        let parsed = to_core_relay_list(nmp_nip65_types::parse_relay_list_tags(&raw.tags));
         if parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty() {
             self.cache.remove(&raw.pubkey);
         } else {
@@ -74,56 +74,12 @@ impl IngestParser for Kind10002Parser {
     }
 }
 
-fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
-    let mut read = Vec::new();
-    let mut write = Vec::new();
-    let mut both = Vec::new();
-
-    for tag in tags {
-        // Spec: `["r", "<url>", "<marker?>"]`. Skip anything else.
-        if tag.first().map(String::as_str) != Some("r") {
-            continue;
-        }
-        // Defensive scheme gate: only `wss://` URLs are routable. A
-        // misconfigured `r` tag (`https://...`, `ws://...`, bare host, etc.)
-        // must not poison the routing cache.
-        //
-        // Canonicalise via the shared `canonical::canonicalize_relay_url`
-        // (lowercase host, strip empty-path trailing slash). Without this,
-        // a kind:10002 write entry `wss://Block.Example` would never match
-        // a blocked-relay lookup entry stored as `wss://block.example`,
-        // silently defeating the blocked-relay filter.
-        // Fail-closed: a `wss://`-prefixed but hostless URL (`wss://`,
-        // `wss:///path`) is rejected by the canonical authority and dropped
-        // rather than poisoning the routing cache (#967).
-        let url = match tag.get(1) {
-            Some(u) if u.starts_with("wss://") => match canonicalize_relay_url(u) {
-                Some(c) => c,
-                None => continue,
-            },
-            _ => continue,
-        };
-        match tag.get(2).map(String::as_str) {
-            None | Some("") => both.push(url),
-            Some("read") => read.push(url),
-            Some("write") => write.push(url),
-            Some(_) => {
-                // Unknown marker — ignore. Conservative: drop rather than
-                // guess bidirectional.
-            }
-        }
+fn to_core_relay_list(parsed: nmp_nip65_types::Nip65RelayList) -> ParsedRelayList {
+    ParsedRelayList {
+        read: parsed.read,
+        write: parsed.write,
+        both: parsed.both,
     }
-
-    sort_dedup(&mut read);
-    sort_dedup(&mut write);
-    sort_dedup(&mut both);
-
-    ParsedRelayList { read, write, both }
-}
-
-fn sort_dedup(v: &mut Vec<String>) {
-    v.sort();
-    v.dedup();
 }
 
 #[cfg(test)]

@@ -19,7 +19,6 @@
 use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{RawEvent, VerifiedEvent};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_R1: &str = "wss://i1676-write-r1.test";
@@ -50,30 +49,7 @@ fn ok_payload<'a>(event_id: &'a str, accepted: bool, reason: &'a str) -> OkFrame
 /// Seed a kind:10002 so `Nip65OutboxResolver` routes the publish to
 /// `write_urls` (without it the resolver returns NoTargets).
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str]) {
-    let tags: Vec<Vec<String>> = write_urls
-        .iter()
-        .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
-        .collect();
-    let raw = RawEvent {
-        id: author_pubkey.to_string(),
-        pubkey: author_pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 10002,
-        tags,
-        content: String::new(),
-        sig: "0".repeat(128),
-    };
-    let verified = VerifiedEvent::from_raw_unchecked(raw);
-    kernel
-        .store
-        .insert(verified, &"wss://seed".to_string(), 1_700_000_000_000)
-        .expect("seed_kind10002 insert");
-    kernel.seed_mailbox_relay_list(
-        author_pubkey,
-        Vec::new(),
-        write_urls.iter().map(|url| (*url).to_string()).collect(),
-        Vec::new(),
-    );
+    kernel.seed_kind10002_for_test(author_pubkey, write_urls);
 }
 
 /// Read + drain `projections.action_results` from a fresh wire snapshot.

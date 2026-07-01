@@ -88,7 +88,7 @@ fn build_write_marker_emits_write_third_element() {
 #[test]
 fn build_uses_r_marker_not_relay_marker() {
     // NIP-65 § uses `["r", url]` tags. Using `["relay", ...]` would be
-    // a kind:10050 NIP-17 shape; the kernel's `parse_relay_list` would
+    // a kind:10050 NIP-17 shape; the canonical NIP-65 decoder would
     // skip every tag and the round-trip would silently produce an
     // empty cache entry — exactly the kind of leak this test pins.
     let event = build_relay_list_event(&[entry("wss://relay.example", RelayMarker::Both)]);
@@ -339,12 +339,10 @@ fn execute_emits_kind10002_publish_unsigned_event_command() {
 }
 
 /// Round-trip shape contract: the tag shape the builder produces here
-/// must match what `nmp-core::kernel::nostr::parse_relay_list`
-/// accepts. The parser is `pub(super)` inside `nmp-core`, so we mirror
-/// its core acceptance rules here (tag[0] == "r", url starts with
-/// "wss://", optional third element ∈ {"read","write"}) and assert the
-/// builder output satisfies them. If either side drifts, this test
-/// breaks.
+/// must match what `nmp-nip65-types` accepts. The canonical decoder's
+/// core acceptance rules are: tag[0] == "r", url starts with "wss://",
+/// and the optional third element is absent or in {"read","write"}.
+/// If either side drifts, this test breaks.
 #[test]
 fn build_event_tags_match_kernel_ingest_shape() {
     let event = build_relay_list_event(&[
@@ -368,7 +366,7 @@ fn build_event_tags_match_kernel_ingest_shape() {
             assert!(
                 tag[2] == "read" || tag[2] == "write",
                 "third element must be 'read' or 'write' (any other value \
-                 is parsed as 'both' but would not survive a round trip)",
+                 is ignored by the canonical decoder)",
             );
         }
     }

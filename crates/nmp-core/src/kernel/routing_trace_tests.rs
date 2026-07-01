@@ -163,7 +163,7 @@ fn kernel_routing_trace_captures_publish_with_nip65_lane() {
     }
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.seed_mailbox_relay_list(ALICE, vec![], vec!["wss://alice.write/".into()], vec![]);
+    kernel.seed_kind10002_for_test(ALICE, &["wss://alice.write/"]);
     let cache_arc: Arc<dyn MailboxCache> = kernel.mailbox_cache_arc();
     kernel.set_routing(Arc::new(Nip65WriteLaneRouter), cache_arc);
 
@@ -190,7 +190,7 @@ fn kernel_routing_trace_captures_publish_with_nip65_lane() {
     };
 
     let routed = kernel.outbox_router().route_publish(&evt, &ctx).unwrap();
-    assert!(routed.urls().any(|u| u == "wss://alice.write/"));
+    assert!(routed.urls().any(|u| u == "wss://alice.write"));
     projection.on_publish(
         crate::substrate::PublishTrace {
             kind: 1,
@@ -206,7 +206,7 @@ fn kernel_routing_trace_captures_publish_with_nip65_lane() {
     assert_eq!(snap[0].trace.kind, 1);
     assert_eq!(snap[0].trace.author, ALICE);
     let (url, sources) = &snap[0].urls[0];
-    assert_eq!(url, "wss://alice.write/");
+    assert_eq!(url, "wss://alice.write");
     assert!(sources.contains(&RoutingSource::Nip65 {
         direction: crate::substrate::Direction::Write,
     }));

@@ -55,11 +55,7 @@ fn ok_payload<'a>(event_id: &'a str, accepted: bool, reason: &'a str) -> OkFrame
 /// T-publish-resolver-indexer: without a kind:10002 the resolver returns empty
 /// (NoTargets).
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str]) {
-    let write_urls = write_urls
-        .iter()
-        .map(|url| (*url).to_string())
-        .collect();
-    kernel.seed_mailbox_relay_list(author_pubkey, Vec::new(), write_urls, Vec::new());
+    kernel.seed_kind10002_for_test(author_pubkey, write_urls);
 }
 
 /// Helper: locate the queue entry for `event_id` in the kernel's snapshot.

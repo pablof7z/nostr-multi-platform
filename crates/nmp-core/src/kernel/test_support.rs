@@ -154,8 +154,8 @@ impl Kernel {
     // ThreadViewState (including pending_ids / requested_ids) removed from kernel.
 
     /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store and
-    /// relay-list cache for `author_pubkey` with `write_urls` as its write-marker
-    /// relay tags.
+    /// deliver it through the post-store projection fan-out for `author_pubkey`
+    /// with `write_urls` as its write-marker relay tags.
     ///
     /// Required by tests that exercise the publish path after
     /// T-publish-resolver-indexer (codex f81f735): `Nip65OutboxResolver` is now
@@ -169,6 +169,25 @@ impl Kernel {
     // so the compiler warns without this allow.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10002_for_test(&mut self, author_pubkey: &str, write_urls: &[&str]) {
+        let tags: Vec<Vec<String>> = write_urls
+            .iter()
+            .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
+            .collect();
+        self.seed_kind10002_tags_for_test(author_pubkey, tags, u64::MAX);
+    }
+
+    /// Seed a kind:10002 with caller-supplied tags through the same
+    /// store-first projection fan-out used by live/cache/local accepted events.
+    ///
+    /// This exists for tests that need read-only or unmarked relay-list rows.
+    /// It deliberately does not expose a mailbox-cache write API.
+    #[allow(dead_code)]
+    pub(crate) fn seed_kind10002_tags_for_test(
+        &mut self,
+        author_pubkey: &str,
+        tags: Vec<Vec<String>>,
+        created_at: u64,
+    ) {
         // Use the author's pubkey as the synthetic event ID — guaranteed
         // unique per author in a fresh-kernel test. The old two-char prefix
         // approach caused a Duplicate hit when the randomly-generated active
@@ -176,41 +195,21 @@ impl Kernel {
         // or SEED_NPUB_HEX ("fa"), making the store return Duplicate for that
         // author.
         let id = author_pubkey.to_string();
-        let tags: Vec<Vec<String>> = write_urls
-            .iter()
-            .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
-            .collect();
-        // Use a far-future `created_at` so the seeded relay list always wins the
-        // replaceable-event dedup in `store::insert` (strict `>` on `created_at`).
-        // Account creation publishes an onboarding kind:10002 stamped with the
-        // kernel clock; a fixed past timestamp would lose that race and the
-        // seeded list would be silently discarded. `u64::MAX` guarantees the
-        // test seed overrides whatever production state was already accepted.
         let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
             id,
             pubkey: author_pubkey.to_string(),
-            created_at: u64::MAX,
+            created_at,
             kind: 10002,
             tags,
             content: String::new(),
             sig: "a".repeat(128),
         });
-        let _ = self
-            .store
-            .insert(verified, &"wss://seed".to_string(), 1_700_000_000_000);
-        self.mailbox_cache.upsert(
-            author_pubkey.to_string(),
-            crate::substrate::ParsedRelayList {
-                read: Vec::new(),
-                write: write_urls.iter().map(|url| (*url).to_string()).collect(),
-                both: Vec::new(),
-            },
+        let _ = self.store.insert(
+            verified.clone(),
+            &"wss://seed".to_string(),
+            1_700_000_000_000,
         );
-        self.lifecycle
-            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
-                pubkey: author_pubkey.to_string(),
-                created_at: u64::MAX,
-            });
+        self.project_accepted_event(&verified);
     }
 
     /// Test seam for delivering a kind:3 contact list through the genuine

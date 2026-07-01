@@ -1,11 +1,9 @@
 //! Pure Nostr-protocol helpers used by the kernel's event processing path.
 //!
-//! Contains event-parsing utilities (`parse_profile`, `parse_relay_list`),
-//! display helpers (`short_hex`,
-//! `avatar_color`, `truncate`, `initials`), and predicate helpers
-//! (`is_hex_pubkey`, `event_references`). All functions are `pub(super)` or
-//! `pub(crate)` — they are internal kernel implementation details, not public
-//! NMP API.
+//! Contains kernel-local Nostr helpers that have not moved to owner crates:
+//! display helpers (`short_hex`, `truncate`) and predicate helpers
+//! (`is_hex_pubkey`). All functions are `pub(super)` or `pub(crate)` — they
+//! are internal kernel implementation details, not public NMP API.
 
 use super::Deserialize;
 // `DateTime`, `Local`, `SystemTime` are only consumed by `now_hms` below,

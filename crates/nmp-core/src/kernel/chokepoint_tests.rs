@@ -159,14 +159,14 @@ fn local_kind3_publish_fans_out_to_event_observers() {
     let author = keys.public_key().to_hex();
     let signed = signed_contact_list(&keys, FOLLOWED, 1_700_000_000);
 
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(author.clone());
+    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
-    kernel.active_account = Some(author.clone());
-    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert!(!outbound.is_empty(), "publish should have an outbox target");
@@ -211,14 +211,14 @@ fn relay_echo_of_local_kind3_does_not_double_fire_observers() {
     let author = keys.public_key().to_hex();
     let signed = signed_contact_list(&keys, FOLLOWED, 1_700_000_000);
 
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(author.clone());
+    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
-    kernel.active_account = Some(author.clone());
-    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert_eq!(
@@ -259,14 +259,14 @@ fn local_kind0_publish_fans_out_to_event_observers() {
     let author = keys.public_key().to_hex();
     let signed = signed_profile(&keys, "Nova", 1_700_000_000);
 
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(author.clone());
+    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
-    kernel.active_account = Some(author.clone());
-    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert!(!outbound.is_empty(), "publish should have an outbox target");
@@ -321,14 +321,14 @@ fn relay_echo_of_local_kind0_does_not_double_fire_observers() {
     let author = keys.public_key().to_hex();
     let signed = signed_profile(&keys, "Nova", 1_700_000_000);
 
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(author.clone());
+    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
+
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
-    kernel.active_account = Some(author.clone());
-    kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert_eq!(
@@ -394,13 +394,6 @@ fn local_kind10002_publish_notifies_event_observers_immediately() {
         "wss://seed",
         500,
     );
-    kernel.seed_mailbox_relay_list(
-        &author,
-        Vec::new(),
-        vec!["wss://write.test".to_string()],
-        Vec::new(),
-    );
-
     let slot = new_event_observer_slot();
     let observer = CapturingObserver::new();
     register_rust_observer(&slot, observer.clone());

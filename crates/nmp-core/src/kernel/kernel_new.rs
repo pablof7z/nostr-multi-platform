@@ -359,6 +359,13 @@ impl Kernel {
             snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
+        #[cfg(any(test, feature = "test-support"))]
+        {
+            let parser: Arc<dyn crate::substrate::IngestParser> = Arc::new(
+                crate::substrate::TestNip65RelayListParser::new(kernel.mailbox_cache_arc()),
+            );
+            kernel.register_ingest_parser(crate::kinds::KIND_RELAY_LIST, parser);
+        }
         if let Some(store) = store_bundle.relay_score_store {
             kernel.set_relay_score_store(store);
         }

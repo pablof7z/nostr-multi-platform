@@ -9,7 +9,6 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::publish::PublishTarget;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{RawEvent, VerifiedEvent};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_R1: &str = "wss://write-r1.test";
@@ -29,33 +28,7 @@ fn fake_signed(id: &str, author: &str, kind: u32, content: &str) -> SignedEvent 
 }
 
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_urls: &[&str]) {
-    let tags: Vec<Vec<String>> = write_urls
-        .iter()
-        .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
-        .collect();
-    let raw = RawEvent {
-        id: author_pubkey.to_string(),
-        pubkey: author_pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 10002,
-        tags,
-        content: String::new(),
-        sig: "0".repeat(128),
-    };
-    kernel
-        .store
-        .insert(
-            VerifiedEvent::from_raw_unchecked(raw),
-            &"wss://seed".to_string(),
-            0,
-        )
-        .expect("kind:10002 seed insert");
-    kernel.seed_mailbox_relay_list(
-        author_pubkey,
-        Vec::new(),
-        write_urls.iter().map(|url| (*url).to_string()).collect(),
-        Vec::new(),
-    );
+    kernel.seed_kind10002_for_test(author_pubkey, write_urls);
 }
 
 fn ok_payload<'a>(event_id: &'a str, accepted: bool, reason: &'a str) -> OkFramePayload<'a> {

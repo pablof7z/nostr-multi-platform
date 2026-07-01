@@ -4,7 +4,6 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::publish::PublishTarget;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{RawEvent, VerifiedEvent};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const RAW_NIP65_RELAY: &str = "wss://Relay.Ex/";
@@ -25,38 +24,7 @@ fn fake_signed(id: &str, author: &str) -> SignedEvent {
 }
 
 fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_url: &str) {
-    let raw = RawEvent {
-        // Use the author pubkey as the event id — guaranteed valid hex (64
-        // hex chars).  The old string "relayidentity" is not valid hex;
-        // V-70 strengthened `is_structurally_valid()` to check hex chars,
-        // so that synthetic event was rejected as Malformed.
-        id: author_pubkey.to_string(),
-        pubkey: author_pubkey.to_string(),
-        created_at: 1_700_000_000,
-        kind: 10002,
-        tags: vec![vec![
-            "r".to_string(),
-            write_url.to_string(),
-            "write".to_string(),
-        ]],
-        content: String::new(),
-        sig: "0".repeat(128),
-    };
-    let source = "wss://seed".to_string();
-    kernel
-        .store
-        .insert(
-            VerifiedEvent::from_raw_unchecked(raw),
-            &source,
-            1_700_000_000_000,
-        )
-        .expect("seed kind:10002");
-    kernel.seed_mailbox_relay_list(
-        author_pubkey,
-        Vec::new(),
-        vec![write_url.to_string()],
-        Vec::new(),
-    );
+    kernel.seed_kind10002_for_test(author_pubkey, &[write_url]);
 }
 
 fn ok_payload<'a>(event_id: &'a str) -> OkFramePayload<'a> {

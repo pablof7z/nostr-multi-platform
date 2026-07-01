@@ -33,7 +33,7 @@ fn cached_nip65_profile_claim_routes_kind0_to_author_write_relays() {
 
     let alice = hex64("a11ce");
     let alice_relay = "wss://alice-write.example";
-    kernel.seed_mailbox_relay_list(&alice, vec![], vec![alice_relay.to_string()], vec![]);
+    kernel.seed_kind10002_for_test(&alice, &[alice_relay]);
 
     let _ = kernel.resolve_ref(
             RefNamespace::Profile,

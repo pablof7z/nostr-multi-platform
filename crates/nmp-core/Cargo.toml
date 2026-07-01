@@ -64,7 +64,7 @@ native = [
 # Never enable in production builds. Forwards to `nmp-store/test-support` so
 # `VerifiedEvent::from_raw_unchecked` (used by every store harness + the kernel
 # replay tests) is reachable through the re-exported `nmp_core::store` path.
-test-support = ["nmp-store/test-support"]
+test-support = ["nmp-store/test-support", "dep:nmp-nip65-types"]
 # Enable the LMDB-backed EventStore. Forwards to nmp-store's lmdb-backend
 # feature (which pulls in the NMP-local nostr-lmdb fork, heed, and
 # nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
@@ -175,6 +175,7 @@ nmp-store = { path = "../nmp-store" }
 # compile unchanged. nmp-planner is a Layer-2 foundation with NO back-edge
 # into nmp-core — keeps the dep graph acyclic.
 nmp-planner = { path = "../nmp-planner" }
+nmp-nip65-types = { path = "../nmp-nip65-types", optional = true }
 
 # W1 — wasm-safe time shim. `web-time 1.1.0` is already in the workspace
 # Cargo.lock (transitive via egui/winit) — no new version enters the tree.
@@ -202,6 +203,7 @@ tempfile = "3"
 # `cfg(test)` gate into a cross-crate dependency; dev-deps activate the
 # feature only for the test profile, so production builds never see it.
 nmp-store = { path = "../nmp-store", features = ["test-support"] }
+nmp-nip65-types = { path = "../nmp-nip65-types" }
 
 # NIP golden-tag conformance suite. Drives the (crate-private) command handlers
 # through the `test-support` facade (`nmp_core::testing::ConformanceHarness`),
