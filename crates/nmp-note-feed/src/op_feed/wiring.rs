@@ -140,9 +140,8 @@ pub fn register_op_feed(
     follow_predicate: FollowPredicate,
     event_lookup: EventLookup,
 ) -> Arc<OpFeedEngine> {
-    // The home feed admits EVERY root the acquisition delivers (the followed
-    // authors' timeline is gated by the acquisition filter, not an engine-level
-    // admission predicate). The `follow_predicate` still gates reply
+    // Active-follows acquisition already gates which roots arrive. The engine
+    // admits every delivered root and uses `follow_predicate` only for reply
     // attribution.
     register_op_feed_with_admission(viewer, follow_predicate, admit_all_roots(), event_lookup)
 }

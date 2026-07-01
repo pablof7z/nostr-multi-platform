@@ -59,24 +59,24 @@ Relevant current evidence:
   consumer: it derives active follows from active account plus latest kind:3
   follows, writes a hot predicate read cache from graph effects, and emits
   typed source effects.
-- `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/resolve.rs`
+- `crates/nmp-native-runtime/src/op_feed_session/session_compile/resolve.rs`
   resolves `FeedScope::ActiveUserFollows` into `ActiveFollowSet`, resolver
   observed projection, live timeline shape, extra acquisition, and
   active-account identity observer.
-- `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/source.rs`
+- `crates/nmp-native-runtime/src/op_feed_session/session_compile/source.rs`
   defines `ReducedSource`, the current bundle of admission, attribution,
   acquisition children, live pull shape, reset hooks, and teardown ids.
-- `crates/nmp-native-runtime/src/op_feed_defaults/session_compile/session_engine.rs`
+- `crates/nmp-native-runtime/src/op_feed_session/session_compile/session_engine.rs`
   turns a `ReducedSource` into a feed session, including observer sync,
   dependent-interest replacement, pull controller, active-follow source-effect
   handling, legacy reset hooks for non-migrated scopes, and typed projection
   registration.
-- `crates/nmp-browser-runtime/src/feed.rs` has a separate home-feed compiler
+- `crates/nmp-browser-runtime/src/feed.rs` has a separate active-follows compiler
   path. That duplication should be treated as authority risk, not as a second
   implementation model to preserve.
-- `crates/nmp-note-feed/src/op_feed/wiring.rs` currently defines
-  `OP_FEED_SNAPSHOT_KEY = "nmp.feed.home"`. The reusable framework fact is the
-  OP feed schema/codec, not a framework-owned product projection key.
+- `crates/nmp-note-feed/src/op_feed/wiring.rs` owns the OP feed schema/codec.
+  That is the reusable framework fact. Product projection keys are
+  app/session-owned.
 - `crates/nmp-core/src/kernel/dependent_interests.rs` already has the kernel
   primitive that replaces a complete source-owned child-interest set and
   withdraws disappeared children.
@@ -97,8 +97,7 @@ Do not build the graph on top of the current accidental authorities.
   contact-cache authority for follow truth.
 - The product feed projection key must be app/session-owned. NMP can own
   `nmp.note_feed.opfeed`, the FlatBuffer file identifier, codecs, and compiler
-  mechanics. It should not own `"nmp.feed.home"` as the durable identity of an
-  application's home timeline.
+  mechanics. It must not own the durable identity of an application's timeline.
 - Native and browser runtime feed compilation must converge on the same
   `FeedParams -> source graph -> acquisition/projection effects` authority.
   Browser-specific host plumbing is fine; browser-specific product feed
@@ -152,14 +151,14 @@ For the active-follows consumer, the graph nodes are:
   kind:3 event currently being fanned out.
 - `active_follows`: value `BTreeSet<Pubkey>`, derived from contact truth plus
   self-inclusion when an active account exists.
-- `home_feed_source`: value containing admission/attribution predicates or
+- `active_follows_feed_source`: value containing admission/attribution predicates or
   their closed-data equivalent, derived from `active_follows`.
-- `home_feed_acquisition`: complete child-interest set:
+- `active_follows_feed_acquisition`: complete child-interest set:
   active account kind:3 source interest plus the primary/derived acquisition
   interest over active follows.
-- `home_feed_observed_shape`: live observed projection shape for replay/future
+- `active_follows_feed_observed_shape`: live observed projection shape for replay/future
   delivery to the feed engine.
-- `home_feed_projection`: dirty/reset signal for the app/session-owned
+- `active_follows_feed_projection`: dirty/reset signal for the app/session-owned
   projection key using the OP feed schema.
 
 The graph dispatcher should process a source invalidation once, topologically:
@@ -190,7 +189,7 @@ native/browser active-follows session effects. Apps keep the same declarative
    self-included active follow set and emits perspective-change source effects.
 
 2. Move the active-follow session wiring in
-   `op_feed_defaults/session_compile/resolve.rs` behind a graph-owned source:
+   `op_feed_session/session_compile/resolve.rs` behind a graph-owned source:
    it should declare the active account dependency, contact truth dependency,
    active follows value, live `InterestShape`, and extra acquisition set.
 
@@ -265,7 +264,7 @@ UniFFI surfaces, or the typed projection schemas.
    through the graph and source effects replace the previous reset callback.
 
 4. Unify active-follows feed source compilation:
-   move browser and native active-follow home feed compilation onto one
+   move browser and native active-follows feed compilation onto one
    graph-backed source compiler. Delete any no-active-account public fallback
    unless it is reintroduced as a separate signed-out product feed.
 
@@ -279,7 +278,7 @@ UniFFI surfaces, or the typed projection schemas.
    sessions: the graph source effect resets the feed window and marks the
    projection dirty exactly once per source turn when rows were visible.
 
-7. Move off framework-owned `nmp.feed.home` identity:
+7. Move off framework-owned feed identity:
    require the first graph-backed consumer to pass an app/session-owned
    projection key while reusing the OP feed schema and typed wire payload.
 
@@ -288,10 +287,9 @@ UniFFI surfaces, or the typed projection schemas.
    scopes keep their existing reset hooks until migrated.
 
 9. Add narrow ratchets:
-   block new positive app-facing examples that use framework-owned product keys
-   such as `"nmp.feed.home"`; require durable cache/read-model additions to
-   state their source-of-truth classification, writer, canonical input, and
-   invalidation/recompute path.
+   block new positive app-facing examples that use framework-owned product keys;
+   require durable cache/read-model additions to state their source-of-truth
+   classification, writer, canonical input, and invalidation/recompute path.
 
 ## Verification And Oracle Strategy
 

@@ -49,17 +49,17 @@ The publish resolver is likewise injected through a factory. Production uses
 
 `nmp_app_chirp_register` layers Chirp-specific registrations over reusable
 composition owners: NIP-29 actions, visible note relation actions including
-visible-target zap counts, optional wallet runtime, and the Chirp home timeline
-projection.
+visible-target zap counts, optional wallet runtime, and the Chirp following
+timeline projection.
 
-The home feed currently registers a `ModularTimelineProjection` under
-`"app.feed.home"` as both a feed controller and a typed snapshot sidecar
+The following feed currently registers a `ModularTimelineProjection` under an
+app-owned projection key as both a feed controller and a typed snapshot sidecar
 producer. The typed sidecar encodes the same current bounded window as the
 generic feed projection.
 
-## OP Feed Defaults
+## OP Feed Active-Follows Session
 
-`register_op_feed_defaults` exists as an OP-centric feed composition helper,
+`open_active_follows_op_feed` exists as an OP-centric feed composition helper,
 but it is not part of the app's base composition. Its docs say it wires
 `ActiveFollowSet`, an `OpFeedEngine`, a claim sink, an event lookup closure, and
 account-switch reset behavior. It explicitly does not register duplicate
@@ -70,7 +70,7 @@ follow-feed subscription expansion.
 
 `nmp_app_chirp_snapshot` still serializes a `ModularTimelineSnapshot` as JSON,
 but its doc comment marks it diagnostics-only. Runtime hosts are expected to
-consume the `"app.feed.home"` projection from the update stream.
+consume the app-owned feed projection from the update stream.
 
 ## Authority Notes
 

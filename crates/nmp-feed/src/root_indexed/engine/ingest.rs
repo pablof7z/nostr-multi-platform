@@ -61,8 +61,8 @@ where
         // #1740 step 3: the compiled perspective gates ROOTS, not just replies.
         // A root the perspective does not admit must NOT enter the feed (e.g. a
         // non-member author under a ContactList/ListMembers/Wot scope, or a
-        // right-side member under a Difference scope). The home feed passes
-        // `admit_all_roots`, so this is a no-op there.
+        // right-side member under a Difference scope). Acquisition-gated
+        // sessions can pass `admit_all_roots`, making this a no-op.
         if !(self.caps.root_admission)(event) {
             return false;
         }
@@ -118,7 +118,7 @@ where
         // #1740 step 3: the surfaced root of a repost is the TARGET, so the
         // perspective gates on the target when it is resolvable. When the target
         // is absent (the L-1 structural-placeholder path) the perspective is
-        // evaluated against the WRAPPER instead — so the home feed
+        // evaluated against the WRAPPER instead. An acquisition-gated session
         // (`admit_all_roots`) still keeps the placeholder, while a scoped feed
         // admits the placeholder only when the REPOSTER is in scope (a member's
         // repost surfaces even before its target resolves; a non-member's

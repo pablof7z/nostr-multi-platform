@@ -2,12 +2,12 @@
 //!
 //! THE composition-layer compiler [`crate::NmpApp::open_feed`] drives. It
 //! names both `NmpApp` and the op-feed instance in one breath (the same edge
-//! [`super::register_op_feed_defaults`] owns) — exactly why it lives in the
+//! [`super::open_active_follows_op_feed`] owns) — exactly why it lives in the
 //! native runtime and not in the C ABI wrapper (D0: `nmp-ffi` matches on no
 //! `FeedScope`). It is a SESSION
-//! WRAPPER over the existing home-feed mechanics, not a second feed engine (D4).
+//! WRAPPER over the existing OP-feed mechanics, not a second feed engine (D4).
 //!
-//! Step 3 added the CLOSED perspective compiler: every non-default scope routes
+//! Step 3 added the CLOSED perspective compiler: every feed scope routes
 //! through ONE path — `resolve::resolve_scope` compiles the typed scope into a
 //! COMPILED admission predicate ([`nmp_feed::AdmitExpr`] / a live framework
 //! projection — never an app closure) plus internal acquisition interests, and

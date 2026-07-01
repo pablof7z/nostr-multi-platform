@@ -35,7 +35,7 @@ Add exactly one generic C ABI symbol:
 void loadOlderFeed(const char *feed_key);
 ```
 
-`nmp-app-chirp` registers the reusable home feed under an app-owned
+`nmp-app-chirp` registers the reusable OP-centric feed under an app-owned
 snapshot-projection key such as `"chirp.timeline.home"`. iOS and the TUI read
 that value from the normal NMP update stream:
 

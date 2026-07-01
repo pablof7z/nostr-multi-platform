@@ -35,7 +35,7 @@ pub use nmp_core::projection_emission::{FrameIdentity, TypedProjectionEmissionSt
 ///
 /// Type alias for [`TypedProjectionEmissionState`]; the feed is a whole-value
 /// projection, so the generic state is used directly. All constructor and
-/// method calls pass through unchanged — existing `op_feed_defaults.rs` code
+/// method calls pass through unchanged — existing `op_feed_session.rs` code
 /// and tests need zero modifications.
 pub type FeedEmissionState = TypedProjectionEmissionState;
 

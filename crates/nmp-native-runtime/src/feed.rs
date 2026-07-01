@@ -108,7 +108,7 @@ mod primary_kind_validation_tests {
             admission: FeedAdmission::All,
             ranking: FeedRanking::ChronologicalDesc,
             window: FeedWindow::default(),
-            projection: ProjectionKey("app.feed.home".into()),
+            projection: ProjectionKey("app.feed.following".into()),
         }
     }
 }
@@ -125,7 +125,7 @@ mod feed_params_decode_tests {
               "admission": "All",
               "ranking": "ChronologicalDesc",
               "window": {{ "initial_limit": 80 }},
-              "projection": "app.feed.home"
+              "projection": "app.feed.following"
             }}"#
         )
     }

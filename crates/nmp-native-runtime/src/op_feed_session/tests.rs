@@ -13,7 +13,7 @@ use nmp_nip02::{ActiveFollowSet, LatestKind3FollowSet};
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nostr::{Event, EventBuilder, JsonUtil, Keys, SecretKey, Timestamp, ToBech32};
 
-const TEST_FEED_KEY: &str = "test.op.feed.home";
+const TEST_FEED_KEY: &str = "test.op.feed.following";
 
 fn kind3(author: &str, follows: &[&str]) -> KernelEvent {
     let mut tags: Vec<Vec<String>> = follows
@@ -177,12 +177,12 @@ fn provider_hydrates_shape_from_stored_kind3() {
     assert_eq!(shape.kinds, kinds);
 }
 
-/// Exercise the production default composition path, not just the helper shape
+/// Exercise the production active-follows composition path, not just the helper shape
 /// provider. A stored active-account kind:3 hydrates the session-owned active
 /// follows; a followed author's ingested note must then appear in the caller's
 /// typed projection.
 #[test]
-fn default_projection_renders_followed_note_from_stored_kind3() {
+fn active_follows_projection_renders_followed_note_from_stored_kind3() {
     let alice = keys_from_byte(11);
     let bob = keys_from_byte(12);
     let alice_pk = alice.public_key().to_hex();
@@ -193,17 +193,17 @@ fn default_projection_renders_followed_note_from_stored_kind3() {
 
     let app = crate::new_app();
     let projection = nmp_feed::ProjectionKey(TEST_FEED_KEY.to_string());
-    let defaults =
-        crate::register_op_feed_defaults(&app, alice_pk.clone(), vec![1], projection.clone());
+    let session =
+        crate::open_active_follows_op_feed(&app, alice_pk.clone(), vec![1], projection.clone());
     assert!(
-        defaults.handle.is_some(),
-        "default home feed opens through the ordinary feed-session compiler"
+        session.handle.is_some(),
+        "active-follows feed opens through the ordinary feed-session compiler"
     );
     assert!(
         app.registered_typed_projection_keys()
             .iter()
             .any(|key| key == &projection.0),
-        "default feed registers the caller-owned typed projection"
+        "feed session registers the caller-owned typed projection"
     );
 
     let (tx, rx) = channel::<()>();
@@ -222,7 +222,7 @@ fn default_projection_renders_followed_note_from_stored_kind3() {
         "signed active-account kind3 verifies and enters ingest"
     );
     wait_for(&rx, "active follows hydrated from stored kind3", || {
-        defaults.follow_set.follows().contains(&bob_pk)
+        session.follow_set.follows().contains(&bob_pk)
     });
     assert!(
         app.wait_barrier_for_test(Duration::from_secs(5)),
@@ -233,7 +233,7 @@ fn default_projection_renders_followed_note_from_stored_kind3() {
         app.inject_signed_event_json_for_test(&bob_note.as_json()),
         "signed followed-author note verifies and enters ingest"
     );
-    wait_for(&rx, "visible default home feed row", || {
+    wait_for(&rx, "visible active-follows feed row", || {
         visible_feed_ids(&app, &projection.0) == vec![bob_note_id.clone()]
     });
 

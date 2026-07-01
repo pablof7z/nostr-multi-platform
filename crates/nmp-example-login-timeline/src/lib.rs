@@ -26,8 +26,8 @@
 //! 1. [`register`] — install explicit named substrate/protocol features. This
 //!    mirrors the `nmp init` scaffold's ADR-0069 production composition path.
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
-//!    to [`nmp_native_runtime::register_op_feed_defaults`] wires the OP-centric home
-//!    feed (the following timeline): ingest fan-out, the live follow-set
+//!    to [`nmp_native_runtime::open_active_follows_op_feed`] wires the OP-centric
+//!    following feed: ingest fan-out, the live follow-set
 //!    predicate, the seq-ordered pull pager, and this app's typed projection.
 //!    The shell never names a relay, a filter, or a subscription.
 //! 3. [`render_home_rows`] — read the Rust-owned typed projection and turn it
@@ -106,7 +106,7 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
 /// for self-attribution); the live follow set is read from the kernel's
 /// active-account slot regardless, so this is advisory.
 pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<String>) {
-    let _defaults = nmp_native_runtime::register_op_feed_defaults(
+    let _session = nmp_native_runtime::open_active_follows_op_feed(
         app,
         viewer_pubkey_hex.into(),
         FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),
@@ -160,8 +160,8 @@ impl TimelineRow {
 /// Reads this example's typed FlatBuffers sidecar (`NNFS`) the kernel emits
 /// every tick, decodes it with the NMP-provided [`decode_op_feed_snapshot`], and
 /// maps each root card to a [`TimelineRow`]. This is exactly the projection→
-/// render contract a platform shell follows (iOS's `TypedHomeFeedDecoder` does
-/// the same decode over the same bytes).
+/// render contract a platform shell follows: decode the NNFS bytes and render
+/// rows from the same typed projection.
 ///
 /// Returns an empty vec before any note is ingested or if the projection is
 /// absent — the shell renders an empty list, never an error (aim.md doctrine 8:

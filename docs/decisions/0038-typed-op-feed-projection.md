@@ -57,8 +57,8 @@ tick.
 
 ## Consequences
 
-- App home feeds stay on the typed sidecar path from ADR-0037 without reserving
-  a framework-owned product key.
+- App following timelines stay on the typed sidecar path from ADR-0037 without
+  reserving a framework-owned product key.
 - The feed-window and content-tree ownership boundaries stay intact.
 - `nmp-nip01` remains a lower-level note/thread fact owner.
 - `nmp-core` remains unaware of OP-feed nouns.

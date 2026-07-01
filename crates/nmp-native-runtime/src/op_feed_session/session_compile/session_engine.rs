@@ -1,5 +1,4 @@
-//! The generalized session-engine builder for non-default feed scopes (#1740
-//! step 3).
+//! The generalized session-engine builder for feed scopes (#1740 step 3).
 //!
 //! Every [`nmp_feed::FeedScope`] compiles through here. The builder is a session
 //! wrapper over the existing OP-feed mechanics, parameterized on:
@@ -122,8 +121,8 @@ fn build_op_scope_session(
     //
     // Root admission gates events that may enter the feed as roots. Attribution
     // gates authors whose replies/reposts may surface or annotate roots. These
-    // are related but not the same: a followed reply can surface a non-followed
-    // root in the default home feed.
+    // are related but not the same: an admitted attribution can surface a root
+    // whose author is not directly admitted by the source set.
     let root_admission: RootAdmission = admission;
     let follow_predicate = attribution;
     let event_store = app.event_store_handle();
@@ -191,10 +190,9 @@ fn build_op_scope_session(
     // ── 3b. Typed NNFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
     //         PAIRED under the session key (ADR-0063 D7, #1671 Lane H, #1740) ────
     //
-    // Mirrors the home feed's typed projection so an `NNFS`-aware host renders the
+    // Emits the NNFS typed projection so an `NNFS`-aware host renders the
     // session's window from the typed payload (generic `Value` fallback for
-    // others). Sessions emit always (no incremental-apply omit bookkeeping — a
-    // session feed is short-lived; the home path owns the omit optimization).
+    // others). Sessions emit always (no incremental-apply omit bookkeeping).
     //
     // CRITICAL (the #1740 unblocker): route BOTH lanes through ONE
     // `FeedRenderSource` via `register_feed_render_source` — NOT the bare

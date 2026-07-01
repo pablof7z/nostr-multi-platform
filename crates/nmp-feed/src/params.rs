@@ -143,13 +143,13 @@ pub type FeedScope = PubkeySetExpr;
 
 /// (a) RENDER MODE — how the session projects acquired, admitted rows.
 ///
-/// `OpCentric` produces the default home-feed-style reply rollup (OP-feed engine).
+/// `OpCentric` produces a root-indexed reply rollup (OP-feed engine).
 /// `Flat` produces a flat list with empty attribution (NIP-01 FlatFeed engine),
 /// used for profile and thread screens.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum FeedRender {
     /// Reply-centric: replies roll up as attribution under their parent OP.
-    /// (home-feed style, OP-feed engine)
+    /// (root-indexed OP-feed engine)
     OpCentric,
     /// Flat: every matching event is a top-level row; no attribution nesting.
     /// (profile/thread style, FlatFeed engine)

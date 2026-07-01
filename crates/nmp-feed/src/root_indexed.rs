@@ -1,6 +1,6 @@
-//! Generic OP-centric home-feed engine.
+//! Generic OP-centric root-indexed feed engine.
 //!
-//! The home feed is a stream of **thread roots only**; a followed author's
+//! An OP-centric feed is a stream of **thread roots only**; a followed author's
 //! reply to a non-followed root surfaces that root with the reply as
 //! *attribution* metadata. This module owns the substrate-generic state
 //! machine ([`RootIndexedFeed`]) and its value types ([`AttributionPayload`],

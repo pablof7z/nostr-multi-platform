@@ -81,9 +81,9 @@ pub(super) struct ReducedSource {
     /// The OP-feed attribution predicate.
     ///
     /// This is intentionally separate from root admission. A followed user's
-    /// reply can surface a non-followed root in the home feed: the root enters
-    /// because it is referenced by an admitted attribution, not because the root
-    /// author is part of the source set.
+    /// reply can surface a root whose author is outside the source set: the root
+    /// enters because it is referenced by an admitted attribution, not because
+    /// the root author is part of the source set.
     pub attribution: FollowPredicate,
     /// Fixed typed acquisition interests.
     pub interests: Vec<AcquisitionInterest>,
@@ -102,7 +102,7 @@ pub(super) struct ReducedSource {
     pub identity_observer_ids: Vec<crate::IdentityChangeObserverId>,
     /// Resolver-owned dynamic observers that need custom teardown.
     pub resolver_teardown: Vec<TeardownAction>,
-    /// Active-follow owner retained for the default home-feed artifact surface.
+    /// Active-follow owner retained for active-follows session diagnostics.
     /// Session reactivity is carried by `source_effect_hooks`.
     pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
 }

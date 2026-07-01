@@ -1,7 +1,7 @@
 //! `NmpApp::open_feed` / `close_feed` proofs over the EXISTING feed mechanics
 //! (#1740 step 2).
 //!
-//! The compiler used here drives the SAME primitives the home feed uses
+//! The compiler used here drives the SAME primitives the feed-session path uses
 //! (`register_feed` + `open_observed_projection` +
 //! `register_typed_snapshot_projection`), so these prove the session wrapper composes
 //! over real registrations: open returns a handle with a projection key + id,
@@ -54,7 +54,7 @@ impl ObservedProjectionSink for StubFeed {
     }
 }
 
-fn home_params() -> FeedParams {
+fn following_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         render: FeedRender::OpCentric,
@@ -62,15 +62,15 @@ fn home_params() -> FeedParams {
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
-        projection: ProjectionKey("test.feed.home".into()),
+        projection: ProjectionKey("test.feed.following".into()),
     }
 }
 
-/// A compiler that wires the active-follows home feed over the existing
+/// A compiler that wires an active-follows feed session over the existing
 /// mechanics and returns a teardown recipe that reuses the existing
 /// `unregister_feed` path. Holds the feed `Arc` so the test can watch its
 /// strong count fall after teardown drops the registry's references.
-fn home_compiler(
+fn following_compiler(
     feed: Arc<StubFeed>,
 ) -> impl Fn(
     &NmpApp,
@@ -80,7 +80,7 @@ fn home_compiler(
     move |app: &NmpApp, params: &FeedParams, _kinds: &std::collections::BTreeSet<u32>| {
         // `open_feed` has already validated the primary kinds at the seam, so the
         // compiler receives a pre-validated acquisition set. Only the
-        // active-follows home scope is wired by the compiler used in this
+        // active-follows scope is wired by the compiler used in this
         // runtime-level test; anything else fails closed (mirrors the real
         // native-runtime compiler's contract).
         if params.acquisition != FeedScope::ActiveUserFollows {
@@ -89,7 +89,7 @@ fn home_compiler(
             });
         }
         let key = params.projection.0.clone();
-        // Register over the EXISTING mechanics, exactly as the home feed does:
+        // Register over the EXISTING mechanics, exactly as the feed-session path does:
         // a permanent controller (output) + a declared observed projection
         // (returns an id) + a typed sidecar projection under the same key.
         let controller: Arc<dyn FeedController> = feed.clone();
@@ -128,14 +128,14 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
     {
         let app = app.as_ref();
         let feed = StubFeed::new();
-        let params = home_params();
+        let params = following_params();
         let handle = app
-            .open_feed(&params, &home_compiler(feed.clone()))
-            .expect("active-follows home opens");
+            .open_feed(&params, &following_compiler(feed.clone()))
+            .expect("active-follows feed opens");
 
         assert_eq!(
             handle.projection_key,
-            ProjectionKey("test.feed.home".into()),
+            ProjectionKey("test.feed.following".into()),
             "handle carries the projection key"
         );
         assert_ne!(handle.session_id.0, 0, "minted a real session id");
@@ -145,7 +145,7 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
         // The session produces rows/sidecar via the existing mechanics: the
         // registered controller is reachable.
         assert!(
-            app.load_older_feed("test.feed.home"),
+            app.load_older_feed("test.feed.following"),
             "registered controller reachable through the existing feed registry"
         );
     }
@@ -157,15 +157,15 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
     {
         let app = app.as_ref();
         let feed = StubFeed::new();
-        let params = home_params();
+        let params = following_params();
         let handle = app
-            .open_feed(&params, &home_compiler(feed.clone()))
+            .open_feed(&params, &following_compiler(feed.clone()))
             .expect("opens");
 
         // Before close: controller reachable, session live, and the feed `Arc`
         // is held by BOTH the controller and the observer registry (plus the
         // local `feed` binding) → strong count > 1.
-        assert!(app.load_older_feed("test.feed.home"));
+        assert!(app.load_older_feed("test.feed.following"));
         let strong_before = Arc::strong_count(&feed);
         assert!(
             strong_before >= 3,
@@ -185,7 +185,7 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         );
         // 2. the controller is unreachable (registry dropped it).
         assert!(
-            !app.load_older_feed("test.feed.home"),
+            !app.load_older_feed("test.feed.following"),
             "controller unreachable after close"
         );
         // 3. the observer registry released its `Arc` clone — strong count fell.
@@ -208,7 +208,7 @@ fn close_feed_is_idempotent_double_close_is_a_noop() {
         let app = app.as_ref();
         let feed = StubFeed::new();
         let handle = app
-            .open_feed(&home_params(), &home_compiler(feed))
+            .open_feed(&following_params(), &following_compiler(feed))
             .expect("opens");
 
         assert!(app.close_feed(&handle), "first close tears down");
@@ -228,13 +228,13 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         let app = app.as_ref();
         let feed = StubFeed::new();
         // A scope the compiler does not wire (e.g. a hashtag firehose).
-        let mut params = home_params();
+        let mut params = following_params();
         params.acquisition = FeedScope::Tag {
             term: nmp_feed::TagTerm("nostr".into()),
         };
 
         let err = app
-            .open_feed(&params, &home_compiler(feed))
+            .open_feed(&params, &following_compiler(feed))
             .expect_err("unsupported scope must fail closed");
         assert!(
             matches!(err, FeedOpenError::ScopeNotSupportedYet { .. }),
@@ -243,7 +243,7 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         // Nothing was registered and no session minted.
         assert_eq!(app.live_feed_session_count(), 0, "no session leaked");
         assert!(
-            !app.load_older_feed("test.feed.home"),
+            !app.load_older_feed("test.feed.following"),
             "no controller registered for a fail-closed open"
         );
     }
@@ -266,7 +266,7 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
             ran_c.fetch_add(1, Ordering::SeqCst);
             unreachable!("compiler must not run for invalid primary kinds");
         };
-        let mut params = home_params();
+        let mut params = following_params();
         params.primary_kinds = vec![1, 6]; // kind 6 is a repost wrapper → reject
 
         let err = app.open_feed(&params, &compiler).expect_err("rejected");
@@ -330,7 +330,7 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
             })
         };
 
-        let key = "test.feed.home";
+        let key = "test.feed.following";
         let clear_acquisition: TeardownAction = Box::new(move || {
             let _ = clear_sender.send(ActorCommand::Interests(
                 InterestsCommand::ReplaceDependentInterestSet {
