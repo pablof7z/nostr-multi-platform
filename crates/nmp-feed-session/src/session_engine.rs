@@ -230,7 +230,8 @@ fn build_op_scope_session(
     // children immediately; teardown sends the empty set. The session never
     // serializes shapes to NIP-01 JSON or tracks a private open log.
     let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, interests, sender.clone())?;
+    let acquisition_adapter =
+        FeedSessionTrellisAdapter::new(key, FeedRender::OpCentric, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
 
     // Wire each projection-set change to re-sync acquisition for the new
@@ -241,13 +242,10 @@ fn build_op_scope_session(
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
-            if controller_for_reset.reset() {
-                notify.mark_changed_since_emit();
-            }
+            acquisition_adapter.rebaseline_output_if_changed(controller_for_reset.reset());
         });
         hook(reset_trigger);
     }
@@ -257,13 +255,10 @@ fn build_op_scope_session(
         let extra = extra_acquisition.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let sync_observer = engine_observer.clone();
-        let notify = sender.clone();
         let source_effect_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
             acquisition_adapter.sync(&extra, "feed-session-acquisition");
-            if controller_for_reset.reset() {
-                notify.mark_changed_since_emit();
-            }
+            acquisition_adapter.rebaseline_output_if_changed(controller_for_reset.reset());
         });
         hook(source_effect_trigger);
     }
@@ -274,13 +269,11 @@ fn build_op_scope_session(
     //   1. unregister the controller            (registry removal, runs first)
     //   2. revoke the engine ingest observer
     //   3. revoke each resolver observer
-    //   4. remove the projection
-    //   5. close Trellis acquisition scope      (WITHDRAW actor-owned state)
-    //   6. mark-changed                          (the notification, runs last)
+    //   4. close Trellis session scope          (clear output + WITHDRAW actor state)
+    //   5. mark-changed                         (the notification, runs last)
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
-    teardown.push(app.mark_changed_action()); // exec #6 (last)
-    teardown.push(acquisition_adapter.close_action()); // exec #5
-    teardown.push(app.remove_projection_action(key.to_string())); // exec #4
+    teardown.push(app.mark_changed_action()); // exec #5 (last)
+    teardown.push(acquisition_adapter.close_action(app.remove_projection_action(key.to_string()))); // exec #4
     for id in resolver_observer_ids {
         let handle = app.observed_projection_handle();
         teardown.push(Box::new(move || handle.close(id)));
