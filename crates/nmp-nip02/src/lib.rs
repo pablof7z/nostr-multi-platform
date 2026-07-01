@@ -10,7 +10,7 @@
 //! | `nmp.unfollow` | kind:3    | NIP-02 | Unfollow |
 //!
 //! Alongside the action modules and the [`FollowListProjection`] read model,
-//! this crate hosts [`ActiveFollowSet`] — the OP-centric home feed's (V-80)
+//! this crate hosts [`ActiveFollowSet`] — the active-follow feed's (V-80)
 //! follow-set *producer*. It exposes the active account's follows as a live
 //! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic `RootIndexedFeed`
 //! engine in `nmp-feed` consumes, with follow → planner-interest expansion done

@@ -517,7 +517,7 @@ pub(crate) struct KernelSnapshot {
     // V-112 (ADR-0042): `author_view` and `thread_view` deleted.
     // #1610: the JSON-era `"timeline"`, `"inserted"`, `"updated"`, `"removed"`
     // projection slots were removed from the codegen registry and from the Swift
-    // shell surface; the typed feed ships via `app.feed.home` (`OpFeedSnapshot`).
+    // shell surface; typed feeds ship through app-owned session keys.
     pub(super) metrics: Metrics,
     pub(super) relay_status: RelayStatus,
     pub(super) relay_statuses: Vec<RelayStatus>,

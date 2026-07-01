@@ -31,8 +31,9 @@ arbitrary bytes.
 The generic tree remains useful for low-frequency projections. The hot path can
 avoid string-keyed tree walking by attaching a typed sidecar keyed by projection
 name, schema id, schema version, and FlatBuffers file identifier. For example,
-the `app.feed.home` projection can be decoded through a schema owned outside
-`nmp-core` while the core transport sees only opaque bytes.
+an app-owned feed session key such as `microblog.timeline.home` can be decoded
+through a schema owned outside `nmp-core` while the core transport sees only
+opaque bytes.
 
 The transport code path is `crates/nmp-core/src/update_envelope.rs` over the
 schema in `crates/nmp-core/schema/nmp_update.fbs`. Its current constants are:
@@ -52,10 +53,10 @@ both representations may exist for the same projection key.
 This rule keeps transport backward-compatible without creating an app-specific
 union inside `nmp-core`.
 
-Host adoption is not global. `chirp-tui` currently decodes typed
-`app.feed.home` sidecars and merges the typed result back into the generic
-projection slot used by its renderer. iOS has generated bindings and a typed
-home-feed decoder, but the live render path should be verified from
+Host adoption is not global. `chirp-tui` currently decodes typed app-feed
+sidecars and merges the typed result back into the generic projection slot used
+by its renderer. iOS has generated bindings and a typed feed decoder, but the
+live render path should be verified from
 `KernelUpdateFrameDecoder` and `KernelBridge` before claiming typed feed render
 adoption. Android gallery decodes the generic tree in the inspected source set.
 
@@ -63,8 +64,8 @@ adoption. Android gallery decodes the generic tree in the inspected source set.
 
 The sidecar descriptor prevents schema ownership from drifting into the
 transport layer. `nmp-core` owns the envelope. `nmp-feed` owns feed-window
-structure (`nmp.feed.window` / `NFWM`). `nmp-nip01` owns the home timeline
-payload (`nmp.nip01.timeline` / `NFTS`). `nmp-content` owns content-tree typed
+structure (`nmp.feed.window` / `NFWM`). `nmp-nip01` owns reusable note timeline
+payloads (`nmp.nip01.timeline` / `NFTS`). `nmp-content` owns content-tree typed
 subpayloads.
 
 The boundary is the important fact: a new app projection should not add a union

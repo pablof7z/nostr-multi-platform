@@ -39,7 +39,7 @@ const SEED_CONTENT: &str =
 /// The test seeds a kind:1 note into the kernel's in-memory store with ZERO
 /// relay connections and asserts that the seeded event id appears in both
 /// `kernel.events` (the flat id→StoredEvent lookup map) and `kernel.timeline`
-/// (the ordered id deque used for home-feed and FlatFeed projections).
+/// (the ordered id deque used for app-owned timeline and FlatFeed projections).
 ///
 /// Falsifiability: if the offline store-read path or the ingest_pre_verified
 /// dispatch breaks, `kernel.events` will be empty or missing the seeded entry,

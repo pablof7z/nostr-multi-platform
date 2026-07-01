@@ -1,4 +1,4 @@
-//! Browser home-feed reply-attribution gates.
+//! Browser app-feed reply-attribution gates.
 
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 use nmp_core::RelayFrame;

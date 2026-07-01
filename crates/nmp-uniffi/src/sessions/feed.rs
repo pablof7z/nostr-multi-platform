@@ -47,7 +47,7 @@ use crate::NmpApp;
 
 /// Opaque handle for a feed session opened via `open_feed_json`.
 ///
-/// `projection_key` — the NMPU snapshot key (e.g. `"app.feed.home"`) the host
+/// `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
 ///   subscribes to for feed-frame updates. Pass it to `load_older_feed` for
 ///   viewport paging commands.
 /// `session_id` — the numeric session id; pass it to `close_feed_session` for
@@ -66,7 +66,7 @@ impl NmpApp {
     ///
     /// `key` is the projection key of the
     /// feed to page (the same string returned in `FeedSessionHandle.projection_key`
-    /// or a well-known constant like `"app.feed.home"`). Returns `true` when the
+    /// or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
     /// viewport cursor actually changed; `false` for an unknown key or when
     /// already at the oldest page (D6: always succeeds, never panics).
     pub fn load_older_feed(&self, key: String) -> bool {

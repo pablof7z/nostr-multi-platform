@@ -1343,7 +1343,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 23158.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 39842.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
@@ -2043,7 +2043,7 @@ public interface NmpAppInterface {
      *
      * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a well-known constant like `"app.feed.home"`). Returns `true` when the
+     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
      * already at the oldest page (D6: always succeeds, never panics).
      */
@@ -2788,7 +2788,7 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      *
      * `key` is the projection key of the
      * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a well-known constant like `"app.feed.home"`). Returns `true` when the
+     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
      * viewport cursor actually changed; `false` for an unknown key or when
      * already at the oldest page (D6: always succeeds, never panics).
      */override fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean {
@@ -3537,7 +3537,7 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
 /**
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
- * `projection_key` — the NMPU snapshot key (e.g. `"app.feed.home"`) the host
+ * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
  * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
  * viewport paging commands.
  * `session_id` — the numeric session id; pass it to `close_feed_session` for
