@@ -1,9 +1,9 @@
 # Reactive Source Graph Target
 
-Status: WIP / draft target architecture. This is not an ADR and does not claim
-that existing ADRs settle the matter. Existing ADRs, docs, and code are evidence
-of the architecture that exists today; this file sketches the re-architecture
-target for one first consumer.
+Status: WIP / draft target architecture plus initial scaffolding. This is not
+an ADR and does not claim that existing ADRs settle the matter. Existing ADRs,
+docs, and code are evidence of the architecture that exists today; this file
+sketches the re-architecture target for one first consumer.
 
 Audience: framework contributors. App APIs must not expose generic
 `Signal`/Rx/observable streams in this first step. The graph described here is
@@ -109,6 +109,11 @@ Do not build the graph on top of the current accidental authorities.
 Add an internal reactive source graph as a Rust substrate, probably near the
 native-runtime/feed composition layer first, then factored downward only once the
 boundaries prove stable.
+
+Initial scaffolding now lives in `nmp_core::reactive_source_graph`. It provides
+typed node ids, input updates, derived values, effect nodes, deterministic
+batched propagation, and per-node revisions. It is not wired to feed sessions
+yet.
 
 Core concepts:
 
@@ -230,9 +235,10 @@ UniFFI surfaces, or the typed projection schemas.
 
 ## PR-Sized Implementation Slices
 
-1. Add graph scaffolding with no behavior change:
-   internal node ids, revision tracking, dependency registration, topological
-   recompute, and unit tests over synthetic nodes.
+1. Add graph scaffolding with no behavior change: implemented in
+   `nmp_core::reactive_source_graph` with internal node ids, revision tracking,
+   dependency registration, deterministic recompute, and unit tests over
+   synthetic nodes.
 
 2. Wrap active-account/contact truth:
    graph nodes for active account and active contact truth, fed from existing

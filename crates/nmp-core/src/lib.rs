@@ -158,6 +158,8 @@ pub(crate) mod store {
     pub use nmp_store::*;
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
+#[doc(hidden)]
+pub mod reactive_source_graph; // Internal source dependency graph substrate for typed read sessions.
 pub mod refs; // ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
               // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
               // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
