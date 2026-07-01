@@ -79,6 +79,16 @@ pub(crate) fn sign_in(app: *mut NmpApp, keys: &Keys) {
     unsafe { &*app }.signin_nsec_for_test(nsec, true);
 }
 
+pub(crate) fn add_inactive_signer(app: *mut NmpApp, keys: &Keys) {
+    let nsec = keys.secret_key().to_bech32().expect("nsec bech32");
+    // SAFETY: app is a valid, non-null pointer.
+    unsafe { &*app }.signin_nsec_for_test(nsec, false);
+    assert!(
+        unsafe { &*app }.wait_barrier_for_test(Duration::from_millis(5_000)),
+        "inactive signer registration must drain"
+    );
+}
+
 pub(crate) fn wait_active(rx: &Receiver<()>, app: &NmpApp, pubkey: &str) {
     wait_for(rx, "active account", || {
         app.active_account_handle().lock().unwrap().as_deref() == Some(pubkey)

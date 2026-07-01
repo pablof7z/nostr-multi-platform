@@ -329,6 +329,98 @@ fn active_follows_account_switch_withdraws_old_relay_source() {
 }
 
 #[test]
+fn active_follows_switch_active_reroutes_existing_feed_without_reopen() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+
+    let account1 = keys_from_byte(60);
+    let account2 = keys_from_byte(61);
+    let bob = keys_from_byte(62);
+    let carol = keys_from_byte(63);
+    let dave = keys_from_byte(64);
+    let erin = keys_from_byte(65);
+    let account1_pk = account1.public_key().to_hex();
+    let account2_pk = account2.public_key().to_hex();
+    let bob_pk = bob.public_key().to_hex();
+    let carol_pk = carol.public_key().to_hex();
+    let dave_pk = dave.public_key().to_hex();
+    let erin_pk = erin.public_key().to_hex();
+
+    let account1_contacts =
+        signed_contact_list(&account1, &[bob_pk.clone(), carol_pk.clone()], 100);
+    let account2_contacts =
+        signed_contact_list(&account2, &[dave_pk.clone(), erin_pk.clone()], 101);
+    let bob_note = signed_note(&bob, "account1 follows bob", 110);
+    let carol_note = signed_note(&carol, "account1 follows carol", 111);
+    let dave_note = signed_note(&dave, "account2 follows dave", 120);
+    let erin_note = signed_note(&erin, "account2 follows erin", 121);
+    let account1_note_ids = vec![carol_note.id.to_hex(), bob_note.id.to_hex()];
+    let account2_note_ids = vec![erin_note.id.to_hex(), dave_note.id.to_hex()];
+
+    let mut relay = RecordingRelay::spawn(vec![
+        account1_contacts,
+        account2_contacts,
+        bob_note,
+        carol_note,
+        dave_note,
+        erin_note,
+    ]);
+    let app = new_started_reduced_source_app();
+    add_relay(app, relay.url());
+    sign_in(app, &account1);
+    let app_ref = unsafe { &*app };
+    wait_active(&rx, app_ref, &account1_pk);
+    add_inactive_signer(app, &account2);
+    wait_active(&rx, app_ref, &account1_pk);
+
+    let key = "test.relay.active-follows.switch-active";
+    let _handle = app_ref
+        .open_feed(&active_follows_params(key), &compiler)
+        .expect("active follows opens once");
+
+    relay.wait_req("account1 active-account kind:3 source", |filter| {
+        has_kind(filter, 3) && has_author(filter, &account1_pk)
+    });
+    let account1_req = relay.wait_req("account1 followed-author sub", |filter| {
+        has_kind(filter, 1)
+            && has_author(filter, &bob_pk)
+            && has_author(filter, &carol_pk)
+            && !has_author(filter, &dave_pk)
+            && !has_author(filter, &erin_pk)
+    });
+    wait_feed_ids(&rx, app_ref, key, &account1_note_ids);
+
+    app_ref.switch_active(account2_pk.clone());
+    wait_active(&rx, app_ref, &account2_pk);
+    relay.wait_close(
+        "switch closes account1 followed-author sub",
+        &account1_req.sub_id,
+    );
+    relay.wait_req("account2 active-account kind:3 source", |filter| {
+        has_kind(filter, 3) && has_author(filter, &account2_pk)
+    });
+    let account2_req = relay.wait_req("account2 followed-author sub", |filter| {
+        has_kind(filter, 1)
+            && has_author(filter, &dave_pk)
+            && has_author(filter, &erin_pk)
+            && !has_author(filter, &bob_pk)
+            && !has_author(filter, &carol_pk)
+    });
+    wait_feed_ids(&rx, app_ref, key, &account2_note_ids);
+
+    app_ref.switch_active(account1_pk.clone());
+    wait_active(&rx, app_ref, &account1_pk);
+    relay.wait_close(
+        "switch back closes account2 followed-author sub",
+        &account2_req.sub_id,
+    );
+    wait_feed_ids(&rx, app_ref, key, &account1_note_ids);
+
+    unsafe { drop(Box::from_raw(app)) };
+    uninstall_update_signal();
+}
+
+#[test]
 fn active_mute_list_relay_uses_same_reduced_source_lifecycle() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let rx = install_update_signal();
