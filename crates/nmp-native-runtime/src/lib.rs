@@ -32,6 +32,7 @@ mod intent;
 mod keyring_forget;
 #[cfg(feature = "marmot")]
 mod marmot;
+mod observed_feed_source;
 mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;

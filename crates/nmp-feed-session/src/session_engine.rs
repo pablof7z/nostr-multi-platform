@@ -336,14 +336,14 @@ pub(super) fn session_acquisition_owner(key: &str) -> SubOwnerKey {
     SubOwnerKey::new(("feed-session-acquisition", key))
 }
 
-pub(super) fn interest_scope_code(scope: InterestScope) -> u32 {
+pub(crate) fn interest_scope_code(scope: InterestScope) -> u32 {
     match scope {
         InterestScope::ActiveAccount | InterestScope::Account(_) => 0,
         InterestScope::Global => 1,
     }
 }
 
-pub(super) fn clear_acquisition_set(
+pub(crate) fn clear_acquisition_set(
     sender: nmp_core::CommandSender,
     owner: SubOwnerKey,
 ) -> nmp_feed::TeardownAction {

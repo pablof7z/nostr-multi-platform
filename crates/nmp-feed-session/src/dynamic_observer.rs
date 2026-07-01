@@ -15,7 +15,7 @@ use nmp_planner::InterestShape;
 type LiveShapes = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
 
 #[derive(Clone)]
-pub(super) struct DynamicObservedProjectionSet {
+pub(crate) struct DynamicObservedProjectionSet {
     handle: ObservedProjectionCommandHandle,
     observer: Arc<dyn ObservedProjectionSink>,
     consumer_id: String,
@@ -26,7 +26,7 @@ pub(super) struct DynamicObservedProjectionSet {
 }
 
 impl DynamicObservedProjectionSet {
-    pub(super) fn new(
+    pub(crate) fn new(
         handle: ObservedProjectionCommandHandle,
         observer: Arc<dyn ObservedProjectionSink>,
         consumer_id: impl Into<String>,
@@ -45,7 +45,7 @@ impl DynamicObservedProjectionSet {
         }
     }
 
-    pub(super) fn sync(&self) {
+    pub(crate) fn sync(&self) {
         let desired = dedupe_shapes((self.live_shapes)());
         let Ok(mut current) = self.current.lock() else {
             return;
@@ -70,7 +70,7 @@ impl DynamicObservedProjectionSet {
         }
     }
 
-    pub(super) fn teardown_action(&self) -> TeardownAction {
+    pub(crate) fn teardown_action(&self) -> TeardownAction {
         let this = self.clone();
         Box::new(move || this.close_current())
     }
