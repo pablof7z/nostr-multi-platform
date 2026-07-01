@@ -108,12 +108,36 @@ pub trait UpdateSink: Send + Sync {
 /// 5. `shutdown()` — explicit teardown; `Arc` drop is the fallback.
 #[derive(uniffi::Object)]
 pub struct NmpApp {
-    /// Inner runtime handle. `pub` so `nmp-app-gallery::nmp_app_gallery_register_uniffi`
-    /// and `nmp_uniffi_set_storage_path` can access the inner `RuntimeApp` for
-    /// gallery-specific pre-start composition and storage-path bridging. Not exposed
-    /// through UniFFI — Swift/Kotlin never see this field.
-    pub inner: RuntimeApp,
+    /// Inner runtime handle. App-specific composition roots must use the
+    /// constrained pre-start facade hook below instead of reaching through
+    /// the UniFFI object and owning native runtime internals.
+    inner: RuntimeApp,
     search_handles: Mutex<BTreeMap<String, nmp_native_runtime::Nip50SearchHandle>>,
+}
+
+impl NmpApp {
+    /// Run an app-owned composition installer against the runtime before
+    /// `start`.
+    ///
+    /// This is intentionally Rust-only. It exists for app facade crates that
+    /// must install proprietary composition while native shells are holding the
+    /// generated UniFFI object. Do not use this for lifecycle, dispatch, refs,
+    /// storage, or any operation that already has a typed UniFFI method.
+    #[allow(invalid_reference_casting)]
+    pub fn configure_pre_start_for_app_facade<R>(
+        &self,
+        configure: impl FnOnce(&mut RuntimeApp) -> R,
+    ) -> R {
+        // SAFETY: app facade crates call this during one-shot composition before
+        // `start`, while no runtime actor exists and no shell callback can
+        // observe `inner`. The raw cast is centralized here so app crates do not
+        // own `NmpApp` internals or duplicate Arc-pointer mutation logic.
+        let inner = unsafe {
+            let ptr = std::ptr::addr_of!(self.inner) as *mut RuntimeApp;
+            &mut *ptr
+        };
+        configure(inner)
+    }
 }
 
 #[uniffi::export]

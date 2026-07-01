@@ -8,13 +8,12 @@
 //!
 //! # Surface
 //!
-//! The crate adds four `#[no_mangle]` symbols:
+//! The crate adds gallery-owned `#[no_mangle]` symbols:
 //!
 //! * [`nmp_app_gallery_register`] — explicit gallery composition installer for
 //!   C-ABI `*mut NmpApp` pointers (from the raw `new_app()` path).
 //! * [`nmp_app_gallery_register_uniffi`] — gallery composition bridge for UniFFI
-//!   Arc pointers (post M14 shell migration path).
-//! * [`nmp_uniffi_set_storage_path`] — set storage path via UniFFI Arc pointer.
+//!   Arc pointers (bridge-private Android composition shim).
 //! * [`showcase::nmp_app_gallery_showcase_references_json`] — borrowed JSON
 //!   pointer for the shared gallery references used by every host shell.
 //! * [`nmp_app_gallery_snapshot_json_from_update_frame`] — owned JSON snapshot
@@ -43,7 +42,8 @@
 // when building with the `android-ffi` feature (cargo ndk build).
 // Post M14 shell-2: the NmpApp lifecycle is owned by the UniFFI NmpApp Kotlin
 // class; the `android` module only contains gallery-owned JNI symbols that have
-// no UniFFI counterpart (showcase/registry JSON, snapshot decode, URI adapters).
+// no UniFFI counterpart (composition registration, showcase/registry JSON,
+// snapshot decode, and URI decoding).
 #[cfg(feature = "android-ffi")]
 mod android;
 // ADR-0064 / Cut-B (#1756) — typed byte-doorway dispatch seam. Native-only:
@@ -63,62 +63,7 @@ mod snapshot_json;
 pub mod registry;
 pub mod showcase;
 
-use std::ffi::{c_char, c_void, CStr, CString};
-
-/// Dispatch a gallery action through the typed byte doorway (ADR-0064 / Cut-B,
-/// #1756).
-///
-/// The iOS shell passes `namespace` (the action's HOST namespace, e.g.
-/// `nmp.publish`) and `body_json` (the canonical serde action body). This
-/// function encodes the typed `ActionPayload` bytes via
-/// [`dispatch_bytes::dispatch_action_bytes_for`] and dispatches them through
-/// `dispatch_action_bytes_typed`. No JSON crosses the FFI to the kernel.
-///
-/// Returns a heap-allocated JSON envelope string the caller MUST free via
-/// `nmp_app_gallery_free_string`:
-/// * `{"correlation_id":"<id>"}` — accepted and enqueued.
-/// * `{"error":"<message>"}` — unknown namespace, malformed body, or kernel
-///   rejection.
-///
-/// D6: a null `app`, null/empty `namespace`, or null `body_json` returns an
-/// `{"error":"…"}` envelope, never NULL or a crash.
-///
-/// # Safety
-/// `app` must be a valid pointer from `new_app` (or null). `namespace`
-/// and `body_json` must be valid UTF-8 NUL-terminated C strings, or null.
-#[cfg(feature = "native")]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_gallery_dispatch_action_bytes(
-    app: *mut nmp_native_runtime::NmpApp,
-    namespace: *const c_char,
-    body_json: *const c_char,
-) -> *mut c_char {
-    let namespace = if namespace.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(namespace) }
-            .to_string_lossy()
-            .into_owned()
-    };
-    let body_json = if body_json.is_null() {
-        String::new()
-    } else {
-        unsafe { CStr::from_ptr(body_json) }
-            .to_string_lossy()
-            .into_owned()
-    };
-    let result = dispatch_bytes::dispatch_action_bytes_for(app, &namespace, &body_json);
-    let envelope = match result {
-        Ok(correlation_id) => format!(r#"{{"correlation_id":{}}}"#, json_escape(&correlation_id)),
-        Err(error) => format!(r#"{{"error":{}}}"#, json_escape(&error)),
-    };
-    CString::new(envelope)
-        .unwrap_or_else(|_| {
-            CString::new(r#"{"error":"dispatch result encoding failed"}"#).unwrap_or_default()
-        })
-        .into_raw()
-}
+use std::ffi::{c_char, c_void, CString};
 
 /// JSON-escape a string (adds surrounding quotes + backslash escapes).
 /// Falls back to `""` on failure (D6: failures are data, never panics).
@@ -163,11 +108,15 @@ pub extern "C" fn nmp_app_gallery_register(app: *mut c_void) {
     app.consume_all_builtin_projections();
 }
 
-/// M14 shell migration bridge — register gallery composition for a UniFFI `NmpApp`.
+/// Bridge-private Android shim — register gallery composition for a UniFFI `NmpApp`.
 ///
-/// Accepts the raw `Arc<nmp_uniffi::NmpApp>` pointer produced by the Swift
+/// Accepts the raw `Arc<nmp_uniffi::NmpApp>` pointer produced by a generated
 /// `uniffiClonePointer()` call and installs the same gallery composition that
 /// [`nmp_app_gallery_register`] installs for a raw `new_app()` pointer.
+/// This is the only retained raw UniFFI Arc bridge in Gallery, and it is
+/// constrained to pre-start app-owned composition registration. Lifecycle,
+/// storage, dispatch, and ref operations use typed UniFFI or app-owned native
+/// kernel helpers instead.
 ///
 /// Ownership semantics: the function calls `Arc::from_raw` internally to take
 /// ownership of the cloned Arc. The caller MUST pass a pointer obtained from
@@ -192,25 +141,21 @@ pub extern "C" fn nmp_app_gallery_register_uniffi(arc_ptr: *mut c_void) {
     // `uniffiClonePointer()`. `Arc::from_raw` reconstructs the Arc and takes
     // ownership of the clone (will decrement the refcount on drop).
     let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
-    // SAFETY: We hold the only writer to `inner` during this pre-start
-    // composition call — the actor has not been started, so no concurrent
-    // access exists. We use `addr_of!` to obtain a raw pointer without going
-    // through a shared reference, then cast to `*mut` to call the `&mut`
-    // methods.
-    let inner_ptr = std::ptr::addr_of!(arc.inner) as *mut nmp_native_runtime::NmpApp;
-    let inner = unsafe { &mut *inner_ptr };
-    register_gallery_composition(inner);
-    inner.consume_all_builtin_projections();
-    // Issue #2523 / crate-boundaries.md §9 — the NIP-55 (Amber) first-connect
-    // permission batch is an app-owned policy fact and must be declared by
-    // the leaf composition root, never baked into the shared `nmp-signers`
-    // crate. NIP-55 is Android-only; this call is a no-op on iOS (no Android
-    // `ExternalSignerCapabilityBridge` ever calls `signin_nip55` there).
-    inner.set_external_signer_permissions(gallery_nip55_permissions());
+    arc.configure_pre_start_for_app_facade(|inner| {
+        register_gallery_composition(inner);
+        inner.consume_all_builtin_projections();
+        // Issue #2523 / crate-boundaries.md §9 — the NIP-55 (Amber)
+        // first-connect permission batch is an app-owned policy fact and must
+        // be declared by the leaf composition root, never baked into the
+        // shared `nmp-signers` crate. NIP-55 is Android-only; this call is a
+        // no-op on iOS (no Android `ExternalSignerCapabilityBridge` ever calls
+        // `signin_nip55` there).
+        inner.set_external_signer_permissions(gallery_nip55_permissions());
+    });
     // `arc` drops here — decrements the UniFFI Arc ref-count back to 1.
 }
 
-/// M14 shell-2 (Android) JNI bridge — gallery composition via UniFFI Arc pointer.
+/// Android JNI bridge — gallery composition via UniFFI Arc pointer.
 ///
 /// Kotlin calls `nativeGalleryRegisterUniffi(Pointer.nativeValue(app.uniffiClonePointer()))`.
 /// This JNI wrapper converts the `jlong` and delegates to the platform-agnostic
@@ -225,36 +170,6 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryReg
     arc_ptr: jni::sys::jlong,
 ) {
     nmp_app_gallery_register_uniffi(arc_ptr as *mut std::ffi::c_void);
-}
-
-/// M14 shell migration bridge — configure the storage path for a UniFFI `NmpApp`.
-///
-/// Bridges the C6 `set_storage_path` call for the gallery iOS shell. Accepts a
-/// `uniffiClonePointer()` result and a NUL-terminated path string. Returns 0 on
-/// success, non-zero on error (mirrors `NmpConfigStatus`).
-///
-/// Ownership: takes ownership of the Arc clone (decrements refcount on return).
-/// D6: null arc_ptr or null path is a silent no-op (returns 0).
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_uniffi_set_storage_path(
-    arc_ptr: *mut c_void,
-    path: *const std::ffi::c_char,
-) -> u32 {
-    if arc_ptr.is_null() || path.is_null() {
-        return 0;
-    }
-    let arc = unsafe { std::sync::Arc::from_raw(arc_ptr as *const nmp_uniffi::NmpApp) };
-    let inner_ptr = std::ptr::addr_of!(arc.inner) as *mut nmp_native_runtime::NmpApp;
-    let inner = unsafe { &*inner_ptr };
-    // Decode the C string and call the native set_storage_path.
-    let path_opt = unsafe { CStr::from_ptr(path) }
-        .to_str()
-        .ok()
-        .map(str::to_owned);
-    let result = inner.set_storage_path(path_opt).code();
-    // Arc drops here, releasing the clone.
-    result
 }
 
 fn register_gallery_composition(app: &mut impl nmp_core::substrate::AppHost) {
