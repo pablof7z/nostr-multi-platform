@@ -45,6 +45,22 @@ pub(crate) enum DecryptState {
     Unavailable,
 }
 
+#[derive(Debug, Default)]
+struct BatchBackfillState {
+    generation: u64,
+    in_flight: bool,
+    completed_candidate_count: usize,
+    blocked_candidate_count: usize,
+    unsupported: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BatchBackfillFinish {
+    Succeeded,
+    Unsupported,
+    Failed,
+}
+
 impl DecryptState {
     /// The stable wire token other platforms switch on.
     pub(crate) fn as_wire(self) -> &'static str {
@@ -80,6 +96,12 @@ pub(crate) struct InboxStore {
     /// (§D7 — never silently dropped; surfaced as the undecrypted count). Reset
     /// by [`Self::clear`] (account switch starts a fresh backfill budget).
     over_bound: AtomicU64,
+    /// Number of store-sourced candidates being processed by an active
+    /// decrypt-session batch replay (#1259). Kept separate from scalar
+    /// `in_flight` so the snapshot can report pending work without treating the
+    /// old scalar queue as the candidate source.
+    batch_pending: AtomicU64,
+    batch_state: Mutex<BatchBackfillState>,
 }
 
 impl InboxStore {
@@ -89,6 +111,8 @@ impl InboxStore {
             generation: AtomicU64::new(0),
             in_flight: AtomicU64::new(0),
             over_bound: AtomicU64::new(0),
+            batch_pending: AtomicU64::new(0),
+            batch_state: Mutex::new(BatchBackfillState::default()),
         }
     }
 
@@ -174,13 +198,97 @@ impl InboxStore {
         }
         let pending = self.in_flight.load(Ordering::Acquire);
         let over = self.over_bound.load(Ordering::Acquire);
-        let undecrypted = pending.saturating_add(over);
+        let batch = self.batch_pending.load(Ordering::Acquire);
+        let undecrypted = pending.saturating_add(over).saturating_add(batch);
         let state = if undecrypted == 0 {
             DecryptState::Ok
         } else {
             DecryptState::Limited
         };
         (state, undecrypted.min(u64::from(u32::MAX)) as u32)
+    }
+
+    /// Mark a store-backed batch replay as in-flight for `generation`.
+    ///
+    /// Returns `false` when there is no work, a replay is already running, the
+    /// selected signer already reported unsupported for this account epoch, or
+    /// the same candidate set was already processed/failed. This prevents sync
+    /// callbacks from re-spamming signer-session begins while keeping new store
+    /// candidates eligible for a later replay.
+    pub(crate) fn begin_batch_backfill(&self, generation: u64, candidate_count: usize) -> bool {
+        if candidate_count == 0 {
+            return false;
+        }
+        let Ok(mut state) = self.batch_state.lock() else {
+            return false;
+        };
+        if state.generation != generation {
+            *state = BatchBackfillState {
+                generation,
+                ..Default::default()
+            };
+        }
+        if state.in_flight
+            || state.unsupported
+            || candidate_count <= state.completed_candidate_count
+            || candidate_count <= state.blocked_candidate_count
+        {
+            return false;
+        }
+        state.in_flight = true;
+        self.batch_pending
+            .store(candidate_count as u64, Ordering::Release);
+        true
+    }
+
+    /// Cheap pre-query guard for sync callbacks.
+    ///
+    /// We still need the store query to know whether a completed/failed replay
+    /// has new candidates, but once a signer reports the optional batch
+    /// capability unsupported for an account epoch there is no reason to scan
+    /// the store again until the epoch changes.
+    pub(crate) fn may_probe_batch_backfill(&self, generation: u64) -> bool {
+        let Ok(state) = self.batch_state.lock() else {
+            return false;
+        };
+        if state.generation != generation {
+            return true;
+        }
+        !state.in_flight && !state.unsupported
+    }
+
+    pub(crate) fn finish_batch_backfill(
+        &self,
+        generation: u64,
+        candidate_count: usize,
+        finish: BatchBackfillFinish,
+    ) {
+        let Ok(mut state) = self.batch_state.lock() else {
+            self.batch_pending.store(0, Ordering::Release);
+            return;
+        };
+        if state.generation != generation {
+            return;
+        }
+        state.in_flight = false;
+        self.batch_pending.store(0, Ordering::Release);
+        match finish {
+            BatchBackfillFinish::Succeeded => {
+                state.completed_candidate_count =
+                    state.completed_candidate_count.max(candidate_count);
+                state.blocked_candidate_count = 0;
+                // Successful replay used the store's real candidate set, so
+                // any scalar over-bound residue is stale accounting, not
+                // remaining work.
+                self.over_bound.store(0, Ordering::Release);
+            }
+            BatchBackfillFinish::Unsupported => {
+                state.unsupported = true;
+            }
+            BatchBackfillFinish::Failed => {
+                state.blocked_candidate_count = state.blocked_candidate_count.max(candidate_count);
+            }
+        }
     }
 
     /// Insert one decrypted message under epoch `gen`. A no-op (returns `false`)
@@ -260,6 +368,11 @@ impl InboxStore {
         self.generation.fetch_add(1, Ordering::AcqRel);
         self.in_flight.store(0, Ordering::Release);
         self.over_bound.store(0, Ordering::Release);
+        self.batch_pending.store(0, Ordering::Release);
+        if let Ok(mut state) = self.batch_state.lock() {
+            *state = BatchBackfillState::default();
+            state.generation = self.generation();
+        }
         if let Ok(mut messages) = self.messages.lock() {
             *messages = BoundedMessageMap::new(MAX_PROJECTION_MESSAGES);
         }

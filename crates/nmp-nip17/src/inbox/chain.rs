@@ -188,7 +188,7 @@ fn decrypt_seal(
 
 /// Terminal step — apply the kind:14 gate, classify peer/direction, and insert
 /// into the store under the captured §D6 epoch.
-fn store_rumor(
+pub(super) fn store_rumor(
     tx: &CommandSender,
     store: &InboxStore,
     generation: u64,

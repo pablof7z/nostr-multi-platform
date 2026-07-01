@@ -53,6 +53,7 @@ fn controller() -> (
     let controller = DmRuntimeController {
         relay_slot,
         active_pubkey: Arc::clone(&active_pubkey),
+        event_store: nmp_core::slots::new_event_store_slot(),
         tx,
         state: Mutex::new(DmRuntimeState::default()),
         inbox_projection,
