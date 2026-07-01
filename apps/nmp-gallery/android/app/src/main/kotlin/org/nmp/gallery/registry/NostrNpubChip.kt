@@ -15,6 +15,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +28,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -58,6 +60,13 @@ fun NostrNpubChip(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var copied by remember { mutableStateOf(false) }
+    var copiedResetJob by remember { mutableStateOf<Job?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            copiedResetJob?.cancel()
+        }
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -74,9 +83,11 @@ fun NostrNpubChip(
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("npub", npub))
                 copied = true
-                scope.launch {
+                copiedResetJob?.cancel()
+                copiedResetJob = scope.launch {
                     delay(2_000)
                     copied = false
+                    copiedResetJob = null
                 }
             },
             modifier = Modifier

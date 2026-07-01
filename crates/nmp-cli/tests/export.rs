@@ -26,7 +26,7 @@ fn workspace_root() -> std::path::PathBuf {
 #[test]
 fn export_jsrepo_produces_registry_json_and_per_item_files() {
     let tmp = TempDir::new("export-jsrepo");
-    let registry_dir = workspace_root().join("crates/nmp-cli/registry");
+    let registry_dir = workspace_root().join("crates/nmp-component-registry/registry");
 
     let out = nmp(
         tmp.path(),
@@ -102,17 +102,19 @@ fn export_jsrepo_produces_registry_json_and_per_item_files() {
 /// match what `nmp export jsrepo` would generate from the current manifest.
 ///
 /// Fails when someone adds a component to `registry.toml` without regenerating
-/// the committed JSON. Fix: run `nmp export jsrepo --output web/registry/public`.
+/// the committed JSON. Fix: run `nmp export jsrepo --registry
+/// crates/nmp-component-registry/registry --output web/registry/public`.
 #[test]
 fn committed_registry_json_matches_generated_output() {
     let root = workspace_root();
-    let registry_dir = root.join("crates/nmp-cli/registry");
+    let registry_dir = root.join("crates/nmp-component-registry/registry");
     let committed = root.join("web/registry/public/registry.json");
 
     assert!(
         committed.exists(),
         "web/registry/public/registry.json must be committed; run: \
-         nmp export jsrepo --output web/registry/public"
+         nmp export jsrepo --registry crates/nmp-component-registry/registry \
+         --output web/registry/public"
     );
 
     let tmp = TempDir::new("export-drift");
@@ -140,7 +142,7 @@ fn committed_registry_json_matches_generated_output() {
         generated, on_disk,
         "web/registry/public/registry.json is stale.\n\
          Run: cargo run -p nmp-cli --bin nmp -- export jsrepo \\\n\
-           --registry crates/nmp-cli/registry \\\n\
+           --registry crates/nmp-component-registry/registry \\\n\
            --output web/registry/public"
     );
 }

@@ -232,6 +232,6 @@ without merging a local fork of the renderer kit.
 ## See Also
 
 - [Common app shapes](app-shapes.md)
-- [`crates/nmp-cli/registry/registry.swiftui.toml`](../../crates/nmp-cli/registry/registry.swiftui.toml)
-- [`crates/nmp-cli/registry/registry.compose.toml`](../../crates/nmp-cli/registry/registry.compose.toml)
+- [`crates/nmp-component-registry/registry/registry.swiftui.toml`](../../crates/nmp-component-registry/registry/registry.swiftui.toml)
+- [`crates/nmp-component-registry/registry/registry.compose.toml`](../../crates/nmp-component-registry/registry/registry.compose.toml)
 - [Browser signer/private-flow capability model](../wasm-surface.md#browser-signerprivate-flow-capability-model)

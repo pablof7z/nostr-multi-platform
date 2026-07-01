@@ -7,10 +7,9 @@
 //! app edits instead of overwriting them.
 
 mod lock;
-mod registry;
 
 use lock::{ComponentLock, LockedComponent, LockedFile};
-use registry::{Registry, RegistryComponent, RegistryFile};
+use nmp_component_registry::{Registry, RegistryComponent, RegistryFile};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::fs;

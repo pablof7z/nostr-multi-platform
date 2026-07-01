@@ -12,7 +12,7 @@ import tomllib
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-REGISTRY_ROOT = REPO_ROOT / "crates/nmp-cli/registry"
+REGISTRY_ROOT = REPO_ROOT / "crates/nmp-component-registry/registry"
 IOS_GALLERY_ROOT = REPO_ROOT / "apps/nmp-gallery/ios/NmpGallery/Registry"
 ANDROID_GALLERY_ROOT = (
     REPO_ROOT / "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry"
@@ -111,7 +111,7 @@ def main() -> int:
     if failures:
         print(
             "gallery-registry-drift: nmp-gallery registry copies drifted from "
-            "crates/nmp-cli/registry. Run `python3 ci/check-gallery-registry-drift.py --fix`.",
+            "crates/nmp-component-registry/registry. Run `python3 ci/check-gallery-registry-drift.py --fix`.",
             file=sys.stderr,
         )
         print("\n".join(failures), file=sys.stderr)

@@ -70,6 +70,10 @@ name = "nmp-cli"
 path = "crates/nmp-cli"
 
 [[public_crates]]
+name = "nmp-component-registry"
+path = "crates/nmp-component-registry"
+
+[[public_crates]]
 name = "nmp-codegen"
 path = "crates/nmp-codegen"
 

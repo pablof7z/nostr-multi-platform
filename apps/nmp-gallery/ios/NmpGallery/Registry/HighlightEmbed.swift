@@ -11,7 +11,7 @@ import SwiftUI
 ///   • author byline (avatar + display name)
 ///
 /// Mirrors the TUI's highlight renderer in
-/// `crates/nmp-cli/registry/tui/content-kind-9802/`.
+/// `crates/nmp-component-registry/registry/tui/content-kind-9802/`.
 public struct HighlightEmbed: KindRenderer {
     public init() {}
 

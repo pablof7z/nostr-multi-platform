@@ -1,0 +1,13 @@
+[package]
+name = "nmp-component-registry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Canonical NMP component registry manifests, source assets, source lookup, and jsrepo export model."
+
+[dependencies]
+nmp-ownership = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = "0.8"

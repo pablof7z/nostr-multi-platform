@@ -4,18 +4,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // The catalog is split by platform target (file-size rule); merge order must
-// match REGISTRY_SECTION_FILES in crate::registry_manifest.
+// match REGISTRY_SECTION_FILES in crate::manifest.
 const BUILTIN_REGISTRY_SECTIONS: &[&str] = &[
-    include_str!("../../registry/registry.toml"),
-    include_str!("../../registry/registry.swiftui.toml"),
-    include_str!("../../registry/registry.compose.toml"),
-    include_str!("../../registry/registry.tui.toml"),
-    include_str!("../../registry/registry.desktop.toml"),
-    include_str!("../../registry/registry.web.toml"),
+    include_str!("../registry/registry.toml"),
+    include_str!("../registry/registry.swiftui.toml"),
+    include_str!("../registry/registry.compose.toml"),
+    include_str!("../registry/registry.tui.toml"),
+    include_str!("../registry/registry.desktop.toml"),
+    include_str!("../registry/registry.web.toml"),
 ];
-#[path = "registry/builtin_files.rs"]
-mod builtin_files;
-use builtin_files::BUILTIN_FILES;
+use crate::builtin_files::BUILTIN_FILES;
 
 #[derive(Deserialize)]
 struct RegistryManifest {
@@ -24,24 +22,25 @@ struct RegistryManifest {
 }
 
 #[derive(Deserialize)]
-pub(super) struct RegistryComponent {
-    pub(super) id: String,
-    pub(super) version: String,
-    pub(super) target: String,
+pub struct RegistryComponent {
+    pub id: String,
+    pub version: String,
+    pub target: String,
+    pub description: String,
     #[serde(default)]
-    dependencies: Vec<String>,
-    pub(super) files: Vec<RegistryFile>,
+    pub dependencies: Vec<String>,
+    pub files: Vec<RegistryFile>,
 }
 
 #[derive(Deserialize)]
-pub(super) struct RegistryFile {
-    pub(super) source: String,
-    pub(super) target: String,
-    pub(super) role: String,
+pub struct RegistryFile {
+    pub source: String,
+    pub target: String,
+    pub role: String,
 }
 
-pub(super) struct Registry {
-    pub(super) id: String,
+pub struct Registry {
+    pub id: String,
     root: RegistryRoot,
     components: Vec<RegistryComponent>,
 }
@@ -52,7 +51,7 @@ enum RegistryRoot {
 }
 
 impl Registry {
-    pub(super) fn load(path: Option<PathBuf>) -> Result<Self, String> {
+    pub fn load(path: Option<PathBuf>) -> Result<Self, String> {
         let (manifest, root) = match path {
             Some(path) => {
                 let manifest = if path.is_dir() {
@@ -61,7 +60,7 @@ impl Registry {
                     path.clone()
                 };
                 let root = manifest.parent().unwrap_or(Path::new(".")).to_path_buf();
-                let content = crate::registry_manifest::read_manifest_with_sections(&manifest)?;
+                let content = crate::manifest::read_manifest_with_sections(&manifest)?;
                 (content, RegistryRoot::Filesystem(root))
             }
             None => (BUILTIN_REGISTRY_SECTIONS.join("\n"), RegistryRoot::Builtin),
@@ -75,14 +74,14 @@ impl Registry {
         })
     }
 
-    pub(super) fn resolve(&self, id: &str) -> Result<Vec<&RegistryComponent>, String> {
+    pub fn resolve(&self, id: &str) -> Result<Vec<&RegistryComponent>, String> {
         let mut seen = HashSet::new();
         let mut order = Vec::new();
         self.collect(id, &mut seen, &mut order)?;
         Ok(order)
     }
 
-    pub(super) fn read_source(&self, path: &Path) -> Result<String, String> {
+    pub fn read_source(&self, path: &Path) -> Result<String, String> {
         match &self.root {
             RegistryRoot::Builtin => BUILTIN_FILES
                 .iter()
@@ -92,6 +91,10 @@ impl Registry {
             RegistryRoot::Filesystem(root) => fs::read_to_string(root.join(path))
                 .map_err(|e| format!("{}: {e}", root.join(path).display())),
         }
+    }
+
+    pub fn components(&self) -> &[RegistryComponent] {
+        &self.components
     }
 
     fn collect<'a>(

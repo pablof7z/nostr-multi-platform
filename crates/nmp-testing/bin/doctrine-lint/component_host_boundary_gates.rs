@@ -47,8 +47,8 @@ fn native_registry_components_do_not_import_runtime_abi_or_kernel_internals() {
     let root = workspace_root();
     let mut files = Vec::new();
     for dir in [
-        root.join("crates/nmp-cli/registry/swiftui"),
-        root.join("crates/nmp-cli/registry/compose"),
+        root.join("crates/nmp-component-registry/registry/swiftui"),
+        root.join("crates/nmp-component-registry/registry/compose"),
     ] {
         collect_component_files(&dir, &mut files);
     }

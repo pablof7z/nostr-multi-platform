@@ -9,7 +9,7 @@ import SwiftUI
 ///   • author chip: avatar + display name, styled as a NIP-65 byline
 ///
 /// Mirrors the TUI's article renderer in
-/// `crates/nmp-cli/registry/tui/content-kind-30023/`.
+/// `crates/nmp-component-registry/registry/tui/content-kind-30023/`.
 public struct ArticleEmbed: KindRenderer {
     public init() {}
 

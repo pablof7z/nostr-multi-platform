@@ -13,6 +13,7 @@ public struct NostrNpubChip: View {
     public let npubShort: String
 
     @State private var copied = false
+    @State private var copiedResetTask: Task<Void, Never>?
 
     public init(profile: ProfileWire) {
         self.npub = profile.npub
@@ -38,14 +39,21 @@ public struct NostrNpubChip: View {
         .buttonStyle(.plain)
         .accessibilityLabel(copied ? "Copied" : "Copy npub")
         .accessibilityHint("Double tap to copy full npub to clipboard")
+        .onDisappear {
+            copiedResetTask?.cancel()
+            copiedResetTask = nil
+        }
     }
 
     private func copyNpub() {
         UIPasteboard.general.string = npub
         copied = true
-        Task {
+        copiedResetTask?.cancel()
+        copiedResetTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
             copied = false
+            copiedResetTask = nil
         }
     }
 }
