@@ -5,6 +5,8 @@ use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::{CommandSender, DependentInterestChild};
 use nmp_feed::{FeedRender, ProjectionKey, TeardownAction};
+#[cfg(test)]
+use trellis_core::ResourceCommand;
 use trellis_core::{
     DependencyList, Graph, InputNode, MaterializedOutput, OutputFrame, OutputFrameKind,
     ResourceKey, ResourcePlan, ScopeId,
@@ -43,6 +45,8 @@ struct FeedSessionTrellisInner {
     closed: bool,
     #[cfg(test)]
     output_frames: Vec<FeedSessionOutputFrameKind>,
+    #[cfg(test)]
+    resource_traces: Vec<FeedSessionResourceTrace>,
 }
 
 #[cfg(test)]
@@ -52,6 +56,22 @@ pub(super) enum FeedSessionOutputFrameKind {
     Delta,
     Rebaseline,
     Clear,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) enum FeedSessionResourceTraceKind {
+    Open,
+    Replace,
+    Refresh,
+    Close,
+}
+
+#[cfg(test)]
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(super) struct FeedSessionResourceTrace {
+    pub(super) kind: FeedSessionResourceTraceKind,
+    pub(super) key: String,
 }
 
 struct FeedSessionCloseOutcome {
@@ -151,6 +171,8 @@ impl FeedSessionTrellisAdapter {
                 closed: false,
                 #[cfg(test)]
                 output_frames,
+                #[cfg(test)]
+                resource_traces: Vec::new(),
             })),
             sender,
             owner: session_acquisition_owner(projection_key),
@@ -212,6 +234,14 @@ impl FeedSessionTrellisAdapter {
             .unwrap_or_default()
     }
 
+    #[cfg(test)]
+    pub(super) fn resource_traces_for_test(&self) -> Vec<FeedSessionResourceTrace> {
+        self.inner
+            .lock()
+            .map(|inner| inner.resource_traces.clone())
+            .unwrap_or_default()
+    }
+
     fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
         let _ = self.sender.send(ActorCommand::Interests(
             InterestsCommand::ReplaceDependentInterestSet {
@@ -235,6 +265,8 @@ impl FeedSessionTrellisInner {
         drop(tx);
         #[cfg(test)]
         self.record_output_frames(&result.output_frames);
+        #[cfg(test)]
+        self.record_resource_traces(result.resource_plan.commands());
         (!result.resource_plan.commands().is_empty()).then(|| children_from_demand(&demand))
     }
 
@@ -281,6 +313,8 @@ impl FeedSessionTrellisInner {
         drop(tx);
         #[cfg(test)]
         self.record_output_frames(&result.output_frames);
+        #[cfg(test)]
+        self.record_resource_traces(result.resource_plan.commands());
         Some(FeedSessionCloseOutcome {
             output_cleared: output_cleared(&result.output_frames),
         })
@@ -289,6 +323,11 @@ impl FeedSessionTrellisInner {
     #[cfg(test)]
     fn record_output_frames(&mut self, frames: &[OutputFrame<FeedSessionOutput>]) {
         self.output_frames.extend(output_frame_kinds(frames));
+    }
+
+    #[cfg(test)]
+    fn record_resource_traces(&mut self, commands: &[ResourceCommand<FeedSessionResourceCommand>]) {
+        self.resource_traces.extend(resource_traces(commands));
     }
 }
 
@@ -338,6 +377,27 @@ fn output_frame_kinds(
             OutputFrameKind::Delta(_) => FeedSessionOutputFrameKind::Delta,
             OutputFrameKind::Rebaseline(_, _) => FeedSessionOutputFrameKind::Rebaseline,
             OutputFrameKind::Clear(_) => FeedSessionOutputFrameKind::Clear,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+fn resource_traces(
+    commands: &[ResourceCommand<FeedSessionResourceCommand>],
+) -> Vec<FeedSessionResourceTrace> {
+    commands
+        .iter()
+        .map(|command| {
+            let kind = match command {
+                ResourceCommand::Open { .. } => FeedSessionResourceTraceKind::Open,
+                ResourceCommand::Replace { .. } => FeedSessionResourceTraceKind::Replace,
+                ResourceCommand::Refresh { .. } => FeedSessionResourceTraceKind::Refresh,
+                ResourceCommand::Close { .. } => FeedSessionResourceTraceKind::Close,
+            };
+            FeedSessionResourceTrace {
+                kind,
+                key: command.key().as_str().to_string(),
+            }
         })
         .collect()
 }
