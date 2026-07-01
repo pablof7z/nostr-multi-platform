@@ -1,0 +1,19 @@
+{
+  "name": "desktop-content-minimal",
+  "type": "registry:ui",
+  "title": "Content Minimal (desktop)",
+  "description": "Minimal inline iced Nostr content renderer with mention chips.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-content-core",
+    "desktop-content-mention-chip"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/content-minimal/minimal_content.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_content/minimal_content.rs",
+      "content": "use std::collections::BTreeMap;\n\nuse iced::widget::row;\nuse iced::Element;\n\nuse nmp_gallery_tui::content_render_data::ContentRenderData;\nuse nmp_gallery_tui::content_tree_wire::{ContentTreeWire, WireNode};\n\nuse super::content_core::{pill, short_id};\nuse super::mention_chip::NostrMentionChip;\n\npub struct NostrMinimalContent<'a> {\n    tree: &'a ContentTreeWire,\n    render_data: Option<&'a ContentRenderData>,\n    profile_labels: BTreeMap<String, String>,\n}\n\nimpl<'a> NostrMinimalContent<'a> {\n    #[must_use]\n    pub fn new(tree: &'a ContentTreeWire) -> Self {\n        Self {\n            tree,\n            render_data: None,\n            profile_labels: BTreeMap::new(),\n        }\n    }\n\n    #[must_use]\n    pub fn render_data(mut self, render_data: Option<&'a ContentRenderData>) -> Self {\n        self.render_data = render_data;\n        self\n    }\n\n    #[must_use]\n    pub fn profile_labels(mut self, profile_labels: BTreeMap<String, String>) -> Self {\n        self.profile_labels = profile_labels;\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'a, Message> {\n        let mut out = row![].spacing(6);\n        for node in &self.tree.nodes {\n            match node {\n                WireNode::Mention(uri) => {\n                    let mut chip = NostrMentionChip::new(uri)\n                        .profile(self.render_data.and_then(|data| data.profile_for(uri)));\n                    if let Some(label) = self.profile_labels.get(&uri.primary_id) {\n                        chip = chip.label(label.clone());\n                    }\n                    out = out.push(chip.into_element());\n                }\n                WireNode::Text(value) if !value.trim().is_empty() => {\n                    out = out.push(pill(value.clone()));\n                }\n                WireNode::EventRef(uri) => {\n                    out = out.push(pill(format!(\"event {}\", short_id(&uri.primary_id))));\n                }\n                _ => {}\n            }\n        }\n        out.into()\n    }\n}\n"
+    }
+  ]
+}
