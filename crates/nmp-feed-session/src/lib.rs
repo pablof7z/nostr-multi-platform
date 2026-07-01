@@ -52,6 +52,10 @@ mod source;
 mod source_replay;
 mod trellis_adapter;
 #[cfg(test)]
+mod trellis_adapter_equivalence_support;
+#[cfg(test)]
+mod trellis_adapter_equivalence_tests;
+#[cfg(test)]
 mod trellis_adapter_tests;
 // #2629 owns the private taxonomy; #2630 is the first production adapter user.
 mod trellis_resources;
