@@ -14,6 +14,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip18 = { path = "../nmp-nip18" }
+nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-ownership = { workspace = true }

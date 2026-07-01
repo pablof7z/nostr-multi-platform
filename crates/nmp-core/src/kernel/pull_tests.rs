@@ -9,7 +9,7 @@ use crate::kernel::pull::{PullError, PullLimits, PullScope};
 use crate::kernel::Kernel;
 use crate::planner::{InterestShape, NaddrCoord};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::store::{EventStore, LogOp, RawEvent, ScanLogResult, VerifiedEvent};
+use crate::store::{LogOp, RawEvent, ScanLogResult, VerifiedEvent};
 use std::collections::BTreeSet;
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -35,7 +35,11 @@ fn unchecked(r: RawEvent) -> VerifiedEvent { VerifiedEvent::from_raw_unchecked(r
 const RELAY: &str = "wss://test/";
 
 fn seed(k: &Kernel, r: RawEvent) -> u64 {
-    k.event_store_handle().insert(unchecked(r), &RELAY.to_string(), 0).unwrap();
+    seed_on(k, r, RELAY)
+}
+
+fn seed_on(k: &Kernel, r: RawEvent, relay: &str) -> u64 {
+    k.event_store_handle().insert(unchecked(r), &relay.to_string(), 0).unwrap();
     k.event_store_handle().latest_ingest_seq().unwrap()
 }
 
@@ -191,7 +195,6 @@ fn interest_shape_matches_ptag() {
 fn interest_shape_matches_kind_dtag_with_pubkey_guard() {
     let k = new_kernel();
     let author_a = hex64(0xAA);
-    let author_b = hex64(0xBB);
     // Both have (kind=30023, d="article-1") but different pubkeys.
     seed(&k, raw_tags(1, 0xAA, 30023, 1000, vec![vec!["d".into(), "article-1".into()]]));
     seed(&k, raw_tags(2, 0xBB, 30023, 2000, vec![vec!["d".into(), "article-1".into()]]));
@@ -307,7 +310,6 @@ fn entry_limit_does_not_advance_past_unprocessed_matches() {
 #[cfg(test)]
 mod gap_store {
     use std::collections::{BTreeSet, HashSet};
-    use std::ops::ControlFlow;
 
     use crate::store::{
         DeleteFilter, DomainHandle, DomainMigration, DumpFormat, DumpStats, EventId,

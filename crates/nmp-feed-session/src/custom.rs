@@ -168,6 +168,8 @@ pub(super) fn combine_admission_gate(
         attribution: acq_attribution,
         mut interests,
         live_shape: acq_live_shape,
+        live_shapes: acq_live_shapes,
+        observer_scope: acq_observer_scope,
         extra_acquisition: acq_extra,
         mut reset_hooks,
         mut source_effect_hooks,
@@ -199,6 +201,16 @@ pub(super) fn combine_admission_gate(
         let rs = gate.live_shape;
         Arc::new(move || merge_live_shapes(&ls, &rs))
     };
+    let live_shapes = {
+        let ls = acq_live_shapes;
+        let rs = gate.live_shapes;
+        Arc::new(move || {
+            let mut shapes = ls();
+            shapes.extend(rs());
+            shapes
+        })
+    };
+    let observer_scope = combine_observer_scope(&acq_observer_scope, &gate.observer_scope);
     let extra_acquisition: ExtraAcquisition = {
         let le = acq_extra;
         let re = gate.extra_acquisition;
@@ -223,6 +235,8 @@ pub(super) fn combine_admission_gate(
         attribution: combined_attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope,
         extra_acquisition,
         reset_hooks,
         source_effect_hooks,
@@ -250,6 +264,19 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
             }
             Some(a)
         }
+    }
+}
+
+fn combine_observer_scope(
+    left: &nmp_planner::InterestScope,
+    right: &nmp_planner::InterestScope,
+) -> nmp_planner::InterestScope {
+    if matches!(left, nmp_planner::InterestScope::Global)
+        || matches!(right, nmp_planner::InterestScope::Global)
+    {
+        nmp_planner::InterestScope::Global
+    } else {
+        nmp_planner::InterestScope::ActiveAccount
     }
 }
 
@@ -317,6 +344,8 @@ mod tests {
             attribution: Arc::new(move |pubkey: &str| author_set.contains(pubkey)),
             interests: interest.into_iter().collect(),
             live_shape: Arc::new(|| None),
+            live_shapes: Arc::new(Vec::new),
+            observer_scope: InterestScope::ActiveAccount,
             extra_acquisition: Arc::new(Vec::new),
             reset_hooks: Vec::new(),
             source_effect_hooks: Vec::new(),

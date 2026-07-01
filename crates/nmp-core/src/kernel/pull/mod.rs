@@ -4,9 +4,10 @@
 //!
 //! - `PullScope::GlobalLog` — returns the raw store log exactly as
 //!   `scan_log_since_seq` returns it (includes Inserted, Replaced, Deleted).
-//! - `PullScope::InterestShape` — bounded post-filter over the GlobalLog scan;
-//!   includes only Inserted/Replaced rows that match the shape predicate;
-//!   Deleted rows advance the seq cursor but are never yielded (ADR §10).
+//! - `PullScope::InterestShape` / `InterestShapes` — bounded post-filter over
+//!   the GlobalLog scan; includes only Inserted/Replaced rows that match at
+//!   least one shape predicate; Deleted rows advance the seq cursor but are
+//!   never yielded (ADR §10).
 //!
 //! ## What this step does NOT include (step-3+/step-4)
 //!
@@ -15,6 +16,7 @@
 //! polling or timers.
 
 mod predicate;
+mod relay_pin;
 
 use std::num::NonZeroUsize;
 
@@ -22,7 +24,7 @@ use crate::kernel::Kernel;
 use crate::planner::InterestShape;
 use crate::store::{EventStore, PullPage, ScanLogResult, StoreError};
 use crate::store::{LogOp, StoreLogEntry};
-use predicate::raw_matches_shape;
+use relay_pin::entry_matches_any_shape;
 
 use super::cache_serve::queries::compile_store_query_plan;
 
@@ -36,6 +38,12 @@ pub enum PullScope {
     /// Post-filtered view: only Inserted/Replaced rows that match this shape.
     /// Deleted rows advance the cursor but are never yielded (ADR §10).
     InterestShape(InterestShape),
+    /// Post-filtered view over a union of non-mergeable shapes. This is the
+    /// same cursor semantics as [`Self::InterestShape`], but the row may match
+    /// any shape in the set. Use for feeds whose source compiles to several
+    /// relay-pinned interests that cannot be represented by one
+    /// `InterestShape` without losing routing.
+    InterestShapes(Vec<InterestShape>),
 }
 
 /// Bounds controlling a single `pull_page` call.
@@ -111,26 +119,49 @@ pub fn pull_page_over(
             Ok(result)
         }
 
-        PullScope::InterestShape(shape) => {
-            // Step 1: compile the shape — reject unsupported shapes.
-            let Ok(plan) = compile_store_query_plan(&shape) else {
-                return Err(PullError::UnsupportedInterestShape);
-            };
-            let queries = plan.queries;
+        PullScope::InterestShape(shape) => pull_shapes_page(store, vec![shape], after_seq, limits),
 
-            // Step 2: scan the global log up to the scan budget.
-            let scan_result = store.scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
-
-            // Propagate a real gap unchanged (ADR §10: gap contract).
-            let page = match scan_result {
-                ScanLogResult::Gap(gap) => return Ok(ScanLogResult::Gap(gap)),
-                ScanLogResult::Page(p) => p,
-            };
-
-            // Steps 3–4: filter the page.
-            filter_page(page, &queries, &shape, limits.max_entries.get())
-        }
+        PullScope::InterestShapes(shapes) => pull_shapes_page(store, shapes, after_seq, limits),
     }
+}
+
+fn pull_shapes_page(
+    store: &dyn EventStore,
+    shapes: Vec<InterestShape>,
+    after_seq: u64,
+    limits: PullLimits,
+) -> Result<KernelPullResult, PullError> {
+    let compiled = compile_shape_set(&shapes)?;
+
+    // Step 2: scan the global log up to the scan budget.
+    let scan_result = store.scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
+
+    // Propagate a real gap unchanged (ADR §10: gap contract).
+    let page = match scan_result {
+        ScanLogResult::Gap(gap) => return Ok(ScanLogResult::Gap(gap)),
+        ScanLogResult::Page(p) => p,
+    };
+
+    // Steps 3–4: filter the page.
+    filter_page(store, page, &compiled, limits.max_entries.get())
+}
+
+fn compile_shape_set(
+    shapes: &[InterestShape],
+) -> Result<Vec<(InterestShape, Vec<crate::store::StoreQuery>)>, PullError> {
+    let mut compiled = Vec::new();
+    for shape in shapes {
+        let plan =
+            compile_store_query_plan(shape).map_err(|_| PullError::UnsupportedInterestShape)?;
+        if plan.queries.is_empty() {
+            return Err(PullError::UnsupportedInterestShape);
+        }
+        compiled.push((shape.clone(), plan.queries));
+    }
+    if compiled.is_empty() {
+        return Err(PullError::UnsupportedInterestShape);
+    }
+    Ok(compiled)
 }
 
 // ─── Kernel impl ─────────────────────────────────────────────────────────────
@@ -165,9 +196,9 @@ impl Kernel {
 ///   visited row's seq (not the store page's `next_after_seq`).
 /// - An empty-but-advancing page is correct and is **not** a gap.
 fn filter_page(
+    store: &dyn EventStore,
     page: PullPage,
-    queries: &[crate::store::StoreQuery],
-    shape: &InterestShape,
+    compiled_shapes: &[(InterestShape, Vec<crate::store::StoreQuery>)],
     max_entries: usize,
 ) -> Result<KernelPullResult, PullError> {
     let store_next_after_seq = page.next_after_seq;
@@ -188,7 +219,7 @@ fn filter_page(
             // Positive rows: check predicate.
             LogOp::Inserted | LogOp::Replaced { .. } => {
                 if let Some(raw) = &entry.raw_event {
-                    if raw_matches_shape(raw, queries, shape) {
+                    if entry_matches_any_shape(store, &entry, raw, compiled_shapes)? {
                         collected.push(entry);
                         if collected.len() >= max_entries {
                             stopped_early = true;

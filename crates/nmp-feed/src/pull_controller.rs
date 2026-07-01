@@ -102,6 +102,62 @@ where
     }
 }
 
+/// A live source that may compile to several non-mergeable shapes.
+///
+/// This is required when a single feed declaration expands to multiple
+/// relay-pinned interests. Returning an empty vector fails closed.
+pub trait FeedInterestShapes: Send + Sync {
+    fn interest_shapes(&self) -> Vec<InterestShape>;
+}
+
+/// A [`FeedInterestShapes`] backed by a closure.
+pub struct ClosureInterestShapes<F>(F);
+
+impl<F> ClosureInterestShapes<F>
+where
+    F: Fn() -> Vec<InterestShape> + Send + Sync,
+{
+    /// Wrap a closure as a fail-closed multi-shape interest provider.
+    pub fn new(f: F) -> Self {
+        Self(f)
+    }
+}
+
+impl<F> FeedInterestShapes for ClosureInterestShapes<F>
+where
+    F: Fn() -> Vec<InterestShape> + Send + Sync,
+{
+    fn interest_shapes(&self) -> Vec<InterestShape> {
+        (self.0)()
+    }
+}
+
+enum PullProvider {
+    One(Arc<dyn FeedInterestShape + Send + Sync>),
+    Many(Arc<dyn FeedInterestShapes + Send + Sync>),
+}
+
+impl PullProvider {
+    fn pull_scope(&self) -> Option<PullScope> {
+        match self {
+            Self::One(provider) => provider.interest_shape().map(PullScope::InterestShape),
+            Self::Many(provider) => {
+                let mut shapes = Vec::new();
+                for shape in provider.interest_shapes() {
+                    if !shapes.contains(&shape) {
+                        shapes.push(shape);
+                    }
+                }
+                match shapes.len() {
+                    0 => None,
+                    1 => shapes.pop().map(PullScope::InterestShape),
+                    _ => Some(PullScope::InterestShapes(shapes)),
+                }
+            }
+        }
+    }
+}
+
 /// The pull-backed [`FeedController`]. Owns the feed's pager (seq cursor) and the
 /// injected closures; see the module docs for the `load_older` contract.
 ///
@@ -110,7 +166,7 @@ where
 /// wires `replace`, and `new_with_perspective` wires both.
 pub struct PullFeedController {
     pager: Mutex<FeedPullPager>,
-    provider: Arc<dyn FeedInterestShape + Send + Sync>,
+    provider: PullProvider,
     pull: PullFn,
     apply: FeedApply,
     replace: Option<FeedReplace>,
@@ -170,6 +226,45 @@ impl PullFeedController {
         reset: Option<FeedReset>,
         advance: FeedAdvance,
     ) -> Arc<Self> {
+        Self::new_with_provider(
+            PullProvider::One(provider),
+            pull,
+            apply,
+            replace,
+            reset,
+            advance,
+        )
+    }
+
+    /// Construct a controller whose live row source may expand to multiple
+    /// non-mergeable shapes.
+    #[must_use]
+    pub fn new_with_shape_set(
+        provider: Arc<dyn FeedInterestShapes + Send + Sync>,
+        pull: PullFn,
+        apply: FeedApply,
+        replace: Option<FeedReplace>,
+        reset: Option<FeedReset>,
+        advance: FeedAdvance,
+    ) -> Arc<Self> {
+        Self::new_with_provider(
+            PullProvider::Many(provider),
+            pull,
+            apply,
+            replace,
+            reset,
+            advance,
+        )
+    }
+
+    fn new_with_provider(
+        provider: PullProvider,
+        pull: PullFn,
+        apply: FeedApply,
+        replace: Option<FeedReplace>,
+        reset: Option<FeedReset>,
+        advance: FeedAdvance,
+    ) -> Arc<Self> {
         // Cursor-only pager — no initial shape check. The live shape is read on
         // every load_older call, so a controller registered before sign-in
         // becomes active as soon as the provider yields a real shape.
@@ -196,10 +291,9 @@ impl FeedController for PullFeedController {
     fn load_older(&self) -> bool {
         // Live, fail-closed interest. If the feed can no longer express a covered
         // shape (e.g. logout cleared the follow set), do nothing — never scan.
-        let Some(shape) = self.provider.interest_shape() else {
+        let Some(scope) = self.provider.pull_scope() else {
             return false;
         };
-        let scope = PullScope::InterestShape(shape);
 
         let mut accepted = 0usize;
         let mut visited = 0usize;

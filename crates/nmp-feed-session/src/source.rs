@@ -23,6 +23,12 @@ pub(super) type SourceEffectHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
 /// The single render/pull acquisition shape, re-read live.
 pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
 
+/// The render/pull acquisition shapes, re-read live.
+///
+/// Most sources produce one shape. Relay-pinned grouped sources can produce
+/// several shapes because different `relay_pin` values must not be merged.
+pub(super) type LiveShapes = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
+
 /// Extra acquisition shapes a scope must subscribe to beyond the render shape.
 pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
 
@@ -89,6 +95,10 @@ pub(super) struct ReducedSource {
     pub interests: Vec<AcquisitionInterest>,
     /// Live pull acquisition shape.
     pub live_shape: LiveShape,
+    /// Live row-source shapes used by observed delivery and pull pagination.
+    pub live_shapes: LiveShapes,
+    /// Scope for the session's observed row-source subscriptions.
+    pub observer_scope: InterestScope,
     /// Extra acquisition that may change as the source projection changes.
     pub extra_acquisition: ExtraAcquisition,
     /// Reactive-reset installers for sources without a graph effect owner.
@@ -110,6 +120,10 @@ pub(super) struct ReducedSource {
 /// No extra acquisition beyond fixed interests.
 pub(super) fn empty_extra() -> ExtraAcquisition {
     Arc::new(Vec::new)
+}
+
+pub(super) fn one_live_shape(live_shape: LiveShape) -> LiveShapes {
+    Arc::new(move || live_shape().into_iter().collect())
 }
 
 pub(super) fn acquisition_children(

@@ -9,8 +9,8 @@ use nmp_kinds::{KIND_FOLLOW_SET, KIND_MUTE_LIST};
 use nmp_planner::InterestShape;
 
 use super::source::{
-    AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
-    SourceEffectHook,
+    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
+    ReducedSource, ResetHook, SourceEffectHook,
 };
 
 pub(super) fn resolve_list_members(
@@ -88,6 +88,7 @@ pub(super) fn resolve_list_members(
             ))
         })
     };
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     let source_effect_hooks = {
         let projection = Arc::clone(&projection);
@@ -110,6 +111,8 @@ pub(super) fn resolve_list_members(
         interests: Vec::new(),
         extra_acquisition,
         live_shape,
+        live_shapes,
+        observer_scope: nmp_planner::InterestScope::ActiveAccount,
         reset_hooks: Vec::new(),
         source_effect_hooks,
         resolver_observer_ids: Vec::new(),
@@ -191,6 +194,7 @@ pub(super) fn resolve_active_mute_list_members(
             ))
         })
     };
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     let reset_proj = Arc::clone(&projection);
     let reset_hook: ResetHook = Box::new(move |reset| {
@@ -210,6 +214,8 @@ pub(super) fn resolve_active_mute_list_members(
         interests: Vec::new(),
         extra_acquisition,
         live_shape,
+        live_shapes,
+        observer_scope: nmp_planner::InterestScope::ActiveAccount,
         reset_hooks: vec![reset_hook],
         source_effect_hooks: Vec::new(),
         resolver_observer_ids: Vec::new(),

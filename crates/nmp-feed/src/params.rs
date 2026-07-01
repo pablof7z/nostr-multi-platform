@@ -3,7 +3,7 @@
 //! This module defines the **declaration** an app submits to open a feed:
 //! [`FeedParams`] with explicit, separately-typed phases — acquisition source,
 //! admission policy, ranking/order, window, and item projection — plus the
-//! app's primary content kinds. It also defines the closed [`PubkeySetExpr`]
+//! app's primary content kinds. It also defines the closed [`FeedSourceExpr`]
 //! algebra ([`FeedScope`]) used to name acquisition sources, and the
 //! [`FeedHandle`] returned when a session is opened.
 //!
@@ -64,8 +64,7 @@ pub struct RelaySetId(pub String);
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct TagTerm(pub String);
 
-/// A closed, exhaustive typed algebra for naming the set of pubkeys (or the
-/// acquisition scope) a feed draws from.
+/// A closed, exhaustive typed algebra for naming the source a feed draws from.
 ///
 /// This is the framework-neutral source phase: it never names an app product.
 /// It is a closed enum — adding a new acquisition shape is a deliberate,
@@ -73,7 +72,7 @@ pub struct TagTerm(pub String);
 /// exhaustive. App-defined admission/ranking does **not** live here; it rides
 /// on [`FeedAdmission::Custom`] / [`FeedRanking::Custom`] as an opaque id.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum PubkeySetExpr {
+pub enum FeedSourceExpr {
     /// The active account's own follow set (reactive perspective state derived
     /// from the active account's kind:3; re-routed on account switch). The app
     /// supplies no concrete pubkeys.
@@ -121,6 +120,13 @@ pub enum PubkeySetExpr {
         pointers: Box<PubkeySetExpr>,
         pointer_kinds: Vec<u32>,
     },
+    /// The active account's hosted group set.
+    ///
+    /// This source draws rows from relay-hosted groups, not pubkeys. The
+    /// composition compiler resolves the active account's group declarations
+    /// and emits one relay-pinned group-tag interest per host relay. Empty
+    /// declaration or no active account fails closed.
+    ActiveUserHostedGroups,
     /// Set union of two sub-expressions.
     Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
     /// Set intersection of two sub-expressions.
@@ -132,11 +138,15 @@ pub enum PubkeySetExpr {
     CustomPerspectiveId(CustomPerspectiveId),
 }
 
-/// Alias: the acquisition phase of a [`FeedParams`] is a [`PubkeySetExpr`].
+/// Backwards-compatible alias for older call sites. The feed source algebra now
+/// includes non-pubkey sources such as NIP-51/NIP-29 group sets.
+pub type PubkeySetExpr = FeedSourceExpr;
+
+/// Alias: the acquisition phase of a [`FeedParams`] is a [`FeedSourceExpr`].
 ///
 /// The spec names this `FeedScope`; it is the same closed algebra. Kept as an
 /// alias (not a duplicate type) so there is exactly one model (D4).
-pub type FeedScope = PubkeySetExpr;
+pub type FeedScope = FeedSourceExpr;
 
 // ---------------------------------------------------------------------------
 // Render mode, admission, ranking, window, projection phases.

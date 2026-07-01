@@ -35,13 +35,13 @@ pub use pager::{
 };
 pub use params::{
     CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
-    FeedSessionId, FeedWindow, ListId, ProjectionKey, PubkeySetExpr, RelaySetId, TagTerm,
-    WotRulesId, WotSeed,
+    FeedSessionId, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, PubkeySetExpr, RelaySetId,
+    TagTerm, WotRulesId, WotSeed,
 };
 pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,
-    PullFn,
+    ClosureInterestShape, ClosureInterestShapes, FeedAdvance, FeedApply, FeedInterestShapes,
+    FeedReplace, FeedReset, PullFeedController, PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use render_source::FeedRenderSource;

@@ -18,7 +18,8 @@
 //!   projection sources without a graph source-effect owner.
 //! * `source_effect_hooks` — graph-proven source changes that drive the same
 //!   acquisition replacement and reset path. `ActiveUserFollows` and ordinary
-//!   `ListMembers` use this lane.
+//!   `ListMembers` use this lane. Hosted-group feeds use the same lane,
+//!   expanding one source into per-host relay-pinned group interests.
 //!
 //! Deferred / fail-closed (typed `ScopeNotSupportedYet`, no registration):
 //! * `RelaySet` — no framework relay-set-id resolver exists; relay-pinned
@@ -38,8 +39,8 @@ use nmp_feed::RootAdmission;
 use nmp_planner::InterestShape;
 
 use super::source::{
-    AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
-    SourceEffectHook,
+    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
+    ReducedSource, ResetHook, SourceEffectHook,
 };
 use super::wot_graph::SessionWotGraph;
 
@@ -58,6 +59,9 @@ pub(super) fn resolve_scope(
         S::ActiveUserFollows => resolve_active_user_follows(app, kinds),
         S::ContactList { owner } => resolve_contact_list(app, owner, kinds),
         S::ListMembers { list } => super::nip51_sources::resolve_list_members(app, &list.0, kinds),
+        S::ActiveUserHostedGroups => {
+            super::nip29_group_sources::resolve_active_simple_groups(app, kinds)
+        }
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
         S::Tag { term } => Ok(super::resolve_static::resolve_tag(&term.0, kinds)),
         S::Referrer { event_id } => super::resolve_static::resolve_referrer(event_id, kinds),
@@ -185,6 +189,7 @@ fn resolve_active_follow_set(
     let follow_predicate = follow_set.predicate();
     let admission: RootAdmission = nmp_feed::admit_all_roots();
     let live_shape = follow_set_live_shape(&app.active_account_handle(), &follow_set, kinds);
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
     let interests = Vec::new();
     let extra_acquisition =
         active_contact_list_extra_acquisition(app.active_account_handle(), &live_shape);
@@ -202,6 +207,8 @@ fn resolve_active_follow_set(
         interests,
         extra_acquisition,
         live_shape,
+        live_shapes,
+        observer_scope: nmp_planner::InterestScope::ActiveAccount,
         reset_hooks: Vec::new(),
         source_effect_hooks,
         resolver_observer_ids: Vec::new(),
@@ -262,6 +269,7 @@ fn resolve_wot(
             ))
         })
     };
+    let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
     // The second-degree ranking needs each direct follow's kind:3 contact list,
     // and the candidates' primary-kind timeline must be acquired once ranked.
@@ -303,6 +311,8 @@ fn resolve_wot(
         attribution,
         interests,
         live_shape,
+        live_shapes,
+        observer_scope: nmp_planner::InterestScope::ActiveAccount,
         extra_acquisition,
         reset_hooks: vec![reset_hook],
         source_effect_hooks: Vec::new(),
