@@ -191,6 +191,58 @@ fn malformed_batch_response_surfaces_backend_error() {
 }
 
 #[test]
+fn unknown_extension_method_maps_to_unsupported_for_scalar_fallback() {
+    let remote_user = LocalKeySigner::generate();
+    let (signer, transport) = build_signer_with_remote(&remote_user);
+
+    let op = signer.nip44_decrypt_session_begin(Nip44DecryptSessionBeginRequest {
+        scope: NMP_NIP44_BACKFILL_SCOPE.to_string(),
+        requester_pubkey: remote_user.pubkey().to_hex(),
+        max_items: 512,
+        expires_at: 1_800_000_000,
+    });
+    let rpc_id = transport.sent.lock().unwrap()[0].id.clone();
+
+    signer.deliver_response(
+        &serde_json::json!({
+            "id": rpc_id,
+            "error": "unknown method: nmp_nip44_decrypt_session_begin",
+        })
+        .to_string(),
+    );
+
+    let err = op
+        .wait(Duration::from_secs(2))
+        .expect_err("unknown extension method must be scalar-fallback data");
+    assert!(matches!(err, SignerError::Unsupported(m) if m.contains("unknown method")));
+}
+
+#[test]
+fn explicit_extension_rejection_stays_rejected() {
+    let remote_user = LocalKeySigner::generate();
+    let (signer, transport) = build_signer_with_remote(&remote_user);
+
+    let op = signer.nip44_decrypt_batch(Nip44DecryptBatchRequest {
+        session_id: "opaque-session-token".to_string(),
+        items: Vec::new(),
+    });
+    let rpc_id = transport.sent.lock().unwrap()[0].id.clone();
+
+    signer.deliver_response(
+        &serde_json::json!({
+            "id": rpc_id,
+            "error": "user denied decrypt session",
+        })
+        .to_string(),
+    );
+
+    let err = op
+        .wait(Duration::from_secs(2))
+        .expect_err("user rejection must stay rejection");
+    assert!(matches!(err, SignerError::Rejected(m) if m.contains("user denied")));
+}
+
+#[test]
 fn restored_payload_preserves_extension_metadata() {
     let remote_user = LocalKeySigner::generate();
     let (signer, _transport) = build_signer_with_remote(&remote_user);

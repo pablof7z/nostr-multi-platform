@@ -4,7 +4,7 @@
 //! Grouped under `ActorCommand::Identity(IdentityCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_identity.rs`.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use super::super::SignerSource;
 
@@ -14,7 +14,6 @@ use super::super::SignerSource;
 /// about and which one is active. The ADR-0050 capability-port *verbs* (sign,
 /// nip44_encrypt, nip44_decrypt) live in [`super::super::SignCommand`] — they
 /// *use* the roster rather than mutating it.
-#[derive(Debug)]
 pub enum IdentityCommand {
     /// Unified sign-in command. Adds a signer to the actor-local identity
     /// store from one of the [`SignerSource`] variants and, when `make_active`
@@ -130,4 +129,105 @@ pub enum IdentityCommand {
         /// not `"ok"` and the account is still present.
         result_json: String,
     },
+}
+
+impl fmt::Debug for IdentityCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::AddSigner {
+                source,
+                make_active,
+            } => f
+                .debug_struct("AddSigner")
+                .field("source", source)
+                .field("make_active", make_active)
+                .finish(),
+            Self::CreateAccount {
+                profile,
+                relays,
+                initial_follows,
+                mls,
+                make_active,
+            } => f
+                .debug_struct("CreateAccount")
+                .field("profile", profile)
+                .field("relays", relays)
+                .field("initial_follows", initial_follows)
+                .field("mls", mls)
+                .field("make_active", make_active)
+                .finish(),
+            Self::SwitchActive { identity_id } => f
+                .debug_struct("SwitchActive")
+                .field("identity_id", identity_id)
+                .finish(),
+            Self::RemoveAccount { identity_id } => f
+                .debug_struct("RemoveAccount")
+                .field("identity_id", identity_id)
+                .finish(),
+            Self::BunkerHandshakeProgress {
+                stage,
+                code,
+                message,
+            } => f
+                .debug_struct("BunkerHandshakeProgress")
+                .field("stage", stage)
+                .field("code", code)
+                .field("message", message)
+                .finish(),
+            Self::BunkerConnectionStateChanged { state, reason } => f
+                .debug_struct("BunkerConnectionStateChanged")
+                .field("state", state)
+                .field("reason", reason)
+                .finish(),
+            Self::Nip55SignerStateChanged { state, reason } => f
+                .debug_struct("Nip55SignerStateChanged")
+                .field("state", state)
+                .field("reason", reason)
+                .finish(),
+            Self::DeliverSignerResponse { .. } => f
+                .debug_struct("DeliverSignerResponse")
+                .field("response_json", &"[redacted]")
+                .finish(),
+            #[cfg(feature = "native")]
+            Self::CapabilityResultReady { account_id, .. } => f
+                .debug_struct("CapabilityResultReady")
+                .field("account_id", account_id)
+                .field("result_json", &"[redacted]")
+                .finish(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::actor::{ActorCommand, ActorMail};
+
+    use super::IdentityCommand;
+
+    #[test]
+    fn deliver_signer_response_debug_redacts_response_json() {
+        let cmd = IdentityCommand::DeliverSignerResponse {
+            response_json: r#"{"id":"rpc-1","result":{"session_id":"session-secret","items":[{"plaintext":"plain-secret"}]}}"#.to_string(),
+        };
+
+        let s = format!("{cmd:?}");
+        assert!(s.contains("DeliverSignerResponse"));
+        assert!(!s.contains("session-secret"));
+        assert!(!s.contains("plain-secret"));
+        assert!(s.contains("[redacted]"));
+    }
+
+    #[test]
+    fn actor_mail_debug_redacts_deliver_signer_response_json() {
+        let mail = ActorMail::Command(ActorCommand::Identity(
+            IdentityCommand::DeliverSignerResponse {
+                response_json: r#"{"id":"rpc-1","result":"plain-secret"}"#.to_string(),
+            },
+        ));
+
+        let s = format!("{mail:?}");
+        assert!(s.contains("DeliverSignerResponse"));
+        assert!(!s.contains("plain-secret"));
+        assert!(s.contains("[redacted]"));
+    }
 }

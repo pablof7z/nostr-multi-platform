@@ -24,7 +24,7 @@ use nmp_signer_iface::{
 use nmp_signer_iface::{SignerError, SignerOp};
 use nostr::PublicKey;
 
-use super::result_map::{map_response, parse_json_result};
+use super::result_map::{map_response_with_error, parse_json_result};
 use super::Nip46Signer;
 use crate::signers::traits::{Nip44, Signer};
 
@@ -81,7 +81,7 @@ impl RemoteSignerHandle for Nip46Signer {
             Err(e) => return SignerOp::err(e),
         };
         let extension = self.decrypt_session_extension.clone();
-        map_response(
+        map_response_with_error(
             self.enqueue(NMP_NIP44_DECRYPT_SESSION_BEGIN, &params_json),
             move |result| {
                 let grant = parse_json_result::<Nip44DecryptSessionGrant>(
@@ -93,6 +93,7 @@ impl RemoteSignerHandle for Nip46Signer {
                 }
                 Ok(grant)
             },
+            |error| classify_extension_error(error, NMP_NIP44_DECRYPT_SESSION_BEGIN),
         )
     }
 
@@ -104,9 +105,10 @@ impl RemoteSignerHandle for Nip46Signer {
             Ok(s) => s,
             Err(e) => return SignerOp::err(e),
         };
-        map_response(
+        map_response_with_error(
             self.enqueue(NMP_NIP44_DECRYPT_BATCH, &params_json),
             |result| parse_json_result(&result, NMP_NIP44_DECRYPT_BATCH),
+            |error| classify_extension_error(error, NMP_NIP44_DECRYPT_BATCH),
         )
     }
 
@@ -115,9 +117,10 @@ impl RemoteSignerHandle for Nip46Signer {
             Ok(s) => s,
             Err(e) => return SignerOp::err(e),
         };
-        map_response(
+        map_response_with_error(
             self.enqueue(NMP_NIP44_DECRYPT_SESSION_END, &params_json),
             |result| parse_json_result(&result, NMP_NIP44_DECRYPT_SESSION_END),
+            |error| classify_extension_error(error, NMP_NIP44_DECRYPT_SESSION_END),
         )
     }
 
@@ -136,9 +139,31 @@ fn params_json<T: serde::Serialize>(request: &T) -> Result<String, SignerError> 
         .map_err(|e| SignerError::Backend(format!("serialize nip44 decrypt-session request: {e}")))
 }
 
+fn classify_extension_error(error: SignerError, method: &str) -> SignerError {
+    let SignerError::Rejected(message) = error else {
+        return error;
+    };
+    let lower = message.to_ascii_lowercase();
+    let method_lower = method.to_ascii_lowercase();
+    let is_unknown_method = lower.contains("unknown method")
+        || lower.contains("method not found")
+        || lower.contains("no such method")
+        || lower.contains("not implemented")
+        || (lower.contains("unsupported") && lower.contains(&method_lower));
+    if is_unknown_method {
+        SignerError::Unsupported(message)
+    } else {
+        SignerError::Rejected(message)
+    }
+}
+
 #[cfg(test)]
 #[path = "handle/decrypt_session_tests.rs"]
 mod decrypt_session_tests;
+
+#[cfg(test)]
+#[path = "handle/debug_tests.rs"]
+mod debug_tests;
 
 #[cfg(test)]
 #[path = "handle/tests.rs"]

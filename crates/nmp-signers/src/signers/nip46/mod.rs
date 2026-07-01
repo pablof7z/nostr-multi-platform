@@ -62,10 +62,18 @@ type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;
 /// bunker URI + local ephemeral keys.  Call `complete()` after the kernel has
 /// completed the connect / `get_public_key` handshake and learned the remote user
 /// pubkey.
-#[derive(Debug)]
 pub struct Nip46SignerHandle {
     uri: BunkerUri,
     local_keys: Keys,
+}
+
+impl std::fmt::Debug for Nip46SignerHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Nip46SignerHandle")
+            .field("uri", &self.uri)
+            .field("local_pubkey", &self.local_keys.public_key().to_hex())
+            .finish_non_exhaustive()
+    }
 }
 
 impl Nip46SignerHandle {

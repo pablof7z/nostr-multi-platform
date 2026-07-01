@@ -25,6 +25,13 @@ use super::store::{BatchBackfillFinish, InboxStore};
 
 const MAX_BATCH_BACKFILL_ENVELOPES: usize = 256;
 
+#[cfg(any(test, feature = "test-support"))]
+impl super::DmInboxProjection {
+    pub fn launch_batch_backfill_for_test(&self, store: &EventStoreSlot) -> bool {
+        self.launch_batch_backfill(store)
+    }
+}
+
 #[derive(Clone)]
 struct OuterItem {
     id: String,

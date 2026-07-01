@@ -67,7 +67,7 @@ nmp-nip01 = { path = "../nmp-nip01" }
 # real resolution projections (no duplicated graph/list parsing — D4).
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-wot = { path = "../nmp-wot" }
-nmp-nip17 = { path = "../nmp-nip17" }
+nmp-nip17 = { path = "../nmp-nip17", features = ["test-support"] }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip25 = { path = "../nmp-nip25" }
@@ -410,6 +410,13 @@ path = "tests/nip46_req_before_event_on_reconnect.rs"
 [[test]]
 name = "nip46_actor_lane_signing"
 path = "tests/nip46_actor_lane_signing.rs"
+
+# #1259 conformance: batch-capable NIP-46 bunker decrypts stored kind:1059
+# candidates over the real actor-lane transport and NIP-17 settles to ok.
+# `cargo test -p nmp-testing --test nip46_decrypt_session_backfill`
+[[test]]
+name = "nip46_decrypt_session_backfill"
+path = "tests/nip46_decrypt_session_backfill.rs"
 
 # T122 — NIP-46 bunker signing through the production native runtime seam.
 # Drives init_signer_broker + bunker AddSigner against MockBunkerRelay and

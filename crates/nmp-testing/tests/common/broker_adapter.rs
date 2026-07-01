@@ -401,6 +401,27 @@ impl RemoteSignerHandle for ArcRemoteSigner {
         RemoteSignerHandle::nip44_decrypt(&*self.0, sender_pubkey, ciphertext)
     }
 
+    fn nip44_decrypt_session_begin(
+        &self,
+        request: nmp_signer_iface::Nip44DecryptSessionBeginRequest,
+    ) -> nmp_signer_iface::SignerOp<nmp_signer_iface::Nip44DecryptSessionGrant> {
+        RemoteSignerHandle::nip44_decrypt_session_begin(&*self.0, request)
+    }
+
+    fn nip44_decrypt_batch(
+        &self,
+        request: nmp_signer_iface::Nip44DecryptBatchRequest,
+    ) -> nmp_signer_iface::SignerOp<nmp_signer_iface::Nip44DecryptBatchResult> {
+        RemoteSignerHandle::nip44_decrypt_batch(&*self.0, request)
+    }
+
+    fn nip44_decrypt_session_end(
+        &self,
+        request: nmp_signer_iface::Nip44DecryptSessionEndRequest,
+    ) -> nmp_signer_iface::SignerOp<bool> {
+        RemoteSignerHandle::nip44_decrypt_session_end(&*self.0, request)
+    }
+
     fn deliver_response(&self, response_json: &str) {
         self.0.ingest_rpc_response(response_json);
     }

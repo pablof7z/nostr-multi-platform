@@ -49,6 +49,9 @@ use nostr::nips::nip44;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, Tag, Timestamp};
 use serde_json::{json, Value};
 
+#[path = "mock_bunker_relay/decrypt_session.rs"]
+mod decrypt_session;
+
 /// Handle to a running mock bunker relay. Drop to shut down.
 pub struct MockBunkerRelay {
     addr: SocketAddr,
@@ -308,9 +311,9 @@ fn handle_incoming_rpc(
     let method = rpc.get("method").and_then(|v| v.as_str())?.to_string();
     seen.lock().unwrap().push(method.clone());
 
-    let result_str: String = match method.as_str() {
-        "connect" => "ack".to_string(),
-        "get_public_key" => user_keys.public_key().to_hex(),
+    let result: Value = match method.as_str() {
+        "connect" => json!("ack"),
+        "get_public_key" => json!(user_keys.public_key().to_hex()),
         "sign_event" => {
             // params: [<UnsignedEvent json>]
             let params = rpc.get("params").and_then(|v| v.as_array())?;
@@ -352,7 +355,16 @@ fn handle_incoming_rpc(
                 .ok()?;
             // NIP-46 sign_event returns the full signed event JSON as a
             // single result string.
-            serde_json::to_string(&signed_event).ok()?
+            json!(serde_json::to_string(&signed_event).ok()?)
+        }
+        nmp_signer_iface::NMP_NIP44_DECRYPT_SESSION_BEGIN => {
+            decrypt_session::begin_result(rpc.get("params")?)?
+        }
+        nmp_signer_iface::NMP_NIP44_DECRYPT_BATCH => {
+            decrypt_session::batch_result(rpc.get("params")?, user_keys)?
+        }
+        nmp_signer_iface::NMP_NIP44_DECRYPT_SESSION_END => {
+            decrypt_session::end_result(rpc.get("params")?)?
         }
         _ => {
             let resp = json!({
@@ -364,7 +376,7 @@ fn handle_incoming_rpc(
         }
     };
 
-    let response_rpc = json!({"id": id, "result": result_str});
+    let response_rpc = json!({"id": id, "result": result});
     build_response_event(bunker_keys, client_pk, response_rpc)
 }
 

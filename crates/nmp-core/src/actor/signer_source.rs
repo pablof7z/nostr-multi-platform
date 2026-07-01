@@ -35,7 +35,7 @@ impl std::fmt::Debug for SignerSource {
         match self {
             SignerSource::LocalNsec(_) => f.write_str("LocalNsec(<redacted>)"),
             SignerSource::AppManagedLocalNsec(_) => f.write_str("AppManagedLocalNsec(<redacted>)"),
-            SignerSource::BunkerUri(uri) => f.debug_tuple("BunkerUri").field(uri).finish(),
+            SignerSource::BunkerUri(_) => f.write_str("BunkerUri(<redacted>)"),
             SignerSource::RemoteHandle(handle) => f
                 .debug_tuple("RemoteHandle")
                 .field(&handle.pubkey_hex())

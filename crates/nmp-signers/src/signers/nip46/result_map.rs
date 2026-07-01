@@ -6,21 +6,27 @@ use serde::de::DeserializeOwned;
 
 use nmp_signer_iface::{SignerError, SignerOp};
 
-/// Map a raw NIP-46 string response into a typed signer result.
-pub fn map_response<T, F>(raw_op: SignerOp<String>, parse: F) -> SignerOp<T>
+/// Map a raw NIP-46 string response into a typed signer result, normalising
+/// signer-side errors before the caller observes them.
+pub fn map_response_with_error<T, F, E>(
+    raw_op: SignerOp<String>,
+    parse: F,
+    map_error: E,
+) -> SignerOp<T>
 where
     T: Send + 'static,
     F: FnOnce(String) -> Result<T, SignerError> + Send + 'static,
+    E: FnOnce(SignerError) -> SignerError + Send + 'static,
 {
     match raw_op {
         SignerOp::Ready(Ok(s)) => SignerOp::Ready(parse(s)),
-        SignerOp::Ready(Err(e)) => SignerOp::Ready(Err(e)),
+        SignerOp::Ready(Err(e)) => SignerOp::Ready(Err(map_error(e))),
         SignerOp::Pending(rx) => {
             let (tx, out_rx) = mpsc::channel();
             std::thread::spawn(move || {
                 let result = match rx.recv() {
                     Ok(Ok(s)) => parse(s),
-                    Ok(Err(e)) => Err(e),
+                    Ok(Err(e)) => Err(map_error(e)),
                     Err(_) => Err(SignerError::Backend(
                         "nip46 response channel disconnected".to_string(),
                     )),
