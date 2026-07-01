@@ -1,0 +1,18 @@
+{
+  "name": "desktop-content-media-grid",
+  "type": "registry:ui",
+  "title": "Content Media Grid (desktop)",
+  "description": "Photo-style iced media grid for content image URLs supplied by Rust projections.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-content-core"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/content-media-grid/media_grid.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_content/media_grid.rs",
+      "content": "use std::collections::BTreeMap;\n\nuse iced::widget::{column, container, image, row, text};\nuse iced::{Border, Element, Length};\n\nuse super::content_core::{short_id, BORDER_COLOR, MUTED, SURFACE_2, TEXT};\n\npub struct NostrMediaGrid<'a> {\n    urls: Vec<String>,\n    image_handles: &'a BTreeMap<String, image::Handle>,\n}\n\nimpl<'a> NostrMediaGrid<'a> {\n    #[must_use]\n    pub fn new(urls: &[String]) -> Self {\n        Self {\n            urls: urls.to_vec(),\n            image_handles: &EMPTY_HANDLES,\n        }\n    }\n\n    #[must_use]\n    pub fn image_handles(mut self, image_handles: &'a BTreeMap<String, image::Handle>) -> Self {\n        self.image_handles = image_handles;\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'a, Message> {\n        if self.urls.is_empty() {\n            return text(\"Waiting for relay-backed media...\")\n                .size(13)\n                .style(|_| text::Style { color: Some(MUTED) })\n                .into();\n        }\n\n        let mut rows = column![].spacing(8);\n        for chunk in self.urls.chunks(2) {\n            let mut cells = row![].spacing(8);\n            for url in chunk {\n                cells = cells.push(media_cell(\n                    url.clone(),\n                    self.image_handles.get(url).cloned(),\n                ));\n            }\n            rows = rows.push(cells);\n        }\n        rows.into()\n    }\n}\n\nstatic EMPTY_HANDLES: BTreeMap<String, image::Handle> = BTreeMap::new();\n\nfn media_cell<Message: 'static>(\n    url: String,\n    handle: Option<image::Handle>,\n) -> Element<'static, Message> {\n    let body: Element<'static, Message> = if let Some(handle) = handle {\n        image(handle)\n            .width(Length::Fill)\n            .height(Length::Fixed(132.0))\n            .into()\n    } else {\n        container(\n            column![\n                text(\"image\")\n                    .size(12)\n                    .style(|_| text::Style { color: Some(TEXT) }),\n                text(short_id(&url))\n                    .size(11)\n                    .style(|_| text::Style { color: Some(MUTED) })\n            ]\n            .spacing(4),\n        )\n        .height(Length::Fixed(132.0))\n        .center(Length::Fill)\n        .into()\n    };\n\n    container(body)\n        .width(Length::FillPortion(1))\n        .clip(true)\n        .style(|_| container::Style {\n            background: Some(iced::Background::Color(SURFACE_2)),\n            border: Border {\n                color: BORDER_COLOR,\n                width: 1.0,\n                radius: 6.0.into(),\n            },\n            ..Default::default()\n        })\n        .into()\n}\n"
+    }
+  ]
+}

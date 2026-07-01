@@ -6,6 +6,12 @@
 
 pub mod embed_article;
 pub mod gallery_misc;
+pub mod content_core;
+pub mod content_view;
+pub mod media_grid;
+pub mod mention_chip;
+pub mod minimal_content;
+pub mod quote_card;
 pub mod user_avatar;
 pub mod user_card;
 pub mod user_name;

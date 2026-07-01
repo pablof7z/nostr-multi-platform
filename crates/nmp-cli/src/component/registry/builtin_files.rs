@@ -283,6 +283,30 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../../registry/desktop/user-card/user_card.rs"),
     ),
     (
+        "desktop/content-core/content_core.rs",
+        include_str!("../../../registry/desktop/content-core/content_core.rs"),
+    ),
+    (
+        "desktop/content-mention-chip/mention_chip.rs",
+        include_str!("../../../registry/desktop/content-mention-chip/mention_chip.rs"),
+    ),
+    (
+        "desktop/content-media-grid/media_grid.rs",
+        include_str!("../../../registry/desktop/content-media-grid/media_grid.rs"),
+    ),
+    (
+        "desktop/content-quote-card/quote_card.rs",
+        include_str!("../../../registry/desktop/content-quote-card/quote_card.rs"),
+    ),
+    (
+        "desktop/content-minimal/minimal_content.rs",
+        include_str!("../../../registry/desktop/content-minimal/minimal_content.rs"),
+    ),
+    (
+        "desktop/content-view/content_view.rs",
+        include_str!("../../../registry/desktop/content-view/content_view.rs"),
+    ),
+    (
         "swiftui/content-kind-registry/EmbedKindProjection.swift",
         include_str!("../../../registry/swiftui/content-kind-registry/EmbedKindProjection.swift"),
     ),

@@ -1,5 +1,6 @@
 //! Gallery application state and live-kernel layout.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read as _;
 use std::sync::{Arc, Mutex};
 
@@ -65,6 +66,9 @@ pub struct GalleryApp {
     avatar_url_fetching: Option<String>,
     avatar_pending: Arc<Mutex<Option<Vec<u8>>>>,
     avatar_handle: Option<ImageHandle>,
+    media_url_fetching: BTreeSet<String>,
+    media_pending: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
+    media_handles: BTreeMap<String, ImageHandle>,
     // Snapshot receiver for the iced subscription. Taken from bridge in new()
     // and held in a shared slot. `subscription()` is called by iced after every
     // update and must return a *stable* recipe (same hash, every call) or iced
@@ -97,6 +101,9 @@ impl GalleryApp {
             avatar_url_fetching: None,
             avatar_pending: Arc::new(Mutex::new(None)),
             avatar_handle: None,
+            media_url_fetching: BTreeSet::new(),
+            media_pending: Arc::new(Mutex::new(Vec::new())),
+            media_handles: BTreeMap::new(),
             snapshot_rx: Arc::new(Mutex::new(snapshot_rx)),
         }
     }
@@ -186,6 +193,12 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             claim_tree_refs(&app.bridge, &app.data.embed_profile.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_note.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.embed_highlight.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_core.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_view.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_mention_chip.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_minimal.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_media_grid.tree.nodes);
+            claim_tree_refs(&app.bridge, &app.data.content_quote_card.tree.nodes);
 
             app.last_rev += 1;
 
@@ -194,6 +207,12 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             //    passed to iced every frame and the GPU texture is not re-uploaded.
             if let Some(bytes) = app.avatar_pending.lock().ok().and_then(|mut s| s.take()) {
                 app.avatar_handle = Some(ImageHandle::from_bytes(bytes));
+            }
+            if let Ok(mut pending) = app.media_pending.lock() {
+                for (url, bytes) in pending.drain(..) {
+                    app.media_handles
+                        .insert(url, ImageHandle::from_bytes(bytes));
+                }
             }
 
             // 5. Start fetching the primary pubkey's picture_url if it changed.
@@ -210,6 +229,23 @@ pub fn update(app: &mut GalleryApp, message: Message) {
                         }
                     });
                 }
+            }
+
+            // Fetch only presentation images referenced by the resolved content
+            // projections. Event/content identity and media URL discovery stay
+            // Rust-owned; iced stores stable handles for drawing.
+            for url in content_media_urls(app) {
+                if app.media_handles.contains_key(&url) || !app.media_url_fetching.insert(url.clone()) {
+                    continue;
+                }
+                let pending = Arc::clone(&app.media_pending);
+                std::thread::spawn(move || {
+                    if let Some(bytes) = fetch_image_sync(&url) {
+                        if let Ok(mut slot) = pending.lock() {
+                            slot.push((url, bytes));
+                        }
+                    }
+                });
             }
         }
         Message::Select(i) => {
@@ -246,6 +282,25 @@ fn fetch_image_sync(url: &str) -> Option<Vec<u8>> {
         .read_to_end(&mut bytes)
         .ok()?;
     Some(bytes)
+}
+
+fn content_media_urls(app: &GalleryApp) -> Vec<String> {
+    let envelopes = app.embed_host.current_envelopes();
+    let mut urls = crate::components::content_view::referenced_media_urls(
+        &app.data.content_media_grid.tree,
+        envelopes,
+    );
+    urls.extend(crate::components::content_view::referenced_media_urls(
+        &app.data.content_view.tree,
+        envelopes,
+    ));
+    urls.extend(crate::components::content_view::referenced_media_urls(
+        &app.data.content_quote_card.tree,
+        envelopes,
+    ));
+    urls.sort();
+    urls.dedup();
+    urls
 }
 
 // ── View ──────────────────────────────────────────────────────────────────────

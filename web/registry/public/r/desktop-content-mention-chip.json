@@ -1,0 +1,18 @@
+{
+  "name": "desktop-content-mention-chip",
+  "type": "registry:ui",
+  "title": "Content Mention Chip (desktop)",
+  "description": "iced @mention chip for Rust-owned Nostr content references.",
+  "dependencies": [],
+  "registryDependencies": [
+    "desktop-content-core"
+  ],
+  "files": [
+    {
+      "path": "registry/desktop/content-mention-chip/mention_chip.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_content/mention_chip.rs",
+      "content": "use iced::widget::{container, text};\nuse iced::{Border, Element};\n\nuse nmp_gallery_tui::content_render_data::ContentProfileRenderData;\nuse nmp_gallery_tui::content_tree_wire::WireUri;\n\nuse super::content_core::{short_id, ACCENT, BORDER_COLOR, SURFACE_2};\n\npub struct NostrMentionChip {\n    label: String,\n}\n\nimpl NostrMentionChip {\n    #[must_use]\n    pub fn new(uri: &WireUri) -> Self {\n        Self {\n            label: format!(\"@{}\", short_id(&uri.primary_id)),\n        }\n    }\n\n    #[must_use]\n    pub fn profile(mut self, profile: Option<&ContentProfileRenderData>) -> Self {\n        if let Some(profile) = profile {\n            self.label = format!(\"@{}\", profile.label());\n        }\n        self\n    }\n\n    #[must_use]\n    pub fn label(mut self, label: impl Into<String>) -> Self {\n        let label = label.into();\n        self.label = if label.starts_with('@') {\n            label\n        } else {\n            format!(\"@{label}\")\n        };\n        self\n    }\n\n    pub fn into_element<Message: 'static>(self) -> Element<'static, Message> {\n        container(text(self.label).size(13).style(|_| text::Style {\n            color: Some(ACCENT),\n        }))\n        .padding([6, 10])\n        .style(|_| container::Style {\n            background: Some(iced::Background::Color(SURFACE_2)),\n            border: Border {\n                color: BORDER_COLOR,\n                width: 1.0,\n                radius: 999.0.into(),\n            },\n            ..Default::default()\n        })\n        .into()\n    }\n}\n"
+    }
+  ]
+}

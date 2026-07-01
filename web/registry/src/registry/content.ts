@@ -1,6 +1,6 @@
 import { nativeSource } from "./vendorSource";
 import type { Component } from "./types";
-import { webContentCore, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentView } from "./contentWeb";
+import { webContentCore, webContentMediaGrid, webContentMentionChip, webContentMinimal, webContentQuoteCard, webContentView } from "./contentWeb";
 import { contentKindComponents } from "./contentKindComponents";
 
 // Content — SwiftUI
@@ -35,6 +35,14 @@ const tuiContentWidgetRust = nativeSource("registry/tui/content-view/nostr_conte
 const tuiMentionChipRust = nativeSource("registry/tui/content-mention-chip/nostr_mention_chip.rs");
 const tuiMinimalContentRust = nativeSource("registry/tui/content-minimal/nostr_minimal_content.rs");
 const tuiMediaGridRust = nativeSource("registry/tui/content-media-grid/nostr_media_grid.rs");
+
+// Content — Desktop (iced)
+const desktopContentCoreRust = nativeSource("registry/desktop/content-core/content_core.rs");
+const desktopContentViewRust = nativeSource("registry/desktop/content-view/content_view.rs");
+const desktopMentionChipRust = nativeSource("registry/desktop/content-mention-chip/mention_chip.rs");
+const desktopMinimalContentRust = nativeSource("registry/desktop/content-minimal/minimal_content.rs");
+const desktopMediaGridRust = nativeSource("registry/desktop/content-media-grid/media_grid.rs");
+const desktopQuoteCardRust = nativeSource("registry/desktop/content-quote-card/quote_card.rs");
 
 export const contentComponents: Component[] = [
   {
@@ -98,6 +106,21 @@ export const contentComponents: Component[] = [
           "`ContentRenderData` is optional so cold-start rows can render immediately and hydrate when kind:0 or quoted events arrive.",
         ],
       },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-core",
+        version: "0.1.0",
+        dependencies: [],
+        longDescription:
+          "`ContentTreePanel` and the shared content helpers render Rust-owned `ContentTreeWire` values in iced. Host apps pass decoded trees and projection-sidecar data; the component owns only presentation.",
+        files: [
+          { source: "desktop/content-core/content_core.rs", target: "src/components/nostr_content/content_core.rs", role: "source", content: desktopContentCoreRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Tune the palette constants to match your iced theme; keep tree construction and Nostr resolution in Rust/kernel code.",
+        ],
+      },
       web: webContentCore,
     },
   },
@@ -138,6 +161,21 @@ export const contentComponents: Component[] = [
         customization: [
           "Use this in list rows where a single preview line matters more than full block layout.",
           "Pair it with the host kernel render-intent loop that claims visible profile and event references.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-minimal",
+        version: "0.1.0",
+        dependencies: ["content-core", "content-mention-chip"],
+        longDescription:
+          "`NostrMinimalContent` is a compact iced inline renderer for visible content rows. It walks the supplied `ContentTreeWire`, renders mention nodes through `NostrMentionChip`, and falls back to short ids until the host provides resolved labels.",
+        files: [
+          { source: "desktop/content-minimal/minimal_content.rs", target: "src/components/nostr_content/minimal_content.rs", role: "source", content: desktopMinimalContentRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Provide `profile_labels` from your Rust-owned profile projection store to hydrate mention labels without parsing profile events in the widget.",
         ],
       },
       web: webContentMinimal,
@@ -187,6 +225,21 @@ export const contentComponents: Component[] = [
         customization: [
           "`NostrContentView` dispatches each `ContentTreeWire` node to the matching Ratatui sub-widget and renders event refs through the kind-dispatch registry (`EmbeddedEvent`) when a host is wired.",
           "Host apps provide terminal image protocols for media URLs; the widget renders inline images when those protocols are present and falls back to text rows otherwise.",
+        ],
+      },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-view",
+        version: "0.1.0",
+        dependencies: ["content-core", "content-mention-chip", "content-media-grid", "content-quote-card"],
+        longDescription:
+          "`NostrContentView` is the full iced content renderer. It walks `ContentTreeWire`, renders mentions, media, and event refs, and upgrades resolved refs using Rust-derived embedded-event envelopes supplied by the host.",
+        files: [
+          { source: "desktop/content-view/content_view.rs", target: "src/components/nostr_content/content_view.rs", role: "source", content: desktopContentViewRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Pass stable iced image handles from update code for media URLs; the component lays them out but does not fetch or decode in view construction.",
         ],
       },
       web: webContentView,
@@ -240,6 +293,21 @@ export const contentComponents: Component[] = [
           "The chip displays the kernel-projected kind:0 name when available and shortens the npub/pubkey fallback locally.",
         ],
       },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-mention-chip",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrMentionChip` renders an iced @mention pill from a `WireUri` plus optional host-provided profile label. It never resolves profiles itself.",
+        files: [
+          { source: "desktop/content-mention-chip/mention_chip.rs", target: "src/components/nostr_content/mention_chip.rs", role: "source", content: desktopMentionChipRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Change the chip colors in `content_core.rs`; keep label hydration in the host's projection store.",
+        ],
+      },
       web: webContentMentionChip,
     },
   },
@@ -290,7 +358,46 @@ export const contentComponents: Component[] = [
           "Pass host-created `ratatui-image` protocols for URLs that have already been fetched and decoded. The widget lays out up to four inline images and leaves fetching/caching outside the display component.",
         ],
       },
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-media-grid",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrMediaGrid` lays out content image URLs as an iced grid and uses prebuilt `image::Handle`s when the host has fetched them. The URL set still comes from Rust-owned content/event projections.",
+        files: [
+          { source: "desktop/content-media-grid/media_grid.rs", target: "src/components/nostr_content/media_grid.rs", role: "source", content: desktopMediaGridRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Swap the placeholder cell or image height to fit your desktop layout; do image fetching/caching outside the widget.",
+        ],
+      },
       web: webContentMediaGrid,
+    },
+  },
+  {
+    slug: "content-quote-card",
+    routeId: "content-quote-card",
+    version: "0.1.0",
+    description: "Quoted-note card for resolved kind:1 event refs.",
+    platforms: {
+      desktop: {
+        status: "stable",
+        installId: "desktop/content-quote-card",
+        version: "0.1.0",
+        dependencies: ["content-core"],
+        longDescription:
+          "`NostrQuoteCard` renders an iced quote / embedded-event card from a resolved event projection or an honest unresolved placeholder. It consumes typed projection data and does not parse raw event JSON.",
+        files: [
+          { source: "desktop/content-quote-card/quote_card.rs", target: "src/components/nostr_content/quote_card.rs", role: "source", content: desktopQuoteCardRust },
+        ],
+        screenshots: [],
+        customization: [
+          "Join richer author display data in your host before building the card; the projection itself carries raw pubkeys by design.",
+        ],
+      },
+      web: webContentQuoteCard,
     },
   },
 ];
