@@ -1,4 +1,4 @@
-//! Shared-slot handle accessors + prepopulate / seed / mailbox helpers.
+//! Shared-slot handle accessors + seed / mailbox helpers.
 //!
 //! Extracted from `kernel/mod.rs` (`impl Kernel`) to honour the 500-LOC ceiling.
 
@@ -47,24 +47,6 @@ impl Kernel {
         Arc::clone(&self.routing_trace)
     }
 
-    /// Pre-populate the NIP-65 mailbox cache from a just-signed kind:10002 event.
-    pub(crate) fn prepopulate_author_relay_list(
-        &mut self,
-        pubkey: String,
-        created_at: u64,
-        tags: Vec<Vec<String>>,
-    ) {
-        let parsed = parse_relay_list_to_substrate(&tags);
-        let empty = parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
-        if empty {
-            self.mailbox_cache.remove(&pubkey);
-        } else {
-            self.mailbox_cache.upsert(pubkey.clone(), parsed);
-        }
-        self.lifecycle
-            .enqueue_trigger(CompileTrigger::Nip65Arrived { pubkey, created_at });
-    }
-
     /// Read-only access to the substrate `MailboxCache`.
     pub(crate) fn mailbox_cache(&self) -> &dyn MailboxCache {
         &*self.mailbox_cache
@@ -79,8 +61,10 @@ impl Kernel {
         write: Vec<String>,
         both: Vec<String>,
     ) {
-        self.mailbox_cache
-            .upsert(pubkey.to_string(), ParsedRelayList { read, write, both });
+        self.mailbox_cache.upsert(
+            pubkey.to_string(),
+            crate::substrate::ParsedRelayList { read, write, both },
+        );
     }
 
     /// Test-only: shared handle to the substrate `MailboxCache`.

@@ -81,8 +81,8 @@ pub(super) fn update_local_key_slots(
 ///    kind:10002 with `r` tags. `build_relay_list_event`
 ///    returns `None` in that case, and the function bails before any
 ///    publish — an empty kind:10002 is the destructive "clear my NIP-65
-///    metadata" signal in `ingest_relay_list`, and we must never emit
-///    that as a side effect of a relay edit.
+///    metadata" signal, and we must never emit that as a side effect of
+///    a relay edit.
 ///
 /// # `correlation_id`
 ///

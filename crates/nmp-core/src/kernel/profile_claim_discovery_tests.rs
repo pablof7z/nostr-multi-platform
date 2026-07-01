@@ -64,24 +64,11 @@ fn cold_start_claim_reaches_indexer_and_probes_then_reroutes_on_nip65() {
         "the kind:10002 probe must reach the indexer relay {INDEXER_RELAY_URL}"
     );
 
-    // The stranger publishes a kind:10002 → mailbox cache updates, Nip65Arrived
-    // fires, and the next recompile re-routes the kind:0 to their write relay.
+    // The stranger's kind:10002 is now reflected in the mailbox cache,
+    // `Nip65Arrived` fires, and the next recompile re-routes kind:0 to their
+    // write relay.
     let stranger_relay = "wss://stranger-write.example";
-    let _ = kernel
-        .inject_replaceable_event(
-            &hex64("e0e0"),
-            &stranger,
-            1_000,
-            10002,
-            vec![vec![
-                "r".to_string(),
-                stranger_relay.to_string(),
-                "write".to_string(),
-            ]],
-            "wss://seed.relay/",
-            1_000_000,
-        )
-        .expect("inject kind:10002 must succeed");
+    kernel.seed_kind10002_for_test(&stranger, &[stranger_relay]);
 
     let reqs2 = drain_reqs(&mut kernel);
     let relays2 = kind0_req_relays_for(&reqs2, &stranger);

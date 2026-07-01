@@ -282,18 +282,18 @@ impl ActionModule for PublishRelayListAction {
     }
 
     /// Reject an empty relay set — a kind:10002 with zero `r` tags is the
-    /// canonical "I cleared my NIP-65 metadata" signal in
-    /// `ingest_relay_list` (`nmp-core::kernel::ingest::relay_list`), which
-    /// REMOVES the cache entry and forces every subsequent fan-out for
-    /// this author through the cold-start bootstrap discovery seed. That
-    /// is a destructive operation and should not be reachable via the
-    /// "publish my list" verb. A host wanting to explicitly clear the
-    /// list needs its own explicit verb (this v1 does not ship one).
+    /// canonical "I cleared my NIP-65 metadata" signal for
+    /// [`Kind10002Parser`](crate::Kind10002Parser), which removes the
+    /// mailbox-cache entry and forces subsequent fan-out for this author
+    /// through cold-start bootstrap discovery. That is destructive and should
+    /// not be reachable via the "publish my list" verb. A host wanting to
+    /// explicitly clear the list needs its own explicit verb (this v1 does not
+    /// ship one).
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.relays.is_empty() {
             return Err(ActionRejection::Invalid(
                 "empty NIP-65 relay list — refusing to publish a kind:10002 \
-                 that would clear the author_relay_lists cache for this user"
+                 that would clear the mailbox cache for this user"
                     .into(),
             ));
         }

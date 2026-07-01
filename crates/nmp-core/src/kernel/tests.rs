@@ -4,6 +4,40 @@ use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY};
 use crate::store::InsertOutcome;
 
+struct Kind10002ProjectionProbe {
+    cache: std::sync::Arc<dyn crate::substrate::MailboxCache>,
+}
+
+impl crate::substrate::IngestParser for Kind10002ProjectionProbe {
+    fn parse(&self, evt: &crate::store::VerifiedEvent) {
+        let raw = evt.raw();
+        if raw.kind != 10002 {
+            return;
+        }
+        if raw.tags.is_empty() {
+            self.cache.remove(&raw.pubkey);
+        } else {
+            self.cache.upsert(
+                raw.pubkey.clone(),
+                crate::substrate::ParsedRelayList {
+                    read: vec![format!("event:{}", raw.id)],
+                    write: Vec::new(),
+                    both: Vec::new(),
+                },
+            );
+        }
+    }
+}
+
+fn install_kind10002_projection_probe(kernel: &mut Kernel) {
+    kernel.register_ingest_parser(
+        10002,
+        std::sync::Arc::new(Kind10002ProjectionProbe {
+            cache: kernel.mailbox_cache_arc(),
+        }),
+    );
+}
+
 // V-68 / V-112 (ADR-0042): open_author_emits_profile_and_note_reqs,
 // open_author_with_cached_nip65_routes_notes_to_resolved_write_relays,
 // open_thread_emits_context_and_reply_reqs,
@@ -87,32 +121,6 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     assert!(!kernel.profile_claims.contains_key(FIATJAF_PUBKEY));
 }
 
-#[test]
-fn parse_relay_list_splits_nip65_markers() {
-    let parsed = super::nostr::parse_relay_list(&[
-        vec![
-            "r".to_string(),
-            "wss://read.example".to_string(),
-            "read".to_string(),
-        ],
-        vec![
-            "r".to_string(),
-            "wss://write.example".to_string(),
-            "write".to_string(),
-        ],
-        vec!["r".to_string(), "wss://both.example".to_string()],
-        vec![
-            "r".to_string(),
-            "https://not-a-relay.example".to_string(),
-            "read".to_string(),
-        ],
-    ]);
-
-    assert_eq!(parsed.read_relays, vec!["wss://read.example"]);
-    assert_eq!(parsed.write_relays, vec!["wss://write.example"]);
-    assert_eq!(parsed.both_relays, vec!["wss://both.example"]);
-}
-
 // ─── D4 regression tests: stale re-delivery must not overwrite local cache ───
 
 const PK_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -171,11 +179,12 @@ fn kind3_stale_redelivery_does_not_overwrite_latest_follow_set() {
 
 /// D4 — kind:10002 regression: deliver v2 then re-deliver stale v1.
 ///
-/// The store must supersede v1 and the kernel's `author_relay_lists`
-/// cache must stay at the v2 relay list.
+/// The store must supersede v1 and the registered projection must stay at the
+/// v2 event.
 #[test]
 fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    install_kind10002_projection_probe(&mut kernel);
 
     // v2 — two relays.
     let tags_v2: Vec<Vec<String>> = vec![
@@ -201,12 +210,8 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         .mailbox_cache()
         .snapshot(&PK_A.to_string())
         .expect("relay list must be populated after v2");
-    // Cache holds v2's relay URLs (the store doesn't surface created_at
-    // through the substrate cache — the store itself enforces
-    // supersession; the cache is just the projection of the winning
-    // event's tags).
-    assert_eq!(list_after_v2.read, vec!["wss://v2-read.example/"]);
-    assert_eq!(list_after_v2.write, vec!["wss://v2-write.example/"]);
+    assert_eq!(list_after_v2.read, vec![format!("event:{ID_V2}")]);
+    assert!(list_after_v2.write.is_empty());
 
     // v1 — older event with one relay.
     let tags_v1: Vec<Vec<String>> =
@@ -219,19 +224,18 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         "stale v1 must be Superseded by the store, got {o1:?}"
     );
 
-    // Cache must still reflect v2's relays (the store rejected v1 so
-    // `ingest_relay_list` was never called for v1 — the cache was not
-    // touched).
+    // Projection must still reflect v2: the store rejected v1, so the accepted
+    // event fan-out did not dispatch the parser probe for v1.
     let list_after_v1 = kernel
         .mailbox_cache()
         .snapshot(&PK_A.to_string())
         .expect("relay list must still be populated");
     assert_eq!(
         list_after_v1.read,
-        vec!["wss://v2-read.example/"],
+        vec![format!("event:{ID_V2}")],
         "D4 violation: stale v1 overwrote v2 relay list cache"
     );
-    assert_eq!(list_after_v1.write, vec!["wss://v2-write.example/"]);
+    assert!(list_after_v1.write.is_empty());
 }
 
 // ─── ProfileCard raw picture-url contract ────────────────────────────────────
@@ -278,6 +282,7 @@ fn profile_card_picture_url_is_none_when_profile_omits_picture() {
 #[test]
 fn kind10002_empty_relay_list_clears_cache_entry() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    install_kind10002_projection_probe(&mut kernel);
 
     // v1 — non-empty relay list; populates the cache.
     let tags_v1: Vec<Vec<String>> = vec![

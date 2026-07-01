@@ -7,8 +7,7 @@
 //! `pub(crate)` — they are internal kernel implementation details, not public
 //! NMP API.
 
-use super::types::AuthorRelayList;
-use super::{Deserialize, HashSet};
+use super::Deserialize;
 // `DateTime`, `Local`, `SystemTime` are only consumed by `now_hms` below,
 // `#[cfg(feature = "native")]` — the import is gated to match so
 // `--no-default-features` (wasm32) compiles.
@@ -62,32 +61,6 @@ pub fn is_hex_pubkey(value: &str) -> bool {
 
 pub fn is_hex_id(value: &str) -> bool {
     is_hex_pubkey(value)
-}
-
-pub(super) fn parse_relay_list(tags: &[Vec<String>]) -> AuthorRelayList {
-    let mut list = AuthorRelayList::default();
-    let mut seen = HashSet::new();
-
-    for tag in tags {
-        if tag.first().map(String::as_str) != Some("r") {
-            continue;
-        }
-        let Some(url) = tag.get(1).filter(|url| url.starts_with("wss://")) else {
-            continue;
-        };
-        let marker = tag.get(2).map_or("both", String::as_str);
-        let key = format!("{url}:{marker}");
-        if !seen.insert(key) {
-            continue;
-        }
-        match marker {
-            "read" => list.read_relays.push(url.clone()),
-            "write" => list.write_relays.push(url.clone()),
-            _ => list.both_relays.push(url.clone()),
-        }
-    }
-
-    list
 }
 
 // V-112 (ADR-0042): the NIP-10 thread-tag helpers (`event_references`,

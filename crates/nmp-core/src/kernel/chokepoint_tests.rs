@@ -395,6 +395,11 @@ fn local_kind10002_publish_notifies_event_observers_immediately() {
         500,
     );
 
+    let slot = new_event_observer_slot();
+    let observer = CapturingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+    kernel.set_event_observers_handle(slot);
+
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert!(!outbound.is_empty(), "publish should have an outbox target");
 

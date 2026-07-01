@@ -66,8 +66,7 @@ impl Kernel {
         );
     }
 
-    /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,
-    /// bypassing signature verification.
+    /// Deliver a replaceable event to the kernel, bypassing signature verification.
     ///
     /// Mirrors the production `handle_event` dispatch for replaceable kinds but
     /// uses `VerifiedEvent::from_raw_unchecked` so unit tests don't need real
@@ -99,7 +98,7 @@ impl Kernel {
         let verified = VerifiedEvent::from_raw_unchecked(raw);
         let outcome = match self
             .store
-            .insert(verified, &relay_url.to_string(), received_at_ms)
+            .insert(verified.clone(), &relay_url.to_string(), received_at_ms)
         {
             Ok(o) => o,
             Err(_) => return None,
@@ -108,97 +107,7 @@ impl Kernel {
             outcome,
             InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
         ) {
-            let event = NostrEvent {
-                id: id.to_string(),
-                pubkey: pubkey.to_string(),
-                created_at,
-                kind,
-                tags,
-                content: String::new(),
-                sig: "a".repeat(128),
-            };
-            match kind {
-                // Kind:0 flows through the same post-store projection path as
-                // every accepted event. `nmp-core` does not install a kind:0
-                // parser; NIP-01 composition owns that writer.
-                0 => {
-                    let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
-                        id: event.id.clone(),
-                        pubkey: event.pubkey.clone(),
-                        created_at: event.created_at,
-                        kind: event.kind,
-                        tags: event.tags.clone(),
-                        content: event.content.clone(),
-                        sig: "a".repeat(128),
-                    });
-                    self.project_accepted_event(&verified);
-                }
-                // Kind:3 flows through the genuine post-store projection path
-                // (like kind:0 above): reconstruct the `VerifiedEvent` (the
-                // store above already accepted it) and run the shared
-                // `project_accepted_event`, which derives the active-account
-                // contacts transition from the accepted event. No parallel fake
-                // writer.
-                3 => {
-                    let verified = VerifiedEvent::from_raw_unchecked(RawEvent {
-                        id: event.id.clone(),
-                        pubkey: event.pubkey.clone(),
-                        created_at: event.created_at,
-                        kind: event.kind,
-                        tags: event.tags.clone(),
-                        content: event.content.clone(),
-                        sig: "a".repeat(128),
-                    });
-                    self.project_accepted_event(&verified);
-                }
-                10002 => {
-                    // The production kind:10002 writer is the substrate
-                    // `nmp_router::Kind10002Parser`, which this helper bypasses
-                    // (it skips `verify_and_persist`/the dispatcher). Substitute
-                    // its effect inline: parse `r` tags into a `ParsedRelayList`,
-                    // upsert (or remove on empty) into the substrate `MailboxCache`,
-                    // and enqueue the `Nip65Arrived` recompile trigger — exactly
-                    // what `Kernel::on_mailbox_changed` does in production.
-                    let parsed = parse_relay_list_to_substrate(&event.tags);
-                    let empty =
-                        parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
-                    let had_entry = self.mailbox_cache.known(&event.pubkey);
-                    let mailbox_mutated = if empty {
-                        if had_entry {
-                            self.mailbox_cache.remove(&event.pubkey);
-                            self.lifecycle.enqueue_trigger(
-                                crate::subs::CompileTrigger::Nip65Arrived {
-                                    pubkey: event.pubkey.clone(),
-                                    created_at: event.created_at,
-                                },
-                            );
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        self.mailbox_cache.upsert(event.pubkey.clone(), parsed);
-                        self.lifecycle
-                            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
-                                pubkey: event.pubkey.clone(),
-                                created_at: event.created_at,
-                            });
-                        true
-                    };
-                    // M2: the `Nip65Arrived` trigger enqueued above is the whole
-                    // re-route mechanism now (the next recompile routes the
-                    // registered kind:0 claim onto the author's new write relays);
-                    // `refresh_profile_after_mailbox` is deleted.
-                    let _ = mailbox_mutated;
-                    self.changed_since_emit = true;
-                }
-                // V-40: kind:10050 no longer has a kernel-side ingest arm —
-                // it routes through the substrate `EventIngestDispatcher`
-                // inside `verify_and_persist` above (which this helper
-                // already calls). A registered `Kind10050Parser` writes the
-                // DM-relay cache.
-                _ => {}
-            }
+            self.project_accepted_event(&verified);
         }
         Some(outcome)
     }
@@ -264,8 +173,8 @@ impl Kernel {
         // unique per author in a fresh-kernel test. The old two-char prefix
         // approach caused a Duplicate hit when the randomly-generated active
         // pubkey started with the same two hex chars as FIATJAF_HEX ("3b")
-        // or SEED_NPUB_HEX ("fa"), making the store return Duplicate and
-        // silently skip ingest_relay_list for that author.
+        // or SEED_NPUB_HEX ("fa"), making the store return Duplicate for that
+        // author.
         let id = author_pubkey.to_string();
         let tags: Vec<Vec<String>> = write_urls
             .iter()
@@ -273,19 +182,35 @@ impl Kernel {
             .collect();
         // Use a far-future `created_at` so the seeded relay list always wins the
         // replaceable-event dedup in `store::insert` (strict `>` on `created_at`).
-        // `create_account` now caches an onboarding kind:10002 stamped with
-        // `Timestamp::now()` (~2026); a fixed past timestamp would lose that race
-        // and the seeded list would be silently discarded. `u64::MAX` guarantees
-        // the test seed overrides whatever production state was cached.
-        self.inject_replaceable_event(
-            &id,
-            author_pubkey,
-            u64::MAX,
-            10002,
+        // Account creation publishes an onboarding kind:10002 stamped with the
+        // kernel clock; a fixed past timestamp would lose that race and the
+        // seeded list would be silently discarded. `u64::MAX` guarantees the
+        // test seed overrides whatever production state was already accepted.
+        let verified = crate::store::VerifiedEvent::from_raw_unchecked(crate::store::RawEvent {
+            id,
+            pubkey: author_pubkey.to_string(),
+            created_at: u64::MAX,
+            kind: 10002,
             tags,
-            "wss://seed",
-            1_700_000_000_000,
+            content: String::new(),
+            sig: "a".repeat(128),
+        });
+        let _ = self
+            .store
+            .insert(verified, &"wss://seed".to_string(), 1_700_000_000_000);
+        self.mailbox_cache.upsert(
+            author_pubkey.to_string(),
+            crate::substrate::ParsedRelayList {
+                read: Vec::new(),
+                write: write_urls.iter().map(|url| (*url).to_string()).collect(),
+                both: Vec::new(),
+            },
         );
+        self.lifecycle
+            .enqueue_trigger(crate::subs::CompileTrigger::Nip65Arrived {
+                pubkey: author_pubkey.to_string(),
+                created_at: u64::MAX,
+            });
     }
 
     /// Test seam for delivering a kind:3 contact list through the genuine

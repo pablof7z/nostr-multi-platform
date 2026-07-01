@@ -93,10 +93,9 @@ fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
 ///
 /// Returns `None` when the projection would produce zero `r` tags — the
 /// caller MUST NOT publish in that case, because an empty kind:10002 is
-/// the "clear my NIP-65 metadata" signal (see
-/// `kernel::ingest::relay_list::ingest_relay_list`), and we never want a
-/// `RemoveRelay` that leaves indexer-only rows behind to accidentally wipe
-/// the cache for the user. Concretely the caller (`AddRelay` / `RemoveRelay`
+/// the "clear my NIP-65 metadata" signal, and we never want a `RemoveRelay`
+/// that leaves indexer-only rows behind to accidentally wipe the cache for
+/// the user. Concretely the caller (`AddRelay` / `RemoveRelay`
 /// arms) skips the publish-piggyback step in that branch — the local
 /// projection mutation still stands.
 pub(crate) fn build_relay_list_event(rows: &[AppRelay]) -> Option<UnsignedEvent> {
@@ -475,7 +474,7 @@ mod tests {
         assert!(
             event.is_none(),
             "an empty projection MUST NOT produce a kind:10002 — that would \
-             clear the author_relay_lists cache on ingest"
+             clear the mailbox cache on ingest"
         );
     }
 
