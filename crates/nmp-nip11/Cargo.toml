@@ -17,7 +17,6 @@ serde_json = { workspace = true }
 # and nmp-blossom's upload PUT — runs on a `std::thread::spawn` worker, never
 # the actor thread (D8). Not a wasm dependency; excluded from wasm32 targets.
 ureq = { version = "2", default-features = false, features = ["tls"] }
-tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

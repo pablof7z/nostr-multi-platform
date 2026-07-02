@@ -41,13 +41,9 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-feed-session = { path = "../nmp-feed-session" }
-nmp-kinds = { path = "../nmp-kinds" }
 nmp-note-feed = { path = "../nmp-note-feed" }
-nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip05 = { path = "../nmp-nip05" }
-nmp-nip09 = { path = "../nmp-nip09" }
-nmp-nip11 = { path = "../nmp-nip11" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip25 = { path = "../nmp-nip25" }
 nmp-nip29 = { path = "../nmp-nip29" }
@@ -59,7 +55,6 @@ nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-marmot = { path = "../nmp-marmot", optional = true }
 nmp-intent = { path = "../nmp-intent" }
-nmp-wot = { path = "../nmp-wot" }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }
 nostr = { workspace = true, features = ["nip44", "nip59"] }

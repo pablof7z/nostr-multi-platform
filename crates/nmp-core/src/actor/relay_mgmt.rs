@@ -192,8 +192,6 @@ pub(super) fn ensure_relay_worker_with_kind(
         }
         return false;
     }
-    let generation = rt.next_relay_generation;
-    rt.next_relay_generation = generation.saturating_add(1);
     let key_str = key.clone().into_string();
     kernel.relay_connecting_url(role, &key_str);
     // Hand the canonical URL to the pool. `Pool::ensure_open_with_role` does
@@ -204,7 +202,6 @@ pub(super) fn ensure_relay_worker_with_kind(
     rt.relay_controls.insert(
         key,
         RelayControl {
-            generation,
             role,
             relay_url: key_str,
             handle,

@@ -31,7 +31,6 @@ base64 = "0.22"
 # rust-nostr — kind:24242 construction + signing types. NEVER reimplement crypto
 # (docs/aim.md: rust-nostr is the protocol foundation).
 nostr = { workspace = true }
-tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }

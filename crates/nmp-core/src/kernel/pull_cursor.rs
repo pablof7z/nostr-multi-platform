@@ -176,16 +176,11 @@ pub enum PullCursorMode {
 /// (step-3b) FFI `pull_page` path; written only on the actor thread.
 ///
 /// `scope` / `after_seq` / `limits` are read by the FFI `pull_page` snapshot
-/// seam; `consumer_id` / `mode` are carried for step-4 (retention claims) and
-/// diagnostics — written here but not yet read, so `allow(dead_code)` documents
-/// the forward-looking fields rather than masking genuine dead code.
-// `allow(dead_code)`: `consumer_id` / `mode` are step-4 retention/diagnostic
-// fields written now but not yet consumed; the struct-level allow silences all.
-#[allow(dead_code)]
+/// seam; `mode` is read by the retention sweep. `consumer_id` was carried for
+/// step-4 retention claims but is not yet consumed.
 #[derive(Clone, Debug)]
 pub struct PullCursorRegistration {
     pub cursor_id: PullCursorId,
-    pub consumer_id: PullConsumerId,
     pub scope: PullScope,
     pub mode: PullCursorMode,
     pub after_seq: u64,
@@ -358,7 +353,6 @@ impl Kernel {
                 cursor_id,
                 PullCursorRegistration {
                     cursor_id,
-                    consumer_id: spec.consumer_id,
                     scope: spec.scope,
                     mode: spec.mode,
                     after_seq,

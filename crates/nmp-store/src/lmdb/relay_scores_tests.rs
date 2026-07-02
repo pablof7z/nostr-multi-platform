@@ -12,13 +12,6 @@ use crate::LmdbEventStore;
 
 use super::relay_scores::{encode_key, load_all_raw, put_batch_raw};
 
-/// Helper: open a fresh LmdbEventStore, returning (store, dir).
-fn open_tmp() -> (LmdbEventStore, tempfile::TempDir) {
-    let dir = tempdir().expect("tempdir");
-    let store = LmdbEventStore::open(dir.path()).expect("open");
-    (store, dir)
-}
-
 /// §W2 T1 — write one cell, re-open the store, assert the cell is intact.
 ///
 /// Asserts:

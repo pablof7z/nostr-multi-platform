@@ -34,7 +34,7 @@ use std::sync::{Arc, RwLock};
 
 use super::{clock::SystemClock, Clock};
 use crate::substrate::{
-    PublishTrace, RoutedRelaySet, RoutingPubkey as Pubkey, RoutingRelayUrl as RelayUrl,
+    PublishTrace, RoutedRelaySet, RoutingRelayUrl as RelayUrl,
     RoutingSource, RoutingTraceObserver, SubscriptionTrace,
 };
 
@@ -232,12 +232,6 @@ fn push_bounded<T>(q: &mut VecDeque<T>, entry: T, capacity: usize) {
     }
     q.push_back(entry);
 }
-
-// `allow(dead_code)`: `Pubkey` is re-exported via this module for downstream
-// phase-2 consumers; this stub silences the unused-import lint until the FFI
-// read path is wired. Remove together with that import once consumed.
-#[allow(dead_code)]
-fn _silence_unused_pubkey(_p: Pubkey) {}
 
 #[cfg(test)]
 #[path = "routing_trace_tests.rs"]

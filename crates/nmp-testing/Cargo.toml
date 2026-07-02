@@ -59,7 +59,6 @@ nmp-example-login-timeline = { path = "../nmp-example-login-timeline", features 
 # longform_projection_supersession.rs — drives the typed NIP-23
 # `LongformProjection` against the real event store to prove kernel-resolved
 # kind:30023 supersession (param-replaceable C2) reaches the typed projection.
-nmp-content = { path = "../nmp-content" }
 # NIP-19 entity codec (Layer 4), used by relay_search integration test. Issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id" }
 zeroize = { workspace = true }
@@ -74,11 +73,8 @@ nmp-nip17 = { path = "../nmp-nip17", features = ["test-support"] }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip23 = { path = "../nmp-nip23" }
-nmp-nip22 = { path = "../nmp-nip22" }
-nmp-nip25 = { path = "../nmp-nip25" }
 nmp-nip68 = { path = "../nmp-nip68" }
 nmp-nip42 = { path = "../nmp-nip42" }
-nmp-nip47 = { path = "../nmp-nip47" }
 # #1811 cache-FTS integration gate (cache_fts_integration_gate.rs) — drives the
 # crate-owned NIP-50 public search scopes + NIP-29 group-metadata scope through
 # the real `SearchScopeRegistry::compile`/`install_into` seam against both store
@@ -87,17 +83,13 @@ nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip84 = { path = "../nmp-nip84" }
-nmp-replies = { path = "../nmp-replies" }
 nmp-substrate = { path = "../nmp-substrate" }
-nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip59 = { path = "../nmp-nip59" }
 # cold_start_demand_interest.rs — drives the real substrate +
 # bookmark-runtime owners to capture the `BookmarkListProjection` handle and
 # assert the typed NIP-51 kind:10003 snapshot surfaces a stored bookmark via
 # cold-start cache-serve on sign-in, with no relay delivery.
 nmp-nip51 = { path = "../nmp-nip51" }
-nmp-coverage-gate = { path = "../nmp-coverage-gate" }
-nmp-nwc = { path = "../nmp-nwc" }
 nmp-codegen = { path = "../nmp-codegen" }
 # V-51 phase 4 validation harness — `routing_trace_real_nostr` test
 # constructs `GenericOutboxRouter` + `InMemoryMailboxCache` + the

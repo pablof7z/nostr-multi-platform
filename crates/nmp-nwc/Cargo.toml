@@ -25,4 +25,3 @@ zeroize = { workspace = true, features = ["alloc"] }
 [dev-dependencies]
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 rustls = { workspace = true, default-features = false, features = ["ring"] }
-url = "2"

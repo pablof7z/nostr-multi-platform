@@ -11,14 +11,12 @@ use std::sync::Mutex;
 /// Drive `run()` with a captured send sink + recordable stage tracker.
 struct Sink {
     sends: Mutex<Vec<ActorCommand>>,
-    stages: Mutex<Vec<String>>,
 }
 
 impl Sink {
     fn new() -> Self {
         Self {
             sends: Mutex::new(Vec::new()),
-            stages: Mutex::new(Vec::new()),
         }
     }
 }

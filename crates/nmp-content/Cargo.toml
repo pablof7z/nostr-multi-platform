@@ -19,7 +19,6 @@ nmp-kinds = { path = "../nmp-kinds" }
 # owner (ADR-0074, widened by #2589).
 nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip01 = { path = "../nmp-nip01" }
-nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip84 = { path = "../nmp-nip84" }
 # NIP-19 codec + NIP-21 `nostr:` URI vocabulary (Layer 0). The tokenizer,
 # segment model, embed registry, and wire projection consume

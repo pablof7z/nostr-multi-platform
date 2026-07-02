@@ -98,32 +98,6 @@ impl Kernel {
 
     /// Same raw-key event resolver with metadata decoded by an app-owned URI
     /// adapter. The key is still a raw event-id/coordinate, not a URI.
-    #[cfg(test)]
-    #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
-    pub(in crate::kernel) fn resolve_event_ref_with_metadata(
-        &mut self,
-        key: String,
-        consumer_id: String,
-        shape: EventShape,
-        liveness: RefLiveness,
-        force: bool,
-        can_send: bool,
-        caller_author: Option<String>,
-        caller_hints: Vec<String>,
-    ) -> Vec<OutboundMessage> {
-        self.resolve_event_ref_with_metadata_at(
-            key,
-            consumer_id,
-            shape,
-            liveness,
-            force,
-            can_send,
-            caller_author,
-            caller_hints,
-            crate::kernel::test_support::test_support_now(),
-        )
-    }
-
     #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
     pub(in crate::kernel) fn resolve_event_ref_with_metadata_at(
         &mut self,

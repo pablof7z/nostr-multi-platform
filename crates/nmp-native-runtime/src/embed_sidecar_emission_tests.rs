@@ -37,13 +37,6 @@ fn capability_off() -> Arc<AtomicBool> {
     Arc::new(AtomicBool::new(false))
 }
 
-fn id0() -> FrameIdentity {
-    FrameIdentity {
-        session_id: 1_000,
-        snapshot_epoch: 0,
-    }
-}
-
 /// Simulate one producer tick: build payload from slot, run through emission state.
 fn tick(
     slot: &EmbedSidecarSlot,

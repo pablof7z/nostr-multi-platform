@@ -36,30 +36,6 @@ pub const WARM_THRESHOLD: f32 = 0.40;
 /// halves every `DECAY_HALFLIFE_DAYS` of inactivity.
 pub const DECAY_HALFLIFE_DAYS: f32 = 14.0;
 
-/// Cap on total relays tried per claim (Phase 1 + Phase 2 union). Above
-/// this, the claim terminates `Exhausted`. Spec §6.
-#[allow(dead_code)] // consumed by claim_expansion.rs
-pub const MAX_RELAYS_TRIED_PER_CLAIM: usize = 12;
-
-/// Max concurrent Phase-2 candidate REQs per claim. Spec §6.
-#[allow(dead_code)] // consumed by claim_expansion.rs
-pub const MAX_EXPANSION_CONCURRENCY: usize = 3;
-
-/// Wall-clock budget before Phase 1 → Phase 2 transition. Spec §6.
-#[allow(dead_code)] // consumed by claim_expansion.rs
-pub const PHASE_1_BUDGET_MS: u64 = 1500;
-
-/// Wall-clock budget for any single per-relay REQ in Phase 1 or Phase 2.
-/// Beyond this the REQ is considered failed for scoring purposes
-/// regardless of whether the socket eventually replies.
-#[allow(dead_code)] // consumed by claim_expansion.rs
-pub const PER_RELAY_REQ_TIMEOUT_MS: u64 = 5000;
-
-/// User-visible wall-clock budget. After this elapses the tracked claim
-/// terminates `Budget`.
-#[allow(dead_code)] // consumed by claim_expansion.rs
-pub const PER_CLAIM_TOTAL_BUDGET_MS: u64 = 8000;
-
 /// Per-`(Pubkey, RelayUrl)` score cell. Restart-stable: serializes to a
 /// 24-byte fixed-width record in LMDB (`u32 + u32 + u64 + u64 reserved`)
 /// per §8.9.

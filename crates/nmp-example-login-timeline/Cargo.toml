@@ -14,12 +14,10 @@ nmp-ownership = { workspace = true }
 nmp-native-runtime = { path = "../nmp-native-runtime" }
 # Kernel substrate — the `AppHost` trait `register` takes.
 nmp-core = { path = "../nmp-core" }
-nmp-content = { path = "../nmp-content" }
 # Feed declaration model — the app-owned projection key passed to the opener.
 nmp-feed = { path = "../nmp-feed" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
 nmp-note-feed = { path = "../nmp-note-feed" }
-nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip18 = { path = "../nmp-nip18" }

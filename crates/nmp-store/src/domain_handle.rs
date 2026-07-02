@@ -16,8 +16,6 @@ type MemDomainData = Arc<Mutex<HashMap<Vec<u8>, Vec<u8>>>>;
 /// Backend-specific storage for a `DomainHandle`.
 pub(crate) enum DomainHandleInner {
     Mem {
-        #[allow(dead_code)] // Preserved for debug/domain isolation checks.
-        namespace: &'static str,
         data: MemDomainData,
     },
     // LMDB variant — carries the namespace + a handle to the LMDB-side state.

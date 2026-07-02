@@ -3739,7 +3739,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "tracing",
  "ureq",
 ]
 
@@ -3758,7 +3757,6 @@ dependencies = [
  "nmp-feed-session",
  "nmp-kinds",
  "nmp-network",
- "nmp-nip01",
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip18",
@@ -3817,7 +3815,6 @@ dependencies = [
  "nmp-component-registry",
  "nmp-ownership",
  "serde",
- "serde_json",
  "sha2",
  "toml 0.8.23",
 ]
@@ -3851,7 +3848,6 @@ dependencies = [
  "nmp-kinds",
  "nmp-nip01",
  "nmp-nip09",
- "nmp-nip18",
  "nmp-nip84",
  "nmp-nostr-id",
  "nmp-ownership",
@@ -3879,7 +3875,6 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
- "url",
 ]
 
 [[package]]
@@ -3925,11 +3920,9 @@ name = "nmp-example-login-timeline"
 version = "0.8.4"
 dependencies = [
  "flatbuffers",
- "nmp-content",
  "nmp-core",
  "nmp-feed",
  "nmp-native-runtime",
- "nmp-nip01",
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip18",
@@ -3982,7 +3975,6 @@ dependencies = [
  "nmp-planner",
  "nmp-store",
  "nmp-wot",
- "serde_json",
  "trellis-core",
 ]
 
@@ -3991,13 +3983,11 @@ name = "nmp-gallery-desktop"
 version = "0.8.4"
 dependencies = [
  "iced",
- "image",
  "nmp-app-gallery",
  "nmp-content",
  "nmp-core",
  "nmp-gallery-tui",
  "nmp-ownership",
- "serde_json",
  "tokio",
  "ureq",
 ]
@@ -4007,7 +3997,6 @@ name = "nmp-gallery-tui"
 version = "0.8.4"
 dependencies = [
  "crossterm",
- "image",
  "nmp-app-gallery",
  "nmp-content",
  "nmp-core",
@@ -4016,9 +4005,7 @@ dependencies = [
  "nmp-ownership",
  "ratatui",
  "ratatui-image",
- "serde",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -4030,7 +4017,6 @@ dependencies = [
  "nmp-nip50",
  "nmp-nostr-id",
  "nmp-ownership",
- "serde",
  "serde_json",
 ]
 
@@ -4069,13 +4055,9 @@ dependencies = [
  "nmp-feed",
  "nmp-feed-session",
  "nmp-intent",
- "nmp-kinds",
  "nmp-marmot",
- "nmp-nip01",
  "nmp-nip02",
  "nmp-nip05",
- "nmp-nip09",
- "nmp-nip11",
  "nmp-nip18",
  "nmp-nip23",
  "nmp-nip25",
@@ -4092,7 +4074,6 @@ dependencies = [
  "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",
- "nmp-wot",
  "nostr",
  "serde",
  "serde_json",
@@ -4123,9 +4104,7 @@ version = "0.8.4"
 dependencies = [
  "flatbuffers",
  "nmp-core",
- "nmp-nostr-id",
  "nmp-ownership",
- "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
  "nmp-threading",
@@ -4158,7 +4137,6 @@ dependencies = [
  "nmp-core",
  "nmp-ownership",
  "nostr",
- "serde",
  "serde_json",
  "ureq",
 ]
@@ -4181,7 +4159,6 @@ dependencies = [
  "nmp-ownership",
  "serde",
  "serde_json",
- "tracing",
  "ureq",
 ]
 
@@ -4279,11 +4256,9 @@ dependencies = [
 name = "nmp-nip42"
 version = "0.8.4"
 dependencies = [
- "nmp-core",
  "nmp-nip42-types",
  "nmp-ownership",
  "nmp-signer-iface",
- "serde",
  "serde_json",
 ]
 
@@ -4302,7 +4277,6 @@ version = "0.8.4"
 dependencies = [
  "nmp-ownership",
  "nostr",
- "serde",
  "serde_json",
 ]
 
@@ -4464,7 +4438,6 @@ dependencies = [
  "nmp-ownership",
  "nmp-signer-iface",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -4538,7 +4511,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tungstenite",
- "url",
  "zeroize",
 ]
 
@@ -4637,7 +4609,6 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
@@ -4696,9 +4667,7 @@ dependencies = [
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-codegen",
- "nmp-content",
  "nmp-core",
- "nmp-coverage-gate",
  "nmp-example-login-timeline",
  "nmp-feed",
  "nmp-marmot",
@@ -4709,27 +4678,21 @@ dependencies = [
  "nmp-nip09",
  "nmp-nip17",
  "nmp-nip18",
- "nmp-nip22",
  "nmp-nip23",
- "nmp-nip25",
  "nmp-nip29",
  "nmp-nip42",
  "nmp-nip46",
  "nmp-nip46-runtime",
- "nmp-nip47",
  "nmp-nip50",
  "nmp-nip51",
- "nmp-nip57",
  "nmp-nip59",
  "nmp-nip68",
  "nmp-nip77",
  "nmp-nip84",
  "nmp-nostr-id",
  "nmp-note-feed",
- "nmp-nwc",
  "nmp-ownership",
  "nmp-planner",
- "nmp-replies",
  "nmp-router",
  "nmp-signer-iface",
  "nmp-signers",
@@ -4771,7 +4734,6 @@ dependencies = [
  "nmp-native-runtime",
  "nmp-nostr-id",
  "nmp-ownership",
- "nmp-substrate",
  "nmp-uniffi-support",
  "nostr",
  "serde_json",

@@ -74,13 +74,6 @@ pub enum OracleViolationKind {
     /// The cache unit changed but the rev did NOT advance. Correctness bug —
     /// this is the direction Rung 1 enforces (a missed stamp = silent stale UI).
     StaleStamp,
-    /// The rev advanced but the cache unit did NOT change. Wasted bandwidth, not
-    /// a correctness bug; Rung 3 will enforce this direction once omit-unchanged
-    /// lands. Declared now so the contract is visible.
-    // `allow(dead_code)`: the Rung-3 omit-unchanged enforcement that produces
-    // this violation is not yet wired; variant pre-declared for contract visibility.
-    #[allow(dead_code)]
-    SpuriousBump,
 }
 
 /// Check the biconditional oracle for all Tier-2 built-ins.

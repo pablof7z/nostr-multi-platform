@@ -23,5 +23,4 @@ nmp-nip50 = { path = "../nmp-nip50" }
 # accept set is identical to the dispatch-layer resolver's (#1882: no silent
 # no-op). Mirrors the nmp-nip50 dependency above.
 nmp-nip05 = { path = "../nmp-nip05" }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
