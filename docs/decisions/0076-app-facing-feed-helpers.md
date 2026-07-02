@@ -22,10 +22,8 @@ The feed implementation now has useful lower-level pieces: `FeedParams`,
 browser runtime feed opening, UniFFI support helpers that call the default
 compiler, and app-owned dynamic projection keys. Issue #1626 remains open
 because the normal app-facing shape is still too close to executor wiring:
-native runtime `NmpApp::open_feed` still accepts an explicit compiler, some docs
-teach `PubkeySetExpr`, and current names such as `render`, `OpCentric`,
-`ChronologicalDesc`, `FeedWindow`, and `projection` hide important ownership
-distinctions.
+some current names such as `render`, `OpCentric`, `ChronologicalDesc`,
+`FeedWindow`, and `projection` hide important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -167,7 +165,7 @@ pagination by handle.
 | --- | --- | --- |
 | crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
 | explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
-| `PubkeySetExpr` | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
+| former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | `render` | `shape` | NMP projects row/window shape; hosts render. |
 | `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
 | `FeedRanking::ChronologicalDesc` | `FeedOrder::NewestByFeedPosition` or `NewestByEventCreatedAt` | Repost/source position and target event time are different contracts. |
@@ -222,7 +220,7 @@ policy, expand source sets, or own feed teardown.
 - Feed item projection/schema is declared separately from the app-owned
   projection key.
 - Public docs use `FeedSourceExpr`, `FeedSource`, or `SourceExpr` for source
-  algebra and do not teach `PubkeySetExpr` for non-pubkey sources.
+  algebra and do not teach the former pubkey-set name for non-pubkey sources.
 - No Trellis types appear in app/native/browser feed APIs.
 - Feed declarations do not include profile fetching, reply counts, target
   hydration, thread hydration, media loading, or component-specific claims.

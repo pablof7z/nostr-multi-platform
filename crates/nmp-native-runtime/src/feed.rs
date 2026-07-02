@@ -13,7 +13,7 @@
 /// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
 pub use nmp_feed::{
     FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope, FeedSessionId,
-    FeedWindow, ProjectionKey, PubkeySetExpr,
+    FeedSourceExpr, FeedWindow, ProjectionKey,
 };
 
 use nmp_nip18::PrimaryKindError;
@@ -136,7 +136,7 @@ mod feed_params_decode_tests {
             decode_and_validate_feed_params(&params_json("[1]")).expect("[1] is valid");
         assert_eq!(params.primary_kinds, vec![1]);
         assert!(kinds.contains(&1) && kinds.contains(&6));
-        assert_eq!(params.acquisition, PubkeySetExpr::ActiveUserFollows);
+        assert_eq!(params.acquisition, FeedSourceExpr::ActiveUserFollows);
     }
 
     #[test]

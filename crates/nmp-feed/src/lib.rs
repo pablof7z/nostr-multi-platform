@@ -35,8 +35,8 @@ pub use pager::{
 };
 pub use params::{
     CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
-    FeedSessionId, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, PubkeySetExpr, RelaySetId,
-    TagTerm, WotRulesId, WotSeed,
+    FeedSessionId, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, RelaySetId, TagTerm,
+    WotRulesId, WotSeed,
 };
 pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{

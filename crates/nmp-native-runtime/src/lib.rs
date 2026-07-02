@@ -62,8 +62,8 @@ pub use builder::{
 pub use debug_info::{empty_debug_info_json, DOMAIN_COMPOSITION, DOMAIN_MERGED, DOMAIN_ROUTING};
 pub use feed::{
     decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId, FeedWindow,
-    ProjectionKey, PubkeySetExpr,
+    FeedParamsDecodeError, FeedRanking, FeedRender, FeedScope, FeedSessionId, FeedSourceExpr,
+    FeedWindow, ProjectionKey,
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use group_feed::{
