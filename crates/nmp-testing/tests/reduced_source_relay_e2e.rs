@@ -18,6 +18,7 @@ use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage};
 use serde_json::Value;
 
+use common::recording_relay::{has_author, has_kind, RecordingRelay};
 use support::*;
 
 #[derive(Default)]

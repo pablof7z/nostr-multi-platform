@@ -11,8 +11,6 @@ use nmp_feed::{
 use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
 
-pub(crate) use crate::common::recording_relay::{has_author, has_kind, RecordingRelay};
-
 pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
 
