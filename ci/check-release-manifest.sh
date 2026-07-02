@@ -192,7 +192,7 @@ while IFS='|' read -r name relpath; do
     echo "public npm package $name must declare main/types/root export/build/prepack" >&2
     exit 1
   fi
-  if [[ "$name" == "@nmp/runtime-web" ]] && ! jq -e '.exports["./worker"]' "$package_json" >/dev/null; then
+  if [[ "$name" == "@nmpis/runtime-web" ]] && ! jq -e '.exports["./worker"]' "$package_json" >/dev/null; then
     echo "public npm package $name must export ./worker" >&2
     exit 1
   fi

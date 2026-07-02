@@ -19,8 +19,8 @@ const FORBIDDEN_COMPONENT_TOKENS: &[(&str, &str)] = &[
     ("nmp_browser_runtime", "browser runtime module"),
     ("nmp-wasm", "WASM protocol/runtime crate"),
     ("nmp_wasm", "WASM protocol/runtime module"),
-    ("@nmp/runtime-web", "runtime-web Worker bridge package"),
-    ("@nmp/browser-runtime", "browser runtime package"),
+    ("@nmpis/runtime-web", "runtime-web Worker bridge package"),
+    ("@nmpis/browser-runtime", "browser runtime package"),
     ("wasmBridge", "browser Worker bridge handle"),
     ("new Worker", "browser Worker handle"),
     ("Worker(", "browser Worker constructor"),
@@ -33,8 +33,8 @@ const FORBIDDEN_COMPONENT_TOKENS: &[(&str, &str)] = &[
 ];
 
 const FORBIDDEN_WEB_DEPS: &[&str] = &[
-    "@nmp/runtime-web",
-    "@nmp/browser-runtime",
+    "@nmpis/runtime-web",
+    "@nmpis/browser-runtime",
     "nmp-browser-runtime",
     "nmp-wasm",
     "nmp-ffi",
@@ -116,7 +116,7 @@ fn web_component_package_dependencies_stay_component_only() {
 
 #[test]
 fn component_boundary_checker_flags_obvious_violations() {
-    let findings = boundary_token_findings("import { runtime } from \"@nmp/runtime-web\";");
+    let findings = boundary_token_findings("import { runtime } from \"@nmpis/runtime-web\";");
     assert!(
         findings.iter().any(|f| f.contains("runtime-web")),
         "runtime-web import must be flagged: {findings:?}"

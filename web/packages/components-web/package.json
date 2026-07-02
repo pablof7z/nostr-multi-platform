@@ -1,5 +1,5 @@
 {
-  "name": "@nmp/components-web",
+  "name": "@nmpis/components-web",
   "version": "0.8.4",
   "description": "Solid component host and reusable Nostr UI components for NMP web apps.",
   "license": "MIT",

@@ -16,7 +16,7 @@ import {
   NostrQuoteCard,
   NostrRelayList,
   NostrUserCard,
-} from "@nmp/components-web";
+} from "@nmpis/components-web";
 import {
   Resolving,
   Section,

@@ -7,8 +7,8 @@ import type {
   EmbeddedEventModel,
   EmbedAuthor,
   HighlightProjection,
-} from "@nmp/components-web/content-kind-registry";
-import type { ProfileWire } from "@nmp/components-web/user-avatar";
+} from "@nmpis/components-web/content-kind-registry";
+import type { ProfileWire } from "@nmpis/components-web/user-avatar";
 
 // Pure projections of the render-facing embed envelope. The standalone
 // embed-article / embed-highlight showcase sections render their card fields

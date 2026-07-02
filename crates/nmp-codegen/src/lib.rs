@@ -80,7 +80,7 @@ pub mod projection_version_gate;
 pub mod kotlin_keyed_cache;
 pub mod swift_keyed_cache;
 // ADR-0070 Lane A twin (#2722) — the THIRD platform twin, generated
-// TypeScript `KeyedRefCache` for `@nmp/runtime-web`. Sourced from the SAME
+// TypeScript `KeyedRefCache` for `@nmpis/runtime-web`. Sourced from the SAME
 // `KEYED_PROJECTIONS` registry so it can never drift from the Swift/Kotlin
 // caches. See module doc for why it collapses hl's/nmp-gallery's separate
 // hand-written `RefRowCache` + `RefProfileStore` into one generated class.

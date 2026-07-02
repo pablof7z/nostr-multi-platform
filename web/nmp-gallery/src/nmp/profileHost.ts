@@ -11,7 +11,7 @@ import {
   type RuntimeStatus,
   type WorkerEvent,
   type WorkerRequest,
-} from "@nmp/runtime-web";
+} from "@nmpis/runtime-web";
 import {
   decodeEmbedSidecar,
   EMBED_SIDECAR_KEY,
@@ -19,9 +19,9 @@ import {
 } from "./embedSidecarStore";
 import { RefEventStore, REFS_EVENT_KEY, type ClaimedEventWire } from "./refEventStore";
 import { RefProfileStore } from "./refProfileStore";
-import type { EventRefResolver } from "@nmp/components-web/component-host";
-import type { EmbeddedEventModel } from "@nmp/components-web/content-kind-registry";
-import type { NostrProfileHost, ProfileWire } from "@nmp/components-web/user-avatar";
+import type { EventRefResolver } from "@nmpis/components-web/component-host";
+import type { EmbeddedEventModel } from "@nmpis/components-web/content-kind-registry";
+import type { NostrProfileHost, ProfileWire } from "@nmpis/components-web/user-avatar";
 
 export { tagValue, type ClaimedEventWire } from "./refEventStore";
 
@@ -155,7 +155,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   const refProfiles = new RefProfileStore();
   const refEvents = new RefEventStore();
 
-  const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), { type: "module" });
+  const worker = new Worker(new URL("@nmpis/runtime-web/worker", import.meta.url), { type: "module" });
   const pending = new Map<string, () => void>();
   let resolveHello: (() => void) | undefined;
   const helloReady = new Promise<void>((resolve) => {

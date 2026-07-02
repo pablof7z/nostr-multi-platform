@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm --prefix web install",
-  "buildCommand": "npm --prefix web run build --workspace @nmp/gallery-web",
+  "buildCommand": "npm --prefix web run build --workspace @nmpis/gallery-web",
   "outputDirectory": "web/nmp-gallery/dist",
   "git": {
     "deploymentEnabled": {
