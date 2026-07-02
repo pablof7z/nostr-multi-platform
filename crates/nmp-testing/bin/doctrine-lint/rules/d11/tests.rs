@@ -4,9 +4,9 @@ fn run_tracker(lines: &[&str]) -> Vec<(usize, String, String)> {
     let mut tracker = FnTracker::default();
     let mut hits = Vec::new();
     for line in lines {
-        let in_extern = tracker.in_nmp_app_extern_fn();
+        let in_export = tracker.in_uniffi_export_scope();
         tracker.observe_line(line, false);
-        // Run the per-line check AFTER updating in_extern for the body
+        // Run the per-line check AFTER updating in_export for the body
         // (the open-brace line itself is the signature, but the variant
         // is on a body line so the post-observe-line transition does
         // not matter for these fixtures). Mirror the driver's order:
@@ -14,7 +14,7 @@ fn run_tracker(lines: &[&str]) -> Vec<(usize, String, String)> {
         // tracker's `observe_line` flips the flag on `{`, so the
         // signature line itself sees `false` — fine, the offending
         // constructions live on body lines.
-        for hit in check(line, false, in_extern) {
+        for hit in check(line, false, in_export) {
             hits.push(hit);
         }
     }
@@ -22,12 +22,14 @@ fn run_tracker(lines: &[&str]) -> Vec<(usize, String, String)> {
 }
 
 #[test]
-fn flags_publishsignedevent_in_new_nmp_app_extern_fn() {
+fn flags_publishsignedevent_in_uniffi_export_impl() {
     let lines = [
-        "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_legacy_publish_door(app: *mut NmpApp) {",
-        "    let raw = todo!();",
-        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays: Vec::new(), correlation_id: None }));",
+        "#[uniffi::export]",
+        "impl LegacyDoor {",
+        "    pub fn legacy_publish_door(&self, event_json: String) {",
+        "        let raw = todo!();",
+        "        send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays: Vec::new(), correlation_id: None }));",
+        "    }",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -61,11 +63,11 @@ fn flags_publish_specific_symbol_even_without_actor_command() {
 }
 
 #[test]
-fn flags_publishunsignedevent_in_new_nmp_app_extern_fn() {
+fn flags_publishunsignedevent_in_uniffi_export_fn() {
     let lines = [
-        "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_smuggle_unsigned(app: *mut NmpApp) {",
-        "    app.send_cmd(ActorCommand::PublishUnsignedEvent(unsigned));",
+        "#[uniffi::export]",
+        "pub fn smuggle_unsigned(unsigned_json: String) {",
+        "    send(ActorCommand::PublishUnsignedEvent(unsigned));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -74,44 +76,11 @@ fn flags_publishunsignedevent_in_new_nmp_app_extern_fn() {
 }
 
 #[test]
-fn retry_publish_body_is_not_whitelisted() {
-    let lines = [
-        "#[no_mangle]",
-        concat!(
-            "pub extern \"C\" fn ",
-            "nmp_app_retry_",
-            "publish(app: *mut NmpApp, handle: *const c_char) {"
-        ),
-        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { /* forbidden */ }));",
-        "}",
-    ];
-    let hits = run_tracker(&lines);
-    assert_eq!(hits.len(), 1);
-    assert!(hits[0].1.contains("PublishSignedEvent"));
-}
-
-#[test]
-fn cancel_action_body_is_not_whitelisted() {
-    let lines = [
-        concat!(
-            "pub extern \"C\" fn ",
-            "nmp_app_cancel_",
-            "action(app: *mut NmpApp, correlation_id: *const c_char) {"
-        ),
-        "    app.send_cmd(ActorCommand::PublishUnsignedEvent(_));",
-        "}",
-    ];
-    let hits = run_tracker(&lines);
-    assert_eq!(hits.len(), 1);
-    assert!(hits[0].1.contains("PublishUnsignedEvent"));
-}
-
-#[test]
-fn does_not_fire_in_non_ffi_helper() {
+fn does_not_fire_in_non_exported_helper() {
     // The `kernel::action_registry` executor builds a
     // `PublishSignedEvent` from validated dispatch JSON. That is the
     // GOOD path (Theme A's "dispatch_action seam"); the body is a
-    // regular Rust fn, not `extern "C" fn nmp_app_*`. D11 must not fire.
+    // regular Rust fn, not `#[uniffi::export]`-attributed. D11 must not fire.
     let lines = [
         "pub(crate) fn execute(action: PublishAction) {",
         "    send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
@@ -120,19 +89,21 @@ fn does_not_fire_in_non_ffi_helper() {
     let hits = run_tracker(&lines);
     assert!(
         hits.is_empty(),
-        "non-FFI helpers must not trip D11; got {:?}",
+        "non-exported helpers must not trip D11; got {:?}",
         hits
     );
 }
 
 #[test]
-fn does_not_fire_for_extern_fn_outside_nmp_app_prefix() {
-    // A different FFI prefix (e.g. an `nmp_signer_broker_*` symbol) is
-    // out of D11's scope — D11 is the door for the `nmp-core` `nmp_app_*`
-    // surface, not every `extern "C"` symbol in the workspace.
+fn does_not_fire_for_plain_impl_without_uniffi_export() {
+    // A regular impl block with no `#[uniffi::export]` attribute is out of
+    // D11's scope — D11 is the door for the UniFFI publish surface, not
+    // every impl in the workspace.
     let lines = [
-        "pub extern \"C\" fn nmp_signer_broker_init(app: *mut c_void) {",
-        "    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { /* hypothetical */ });",
+        "impl SomeType {",
+        "    pub fn hypothetical(&self) {",
+        "        let _ = ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id });",
+        "    }",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -141,14 +112,17 @@ fn does_not_fire_for_extern_fn_outside_nmp_app_prefix() {
 
 #[test]
 fn handles_nested_braces_in_body() {
-    // A struct-literal `{ ... }` inside the body of a banned `nmp_app_*`
-    // function must not prematurely pop the tracker stack.
+    // A struct-literal `{ ... }` inside the body of a banned exported
+    // method must not prematurely pop the tracker stack.
     let lines = [
-        "pub extern \"C\" fn nmp_app_bad(app: *mut NmpApp) {",
-        "    let payload = SomeStruct { a: 1, b: 2 };",
-        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
+        "#[uniffi::export]",
+        "impl LegacyDoor {",
+        "    pub fn bad(&self) {",
+        "        let payload = SomeStruct { a: 1, b: 2 };",
+        "        send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
+        "    }",
         "}",
-        "// outside the function — must NOT fire here",
+        "// outside the impl — must NOT fire here",
         "pub fn unrelated() { let _ = ActorCommand::PublishSignedEvent; }",
     ];
     let hits = run_tracker(&lines);
@@ -187,16 +161,18 @@ fn flags_bare_publishsignedevent_split_construction() {
     // `ActorCommand::Publish(PublishCommand::SignedEvent`; D11 must still
     // fire on line A via the bare `PublishCommand::SignedEvent` entry.
     let lines = [
-        "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_something(app: *mut NmpApp) {",
-        "    let cmd = PublishCommand::SignedEvent { event, relays: Vec::new(), correlation_id: None };",
-        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "#[uniffi::export]",
+        "impl LegacyDoor {",
+        "    pub fn something(&self) {",
+        "        let cmd = PublishCommand::SignedEvent { event, relays: Vec::new(), correlation_id: None };",
+        "        send(ActorCommand::Publish(cmd));",
+        "    }",
         "}",
     ];
     let hits = run_tracker(&lines);
     assert!(
         !hits.is_empty(),
-        "bare PublishCommand::SignedEvent in FFI body must trip D11; got no hits"
+        "bare PublishCommand::SignedEvent in an exported body must trip D11; got no hits"
     );
     assert!(
         hits.iter()
@@ -210,16 +186,18 @@ fn flags_bare_publishsignedevent_split_construction() {
 fn flags_bare_publishunsignedevent_split_construction() {
     // Same loophole for the unsigned variant.
     let lines = [
-        "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_other(app: *mut NmpApp) {",
-        "    let cmd = PublishCommand::UnsignedEvent { event };",
-        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "#[uniffi::export]",
+        "impl LegacyDoor {",
+        "    pub fn other(&self) {",
+        "        let cmd = PublishCommand::UnsignedEvent { event };",
+        "        send(ActorCommand::Publish(cmd));",
+        "    }",
         "}",
     ];
     let hits = run_tracker(&lines);
     assert!(
         !hits.is_empty(),
-        "bare PublishCommand::UnsignedEvent in FFI body must trip D11; got no hits"
+        "bare PublishCommand::UnsignedEvent in an exported body must trip D11; got no hits"
     );
     assert!(
         hits.iter()
@@ -227,24 +205,6 @@ fn flags_bare_publishunsignedevent_split_construction() {
         "at least one hit must name ActorCommand::PublishUnsignedEvent; got {:?}",
         hits
     );
-}
-
-#[test]
-fn split_construction_in_retry_publish_is_not_whitelisted() {
-    let lines = [
-        "#[no_mangle]",
-        concat!(
-            "pub extern \"C\" fn ",
-            "nmp_app_retry_",
-            "publish(app: *mut NmpApp, handle: *const c_char) {"
-        ),
-        "    let cmd = PublishCommand::SignedEvent { /* forbidden */ };",
-        "    app.send_cmd(ActorCommand::Publish(cmd));",
-        "}",
-    ];
-    let hits = run_tracker(&lines);
-    assert_eq!(hits.len(), 1);
-    assert!(hits[0].1.contains("PublishSignedEvent"));
 }
 
 #[test]
@@ -270,65 +230,40 @@ fn parse_verb_rejects_non_nmp_app_prefix() {
 }
 
 #[test]
-fn finds_opener_with_inline_brace() {
-    let line = "pub extern \"C\" fn nmp_app_foo(app: *mut NmpApp) {";
-    let pos = find_nmp_app_extern_fn_opener_with_brace(line).expect("should detect opener");
-    // The returned position points at the `n` of `nmp_app_foo`.
-    assert_eq!(&line[pos..pos + 11], "nmp_app_foo");
+fn opens_export_scope_detects_impl_and_fn_openers() {
+    assert!(opens_export_scope_with_brace("impl NmpApp {"));
+    assert!(opens_export_scope_with_brace(
+        "    pub fn dispatch_action(&self, envelope: Vec<u8>) -> DispatchOutcome {"
+    ));
+    assert!(opens_export_scope_with_brace("pub fn free_fn(x: u32) {"));
+    // No brace on this line — signature continues on the next line.
+    assert!(!opens_export_scope_with_brace(
+        "pub fn wrapped_signature(app: *mut NmpApp,"
+    ));
+    // Neither an impl nor an fn opener.
+    assert!(!opens_export_scope_with_brace("pub struct Foo {"));
 }
 
 #[test]
-fn opener_requires_same_line_brace() {
-    // Wrapped signature where `{` lives on the next line — the
-    // `find_nmp_app_extern_fn_opener_with_brace` helper rejects it (no
-    // `{` on this line). The wrapped-signature helper picks it up
-    // instead.
-    let line = "pub extern \"C\" fn nmp_app_foo(";
-    assert!(find_nmp_app_extern_fn_opener_with_brace(line).is_none());
-    assert_eq!(
-        find_wrapped_nmp_app_extern_fn_opener(line),
-        Some("nmp_app_foo".to_string())
-    );
-}
-
-#[test]
-fn wrapped_signature_promotes_on_brace_line() {
-    // Multi-line FFI signature (the common shape for `nmp_app_*`
-    // symbols with several `*const c_char` params, e.g.
-    // `nmp_app_create_new_account` or `nmp_app_add_relay`). The body
-    // must still be scanned: the verb is parked when the wrapped
-    // opener is seen and promoted to a real stack frame on the line
-    // that introduces `{`.
+fn tracker_pending_export_survives_doc_comment_and_second_attribute() {
+    // The real `NmpApp::new` shape: `#[uniffi::export]` decorates the impl,
+    // then a doc comment and a second attribute (`#[uniffi::constructor]`)
+    // sit between the attribute and the method's own opener line.
     let lines = [
-        "#[no_mangle]",
-        "pub extern \"C\" fn nmp_app_create_new_account(",
-        "    app: *mut NmpApp,",
-        "    profile_json: *const c_char,",
-        ") {",
-        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
+        "#[uniffi::export]",
+        "impl NmpApp {",
+        "    /// Construct a new `NmpApp`.",
+        "    #[uniffi::constructor]",
+        "    pub fn new() -> Arc<Self> {",
+        "        send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
+        "    }",
         "}",
     ];
     let hits = run_tracker(&lines);
     assert_eq!(
         hits.len(),
         1,
-        "wrapped FFI signature body must still trip D11; got {:?}",
+        "impl-level export must cover nested fns; got {:?}",
         hits
     );
-    assert!(hits[0].1.contains("PublishSignedEvent"));
-}
-
-#[test]
-fn wrapped_cancel_action_signature_is_not_whitelisted() {
-    let lines = [
-        concat!("pub extern \"C\" fn ", "nmp_app_cancel_", "action("),
-        "    app: *mut NmpApp,",
-        "    correlation_id: *const c_char,",
-        ") {",
-        "    let _ = ActorCommand::PublishUnsignedEvent(_);",
-        "}",
-    ];
-    let hits = run_tracker(&lines);
-    assert_eq!(hits.len(), 1);
-    assert!(hits[0].1.contains("PublishUnsignedEvent"));
 }

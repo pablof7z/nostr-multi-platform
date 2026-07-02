@@ -160,7 +160,8 @@ const BANNED_AUTO_ROUTES: &[&str] = &[
 /// inside a function whose body has declared the
 /// `// D10: private-kind publish` marker.
 ///
-/// Algorithm — mirrors `d8::HotPathTracker`:
+/// Algorithm — a brace-depth stack tracker of the same shape used by the
+/// other per-file scope trackers in this module:
 ///
 /// 1. The brace counter advances on every line (including comments — the
 ///    walker reports brace counts conservatively).

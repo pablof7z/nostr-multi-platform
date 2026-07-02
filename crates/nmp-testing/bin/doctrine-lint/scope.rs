@@ -13,12 +13,26 @@
 use std::path::Path;
 
 use crate::rules::{
-    a6, action_namespace, d10, d12, d14, d15, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9,
+    a6, action_namespace, d10, d12, d14, d15, d17, d19, d20, d21, d23, d24, d25, d26, d27, d6, d9,
 };
 
 /// True iff the action-namespace prefix rule should scan `path`.
 pub(crate) fn action_namespace_file_in_scope(path: &Path) -> bool {
     action_namespace::file_in_scope(path)
+}
+
+/// True iff D6 should scan `path` — either the file is inside D6's explicit
+/// enforced-crate set (`d6::file_in_scope`; see that module's "Scope" doc for
+/// why D6 is bounded rather than workspace-wide), or the caller opted-in via
+/// `--d6-extra-scope <fragment>` (the fixture smoke test uses this so a
+/// staged fixture under `target/<label>/` is reachable without faking a
+/// `crates/nmp-core/src/` layout). Mirrors `d9_file_in_scope`.
+pub(crate) fn d6_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d6::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
 /// True iff D9 should scan `path` — either the file is inside a kernel time

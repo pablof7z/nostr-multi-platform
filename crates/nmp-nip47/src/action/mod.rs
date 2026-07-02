@@ -133,8 +133,8 @@ impl ActionModule for WalletPayInvoiceModule {
         }
     }
 
-    fn is_async_completing() -> bool {
-        // doctrine-allow: D12 — recording sites are cross-file (`runtime.rs` `record_action_success`/`record_action_failure`); covered by runtime tests
+    #[rustfmt::skip]
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (`runtime/commands.rs`, `reconcile.rs` `kernel.record_action_failure`); covered by runtime tests
         true
     }
 
