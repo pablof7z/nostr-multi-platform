@@ -1,7 +1,7 @@
 //! Tests for the crate-owned NIP-29 group-metadata FTS scope (#1811).
 //!
 //! These exercise the scope end-to-end against a real `MemEventStore`:
-//! register the scope through the public `register_search_scopes` helper,
+//! register the scope through the production search-scope helper,
 //! ingest real-shaped kind:39000 group-metadata events, and assert a token +
 //! prefix search over names/abouts returns them. A final test pins the
 //! crate-boundary invariant: `nmp-core` holds zero group nouns — the scope
@@ -19,8 +19,9 @@ use nmp_store::{
 use super::*;
 
 /// Minimal `SearchScopeRegistrar` for tests: delegates to a real
-/// `SearchScopeRegistry` so `register_search_scopes(&host)` drives the actual
-/// production registration path (yield-on-duplicate, compile, install).
+/// `SearchScopeRegistry` so the crate's internal search-scope installer drives
+/// the actual production registration path (yield-on-duplicate, compile,
+/// install).
 struct TestHost {
     registry: SearchScopeRegistry,
 }

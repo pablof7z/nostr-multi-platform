@@ -216,7 +216,7 @@ i.  Does `nmp_app_start` / `builder.start` CONSUME the handle and return a new
 ii. Typestate (phantom-typed `NmpAppBuilder<Configuring>` → `Started`) vs a
     single runtime-checked builder type. — **Resolved: phantom-typed states**
     (`Unstarted` / `StorageSet`).
-iii. Does `NmpAppBuilder` BE the `AppHost` impl during config (so all NIP
-    `register_actions` calls bind to it directly), or wrap an inner `NmpApp`?
+iii. Does `NmpAppBuilder` BE the `AppHost` impl during config (so protocol
+    `register(app, Config)` calls bind to it directly), or wrap an inner `NmpApp`?
     — **Resolved: builder-is-the-AppHost.** The builder implements `AppHost +
     ActionRegistrar` directly.

@@ -9,9 +9,8 @@ use crate::{NmpApp, NmpConfigStatus};
 impl NmpApp {
     /// Register a [`nmp_core::substrate::SearchScopeProvider`] against the shared
     /// crate-registered FTS scope registry. Per-protocol crates call this from
-    /// their composition helper — e.g. `nmp_nip50::register_search_scopes`
-    /// (wired by `explicit owner composition`) and
-    /// `nmp_nip29::register_search_scopes` (leaf-app opt-in for group search).
+    /// their crate-level installer — e.g. `nmp_nip50::register(...)` and
+    /// `nmp_nip29::register(...)`, selected by explicit owner composition.
     ///
     /// MUST be called before `nmp_app_start` so the registry is compiled +
     /// installed into the kernel store at construction. A duplicate scope id

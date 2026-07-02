@@ -41,9 +41,9 @@
 //!
 //! # Registration
 //!
-//! Call [`register_input_scopes`] once during host composition (before
-//! `nmp_app_start`). Duplicate scope ids yield to the existing registration
-//! (ADR-0069 — first wins).
+//! The crate-level [`crate::register`] installer wires this once during host
+//! composition (before `nmp_app_start`). Duplicate scope ids yield to the
+//! existing registration (ADR-0069 — first wins).
 
 use std::sync::Arc;
 

@@ -256,9 +256,9 @@ impl NmpApp {
     /// (empty when none is installed → cache-only search) and opens one
     /// relay-pinned LIVE observed interest per resolved relay (tagged
     /// `Relay(url)`). Cache hits depend on the NIP-50 search scopes being
-    /// registered (`nmp_nip50::register_search_scopes`, wired by
-    /// `explicit owner composition`); a bare app that registers none gets an
-    /// empty cache scan (`Unsupported`) and is relay-only.
+    /// registered by the crate-level `nmp_nip50::register(...)` installer; a
+    /// bare app that registers none gets an empty cache scan (`Unsupported`) and
+    /// is relay-only.
     ///
     /// Re-opening the same `session_id` first tears the prior session down
     /// (idempotent at the registry level). Returns the snapshot projection key

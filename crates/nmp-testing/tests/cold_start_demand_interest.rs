@@ -4,8 +4,8 @@
 //!
 //! # What the merged fix claims (and where it was proven before)
 //!
-//! On sign-in the bookmark runtime (`BookmarksRuntimeController`, wired by
-//! `register_bookmark_runtime`) pushes a `Tailing` demand interest
+//! On sign-in the bookmark runtime (`BookmarksRuntimeController`, wired by the
+//! NIP-51 crate-level installer) pushes a `Tailing` demand interest
 //! (`authors=[pubkey] / kinds=[10003]`). The kernel's `EnsureInterest` handler
 //! runs a **synchronous cache-serve drain** that replays any matching event
 //! ALREADY in the local store — but NOT yet in the kernel's RAM event cache —
@@ -45,8 +45,8 @@
 //! * The kernel runs behind the production actor thread spawned by
 //!   `nmp_app_start` — every step crosses the real `ActorCommand` mpsc seam.
 //! * The bookmark observer + the per-tick `BookmarksRuntimeController` are
-//!   installed by `register_bookmark_runtime`. Nothing in this test pushes the
-//!   interest by hand — the runtime's snapshot-tick reconciler does it on
+//!   installed by the NIP-51 crate-level installer. Nothing in this test pushes
+//!   the interest by hand — the runtime's snapshot-tick reconciler does it on
 //!   sign-in, exactly as in production.
 //! * The assertion reads `BookmarkListProjection::snapshot()` — the typed
 //!   projection the shell renders.

@@ -1,9 +1,9 @@
 //! Typed FlatBuffers wire codec for the `"nmp.nip51.mute_list"` projection.
 //!
 //! The authoritative FFI shape of this projection is the serde JSON produced by
-//! [`crate::MuteListProjection::snapshot_json`], registered in
-//! `crates/explicit composition/src/runtimes/mute_runtime.rs` (`register_mute_runtime`)
-//! via `register_snapshot_projection`. This module adds a **typed FlatBuffers**
+//! [`crate::MuteListProjection::snapshot_json`], registered by the crate-level
+//! [`crate::register`] installer via `register_snapshot_projection`. This
+//! module adds a **typed FlatBuffers**
 //! encoding of the same shape, carried in the `typed_projections` sidecar
 //! (ADR-0072) ALONGSIDE — never replacing — the generic `Value` projection.
 //!

@@ -43,8 +43,8 @@ pub trait SnapshotProjectionRegistrar {
     ///
     /// This method lives on the trait — not only on the concrete `NmpApp` — so
     /// reusable protocol/feed crates that register through `&impl
-    /// SnapshotProjectionRegistrar` (e.g. `register_runtime`) can wire typed
-    /// projections without depending on the C-ABI crate. It mirrors
+    /// SnapshotProjectionRegistrar` can wire typed projections without
+    /// depending on the C-ABI crate. It mirrors
     /// `register_snapshot_projection`: `&self` (the registry mutation is a
     /// lock-and-insert), and the same host-chosen key space shared with the
     /// generic registry (ADR-0072 Commitment 4).

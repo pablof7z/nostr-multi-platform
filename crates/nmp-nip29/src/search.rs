@@ -16,8 +16,8 @@
 //!
 //! Group metadata is public, so the scope is
 //! [`SearchPrivacyPolicy::PublicIndexable`]. The scope lives **entirely** in
-//! `nmp-nip29`: `nmp-core` holds zero group nouns. A host wires it with the
-//! one-liner [`register_search_scopes`].
+//! `nmp-nip29`: `nmp-core` holds zero group nouns. A host wires it through the
+//! crate-level [`crate::register`] installer.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

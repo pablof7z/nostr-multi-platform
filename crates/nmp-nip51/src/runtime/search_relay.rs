@@ -4,12 +4,13 @@
 //!
 //! # What callers get
 //!
-//! `register_search_relay_runtime_with_fallbacks` returns
-//! `Arc<SearchRelayListProjection>`. Pass it to [`crate::effective_search_relays`] to get
-//! the effective relay list (user's kind:10007 list, else the app-supplied
-//! fallback, else empty). A higher-order NIP-50 search crate that needs to open
-//! a relay subscription on the right relays calls that helper rather than
-//! reaching into the projection directly.
+//! [`crate::register`] returns a [`crate::Handles`] value containing the
+//! `Arc<SearchRelayListProjection>`. Pass it to
+//! [`crate::effective_search_relays`] to get the effective relay list (user's
+//! kind:10007 list, else the app-supplied fallback, else empty). A
+//! higher-order NIP-50 search crate that needs to open a relay subscription on
+//! the right relays calls that helper rather than reaching into the projection
+//! directly.
 //!
 //! # How kind:10007 events reach the projection (#1817)
 //!
