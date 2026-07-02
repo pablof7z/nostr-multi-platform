@@ -400,15 +400,18 @@ surface by #2763):
 - App-owned UniFFI facade crates must delegate lifecycle, update-sink,
   capability, dispatch, quiescence, and clamp mechanics to
   `nmp-native-runtime` / `nmp-uniffi-support` instead of copying framework
-  bridge policy or reviving raw C/JNI symbols. `nmp-uniffi-support` also
-  supplies shared input guards (e.g. `is_hex_pubkey` for profile-ref
-  resolution) so per-facade validation cannot drift. The in-repo reference
-  facade is `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`); new
-  apps model their facade on it and on the `nmp init` scaffold template
-  (`crates/nmp-cli/templates/facade_lib.rs.tmpl`), both of which expose the
-  full seam set: lifecycle (start/stop/reset/shutdown), dispatch, capability,
+  bridge policy or reviving raw C/JNI symbols. `nmp-uniffi-support` supplies
+  shared input guards (e.g. `is_hex_pubkey` for profile-ref resolution) so
+  per-facade validation cannot drift; new facades should call through the
+  guard rather than duplicating the check. The in-repo reference facade is
+  `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`), which models
+  lifecycle (start/stop/reset/shutdown), dispatch, capability, and
   ref-resolution (`resolve_profile_ref`/`resolve_event_embed_with_metadata`/
-  `release_*_ref`), and feed-session open/close.
+  `release_*_ref`). New apps also model their facade on the `nmp init`
+  scaffold template (`crates/nmp-cli/templates/facade_lib.rs.tmpl`), which
+  additionally demonstrates feed-session open/close
+  (`open_home_feed`/`close_home_feed`) — a seam Gallery's own facade does not
+  yet expose.
 - App-owned delivery crates may keep local C/JNI glue for app-specific adapters
   such as Gallery, but that glue is not reusable framework API and must not
   revive deleted framework symbols.
