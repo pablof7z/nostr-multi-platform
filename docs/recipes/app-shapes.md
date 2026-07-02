@@ -25,8 +25,8 @@ rows are ordinary Nostr content.
 
 - Reusable NMP: `nmp-feed`, NIP modules, routing, repost/delete acquisition,
   cache, and replaceable supersession.
-- App Rust core: declares `FeedParams`: primary content kinds, typed source
-  expression, admission, order, window policy, and projection key.
+- App Rust core: declares `FeedParams`: output key, primary content kinds,
+  typed source expression, admission, order, window policy, and item projection.
 - Shell: opens/closes the feed by handle and renders the pushed projection.
 - Runtime/host: transports the handle and installs component providers.
 - Single writers: NMP writes event facts; the feed session/app projection writes
@@ -40,7 +40,8 @@ rows are ordinary Nostr content.
   "admission": "All",
   "order": "NewestByFeedPosition",
   "window": { "initial_limit": 80 },
-  "projection": "myapp.timeline.home"
+  "key": "myapp.timeline.home",
+  "item_projection": "FeedRows"
 }
 ```
 
@@ -70,7 +71,8 @@ already-compiled static non-feed reads; do not make them a product shell API.
   "admission": "All",
   "order": "NewestByFeedPosition",
   "window": { "initial_limit": 50 },
-  "projection": "myapp.feed.longform.topic.nostr"
+  "key": "myapp.feed.longform.topic.nostr",
+  "item_projection": "FeedRows"
 }
 ```
 

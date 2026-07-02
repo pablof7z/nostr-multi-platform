@@ -124,8 +124,9 @@ pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
         admission: nmp_native_runtime::FeedAdmission::All,
         order: nmp_native_runtime::FeedOrder::NewestByFeedPosition,
         window: nmp_native_runtime::FeedWindowPolicy { initial_limit: 80 },
-        projection: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
+        key: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
             .expect("starter home timeline projection is app-owned"),
+        item_projection: nmp_native_runtime::FeedItemProjection::FeedRows,
     }
 }
 
@@ -398,9 +399,13 @@ mod tests {
 
         assert_eq!(feed.primary_kinds, vec![1]);
         assert_eq!(
-            feed.projection,
+            feed.key,
             nmp_native_runtime::ProjectionKey::app_owned("{{name}}.timeline.home")
                 .expect("starter home timeline projection is app-owned")
+        );
+        assert_eq!(
+            feed.item_projection,
+            nmp_native_runtime::FeedItemProjection::FeedRows
         );
         assert_eq!(
             feed.source,

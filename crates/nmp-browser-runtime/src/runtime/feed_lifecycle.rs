@@ -52,8 +52,9 @@ impl BrowserRuntimeHandle {
     /// Open a caller-owned browser feed session.
     ///
     /// The caller supplies the full [`nmp_feed::FeedParams`], including the
-    /// projection key. Browser runtime only wires those params into the shared
-    /// NMP feed machinery; it does not mint a product/default feed key.
+    /// output key and item projection. Browser runtime only wires those params
+    /// into the shared NMP feed machinery; it does not mint a product/default
+    /// feed key.
     pub fn open_feed(&mut self, params: nmp_feed::FeedParams) -> Option<nmp_feed::FeedHandle> {
         let observed_projection_registrar = self.observed_projection_registrar.clone();
         let command_sender = self.command_sender();

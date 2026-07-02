@@ -192,7 +192,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.test.invalid"
+            "key": "app.feed.test.invalid",
+            "item_projection": "FeedRows"
         }"#;
         let result = app.open_feed_json(params_json.to_string());
         assert!(
@@ -216,7 +217,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.test"
+            "key": "app.feed.test",
+            "item_projection": "FeedRows"
         }"#;
         let result = app.open_feed_json(params_json.to_string());
         let handle = result.expect("valid ActiveUserFollows/kind:1 params must succeed");
@@ -240,7 +242,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.test.teardown"
+            "key": "app.feed.test.teardown",
+            "item_projection": "FeedRows"
         }"#;
         let handle = app
             .open_feed_json(params_json.to_string())
@@ -279,7 +282,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.test.mismatch"
+            "key": "app.feed.test.mismatch",
+            "item_projection": "FeedRows"
         }"#;
         let handle = app
             .open_feed_json(params_json.to_string())

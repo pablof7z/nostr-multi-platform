@@ -256,7 +256,7 @@ fn open_active_follows_op_feed_inner(
 #[must_use]
 pub fn active_follows_op_feed_params(
     primary_feed_kinds: Vec<u32>,
-    projection: ProjectionKey,
+    key: ProjectionKey,
 ) -> FeedParams {
     FeedParams {
         primary_kinds: primary_feed_kinds,
@@ -267,7 +267,8 @@ pub fn active_follows_op_feed_params(
         window: FeedWindowPolicy {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
-        projection,
+        key,
+        item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }
 }
 

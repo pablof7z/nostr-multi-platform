@@ -11,7 +11,7 @@
 //!   dependent-interest owner under the session's projection key and withdrawn
 //!   symmetrically on close.
 //!
-//! The session registers under the caller's UNIQUE [`nmp_feed::ProjectionKey`],
+//! The session registers under the caller's UNIQUE output key,
 //! so many scope sessions coexist. Close
 //! tears everything down in reverse order: withdraw each interest, remove the
 //! controller + projection, revoke the ingest observer + any resolver observers.
@@ -55,7 +55,7 @@ pub struct OpScopeSessionArtifacts {
 /// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
 ///
-/// `key` is the session's unique projection key (from `params.projection`).
+/// `key` is the session's unique output projection key (from `params.key`).
 /// `resolved` carries the compiled admission predicate, fixed + live
 /// acquisition interests, reset hooks, and any resolver observer ids that must
 /// be revoked on close.

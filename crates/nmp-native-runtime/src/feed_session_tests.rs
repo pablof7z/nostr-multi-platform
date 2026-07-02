@@ -62,7 +62,8 @@ fn following_params() -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned("test.feed.following").unwrap(),
+        key: ProjectionKey::app_owned("test.feed.following").unwrap(),
+        item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }
 }
 
@@ -88,7 +89,7 @@ fn following_compiler(
                 scope: "test-only-compiler",
             });
         }
-        let key = params.projection.as_str().to_string();
+        let key = params.key.as_str().to_string();
         // Register over the EXISTING mechanics, exactly as the feed-session path does:
         // a permanent controller (output) + a declared observed projection
         // (returns an id) + a typed sidecar projection under the same key.
@@ -102,7 +103,7 @@ fn following_compiler(
             params.primary_kinds.iter().copied(),
             params.window.initial_limit,
         ));
-        app.register_typed_snapshot_projection(params.projection.dynamic_token(), || None);
+        app.register_typed_snapshot_projection(params.key.dynamic_token(), || None);
 
         // Teardown captures the registry SLOTS (not `&app`) via `FeedTeardown`
         // and reuses the same underlying unregister primitives — handle-based,

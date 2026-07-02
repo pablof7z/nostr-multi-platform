@@ -270,7 +270,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.support.reopen"
+            "key": "app.feed.support.reopen",
+            "item_projection": "FeedRows"
         }"#;
 
         // 1. Projection/feed-session registration through the shared mechanic.
