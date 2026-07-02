@@ -14,7 +14,6 @@
 
 apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	599
 crates/nmp-component-registry/registry/compose/content-view/NostrContentView.kt	599
-crates/nmp-component-registry/registry/tui/content-kind-registry/nostr_kind_registry.rs	818
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	652
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565

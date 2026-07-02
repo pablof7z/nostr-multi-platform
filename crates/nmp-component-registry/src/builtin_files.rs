@@ -160,6 +160,30 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../registry/tui/content-kind-registry/nostr_kind_registry.rs"),
     ),
     (
+        "tui/content-kind-registry/nostr_kind_registry/short_note.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/short_note.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry/article.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/article.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry/highlight.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/highlight.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry/profile.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/profile.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry/unknown.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/unknown.rs"),
+    ),
+    (
+        "tui/content-kind-registry/nostr_kind_registry/text_layout.rs",
+        include_str!("../registry/tui/content-kind-registry/nostr_kind_registry/text_layout.rs"),
+    ),
+    (
         "tui/content-kind-registry/embed_chrome_container.rs",
         include_str!("../registry/tui/content-kind-registry/embed_chrome_container.rs"),
     ),

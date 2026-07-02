@@ -5,6 +5,12 @@ import { webContentKind30023, webContentKind9802, webContentKindRegistry } from 
 const tuiKindRegistryModRust = nativeSource("registry/tui/content-kind-registry/mod.rs");
 const tuiKindRendererRust = nativeSource("registry/tui/content-kind-registry/kind_renderer.rs");
 const tuiKindRegistryRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry.rs");
+const tuiKindRegistryShortNoteRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/short_note.rs");
+const tuiKindRegistryArticleRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/article.rs");
+const tuiKindRegistryHighlightRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/highlight.rs");
+const tuiKindRegistryProfileRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/profile.rs");
+const tuiKindRegistryUnknownRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/unknown.rs");
+const tuiKindRegistryTextLayoutRust = nativeSource("registry/tui/content-kind-registry/nostr_kind_registry/text_layout.rs");
 const tuiEmbedChromeRust = nativeSource("registry/tui/content-kind-registry/embed_chrome_container.rs");
 const tuiEmbeddedEventRust = nativeSource("registry/tui/content-kind-registry/embedded_event.rs");
 
@@ -84,6 +90,12 @@ export const contentKindComponents: Component[] = [
           { source: "tui/content-kind-registry/mod.rs", target: "src/components/nostr_content/content_kind_registry/mod.rs", role: "source", content: tuiKindRegistryModRust },
           { source: "tui/content-kind-registry/kind_renderer.rs", target: "src/components/nostr_content/content_kind_registry/kind_renderer.rs", role: "source", content: tuiKindRendererRust },
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/short_note.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs", role: "source", content: tuiKindRegistryShortNoteRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/article.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs", role: "source", content: tuiKindRegistryArticleRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/highlight.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs", role: "source", content: tuiKindRegistryHighlightRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/profile.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs", role: "source", content: tuiKindRegistryProfileRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/unknown.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs", role: "source", content: tuiKindRegistryUnknownRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/text_layout.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs", role: "source", content: tuiKindRegistryTextLayoutRust },
           { source: "tui/content-kind-registry/embed_chrome_container.rs", target: "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs", role: "source", content: tuiEmbedChromeRust },
           { source: "tui/content-kind-registry/embedded_event.rs", target: "src/components/nostr_content/content_kind_registry/embedded_event.rs", role: "source", content: tuiEmbeddedEventRust },
         ],
@@ -142,6 +154,12 @@ export const contentKindComponents: Component[] = [
           "`DefaultProfileRenderer` is the built-in kind:0 profile renderer shipped with `tui/content-kind-registry`. It renders the display label, Rust-formatted pubkey fallback, and about preview from the already-resolved `ProfileProjection`.",
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/short_note.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs", role: "source", content: tuiKindRegistryShortNoteRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/article.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs", role: "source", content: tuiKindRegistryArticleRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/highlight.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs", role: "source", content: tuiKindRegistryHighlightRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/profile.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs", role: "source", content: tuiKindRegistryProfileRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/unknown.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs", role: "source", content: tuiKindRegistryUnknownRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/text_layout.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs", role: "source", content: tuiKindRegistryTextLayoutRust },
         ],
         screenshots: ["tui-embed-profile-preview.png"],
         customization: [
@@ -212,6 +230,12 @@ export const contentKindComponents: Component[] = [
           "`DefaultArticleRenderer` is the built-in NIP-23 long-form article renderer shipped with `tui/content-kind-registry`. It lays out an optional hero image (terminal image protocol when present, ASCII fallback otherwise), the article title styled as a heading, a summary paragraph, and an author byline that resolves the kind:0 display name reactively from the projection's raw `author_pubkey` (component-owned claiming; the projection no longer carries a static display name). Registered automatically on `NostrKindRegistry::with_defaults()`; swap it out per-app via `registry.set_article(Arc::new(MyArticleRenderer))`.",
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/short_note.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs", role: "source", content: tuiKindRegistryShortNoteRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/article.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs", role: "source", content: tuiKindRegistryArticleRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/highlight.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs", role: "source", content: tuiKindRegistryHighlightRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/profile.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs", role: "source", content: tuiKindRegistryProfileRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/unknown.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs", role: "source", content: tuiKindRegistryUnknownRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/text_layout.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs", role: "source", content: tuiKindRegistryTextLayoutRust },
         ],
         screenshots: ["tui-embed-article.png"],
         customization: [
@@ -284,6 +308,12 @@ export const contentKindComponents: Component[] = [
           "`DefaultHighlightRenderer` is the built-in NIP-84 highlight renderer shipped with `tui/content-kind-registry`. It renders the highlighted text inside a yellow accent block, an optional context line in a muted tone, and a source footer that branches on the highlight's `r` (URL), `e` (event id), or `a` (addressable event) tag. Registered automatically on `NostrKindRegistry::with_defaults()`; swap it out per-app via `registry.set_highlight(Arc::new(MyHighlightRenderer))`.",
         files: [
           { source: "tui/content-kind-registry/nostr_kind_registry.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs", role: "source", content: tuiKindRegistryRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/short_note.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs", role: "source", content: tuiKindRegistryShortNoteRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/article.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs", role: "source", content: tuiKindRegistryArticleRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/highlight.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs", role: "source", content: tuiKindRegistryHighlightRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/profile.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs", role: "source", content: tuiKindRegistryProfileRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/unknown.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs", role: "source", content: tuiKindRegistryUnknownRust },
+          { source: "tui/content-kind-registry/nostr_kind_registry/text_layout.rs", target: "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs", role: "source", content: tuiKindRegistryTextLayoutRust },
         ],
         screenshots: ["tui-embed-highlight-preview.png"],
         customization: [

@@ -49,6 +49,30 @@ fn cross_platform_tui_content_view() {
             "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs",
         ),
         (
+            nc.join("content_kind_registry/nostr_kind_registry/short_note.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry/article.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry/highlight.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry/profile.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry/unknown.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs",
+        ),
+        (
+            nc.join("content_kind_registry/nostr_kind_registry/text_layout.rs"),
+            "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs",
+        ),
+        (
             nc.join("content_kind_registry/embed_chrome_container.rs"),
             "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs",
         ),
