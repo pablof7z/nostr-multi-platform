@@ -25,7 +25,7 @@ use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 /// The typed-output encoder a concept supplies: a non-blocking closure the host
 /// calls on every snapshot tick, returning `Some` when it has a changed row to
 /// emit and `None` to retain the last value (coalesced emission is host-owned,
-/// ADR-0055/ADR-0072).
+/// ADR-0070 revision ladder / ADR-0072).
 pub type ReadOutputEncoder = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync>;
 
 /// One routed demand of a read: a compiled NIP-01 `REQ` filter plus its refcount

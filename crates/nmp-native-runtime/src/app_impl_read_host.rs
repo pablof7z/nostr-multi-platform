@@ -29,7 +29,7 @@ use crate::NmpApp;
 
 impl ReadHost for NmpApp {
     fn install_read_output(&self, key: ProjectionRegistrationKey, encoder: ReadOutputEncoder) {
-        // Coalesced typed emission (ADR-0055/0072) is owned by the snapshot
+        // Coalesced typed emission (ADR-0070 revision ladder / ADR-0072) is owned by the snapshot
         // registry; the concept only supplies the per-tick encoder.
         self.register_typed_snapshot_projection(key, move || -> Option<TypedProjectionData> {
             encoder()
