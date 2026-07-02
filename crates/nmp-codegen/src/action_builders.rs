@@ -51,17 +51,20 @@ mod kotlin_bookmark_set;
 pub mod kotlin_marmot;
 mod kotlin_nip51;
 pub mod kotlin_publish;
+mod kotlin_scalars;
 pub mod swift;
 mod swift_bookmark_set;
 // NIP-51 bookmark helpers split out of `swift.rs` for 500-LOC cap compliance.
 pub mod swift_marmot;
 mod swift_nip51;
 pub mod swift_publish;
+mod swift_scalars;
 pub mod ts;
 // NIP-51 bookmark helpers split out of `ts.rs` for 500-LOC cap compliance.
 pub mod ts_marmot;
 mod ts_nip51;
 pub mod ts_publish;
+mod ts_scalars;
 
 pub use app_registry::{
     load_app_action_builder_registry, parse_app_action_builder_registry, AppActionBuilderOutputs,
