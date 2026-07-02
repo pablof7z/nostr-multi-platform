@@ -186,7 +186,7 @@ fn closing_permanent_home_feed_releases_all_refs() {
 #[test]
 fn unregistering_transient_feed_provider_releases_all_on_next_tick() {
     let (mut kernel, slot) = kernel_with_slot();
-    let thread_key = "nmp.feed.thread.deadbeef";
+    let thread_key = "test.feed.thread.deadbeef";
     let authors = register_swappable_provider(&slot, thread_key);
     let consumer = feed_author_consumer_id(thread_key);
     let a = hex64("a11ce");
@@ -219,7 +219,7 @@ fn unregistering_transient_feed_provider_releases_all_on_next_tick() {
 #[test]
 fn release_by_feed_key_drops_the_consumers_refs() {
     let (mut kernel, slot) = kernel_with_slot();
-    let author_key = "nmp.feed.author.cafef00d";
+    let author_key = "test.feed.author.cafef00d";
     let authors = register_swappable_provider(&slot, author_key);
     let a = hex64("a5511");
     set_authors(&authors, &[a.clone()]);
@@ -359,7 +359,7 @@ fn emitted_set_guardrail_fires_for_unresolved_emitted_author() {
     // A feed's typed producer EMITTED `a` onto the wire this tick (recorded into
     // the sink) but NOTHING ever resolved it — no provider, no resolve_ref.
     let a = hex64("dead1");
-    let consumer = feed_author_consumer_id("nmp.feed.author.deadbeef");
+    let consumer = feed_author_consumer_id("test.feed.author.deadbeef");
     slot.lock()
         .unwrap()
         .record_emitted_feed_authors(rev, consumer.clone(), [a.clone()]);

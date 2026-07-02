@@ -127,7 +127,11 @@ typed envelope fields plus `typed_projections`. `kind = Panic` is the terminal
 actor-thread failure frame. Hosts decode the frame with generated FlatBuffers
 readers; there is no production JSON snapshot fallback. Product view state
 comes from typed projection rows such as `myapp.timeline.home`,
-`nmp.feed.author.<pubkey>`, and `nmp.feed.thread.<event_id>`.
+`microblog.feed.author.<pubkey>`, and `microblog.feed.thread.<event_id>` —
+app-owned dynamic keys built with `ProjectionKey::app_owned(...)` /
+`DynamicProjectionKey::app_owned(...)`. `nmp.*` projection keys are reserved
+for declared framework surfaces (`DeclaredProjectionKey::framework`,
+PR #2610).
 
 | Field | Type | Use |
 |---|---|---|

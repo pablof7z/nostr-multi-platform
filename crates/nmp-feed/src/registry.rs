@@ -98,6 +98,12 @@ pub fn new_feed_registry_slot() -> FeedRegistrySlot {
 mod tests {
     use super::*;
 
+    // `FeedRegistry::register`/`unregister` key on a bare `&str` with no
+    // ownership check (unlike `register_typed_snapshot_projection`'s
+    // `Into<ProjectionRegistrationKey>` bound, PR #2610) — these are arbitrary
+    // test keys for the raw internal registry, not an app-facing naming
+    // example.
+
     struct StubController(bool);
     impl FeedController for StubController {
         fn load_older(&self) -> bool {
@@ -131,20 +137,20 @@ mod tests {
     #[test]
     fn register_then_unregister_removes_the_controller() {
         let reg = FeedRegistry::default();
-        reg.register("nmp.feed.author.alice", Arc::new(StubController(true)));
+        reg.register("test.feed.author.alice", Arc::new(StubController(true)));
         // Present: load_older reaches the controller.
-        assert!(reg.load_older("nmp.feed.author.alice"));
+        assert!(reg.load_older("test.feed.author.alice"));
         // Removed: returns true once, then false (idempotent), and the key
         // no longer resolves a controller.
-        assert!(reg.unregister("nmp.feed.author.alice"));
-        assert!(!reg.unregister("nmp.feed.author.alice"));
-        assert!(!reg.load_older("nmp.feed.author.alice"));
+        assert!(reg.unregister("test.feed.author.alice"));
+        assert!(!reg.unregister("test.feed.author.alice"));
+        assert!(!reg.load_older("test.feed.author.alice"));
     }
 
     #[test]
     fn unregister_absent_key_is_a_noop() {
         let reg = FeedRegistry::default();
-        assert!(!reg.unregister("nmp.feed.thread.missing"));
+        assert!(!reg.unregister("test.feed.thread.missing"));
     }
 
     #[test]
@@ -155,11 +161,14 @@ mod tests {
             replace_accepted: true,
             ..Default::default()
         });
-        reg.register("nmp.feed.author.alice", ctrl.clone());
+        reg.register("test.feed.author.alice", ctrl.clone());
 
-        assert!(reg.reset("nmp.feed.author.alice"), "reset reached the feed");
         assert!(
-            reg.replace("nmp.feed.author.alice", "deadbeef"),
+            reg.reset("test.feed.author.alice"),
+            "reset reached the feed"
+        );
+        assert!(
+            reg.replace("test.feed.author.alice", "deadbeef"),
             "replace reached the feed"
         );
         assert_eq!(
@@ -178,11 +187,11 @@ mod tests {
     fn reset_and_replace_on_absent_key_fail_closed() {
         let reg = FeedRegistry::default();
         assert!(
-            !reg.reset("nmp.feed.missing"),
+            !reg.reset("test.feed.missing"),
             "absent key ⇒ reset is false"
         );
         assert!(
-            !reg.replace("nmp.feed.missing", "id"),
+            !reg.replace("test.feed.missing", "id"),
             "absent key ⇒ replace is false"
         );
     }
@@ -190,7 +199,7 @@ mod tests {
     #[test]
     fn passthrough_fails_closed_on_a_poisoned_lock() {
         let reg = Arc::new(FeedRegistry::default());
-        reg.register("nmp.feed.author.alice", Arc::new(StubController(true)));
+        reg.register("test.feed.author.alice", Arc::new(StubController(true)));
         // Poison the feeds map by panicking while holding its lock.
         let poisoner = Arc::clone(&reg);
         let _ = std::thread::spawn(move || {
@@ -199,12 +208,18 @@ mod tests {
         })
         .join();
 
-        assert!(!reg.load_older("nmp.feed.author.alice"), "poisoned ⇒ false");
-        assert!(!reg.reset("nmp.feed.author.alice"), "poisoned ⇒ false");
         assert!(
-            !reg.replace("nmp.feed.author.alice", "id"),
+            !reg.load_older("test.feed.author.alice"),
             "poisoned ⇒ false"
         );
-        assert!(!reg.unregister("nmp.feed.author.alice"), "poisoned ⇒ false");
+        assert!(!reg.reset("test.feed.author.alice"), "poisoned ⇒ false");
+        assert!(
+            !reg.replace("test.feed.author.alice", "id"),
+            "poisoned ⇒ false"
+        );
+        assert!(
+            !reg.unregister("test.feed.author.alice"),
+            "poisoned ⇒ false"
+        );
     }
 }

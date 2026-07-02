@@ -53,8 +53,11 @@ impl NmpApp {
     /// (debug-only) for any emitted author with no live resolver demand.
     ///
     /// - `feed_key` — the feed snapshot key (`"app.feed.following"`,
-    ///   `"nmp.feed.author.<pk>"`, `"nmp.feed.thread.<id>"`). Both lanes key on it,
-    ///   so [`NmpApp::unregister_feed`] tears BOTH down together.
+    ///   `"microblog.feed.author.<pk>"`, `"test.feed.thread.<id>"`). Both lanes
+    ///   key on it, so [`NmpApp::unregister_feed`] tears BOTH down together.
+    ///   App/product feed keys are app-owned (`DynamicProjectionKey::app_owned`,
+    ///   PR #2610) — never `nmp.*`, which is reserved for declared framework
+    ///   projection surfaces.
     /// - `source` — the per-tick-materialized window over the feed engine.
     /// - `encode` — maps the materialized snapshot to the typed sidecar payload
     ///   (`None` to omit this tick, e.g. an unchanged frame under incremental

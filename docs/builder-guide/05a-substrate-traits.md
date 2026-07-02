@@ -136,18 +136,31 @@ Registers a typed sidecar pushed in every snapshot tick under
 `typed_projections[key]`.
 
 ```rust
-app.register_typed_snapshot_projection("nmp.myapp.key", move || {
-    store.lock().ok().map(|g| encode_myapp_snapshot(&g))
-});
+// Framework/protocol crate (concept owner) — a declared `nmp.*` key citing
+// the ownership claim the crate registers for it.
+app.register_typed_snapshot_projection(
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.mymodule.state",
+        "projection.nmp.mymodule.state",
+    ),
+    move || store.lock().ok().map(|g| encode_mymodule_snapshot(&g)),
+);
 ```
 
 - **Contract:** the closure runs on the **actor thread** inside every snapshot
   tick. It MUST be cheap and non-blocking (D8: no I/O, no mutex waits that
   could block relay ingest). A panic inside is isolated (`catch_unwind` per
   closure, D6).
-- **Key naming:** use `nmp.<module>.*` namespaces. Kernel-reserved keys
-  (`publish_queue`, `accounts`, `profile`, views cluster) always win on
-  collision.
+- **Key naming:** `register_typed_snapshot_projection` takes anything that
+  implements `Into<ProjectionRegistrationKey>` (`nmp-ownership`), not a raw
+  string (PR #2610). Framework/protocol crates declare a `nmp.<module>.*` key
+  through `DeclaredProjectionKey::framework(key, owner_claim)`, citing the
+  ownership claim in their `nmp-ownership` descriptor — `nmp crate-ownership
+  audit --deny` verifies the pair. App/product code uses
+  `ProjectionKey::app_owned(...)` / `DynamicProjectionKey::app_owned(...)`
+  with a non-`nmp.*` namespace instead; `nmp.*` is reserved for declared
+  framework surfaces. Kernel-reserved keys (`publish_queue`, `accounts`,
+  `profile`, views cluster) always win on collision.
 - **Use it when** you are implementing a concept-owned active read or protocol
   executor and need its state visible in the host's `apply()` callback alongside
   the built-in named fields. Product screens should open the helper, not wire
@@ -169,7 +182,7 @@ pub trait ObservedProjectionSink: Send + Sync {
 
 let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
     Arc::new(MyObserver { store: arc_store.clone() }),
-    "nmp.myapp.items",
+    "myapp.items", // refcount consumer id — app-owned, not a projection key
     0,
     [KIND_NOTE],
     128,

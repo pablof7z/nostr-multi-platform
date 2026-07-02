@@ -27,8 +27,9 @@
 //!
 //! Registration mirrors [`crate::register_op_feed`]: the host registers a
 //! `FlatFeed` as both a [`ObservedProjectionSink`] (ingest fan-out) and a
-//! [`FeedController`] under its own snapshot key (`nmp.feed.author.<pk>` /
-//! `nmp.feed.thread.<id>`).
+//! [`FeedController`] under its own app-owned snapshot key
+//! (`microblog.feed.author.<pk>` / `test.feed.thread.<id>`) —
+//! `DynamicProjectionKey::app_owned`, never `nmp.*` (PR #2610).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
