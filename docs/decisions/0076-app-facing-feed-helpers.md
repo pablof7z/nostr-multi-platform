@@ -19,10 +19,10 @@ private session machinery.
 
 The feed implementation now has useful lower-level pieces: `FeedParams`,
 `FeedSourceExpr`, `FeedHandle`, feed-session compilation,
-browser runtime feed opening, UniFFI support helpers that call the default
-compiler, and app-owned dynamic projection keys. Issue #1626 remains open
-because the normal app-facing shape is still too close to executor wiring:
-some current names such as `projection` and `CustomPerspectiveId` still hide
+native/browser `feeds().open/load_older/close` facades, UniFFI support helpers
+that call the default compiler, and app-owned dynamic projection keys. Issue
+#1626 remains open because ergonomic feed builders, generated helper surfaces,
+and some names such as `projection` and `CustomPerspectiveId` still hide
 important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
@@ -164,7 +164,7 @@ pagination by handle.
 
 | Current lower-level name | Public target | Reason |
 | --- | --- | --- |
-| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
+| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` and `app.feeds().open(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
 | explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
 | former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | former `render` field | `shape` | NMP projects row/window shape; hosts render. |

@@ -8,7 +8,47 @@ use std::sync::Arc;
 use super::BrowserRuntimeHandle;
 use crate::feed::{open_browser_feed_session, FeedRuntimeAccess};
 
+/// Borrowed browser feed-session facade.
+///
+/// This type owns no state. It delegates to `BrowserRuntimeHandle`'s existing
+/// handle-owned feed lifecycle so browser app code can use the same
+/// `runtime.feeds().open/load_older/close` shape without seeing compiler or
+/// registry wiring.
+pub struct BrowserFeedSessions<'a> {
+    handle: &'a mut BrowserRuntimeHandle,
+}
+
+impl<'a> BrowserFeedSessions<'a> {
+    fn new(handle: &'a mut BrowserRuntimeHandle) -> Self {
+        Self { handle }
+    }
+
+    /// Open a caller-owned browser feed session through the standard NMP feed
+    /// compiler.
+    pub fn open(&mut self, params: nmp_feed::FeedParams) -> Option<nmp_feed::FeedHandle> {
+        self.handle.open_feed(params)
+    }
+
+    /// Page an open browser feed by its returned handle.
+    #[must_use]
+    pub fn load_older(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
+        self.handle.load_older_feed(handle)
+    }
+
+    /// Close an open browser feed by its returned handle.
+    #[must_use]
+    pub fn close(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
+        self.handle.close_feed(handle)
+    }
+}
+
 impl BrowserRuntimeHandle {
+    /// App-facing feed-session facade.
+    #[must_use]
+    pub fn feeds(&mut self) -> BrowserFeedSessions<'_> {
+        BrowserFeedSessions::new(self)
+    }
+
     /// Open a caller-owned browser feed session.
     ///
     /// The caller supplies the full [`nmp_feed::FeedParams`], including the

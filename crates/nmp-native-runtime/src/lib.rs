@@ -24,6 +24,7 @@ mod declared_projections;
 #[cfg(feature = "external-signer")]
 mod external_signer;
 mod feed;
+mod feed_facade;
 mod feed_session;
 mod feed_session_host;
 mod group_feed;
@@ -65,6 +66,7 @@ pub use feed::{
     FeedParams, FeedParamsDecodeError, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr,
     FeedWindowPolicy, ProjectionKey,
 };
+pub use feed_facade::FeedSessions;
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use group_feed::{
     Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
