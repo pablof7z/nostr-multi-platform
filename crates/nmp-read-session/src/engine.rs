@@ -13,6 +13,7 @@ use std::sync::Arc;
 use nmp_core::substrate::ObservedProjection;
 use nmp_planner::InterestShape;
 
+use crate::dependent::{close_dependent_reconcilers, prepare_dependent_demand_observer};
 use crate::host::{ReadDemand, ReadHandle, ReadHost, ReadSpec};
 use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 
@@ -50,8 +51,12 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
         demands,
         observer,
         output_encoder,
+        dependent_demands,
     } = spec;
     let key_str = projection_key.as_str().to_string();
+
+    let (observer, dependent_reconcilers) =
+        prepare_dependent_demand_observer(host, &key_str, observer, dependent_demands);
 
     // 1. Install the typed output (coalesced emission + tombstone are host-owned).
     host.install_read_output(projection_key, output_encoder);
@@ -84,6 +89,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
     // 3. If nothing stayed live, do not track a dead read: tombstone the output
     //    we installed and flag a tick, then hand back a closed sentinel handle.
     if interest_ids.is_empty() {
+        close_dependent_reconcilers(&dependent_reconcilers);
         (host.teardown_remove_output(key_str.clone()))();
         (host.teardown_mark_changed())();
         return ReadHandle {
@@ -94,12 +100,16 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
 
     // 4. Reverse-teardown recipe. Registration order below is the reverse of the
     //    execution order the registry applies on close, so execution is:
-    //    withdraw each interest (last opened first) → tombstone output → flag tick.
-    let mut teardown: Vec<TeardownAction> = Vec::with_capacity(interest_ids.len() + 2);
+    //    withdraw derived + primary interests → tombstone output → flag tick.
+    let mut teardown: Vec<TeardownAction> =
+        Vec::with_capacity(interest_ids.len() + dependent_reconcilers.len() + 2);
     teardown.push(host.teardown_mark_changed()); // exec last
     teardown.push(host.teardown_remove_output(key_str.clone())); // exec middle
     for id in interest_ids {
         teardown.push(host.teardown_close_interest(id)); // exec first (reversed)
+    }
+    for reconciler in dependent_reconcilers {
+        teardown.push(Box::new(move || reconciler.close_current()));
     }
 
     // 5. Record in the ONE shared registry; pair the id with the key as the handle.

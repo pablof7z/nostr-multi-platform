@@ -7,10 +7,11 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
+use nmp_nip09::KIND_DELETION;
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
-    ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
-    TeardownAction,
+    ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    ReadSessionRegistry, TeardownAction,
 };
 
 use super::generated::nmp::replies::root_as_reply_summary_snapshot;
@@ -23,11 +24,16 @@ const REPLY_A: &str = "222222222222222222222222222222222222222222222222222222222
 const REPLY_B: &str = "3333333333333333333333333333333333333333333333333333333333333333";
 const MENTION: &str = "4444444444444444444444444444444444444444444444444444444444444444";
 const AUTHOR: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const AUTHOR_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn event(id: &str, kind: u32, tags: Vec<Vec<&str>>) -> KernelEvent {
+    event_by(AUTHOR, id, kind, tags)
+}
+
+fn event_by(author: &str, id: &str, kind: u32, tags: Vec<Vec<&str>>) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
-        author: AUTHOR.to_string(),
+        author: author.to_string(),
         kind,
         created_at: 1,
         tags: tags
@@ -37,6 +43,22 @@ fn event(id: &str, kind: u32, tags: Vec<Vec<&str>>) -> KernelEvent {
         content: "body".to_string(),
         relay_provenance: Vec::new(),
     }
+}
+
+fn delete_event(id: &str, author: &str, deleted: &str) -> KernelEvent {
+    event_by(author, id, KIND_DELETION, vec![vec!["e", deleted]])
+}
+
+fn assert_delete_filter(filter: &str, deleted: &str, author: &str) {
+    assert!(filter.contains(r#""kinds":[5]"#), "kind:5 filter: {filter}");
+    assert!(
+        filter.contains(&format!(r##""#e":["{deleted}"]"##)),
+        "delete filter tags admitted reply id {deleted}: {filter}"
+    );
+    assert!(
+        filter.contains(&format!(r#""authors":["{author}"]"#)),
+        "delete filter scopes to the reply author {author}: {filter}"
+    );
 }
 
 fn note_target() -> ReplyTarget {
@@ -75,7 +97,12 @@ fn reducer_counts_true_replies_across_conventions_and_ignores_a_mention() {
     reducer.on_kernel_event(&event(
         REPLY_B,
         1111,
-        vec![vec!["E", ROOT], vec!["K", "1"], vec!["e", ROOT], vec!["k", "1"]],
+        vec![
+            vec!["E", ROOT],
+            vec!["K", "1"],
+            vec!["e", ROOT],
+            vec!["k", "1"],
+        ],
     ));
     // A bare #e mention (no reply marker) is NOT a reply.
     reducer.on_kernel_event(&event(MENTION, 1, vec![vec!["e", ROOT, "", "mention"]]));
@@ -83,9 +110,46 @@ fn reducer_counts_true_replies_across_conventions_and_ignores_a_mention() {
     reducer.on_kernel_event(&event(REPLY_A, 1, vec![vec!["e", ROOT, "", "reply"]]));
 
     let snapshot = reducer.snapshot();
-    assert_eq!(snapshot.count, 2, "two distinct true replies, mention excluded");
+    assert_eq!(
+        snapshot.count, 2,
+        "two distinct true replies, mention excluded"
+    );
     assert_eq!(snapshot.target_id, ROOT);
-    assert_eq!(snapshot.reply_event_ids, vec![REPLY_A.to_string(), REPLY_B.to_string()]);
+    assert_eq!(
+        snapshot.reply_event_ids,
+        vec![REPLY_A.to_string(), REPLY_B.to_string()]
+    );
+}
+
+#[test]
+fn reducer_retracts_same_author_delete_and_ignores_foreign_delete() {
+    let plans = reply_read_plans(&note_target()).unwrap();
+    let reducer = ReplySummaryProjection::new(ROOT.to_string(), plans);
+
+    reducer.on_kernel_event(&event(REPLY_A, 1, vec![vec!["e", ROOT, "", "reply"]]));
+    assert_eq!(reducer.snapshot().count, 1);
+
+    reducer.on_kernel_event(&delete_event(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        AUTHOR_B,
+        REPLY_A,
+    ));
+    assert_eq!(
+        reducer.snapshot().count,
+        1,
+        "foreign delete cannot retract a reply"
+    );
+
+    reducer.on_kernel_event(&delete_event(
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        AUTHOR,
+        REPLY_A,
+    ));
+    assert_eq!(
+        reducer.snapshot().count,
+        0,
+        "same-author delete retracts the reply"
+    );
 }
 
 #[test]
@@ -109,12 +173,12 @@ fn typed_output_round_trips() {
 #[derive(Default)]
 struct FakeHost {
     registry: ReadSessionRegistry,
-    observer: Mutex<Option<Arc<dyn ObservedProjectionSink>>>,
+    observers: Arc<Mutex<Vec<Arc<dyn ObservedProjectionSink>>>>,
     encoder: Mutex<Option<ReadOutputEncoder>>,
     output_key: Arc<Mutex<Option<String>>>,
-    opened_filters: Mutex<Vec<String>>,
+    opened_filters: Arc<Mutex<Vec<String>>>,
     closed_interests: Arc<Mutex<Vec<u64>>>,
-    next_interest: AtomicU64,
+    next_interest: Arc<AtomicU64>,
 }
 
 impl FakeHost {
@@ -122,7 +186,17 @@ impl FakeHost {
         self.encoder.lock().unwrap().as_ref().and_then(|e| e())
     }
     fn feed(&self, event: &KernelEvent) {
-        if let Some(obs) = self.observer.lock().unwrap().as_ref() {
+        self.feed_observer(0, event);
+    }
+    fn feed_latest(&self, event: &KernelEvent) {
+        let Some(index) = self.observers.lock().unwrap().len().checked_sub(1) else {
+            return;
+        };
+        self.feed_observer(index, event);
+    }
+    fn feed_observer(&self, index: usize, event: &KernelEvent) {
+        let observer = self.observers.lock().unwrap().get(index).cloned();
+        if let Some(obs) = observer {
             obs.on_kernel_event(event);
         }
     }
@@ -134,7 +208,10 @@ impl ReadHost for FakeHost {
         *self.encoder.lock().unwrap() = Some(encoder);
     }
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
+        self.observers
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&decl.observer));
         self.opened_filters.lock().unwrap().push(decl.filter_json);
         ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
     }
@@ -158,6 +235,21 @@ impl ReadHost for FakeHost {
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
     }
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        let observers = Arc::clone(&self.observers);
+        let opened_filters = Arc::clone(&self.opened_filters);
+        let next_interest = Arc::clone(&self.next_interest);
+        let open = move |decl: ObservedProjection| {
+            observers.lock().unwrap().push(Arc::clone(&decl.observer));
+            opened_filters.lock().unwrap().push(decl.filter_json);
+            ObservedProjectionId(next_interest.fetch_add(1, Ordering::Relaxed) + 1)
+        };
+        let closed = Arc::clone(&self.closed_interests);
+        let close = move |id: ObservedProjectionId| {
+            closed.lock().unwrap().push(id.0);
+        };
+        Some(ReadInterestController::new(open, close))
+    }
 }
 
 #[test]
@@ -170,8 +262,16 @@ fn open_replies_drives_the_engine_and_close_withdraws_everything() {
         "framework-owned per-read output key: {}",
         handle.projection_key()
     );
-    assert_eq!(host.opened_filters.lock().unwrap().len(), 2, "two demands opened");
-    assert_eq!(host.registry.live_count(), 1, "one live read in the shared registry");
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        2,
+        "two demands opened"
+    );
+    assert_eq!(
+        host.registry.live_count(),
+        1,
+        "one live read in the shared registry"
+    );
     assert_eq!(
         host.output_key.lock().unwrap().as_deref(),
         Some(handle.projection_key()),
@@ -187,9 +287,51 @@ fn open_replies_drives_the_engine_and_close_withdraws_everything() {
     // Close withdraws every demand and tombstones the output — reverse order,
     // once — and the engine no longer tracks the read (no leak).
     assert!(close_replies(&host, handle));
-    assert_eq!(host.closed_interests.lock().unwrap().len(), 2, "both demands withdrawn");
-    assert!(host.output_key.lock().unwrap().is_none(), "output tombstoned");
+    assert_eq!(
+        host.closed_interests.lock().unwrap().len(),
+        3,
+        "primary and derived demands withdrawn"
+    );
+    assert!(
+        host.output_key.lock().unwrap().is_none(),
+        "output tombstoned"
+    );
     assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn derived_delete_demand_routes_reply_delete_discovered_after_open() {
+    let host = FakeHost::new_default();
+    let handle = open_replies(&host, note_target()).unwrap();
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        2,
+        "open starts with the static NIP-10 and NIP-22 reply demands"
+    );
+
+    host.feed(&event(REPLY_A, 1, vec![vec!["e", ROOT, "", "reply"]]));
+    let filters = host.opened_filters.lock().unwrap().clone();
+    assert_eq!(
+        filters.len(),
+        3,
+        "admitting the reply opens the engine-owned delete demand"
+    );
+    assert_delete_filter(filters.last().unwrap(), REPLY_A, AUTHOR);
+
+    host.feed_latest(&delete_event(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        AUTHOR,
+        REPLY_A,
+    ));
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_reply_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(
+        decoded.count(),
+        0,
+        "delete delivered through the derived demand retracts the reply"
+    );
+
+    assert!(close_replies(&host, handle));
 }
 
 impl FakeHost {

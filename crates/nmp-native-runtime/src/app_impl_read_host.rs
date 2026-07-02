@@ -23,7 +23,10 @@
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::{ObservedProjectionId, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
-use nmp_read_session::{ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, TeardownAction};
+use nmp_read_session::{
+    ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    TeardownAction,
+};
 
 use crate::NmpApp;
 
@@ -76,5 +79,14 @@ impl ReadHost for NmpApp {
 
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.feed_sessions.as_read_sessions().close(id)
+    }
+
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        let opener = self.observed_projection_handle();
+        let closer = opener.clone();
+        Some(ReadInterestController::new(
+            move |decl| opener.open(decl),
+            move |id| closer.close(id),
+        ))
     }
 }

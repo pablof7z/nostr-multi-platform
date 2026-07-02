@@ -8,10 +8,11 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
+use nmp_nip09::KIND_DELETION;
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
-    ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
-    TeardownAction,
+    ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    ReadSessionRegistry, TeardownAction,
 };
 
 use super::generated::nmp::zaps::root_as_zap_summary_snapshot;
@@ -20,18 +21,32 @@ use crate::target::ZapTarget;
 
 const TARGET: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const OTHER: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+const RECEIPT_A: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+const RECEIPT_B: &str = "4444444444444444444444444444444444444444444444444444444444444444";
+const PROVIDER: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const OTHER_PROVIDER: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
 fn target() -> ZapTarget {
     ZapTarget::event(TARGET).expect("valid hex64 id")
 }
 
 fn receipt(id: &str, target_id: &str, sender: Option<&str>, amount: u64) -> KernelEvent {
+    receipt_by_provider(PROVIDER, id, target_id, sender, amount)
+}
+
+fn receipt_by_provider(
+    provider: &str,
+    id: &str,
+    target_id: &str,
+    sender: Option<&str>,
+    amount: u64,
+) -> KernelEvent {
     let sender_json = sender
         .map(|s| format!("\"pubkey\":\"{s}\",\"tags\":[[\"amount\",\"{amount}\"]]"))
         .unwrap_or_else(|| format!("\"tags\":[[\"amount\",\"{amount}\"]]"));
     KernelEvent {
         id: id.to_string(),
-        author: "ln_provider".to_string(),
+        author: provider.to_string(),
         kind: 9735,
         created_at: 1,
         tags: vec![
@@ -42,6 +57,30 @@ fn receipt(id: &str, target_id: &str, sender: Option<&str>, amount: u64) -> Kern
         content: String::new(),
         relay_provenance: Vec::new(),
     }
+}
+
+fn delete_event(id: &str, author: &str, deleted: &str) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind: KIND_DELETION,
+        created_at: 2,
+        tags: vec![vec!["e".to_string(), deleted.to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn assert_delete_filter(filter: &str, deleted: &str, author: &str) {
+    assert!(filter.contains(r#""kinds":[5]"#), "kind:5 filter: {filter}");
+    assert!(
+        filter.contains(&format!(r##""#e":["{deleted}"]"##)),
+        "delete filter tags admitted receipt id {deleted}: {filter}"
+    );
+    assert!(
+        filter.contains(&format!(r#""authors":["{author}"]"#)),
+        "delete filter scopes to the receipt provider {author}: {filter}"
+    );
 }
 
 // ── The concept reducer (no engine involved) ────────────────────────────────
@@ -107,6 +146,36 @@ fn anonymous_receipts_aggregate_into_one_bucket() {
 }
 
 #[test]
+fn reducer_retracts_provider_delete_and_ignores_foreign_delete() {
+    let reducer = ZapSummaryProjection::new(target());
+    reducer.on_kernel_event(&receipt(RECEIPT_A, TARGET, Some("alice"), 10_000));
+    assert_eq!(reducer.snapshot().zap_count, 1);
+
+    reducer.on_kernel_event(&delete_event(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        OTHER_PROVIDER,
+        RECEIPT_A,
+    ));
+    assert_eq!(
+        reducer.snapshot().zap_count,
+        1,
+        "foreign provider delete cannot retract the receipt"
+    );
+
+    reducer.on_kernel_event(&delete_event(
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        PROVIDER,
+        RECEIPT_A,
+    ));
+    let snapshot = reducer.snapshot();
+    assert_eq!(
+        snapshot.zap_count, 0,
+        "provider delete retracts the receipt"
+    );
+    assert_eq!(snapshot.total_msats, 0);
+}
+
+#[test]
 fn a_caller_derives_viewer_zapped_from_the_raw_zappers_list() {
     // This concept exposes no viewer-relative field (per #2777/#2758 review):
     // a shell membership-checks its own pubkey against `zappers` itself.
@@ -115,7 +184,10 @@ fn a_caller_derives_viewer_zapped_from_the_raw_zappers_list() {
     reducer.on_kernel_event(&receipt("Z2", TARGET, Some("bob"), 20_000));
 
     let snapshot = reducer.snapshot();
-    let viewer_zapped = snapshot.zappers.iter().any(|z| z.pubkey.as_deref() == Some("alice"));
+    let viewer_zapped = snapshot
+        .zappers
+        .iter()
+        .any(|z| z.pubkey.as_deref() == Some("alice"));
     assert!(viewer_zapped);
     let viewer_total = snapshot
         .zappers
@@ -155,12 +227,12 @@ fn typed_output_round_trips() {
 #[derive(Default)]
 struct FakeHost {
     registry: ReadSessionRegistry,
-    observer: Mutex<Option<Arc<dyn ObservedProjectionSink>>>,
+    observers: Arc<Mutex<Vec<Arc<dyn ObservedProjectionSink>>>>,
     encoder: Mutex<Option<ReadOutputEncoder>>,
     output_key: Arc<Mutex<Option<String>>>,
-    opened_filters: Mutex<Vec<String>>,
+    opened_filters: Arc<Mutex<Vec<String>>>,
     closed_interests: Arc<Mutex<Vec<u64>>>,
-    next_interest: AtomicU64,
+    next_interest: Arc<AtomicU64>,
 }
 
 impl FakeHost {
@@ -168,7 +240,17 @@ impl FakeHost {
         self.encoder.lock().unwrap().as_ref().and_then(|e| e())
     }
     fn feed(&self, event: &KernelEvent) {
-        if let Some(obs) = self.observer.lock().unwrap().as_ref() {
+        self.feed_observer(0, event);
+    }
+    fn feed_latest(&self, event: &KernelEvent) {
+        let Some(index) = self.observers.lock().unwrap().len().checked_sub(1) else {
+            return;
+        };
+        self.feed_observer(index, event);
+    }
+    fn feed_observer(&self, index: usize, event: &KernelEvent) {
+        let observer = self.observers.lock().unwrap().get(index).cloned();
+        if let Some(obs) = observer {
             obs.on_kernel_event(event);
         }
     }
@@ -180,7 +262,10 @@ impl ReadHost for FakeHost {
         *self.encoder.lock().unwrap() = Some(encoder);
     }
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
+        self.observers
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&decl.observer));
         self.opened_filters.lock().unwrap().push(decl.filter_json);
         ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
     }
@@ -204,6 +289,21 @@ impl ReadHost for FakeHost {
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
     }
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        let observers = Arc::clone(&self.observers);
+        let opened_filters = Arc::clone(&self.opened_filters);
+        let next_interest = Arc::clone(&self.next_interest);
+        let open = move |decl: ObservedProjection| {
+            observers.lock().unwrap().push(Arc::clone(&decl.observer));
+            opened_filters.lock().unwrap().push(decl.filter_json);
+            ObservedProjectionId(next_interest.fetch_add(1, Ordering::Relaxed) + 1)
+        };
+        let closed = Arc::clone(&self.closed_interests);
+        let close = move |id: ObservedProjectionId| {
+            closed.lock().unwrap().push(id.0);
+        };
+        Some(ReadInterestController::new(open, close))
+    }
 }
 
 #[test]
@@ -216,8 +316,16 @@ fn open_zaps_drives_the_engine_and_close_withdraws_everything() {
         "framework-owned per-read output key: {}",
         handle.projection_key()
     );
-    assert_eq!(host.opened_filters.lock().unwrap().len(), 1, "one demand opened");
-    assert_eq!(host.registry.live_count(), 1, "one live read in the shared registry");
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        1,
+        "one demand opened"
+    );
+    assert_eq!(
+        host.registry.live_count(),
+        1,
+        "one live read in the shared registry"
+    );
     assert_eq!(
         host.output_key.lock().unwrap().as_deref(),
         Some(handle.projection_key()),
@@ -225,7 +333,7 @@ fn open_zaps_drives_the_engine_and_close_withdraws_everything() {
     );
 
     // Live delivery folds into the typed output the shell will render.
-    host.feed(&receipt("Z1", TARGET, Some("alice"), 10_000));
+    host.feed(&receipt(RECEIPT_A, TARGET, Some("alice"), 10_000));
     let data = host.run_encoder().expect("output emits");
     let decoded = root_as_zap_summary_snapshot(&data.payload).unwrap();
     assert_eq!(decoded.total_msats(), 10_000);
@@ -234,9 +342,52 @@ fn open_zaps_drives_the_engine_and_close_withdraws_everything() {
     // Close withdraws the demand and tombstones the output — the engine no
     // longer tracks the read (no leak).
     assert!(close_zaps(&host, handle));
-    assert_eq!(host.closed_interests.lock().unwrap().len(), 1, "the demand was withdrawn");
-    assert!(host.output_key.lock().unwrap().is_none(), "output tombstoned");
+    assert_eq!(
+        host.closed_interests.lock().unwrap().len(),
+        2,
+        "primary and derived demands withdrawn"
+    );
+    assert!(
+        host.output_key.lock().unwrap().is_none(),
+        "output tombstoned"
+    );
     assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn derived_delete_demand_routes_zap_receipt_delete_discovered_after_open() {
+    let host = FakeHost::default();
+    let handle = open_zaps(&host, TARGET).unwrap();
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        1,
+        "open starts with the static zap-receipt demand only"
+    );
+
+    host.feed(&receipt(RECEIPT_B, TARGET, Some("alice"), 10_000));
+    let filters = host.opened_filters.lock().unwrap().clone();
+    assert_eq!(
+        filters.len(),
+        2,
+        "admitting the receipt opens the engine-owned delete demand"
+    );
+    assert_delete_filter(filters.last().unwrap(), RECEIPT_B, PROVIDER);
+
+    host.feed_latest(&delete_event(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        PROVIDER,
+        RECEIPT_B,
+    ));
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_zap_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(
+        decoded.zap_count(),
+        0,
+        "delete delivered through the derived demand retracts the receipt"
+    );
+    assert_eq!(decoded.total_msats(), 0);
+
+    assert!(close_zaps(&host, handle));
 }
 
 #[test]

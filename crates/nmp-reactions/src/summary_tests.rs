@@ -10,8 +10,8 @@ use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
-    ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
-    TeardownAction,
+    ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    ReadSessionRegistry, TeardownAction,
 };
 
 use super::generated::nmp::reactions::root_as_reaction_summary_snapshot;
@@ -44,6 +44,18 @@ fn reaction(id: &str, author: &str, content: &str) -> KernelEvent {
 
 fn delete(id: &str, author: &str, target_reaction_id: &str) -> KernelEvent {
     event(id, author, 5, vec![vec!["e", target_reaction_id]], "")
+}
+
+fn assert_delete_filter(filter: &str, deleted: &str, author: &str) {
+    assert!(filter.contains(r#""kinds":[5]"#), "kind:5 filter: {filter}");
+    assert!(
+        filter.contains(&format!(r##""#e":["{deleted}"]"##)),
+        "delete filter tags admitted reaction id {deleted}: {filter}"
+    );
+    assert!(
+        filter.contains(&format!(r#""authors":["{author}"]"#)),
+        "delete filter scopes to the reactor {author}: {filter}"
+    );
 }
 
 // ── The concept composition (no engine involved) ────────────────────────────
@@ -127,12 +139,12 @@ fn typed_output_round_trips() {
 #[derive(Default)]
 struct FakeHost {
     registry: ReadSessionRegistry,
-    observer: Mutex<Option<Arc<dyn ObservedProjectionSink>>>,
+    observers: Arc<Mutex<Vec<Arc<dyn ObservedProjectionSink>>>>,
     encoder: Mutex<Option<ReadOutputEncoder>>,
     output_key: Arc<Mutex<Option<String>>>,
-    opened_filters: Mutex<Vec<String>>,
+    opened_filters: Arc<Mutex<Vec<String>>>,
     closed_interests: Arc<Mutex<Vec<u64>>>,
-    next_interest: AtomicU64,
+    next_interest: Arc<AtomicU64>,
 }
 
 impl FakeHost {
@@ -140,7 +152,17 @@ impl FakeHost {
         self.encoder.lock().unwrap().as_ref().and_then(|e| e())
     }
     fn feed(&self, event: &KernelEvent) {
-        if let Some(obs) = self.observer.lock().unwrap().as_ref() {
+        self.feed_observer(0, event);
+    }
+    fn feed_latest(&self, event: &KernelEvent) {
+        let Some(index) = self.observers.lock().unwrap().len().checked_sub(1) else {
+            return;
+        };
+        self.feed_observer(index, event);
+    }
+    fn feed_observer(&self, index: usize, event: &KernelEvent) {
+        let observer = self.observers.lock().unwrap().get(index).cloned();
+        if let Some(obs) = observer {
             obs.on_kernel_event(event);
         }
     }
@@ -152,7 +174,10 @@ impl ReadHost for FakeHost {
         *self.encoder.lock().unwrap() = Some(encoder);
     }
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
+        self.observers
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&decl.observer));
         self.opened_filters.lock().unwrap().push(decl.filter_json);
         ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
     }
@@ -175,6 +200,21 @@ impl ReadHost for FakeHost {
     }
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
+    }
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        let observers = Arc::clone(&self.observers);
+        let opened_filters = Arc::clone(&self.opened_filters);
+        let next_interest = Arc::clone(&self.next_interest);
+        let open = move |decl: ObservedProjection| {
+            observers.lock().unwrap().push(Arc::clone(&decl.observer));
+            opened_filters.lock().unwrap().push(decl.filter_json);
+            ObservedProjectionId(next_interest.fetch_add(1, Ordering::Relaxed) + 1)
+        };
+        let closed = Arc::clone(&self.closed_interests);
+        let close = move |id: ObservedProjectionId| {
+            closed.lock().unwrap().push(id.0);
+        };
+        Some(ReadInterestController::new(open, close))
     }
 }
 
@@ -217,9 +257,21 @@ fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
     let reactors: Vec<&str> = groups.get(0).reactor_pubkeys().unwrap().iter().collect();
     assert!(reactors.contains(&AUTHOR_A), "shell membership check works");
 
-    // A retraction folds too — the same reducer instance is fed on close as
-    // it was on delivery, so no parallel deletion model is needed here.
-    host.feed(&delete("del", AUTHOR_A, REACTION_A));
+    let filters = host.opened_filters.lock().unwrap().clone();
+    assert_eq!(
+        filters.len(),
+        2,
+        "admitting the reaction opens the engine-owned delete demand"
+    );
+    assert_delete_filter(filters.last().unwrap(), REACTION_A, AUTHOR_A);
+
+    // A retraction folds through the derived observer opened after the reaction
+    // was admitted; no concept-owned subscription loop is involved.
+    host.feed_latest(&delete(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        AUTHOR_A,
+        REACTION_A,
+    ));
     let data = host.run_encoder().expect("output emits");
     let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
     assert_eq!(decoded.total(), 0);
@@ -229,8 +281,8 @@ fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
     assert!(close_reactions(&host, handle));
     assert_eq!(
         host.closed_interests.lock().unwrap().len(),
-        1,
-        "the demand withdrawn"
+        2,
+        "primary and derived demands withdrawn"
     );
     assert!(
         host.output_key.lock().unwrap().is_none(),

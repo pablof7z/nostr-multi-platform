@@ -23,15 +23,10 @@
 //! `nmp_nip18::RepostActivityProjection::apply_delete` and
 //! `nmp_nip25`'s reaction-aggregate delete fold. Because NIP-09 names the
 //! *deleted event's own id* in its `e` tags (the repost wrapper's id, not the
-//! target's), and the wrapper's id is only known once the wrapper itself has
-//! been observed, a demand fixed at `open_reposts` time can only route a
-//! delete of an *already-known* wrapper if the deleting client also happens
-//! to co-tag the target — the reducer's retraction logic is correct and
-//! independently tested, but full live-retraction of an arbitrary stranger's
-//! repost needs a demand that can grow as new wrapper ids are discovered,
-//! which the current [`nmp_read_session::ReadSpec`] (fixed at open time)
-//! does not support. That is a real boundary gap for #2777, not something
-//! this crate should paper over with a private per-id re-subscription loop.
+//! target's), so kind:5 routing must grow as repost wrappers are admitted. This
+//! crate declares that derived shape from its current accepted wrapper set; the
+//! read-session engine owns open/replay/live replacement and teardown, so this
+//! concept still has no private subscription loop.
 //!
 //! # Viewer-relative facts
 //!
@@ -41,15 +36,20 @@
 //! `reposter_pubkeys` — this concept never depends on viewer identity, so
 //! `open_reposts` takes no viewer parameter.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use flatbuffers::FlatBufferBuilder;
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
-use nmp_nip18::KIND_DELETE;
+use nmp_nip09::KIND_DELETION;
 use nmp_ownership::FrameworkProjectionKey;
-use nmp_read_session::{close_read, open_read, ReadDemand, ReadHost, ReadOutputEncoder, ReadSpec};
+use nmp_planner::InterestShape;
+use nmp_read_session::{
+    close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
+    ReadOutputEncoder, ReadSpec,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::read::RepostReadPlan;
@@ -163,11 +163,36 @@ impl RepostSummaryProjection {
             }
         }
     }
+
+    fn delete_demand(&self) -> Option<ReadDependentDemand> {
+        let Ok(accepted) = self.accepted.lock() else {
+            return None;
+        };
+        if accepted.is_empty() {
+            return None;
+        }
+        let wrapper_ids = accepted
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut tags = BTreeMap::new();
+        tags.insert("e".to_string(), wrapper_ids);
+        Some(ReadDependentDemand {
+            shape: InterestShape {
+                authors: accepted.values().cloned().collect::<BTreeSet<_>>(),
+                kinds: BTreeSet::from([KIND_DELETION]),
+                tags,
+                ..Default::default()
+            },
+            scope: REPOST_READ_SCOPE_GLOBAL,
+            replay_limit: REPOST_REPLAY_LIMIT,
+        })
+    }
 }
 
 impl ObservedProjectionSink for RepostSummaryProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == KIND_DELETE {
+        if event.kind == KIND_DELETION {
             self.ingest_delete(event);
             return;
         }
@@ -226,6 +251,10 @@ pub fn open_reposts(
     };
 
     let projection = Arc::new(RepostSummaryProjection::new(plan));
+    let dependent_demands: Vec<ReadDependentDemandProvider> = {
+        let projection = Arc::clone(&projection);
+        vec![Arc::new(move || projection.delete_demand())]
+    };
 
     // Typed output: encode the reducer's snapshot each tick. Coalesced
     // emission + tombstone-on-close are the engine/runtime's, not this
@@ -257,6 +286,7 @@ pub fn open_reposts(
             demands: vec![demand],
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
+            dependent_demands,
         },
     );
     Ok(RepostsReadHandle(handle))

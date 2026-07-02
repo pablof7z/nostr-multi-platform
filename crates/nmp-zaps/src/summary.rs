@@ -14,19 +14,14 @@
 //! never depends on a runtime crate. Dependency direction: `nmp-zaps` →
 //! `nmp-read-session` ← runtime.
 //!
-//! # Deletion handling (out of scope here, unlike `nmp-reposts`)
+//! # Deletion handling
 //!
-//! `nmp-reposts` folds a same-author kind:5 NIP-09 delete to retract a
-//! reposter's own wrapper, because the reposting pubkey is also the
-//! wrapper's author. A zap receipt's author is the LN provider that minted
-//! it (NIP-57 `provider_pubkey`), not the sender or the zapped target, so
-//! there is no analogous "the party who would retract it is the one whose
-//! kind:5 we'd fold" relationship — and receipts are essentially never
-//! deleted in practice. This crate does not fold kind:5 for receipts; if a
-//! future need arises, note that NIP-09 deletes name the *deleted event's
-//! own id*, which a `ReadSpec` demand fixed at `open_zaps` time cannot
-//! subscribe to for a receipt id not yet observed — the same static-demand
-//! gap `nmp-reposts` documents for #2777.
+//! A receipt provider's own kind:5 NIP-09 delete retracts that zap receipt.
+//! NIP-09 names the deleted receipt's own event id, which is only known after
+//! the receipt is admitted. This crate declares the current delete shape from
+//! its accepted receipt ids/provider pubkeys; the read-session engine owns the
+//! dynamic observed-demand lifecycle, so there is still no concept-private
+//! subscription loop.
 //!
 //! # Viewer-relative facts
 //!
@@ -36,15 +31,20 @@
 //! pubkeys — this concept never depends on viewer identity, so `open_zaps`
 //! takes no viewer parameter (mirrors `nmp-reposts`' `reposter_pubkeys`).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use flatbuffers::FlatBufferBuilder;
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
+use nmp_nip09::KIND_DELETION;
 use nmp_ownership::FrameworkProjectionKey;
-use nmp_read_session::{close_read, open_read, ReadDemand, ReadHost, ReadOutputEncoder, ReadSpec};
+use nmp_planner::InterestShape;
+use nmp_read_session::{
+    close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
+    ReadOutputEncoder, ReadSpec,
+};
 
 use crate::read::ZapReadPlan;
 use crate::target::{ZapTarget, ZapTargetError};
@@ -114,6 +114,13 @@ pub struct ZapSummarySnapshot {
     pub zappers: Vec<ZapperTotal>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ZapReceiptRow {
+    provider_pubkey: String,
+    sender_pubkey: Option<String>,
+    amount_msats: u64,
+}
+
 /// The admission-applying zap reducer: the concept's event fold. It ingests
 /// candidate receipt events (delivered by the demand filter) and keeps only
 /// those the read plan's admission ACCEPTS as validated zaps of the target,
@@ -123,8 +130,8 @@ pub struct ZapSummarySnapshot {
 pub struct ZapSummaryProjection {
     target_id: String,
     plan: ZapReadPlan,
-    // receipt event id -> (sender pubkey, amount_msats).
-    accepted: Mutex<BoundedMessageMap<String, (Option<String>, u64)>>,
+    // receipt event id -> accepted receipt data.
+    accepted: Mutex<BoundedMessageMap<String, ZapReceiptRow>>,
 }
 
 impl ZapSummaryProjection {
@@ -151,10 +158,10 @@ impl ZapSummaryProjection {
 
         let mut by_sender: BTreeMap<Option<String>, (u64, u32)> = BTreeMap::new();
         let mut total_msats: u64 = 0;
-        for (_, (sender, msats)) in accepted.iter() {
-            total_msats += *msats;
-            let bucket = by_sender.entry(sender.clone()).or_insert((0, 0));
-            bucket.0 += *msats;
+        for (_, row) in accepted.iter() {
+            total_msats += row.amount_msats;
+            let bucket = by_sender.entry(row.sender_pubkey.clone()).or_insert((0, 0));
+            bucket.0 += row.amount_msats;
             bucket.1 += 1;
         }
 
@@ -174,10 +181,61 @@ impl ZapSummaryProjection {
             zappers,
         }
     }
+
+    fn ingest_delete(&self, event: &KernelEvent) {
+        let deleted_ids = nmp_nip09::DeleteRecord::try_from_kernel_event(event)
+            .map(|record| record.event_targets)
+            .unwrap_or_default();
+        if deleted_ids.is_empty() {
+            return;
+        }
+        if let Ok(mut accepted) = self.accepted.lock() {
+            for id in deleted_ids {
+                if accepted
+                    .get(&id)
+                    .is_some_and(|row| row.provider_pubkey == event.author)
+                {
+                    accepted.remove(&id);
+                }
+            }
+        }
+    }
+
+    fn delete_demand(&self) -> Option<ReadDependentDemand> {
+        let Ok(accepted) = self.accepted.lock() else {
+            return None;
+        };
+        if accepted.is_empty() {
+            return None;
+        }
+        let receipt_ids = accepted
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut tags = BTreeMap::new();
+        tags.insert("e".to_string(), receipt_ids);
+        Some(ReadDependentDemand {
+            shape: InterestShape {
+                authors: accepted
+                    .iter()
+                    .map(|(_, row)| row.provider_pubkey.clone())
+                    .collect::<BTreeSet<_>>(),
+                kinds: BTreeSet::from([KIND_DELETION]),
+                tags,
+                ..Default::default()
+            },
+            scope: ZAP_READ_SCOPE_GLOBAL,
+            replay_limit: ZAP_REPLAY_LIMIT,
+        })
+    }
 }
 
 impl ObservedProjectionSink for ZapSummaryProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
+        if event.kind == KIND_DELETION {
+            self.ingest_delete(event);
+            return;
+        }
         // Admission + protocol validation (amount consistency, known-provider
         // mismatch rejection) live in `ZapReadPlan::accepts` / `nmp-nip57`;
         // an invalid receipt is silently excluded here, never errored.
@@ -187,7 +245,11 @@ impl ObservedProjectionSink for ZapSummaryProjection {
         if let Ok(mut accepted) = self.accepted.lock() {
             accepted.insert(
                 record.event_id,
-                (record.sender_pubkey, record.amount_msats.unwrap_or(0)),
+                ZapReceiptRow {
+                    provider_pubkey: record.provider_pubkey,
+                    sender_pubkey: record.sender_pubkey,
+                    amount_msats: record.amount_msats.unwrap_or(0),
+                },
             );
         }
     }
@@ -240,6 +302,10 @@ pub fn open_zaps(
     };
 
     let projection = Arc::new(ZapSummaryProjection::new(target));
+    let dependent_demands: Vec<ReadDependentDemandProvider> = {
+        let projection = Arc::clone(&projection);
+        vec![Arc::new(move || projection.delete_demand())]
+    };
 
     // Typed output: encode the reducer's snapshot each tick. Coalesced
     // emission + tombstone-on-close are the engine/runtime's, not this
@@ -260,8 +326,9 @@ pub fn open_zaps(
 
     // `nmp.zaps.*` is a framework prefix, so this declaration cannot fail.
     // The owner-claim literal must appear here for the crate-ownership audit.
-    let projection_key = FrameworkProjectionKey::declared(key_string, "projection.nmp.zaps.summary")
-        .expect("nmp.zaps.summary.* carries the framework prefix");
+    let projection_key =
+        FrameworkProjectionKey::declared(key_string, "projection.nmp.zaps.summary")
+            .expect("nmp.zaps.summary.* carries the framework prefix");
 
     let handle = open_read(
         host,
@@ -270,6 +337,7 @@ pub fn open_zaps(
             demands: vec![demand],
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
+            dependent_demands,
         },
     );
     Ok(ZapsReadHandle(handle))

@@ -13,15 +13,28 @@
 //! seam (`&dyn ReadHost`, which a runtime like `NmpApp` implements once) — it
 //! never depends on a runtime crate. Dependency direction: `nmp-replies` →
 //! `nmp-read-session` ← runtime.
+//!
+//! # Deletion handling
+//!
+//! A reply author's own kind:5 NIP-09 delete retracts that reply. NIP-09 names
+//! the reply event id, so this crate declares the current delete shape from its
+//! accepted reply ids/authors while the read-session engine owns the dynamic
+//! observed-demand lifecycle.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use flatbuffers::FlatBufferBuilder;
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
+use nmp_nip09::KIND_DELETION;
 use nmp_ownership::FrameworkProjectionKey;
-use nmp_read_session::{close_read, open_read, ReadDemand, ReadHost, ReadOutputEncoder, ReadSpec};
+use nmp_planner::InterestShape;
+use nmp_read_session::{
+    close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
+    ReadOutputEncoder, ReadSpec,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::read::{reply_read_plans, ReplyReadPlan, ReplyReadPlanError};
@@ -79,7 +92,8 @@ pub struct ReplySummarySnapshot {
 pub struct ReplySummaryProjection {
     target_id: String,
     plans: Vec<ReplyReadPlan>,
-    accepted: Mutex<BoundedMessageMap<String, u64>>,
+    // reply event id -> reply author pubkey.
+    accepted: Mutex<BoundedMessageMap<String, String>>,
 }
 
 impl ReplySummaryProjection {
@@ -109,15 +123,63 @@ impl ReplySummaryProjection {
             reply_event_ids,
         }
     }
+
+    fn ingest_delete(&self, event: &KernelEvent) {
+        let deleted_ids = nmp_nip09::DeleteRecord::try_from_kernel_event(event)
+            .map(|record| record.event_targets)
+            .unwrap_or_default();
+        if deleted_ids.is_empty() {
+            return;
+        }
+        if let Ok(mut accepted) = self.accepted.lock() {
+            for id in deleted_ids {
+                if accepted
+                    .get(&id)
+                    .is_some_and(|author| author == &event.author)
+                {
+                    accepted.remove(&id);
+                }
+            }
+        }
+    }
+
+    fn delete_demand(&self) -> Option<ReadDependentDemand> {
+        let Ok(accepted) = self.accepted.lock() else {
+            return None;
+        };
+        if accepted.is_empty() {
+            return None;
+        }
+        let reply_ids = accepted
+            .iter()
+            .map(|(id, _)| id.clone())
+            .collect::<BTreeSet<_>>();
+        let mut tags = BTreeMap::new();
+        tags.insert("e".to_string(), reply_ids);
+        Some(ReadDependentDemand {
+            shape: InterestShape {
+                authors: accepted.values().cloned().collect::<BTreeSet<_>>(),
+                kinds: BTreeSet::from([KIND_DELETION]),
+                tags,
+                ..Default::default()
+            },
+            scope: REPLY_READ_SCOPE_GLOBAL,
+            replay_limit: REPLY_REPLAY_LIMIT,
+        })
+    }
 }
 
 impl ObservedProjectionSink for ReplySummaryProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
+        if event.kind == KIND_DELETION {
+            self.ingest_delete(event);
+            return;
+        }
         // Admission: only true replies to the target (any applicable
         // convention) are counted; the demand filter is a superset.
         if self.plans.iter().any(|plan| plan.accepts(event)) {
             if let Ok(mut accepted) = self.accepted.lock() {
-                accepted.insert(event.id.clone(), event.created_at);
+                accepted.insert(event.id.clone(), event.author.clone());
             }
         }
     }
@@ -172,6 +234,10 @@ pub fn open_replies(
         .collect();
 
     let projection = Arc::new(ReplySummaryProjection::new(token, plans));
+    let dependent_demands: Vec<ReadDependentDemandProvider> = {
+        let projection = Arc::clone(&projection);
+        vec![Arc::new(move || projection.delete_demand())]
+    };
 
     // Typed output: encode the reducer's snapshot each tick. Coalesced emission
     // + tombstone-on-close are the engine/runtime's, not this closure's.
@@ -191,8 +257,9 @@ pub fn open_replies(
 
     // `nmp.replies.*` is a framework prefix, so this declaration cannot fail.
     // The owner-claim literal must appear here for the crate-ownership audit.
-    let projection_key = FrameworkProjectionKey::declared(key_string, "projection.nmp.replies.summary")
-        .expect("nmp.replies.summary.* carries the framework prefix");
+    let projection_key =
+        FrameworkProjectionKey::declared(key_string, "projection.nmp.replies.summary")
+            .expect("nmp.replies.summary.* carries the framework prefix");
 
     let handle = open_read(
         host,
@@ -201,6 +268,7 @@ pub fn open_replies(
             demands,
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
+            dependent_demands,
         },
     );
     Ok(RepliesReadHandle(handle))

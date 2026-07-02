@@ -13,11 +13,13 @@ crate-type = ["rlib"]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip09 = { path = "../nmp-nip09", default-features = false }
 # `native` gates nmp-nip57's LNURL-pay HTTP worker (ureq + std::thread::spawn);
 # this crate only reads + aggregates already-minted kind:9735 receipts, so it
 # never needs that leg.
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-ownership = { workspace = true }
+nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-read-session = { path = "../nmp-read-session" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

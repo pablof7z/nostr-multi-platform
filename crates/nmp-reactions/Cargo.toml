@@ -14,10 +14,10 @@ flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip25 = { path = "../nmp-nip25" }
 nmp-ownership = { workspace = true }
+nmp-planner = { path = "../nmp-planner" }
 nmp-read-session = { path = "../nmp-read-session" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-nmp-planner = { path = "../nmp-planner" }

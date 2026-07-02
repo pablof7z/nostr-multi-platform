@@ -3,8 +3,7 @@ use std::collections::BTreeMap;
 use nmp_core::substrate::KernelEvent;
 use nmp_kinds::KIND_SHORT_TEXT_NOTE;
 use nmp_nip18::{
-    try_from_kernel_event as repost_from_kernel_event, KIND_DELETE, KIND_GENERIC_REPOST,
-    KIND_REPOST,
+    try_from_kernel_event as repost_from_kernel_event, KIND_GENERIC_REPOST, KIND_REPOST,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -12,11 +11,9 @@ use serde_json::Value;
 use crate::target::RepostTarget;
 
 /// The single NIP-18 repost demand for one target: kind:6 (implicit kind:1
-/// target) and kind:16 (generic repost, `k`-tag discriminated) reposts, plus
-/// kind:5 NIP-09 deletes so a reposter's own retraction is observable on the
-/// same live subscription (best-effort: NIP-09 names the retracted event's
-/// own id in its `e` tags, not the target's, so this catches only a delete
-/// that also happens to co-tag the target — see [`crate::summary`] docs).
+/// target) and kind:16 (generic repost, `k`-tag discriminated) reposts. Kind:5
+/// NIP-09 deletes are routed by the read-session engine's dependent-demand
+/// stage once concrete wrapper ids are known.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RepostReadPlan {
     target_event_id: String,
@@ -40,7 +37,7 @@ impl RepostReadPlan {
         map.insert(
             "kinds".to_string(),
             Value::Array(
-                [KIND_REPOST, KIND_GENERIC_REPOST, KIND_DELETE]
+                [KIND_REPOST, KIND_GENERIC_REPOST]
                     .into_iter()
                     .map(Value::from)
                     .collect(),
