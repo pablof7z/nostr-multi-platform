@@ -3,40 +3,82 @@ use std::fs;
 
 use crate::support::{crates_dir, evaluate, read, rel, Occurrence};
 
-/// Layer of a workspace crate per `docs/architecture/crate-boundaries.md` §2,
-/// or `None` for crates outside the documented layer model (sidecars, app /
-/// gallery crates, and not-yet-classified modules). Dependencies must flow from
-/// higher layers to lower layers; an edge to a *higher* layer number is an
-/// upward inversion.
+/// Rule E classification for a `crates/*` package per
+/// `docs/architecture/crate-boundaries.md` §2.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CrateClass {
+    /// A runtime crate in the numbered dependency model.
+    Layer(u8),
+    /// A non-runtime sidecar that is explicitly listed in the sidecar row.
+    Exempt(&'static str),
+}
+
+/// Classify a workspace crate per `docs/architecture/crate-boundaries.md` §2.
+/// Dependencies must flow from higher layers to lower layers; an edge to a
+/// *higher* layer number is an upward inversion.
 ///
 /// `nmp-nipNN` crates default to L4 (the reusable-protocol layer); the few
 /// `*-types` NIP crates are L0 vocabulary and are matched explicitly first.
-pub(crate) fn crate_layer(name: &str) -> Option<u8> {
+pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
     match name {
         // L0 — dependency-light vocabulary / interface types.
-        "nmp-kinds" | "nmp-signer-iface" | "nmp-nip42-types" | "nmp-nip92-types" | "nmp-nip59"
-        | "nmp-relay-url" | "nmp-nostr-id" => Some(0),
+        "nmp-kinds" | "nmp-ownership" | "nmp-signer-iface" | "nmp-nip42-types"
+        | "nmp-nip65-types" | "nmp-nip92-types" | "nmp-nip59" | "nmp-relay-url"
+        | "nmp-nostr-id" => Some(CrateClass::Layer(0)),
         // L1 — storage, network transport, concrete signer transport.
-        "nmp-store" | "nmp-nostr-lmdb" | "nmp-network" | "nmp-signers" => Some(1),
+        "nmp-store" | "nmp-nostr-lmdb" | "nmp-network" | "nmp-signers" | "nmp-sqlite-wasm" => {
+            Some(CrateClass::Layer(1))
+        }
         // L2 — routing and subscription planning.
-        "nmp-router" | "nmp-planner" => Some(2),
+        "nmp-router" | "nmp-planner" => Some(CrateClass::Layer(2)),
         // L3 — kernel substrate.
-        "nmp-core" | "nmp-coverage-gate" => Some(3),
+        "nmp-core" | "nmp-coverage-gate" => Some(CrateClass::Layer(3)),
         // L4 — reusable Nostr protocol/product modules (non-NIP members).
-        "nmp-content"
+        "nmp-blossom"
+        | "nmp-content"
         | "nmp-content-fixtures"
         | "nmp-feed"
+        | "nmp-feed-session"
         | "nmp-threading"
         | "nmp-wot"
         | "nmp-marmot"
         | "nmp-intent"
-        | "nmp-nwc" => Some(4),
+        | "nmp-note-feed"
+        | "nmp-nwc"
+        | "nmp-replies" => Some(CrateClass::Layer(4)),
         // L5 — app/runtime composition floor.
-        "nmp-substrate" => Some(5),
+        "nmp-substrate" => Some(CrateClass::Layer(5)),
         // L6 — platform runtimes / bindings.
-        "nmp-native-runtime" | "nmp-uniffi" | "nmp-browser-runtime" => Some(6),
+        "nmp-native-runtime" | "nmp-uniffi" | "nmp-uniffi-support" | "nmp-browser-runtime" => {
+            Some(CrateClass::Layer(6))
+        }
+        // Sidecars — tooling, tests, conformance vehicles, and private DX
+        // proofs. These are classified explicitly so a new crate cannot slip
+        // out of Rule E by omission.
+        "nmp-cli" => Some(CrateClass::Exempt("developer CLI sidecar")),
+        "nmp-codegen" => Some(CrateClass::Exempt("code generation sidecar")),
+        "nmp-component-registry" => Some(CrateClass::Exempt(
+            "component registry manifest/export sidecar",
+        )),
+        "nmp-testing" => Some(CrateClass::Exempt("test and benchmark sidecar")),
+        "nmp-browser-runtime-conformance" => {
+            Some(CrateClass::Exempt("browser runtime conformance sidecar"))
+        }
+        "nmp-sqlite-wasm-conformance" => {
+            Some(CrateClass::Exempt("sqlite wasm conformance sidecar"))
+        }
+        "nmp-example-login-timeline" => Some(CrateClass::Exempt("private DX proof sidecar")),
         // Every other `nmp-nipNN` is an L4 reusable protocol crate.
-        _ if name.starts_with("nmp-nip") && !name.ends_with("-types") => Some(4),
+        _ if name.starts_with("nmp-nip") && !name.ends_with("-types") => Some(CrateClass::Layer(4)),
+        _ => None,
+    }
+}
+
+/// Numbered layer for a runtime crate, or `None` for explicitly exempt
+/// sidecars and unknown crates.
+pub(crate) fn crate_layer(name: &str) -> Option<u8> {
+    match crate_class(name) {
+        Some(CrateClass::Layer(layer)) => Some(layer),
         _ => None,
     }
 }
@@ -50,6 +92,42 @@ pub(crate) fn upward_edge(from: &str, to: &str) -> Option<(u8, u8)> {
         (Some(a), Some(b)) if b > a => Some((a, b)),
         _ => None,
     }
+}
+
+#[test]
+fn rule_e_classifies_every_crates_manifest() {
+    let crates = crates_dir();
+    let mut classified = 0usize;
+    let mut unmapped = Vec::new();
+
+    for entry in fs::read_dir(&crates).expect("read crates dir") {
+        let dir = entry.expect("dir entry").path();
+        if !dir.is_dir() {
+            continue;
+        }
+        let name = match dir.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+        if !dir.join("Cargo.toml").is_file() {
+            continue;
+        }
+        match crate_class(&name) {
+            Some(_) => classified += 1,
+            None => unmapped.push(name),
+        }
+    }
+
+    assert!(
+        classified > 50,
+        "Rule E classified only {classified} crates — coverage would be vacuous"
+    );
+    assert!(
+        unmapped.is_empty(),
+        "Rule E crate map must classify every crates/* Cargo.toml as a layer or \
+         explicit sidecar exemption; unmapped: {}",
+        unmapped.join(", ")
+    );
 }
 
 /// Dependency name declared on a single `Cargo.toml` dependency line, honouring

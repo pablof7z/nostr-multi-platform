@@ -18,6 +18,11 @@ use nmp_core::substrate::{
 use nmp_kinds::{KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
 use nmp_store::{SearchField, SearchScopeId, StoredEvent};
 
+/// Stable scope names under the `nip50` input/search namespace.
+pub const SCOPE_NAME_PROFILES: &str = "profiles";
+pub const SCOPE_NAME_NOTES: &str = "notes";
+pub const SCOPE_NAME_LONGFORM: &str = "longform";
+
 /// Stable scope labels — also the bridge the result projection uses to map a
 /// [`crate::SearchScope`] to the store's [`SearchScopeId`].
 pub const SCOPE_LABEL_PROFILES: &str = "nip50.profiles";
