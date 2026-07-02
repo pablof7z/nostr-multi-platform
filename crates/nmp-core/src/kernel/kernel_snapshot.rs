@@ -115,6 +115,16 @@ pub(crate) struct Metrics {
     /// lifetime so malformed or impossible value-shape drift becomes visible in
     /// diagnostics instead of collapsing to an empty/null snapshot.
     pub(super) update_frame_degradations_total: u64,
+    /// #2767 — command sends shed because the bounded actor inbox was full.
+    /// Process-lifetime raw count (no saturation), preserved across `Reset`
+    /// via the kernel's `command_drops` handle so a command burst is
+    /// host-visible rather than silent.
+    pub(super) command_drops: u64,
+    /// #2767 — relay events shed because the actor's local relay backlog hit
+    /// `RELAY_BACKLOG_CAP`. Process-lifetime raw count (no saturation),
+    /// preserved across `Reset` via the kernel's `relay_backlog_drops` handle
+    /// so a relay flood is host-visible rather than silent.
+    pub(super) relay_backlog_drops: u64,
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────

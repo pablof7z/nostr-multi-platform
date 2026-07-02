@@ -112,6 +112,8 @@ table Metrics {
   make_update_us:ulong;                   // u128 -> ulong
   serialize_us:ulong;                     // u128 -> ulong
   update_frame_degradations_total:ulong;
+  command_drops:ulong;                    // #2767 raw count, no saturation
+  relay_backlog_drops:ulong;              // #2767 raw count, no saturation
 }
 
 // Mirrors nmp_core::kernel::types::RelayStatus (types.rs:324).

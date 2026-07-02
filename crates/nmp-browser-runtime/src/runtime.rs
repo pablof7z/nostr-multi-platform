@@ -382,6 +382,16 @@ impl BrowserRuntime {
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
         events.extend(budget_events);
 
+        // ── 7. Surface pre-connect buffer evictions (#2765) ───────────────────
+        // Drained after fan_out_outbound because `send_text` (the only site
+        // that can evict a buffered frame) runs inside it — same-turn
+        // evictions are drained and surfaced in this same pump turn.
+        let outbound_drops = self.relay_pool.drain_outbound_drops();
+        events.extend(crate::relay::surface_outbound_drops(
+            &outbound_drops,
+            &mut self.reducer,
+        ));
+
         let yielded = cmd_drain.yielded
             || relay_drain.yielded
             || post_relay_cmd_drain.yielded

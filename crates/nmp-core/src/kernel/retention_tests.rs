@@ -91,6 +91,7 @@
 
 mod retention_fixtures_support;
 
+mod drop_counters_tests;
 mod profile_claim_cap_tests;
 mod queue_depth_tests;
 mod wire_subs_eviction_tests;

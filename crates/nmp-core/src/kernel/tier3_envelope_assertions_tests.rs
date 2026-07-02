@@ -90,6 +90,8 @@ pub(super) fn assert_metrics_agree(metrics: &fb::Metrics<'_>, json: &serde_json:
     u64_field!(make_update_us);
     u64_field!(serialize_us);
     u64_field!(update_frame_degradations_total);
+    u64_field!(command_drops);
+    u64_field!(relay_backlog_drops);
 }
 
 /// JSON `Option<String>` field: a string when `Some`, null when `None`.

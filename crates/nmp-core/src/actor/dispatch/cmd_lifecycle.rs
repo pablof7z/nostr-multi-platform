@@ -109,6 +109,14 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     // every subsequent send increments into a handle the kernel no
     // longer reads.
     let queue_depth_handle = ctx.kernel.take_queue_depth_handle_for_reset();
+    // #2767 — preserve the backpressure drop counters across Reset for the
+    // same reason: `command_drops` is shared with the host's `CommandSender`
+    // and `relay_backlog_drops` with the actor's `MailScheduler`; replacing
+    // either would orphan the counter and silently reset the host-visible
+    // count to zero on every Reset, defeating the "monotonic, never silent"
+    // contract.
+    let command_drops_handle = ctx.kernel.take_command_drops_handle_for_reset();
+    let relay_backlog_drops_handle = ctx.kernel.take_relay_backlog_drops_handle_for_reset();
     // Preserve the observed-projection sink slot across Reset for the
     // same reason: the `Arc<Mutex<…>>` is shared with the FFI
     // surface and per-app crates; replacing it would silently
@@ -148,6 +156,12 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     }
     if let Some(handle) = queue_depth_handle {
         ctx.kernel.set_queue_depth_handle(handle);
+    }
+    if let Some(handle) = command_drops_handle {
+        ctx.kernel.set_command_drops_handle(handle);
+    }
+    if let Some(handle) = relay_backlog_drops_handle {
+        ctx.kernel.set_relay_backlog_drops_handle(handle);
     }
     if let Some(handle) = event_observers_handle {
         ctx.kernel.set_event_observers_handle(handle);
