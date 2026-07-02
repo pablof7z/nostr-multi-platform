@@ -25,8 +25,8 @@ pub use action::{
     UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
 };
 pub use aggregate::{
-    ReactionAggregateProjection, ReactionAggregateSnapshot, ReactionEmojiCount,
-    ReactionTargetAggregate, ViewerReaction,
+    ReactionAggregateProjection, ReactionAggregateSnapshot, ReactionDeleteTarget,
+    ReactionEmojiCount, ReactionTargetAggregate, ViewerReaction,
 };
 pub use projection::{ReactionEntry, ReactionProjection, ReactionSnapshot, ViewerReactionState};
 pub use wire::reaction_aggregate_fb::{

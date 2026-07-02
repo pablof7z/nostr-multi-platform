@@ -253,6 +253,10 @@ pub struct NmpApp {
     /// keyed by the view's (singleton) projection key. Each is a hydrating
     /// observed-interest session torn down on `close_*` (#2088).
     pub(crate) group_feed_sessions: Mutex<HashMap<String, crate::group_feed::GroupFeedSession>>,
+    /// Live plain-note NIP-25 reaction read sessions, keyed by their framework
+    /// projection key (`nmp.nip25.reactions.<target>`).
+    pub(crate) reaction_read_sessions:
+        Mutex<HashMap<String, crate::plain_reactions::ReactionReadSession>>,
     /// Observed-projection sessions keyed by `ObservedProjectionId`. Each
     /// entry maps an observer id returned by `open_observed_projection` to the
     /// close params `(filter_json, consumer_id, scope, relay_pin)` needed to
