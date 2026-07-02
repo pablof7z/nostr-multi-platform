@@ -6,6 +6,10 @@
 //! - **Queue-depth counters** — the `queue_depth` handle plumbing
 //!   (`set_queue_depth_handle`, `take_queue_depth_handle_for_reset`,
 //!   `actor_queue_depth`) consumed by `Metrics::actor_queue_depth`.
+//! - **Backpressure drop counters** (#2767) — the `command_drops` and
+//!   `relay_backlog_drops` handle plumbing, mirroring the `queue_depth`
+//!   pattern exactly, consumed by `Metrics::command_drops` /
+//!   `Metrics::relay_backlog_drops`.
 //! - **Claim drop counters** — `claim_drops_total` (+ its `#[cfg(test)]`
 //!   twin) and `lnurl_for_pubkey`, a cached-profile read used by the zap path.
 //! - **`#[cfg(test)]` claim/wire-row accessors** — single-field reads over
@@ -49,6 +53,60 @@ impl Kernel {
             .as_ref()
             .map_or(0, |c| c.load(Ordering::Relaxed));
         depth.min(u64::from(u32::MAX)) as u32
+    }
+
+    /// #2767 — install the actor's command-drop counter handle so the
+    /// diagnostic snapshot surfaces it as `command_drops`. Idempotent:
+    /// re-binding replaces the prior handle. `None`-on-construction is fine —
+    /// the snapshot reports zero when unbound (tests, codegen). Called once by
+    /// `run_actor_with_observers` immediately after the kernel is built,
+    /// mirroring `set_queue_depth_handle`.
+    pub(crate) fn set_command_drops_handle(&mut self, handle: Arc<AtomicU64>) {
+        self.command_drops = Some(handle);
+    }
+
+    /// #2767 — extract the command-drop counter handle before a `Reset`
+    /// replaces the kernel. The counter is process-lifetime (shared with the
+    /// host's `CommandSender::command_drops`) so the Reset path moves it onto
+    /// the fresh kernel via `set_command_drops_handle`.
+    pub(crate) fn take_command_drops_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
+        self.command_drops.take()
+    }
+
+    /// #2767 — number of command sends shed because the bounded actor inbox
+    /// was full. Returns 0 when the kernel was constructed outside the actor
+    /// and no handle is bound. Monotonic for the process lifetime (no
+    /// saturation — unlike `actor_queue_depth`, this is a counter, not a
+    /// gauge).
+    pub(crate) fn command_drops(&self) -> u64 {
+        self.command_drops
+            .as_ref()
+            .map_or(0, |c| c.load(Ordering::Relaxed))
+    }
+
+    /// #2767 — install the actor's relay-backlog-drop counter handle so the
+    /// diagnostic snapshot surfaces it as `relay_backlog_drops`. Mirrors
+    /// `set_queue_depth_handle` / `set_command_drops_handle`.
+    pub(crate) fn set_relay_backlog_drops_handle(&mut self, handle: Arc<AtomicU64>) {
+        self.relay_backlog_drops = Some(handle);
+    }
+
+    /// #2767 — extract the relay-backlog-drop counter handle before a `Reset`
+    /// replaces the kernel. The counter is process-lifetime (shared with the
+    /// actor's `MailScheduler::relay_backlog_drops`) so the Reset path moves it
+    /// onto the fresh kernel via `set_relay_backlog_drops_handle`.
+    pub(crate) fn take_relay_backlog_drops_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
+        self.relay_backlog_drops.take()
+    }
+
+    /// #2767 — number of relay events shed because the actor's local relay
+    /// backlog was at `RELAY_BACKLOG_CAP`. Returns 0 when the kernel was
+    /// constructed outside the actor and no handle is bound. Monotonic for the
+    /// process lifetime (no saturation).
+    pub(crate) fn relay_backlog_drops(&self) -> u64 {
+        self.relay_backlog_drops
+            .as_ref()
+            .map_or(0, |c| c.load(Ordering::Relaxed))
     }
 
     /// T114b — number of `resolve_ref` requests dropped because a pubkey's

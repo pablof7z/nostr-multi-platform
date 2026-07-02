@@ -121,6 +121,15 @@ pub fn run_actor_with_observers(
     // sites below). Survives `Reset` the same way the drop counter does —
     // re-bound there so the counter stays visible across a kernel rebuild.
     kernel.set_queue_depth_handle(Arc::clone(&queue_depth));
+    // #2767 — bind the backpressure drop counters so they surface on the
+    // diagnostic snapshot (`Metrics::command_drops` / `relay_backlog_drops`)
+    // instead of being test-only. `command_drops` shares the Arc with
+    // `command_tx_self`'s `CommandSender` (the same handle `NmpApp::send_cmd`
+    // increments on a full inbox); `relay_backlog_drops` shares the Arc the
+    // lane scheduler bumps on backlog overflow. Both survive `Reset` the same
+    // way the queue-depth counter does.
+    kernel.set_command_drops_handle(command_tx_self.command_drops_handle());
+    kernel.set_relay_backlog_drops_handle(scheduler.relay_backlog_drops_handle());
     // T146 — bind the shared observed-projection sink slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
     // `Inserted | Replaced` (see `kernel/ingest/timeline.rs`). Per-app

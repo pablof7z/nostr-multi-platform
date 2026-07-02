@@ -122,6 +122,14 @@ impl CommandSender {
         self.command_drops.load(Ordering::Relaxed)
     }
 
+    /// Clone the shared drop-counter handle for the kernel's diagnostic
+    /// snapshot to bind via `Kernel::set_command_drops_handle`, mirroring the
+    /// `actor_queue_depth` handle pattern so this counter is host-visible
+    /// (`Metrics::command_drops`) instead of test-only.
+    pub(crate) fn command_drops_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.command_drops)
+    }
+
     /// Derive the relay-side sink for the same inbox, to hand to
     /// `Pool::new`. Relay events delivered through it land as
     /// [`ActorMail::Relay`] on the one channel the actor blocks on.

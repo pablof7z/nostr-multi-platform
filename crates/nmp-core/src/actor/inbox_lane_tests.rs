@@ -8,9 +8,10 @@
 //! the `actor` module rather than inside `inbox` itself.
 
 use super::fairness::COMMAND_DRAIN_BUDGET;
-use super::inbox::{Inbox, LoopStep, MailScheduler};
+use super::inbox::{Inbox, LoopStep, MailScheduler, RELAY_BACKLOG_CAP};
 use super::{ActorCommand, ActorMail, CommandSendStatus, CommandSender, LifecycleCommand};
 use nmp_network::pool::PoolEvent;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -216,6 +217,32 @@ fn timeout_is_idle_and_closed_inbox_is_shutdown() {
         scheduler.next_after_drain(&inbox, Duration::from_millis(1)),
         LoopStep::Shutdown
     ));
+}
+
+/// #2767: a sustained relay flood past `RELAY_BACKLOG_CAP` must be counted on
+/// the scheduler's shared `relay_backlog_drops` handle — the same handle the
+/// kernel snapshot reads via `Kernel::relay_backlog_drops()` — so the loss is
+/// host-visible rather than silent.
+#[test]
+fn relay_flood_past_backlog_cap_counts_drops_on_shared_handle() {
+    let mut scheduler = MailScheduler::new();
+    let drops = scheduler.relay_backlog_drops_handle();
+    assert_eq!(
+        drops.load(Ordering::Relaxed),
+        0,
+        "no drops before any flood"
+    );
+
+    const OVERFLOW: usize = 7;
+    for _ in 0..(RELAY_BACKLOG_CAP + OVERFLOW) {
+        scheduler.stash_relay(pool_event());
+    }
+
+    assert_eq!(
+        drops.load(Ordering::Relaxed),
+        OVERFLOW as u64,
+        "exactly the overflow past RELAY_BACKLOG_CAP must be counted as drops"
+    );
 }
 
 /// `CommandSender::send` on a closed inbox returns the undelivered command

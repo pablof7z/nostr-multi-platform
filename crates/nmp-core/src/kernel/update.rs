@@ -183,6 +183,9 @@ impl Kernel {
                 make_update_us: self.last_make_update_us,
                 serialize_us: self.last_serialize_us,
                 update_frame_degradations_total: self.update_frame_degradations_total,
+                // #2767 — backpressure drop counters, host-visible in release builds.
+                command_drops: self.command_drops(),
+                relay_backlog_drops: self.relay_backlog_drops(),
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),

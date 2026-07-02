@@ -178,6 +178,8 @@ fn encode_metrics<'b>(
             make_update_us: u64_sat(metrics.make_update_us),
             serialize_us: u64_sat(metrics.serialize_us),
             update_frame_degradations_total: metrics.update_frame_degradations_total,
+            command_drops: metrics.command_drops,
+            relay_backlog_drops: metrics.relay_backlog_drops,
         },
     )
 }
