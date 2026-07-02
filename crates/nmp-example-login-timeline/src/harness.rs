@@ -34,6 +34,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
+use nmp_feed::FeedHandle;
 use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
@@ -64,6 +65,7 @@ pub struct DemoApp {
     app: *mut NmpApp,
     viewer: String,
     ticks: Receiver<()>,
+    following_timeline: Option<FeedHandle>,
 }
 
 impl DemoApp {
@@ -106,12 +108,18 @@ impl DemoApp {
 
         // Step 3 — open the following timeline before sign-in.
         // SAFETY: `start` returns a valid, non-null `*mut NmpApp`.
-        register_following_timeline(unsafe { &*app }, viewer.clone());
+        let following_timeline = register_following_timeline(unsafe { &*app })
+            .expect("harness: following timeline feed spec must open");
 
         // Step 4 — sign in (active).
         unsafe { &*app }.signin_nsec_for_test(nsec, true);
 
-        let demo = Self { app, viewer, ticks };
+        let demo = Self {
+            app,
+            viewer,
+            ticks,
+            following_timeline: Some(following_timeline),
+        };
         // Step 5 — block on ticks until the active-account slot is populated.
         demo.wait_until(Duration::from_secs(5), |d| {
             d.ffi()
@@ -225,6 +233,9 @@ impl DemoApp {
 
 impl Drop for DemoApp {
     fn drop(&mut self) {
+        if let Some(handle) = self.following_timeline.take() {
+            let _closed = unsafe { &*self.app }.feeds().close(&handle);
+        }
         // Clear the listener before stopping (quiescence contract).
         unsafe { &*self.app }.set_update_listener(None);
         if let Some(slot) = UPDATE_TX.get() {
@@ -249,7 +260,7 @@ pub fn note(keys: &Keys, created_at: u64, content: &str) -> nostr::Event {
 }
 
 /// A signed kind:1 reply (NIP-10 `root`/`reply` markers pointing at `root_id`).
-/// In the OP-centric feed a reply does not get its own row; it attributes back
+/// In the root-indexed feed a reply does not get its own row; it attributes back
 /// to the root IF its author is in the active account's follow set.
 #[must_use]
 pub fn reply(keys: &Keys, created_at: u64, root_id: &str, content: &str) -> nostr::Event {

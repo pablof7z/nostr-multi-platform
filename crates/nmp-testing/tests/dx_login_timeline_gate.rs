@@ -106,7 +106,7 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
 // G3: the follow set is load-bearing — this is a FOLLOWING timeline
 // ---------------------------------------------------------------------------
 
-/// Proves the follow set is load-bearing for the engine's OP-centric
+/// Proves the follow set is load-bearing for the engine's root-indexed
 /// attribution — the one "is this a *following* timeline?" axis this synthetic
 /// harness can observe.
 ///
@@ -339,4 +339,37 @@ fn g6_example_shell_is_doctrine_clean() {
         hits.len(),
         hits.join("\n")
     );
+}
+
+#[test]
+fn g7_example_uses_declared_feed_spec_path() {
+    let content = std::fs::read_to_string(example_lib_rs()).expect("read example lib.rs");
+
+    for required in [
+        "FeedKey::app(",
+        "feed::events()",
+        "source::active_user().follows()",
+        ".open_spec(",
+        "FeedShape::RootIndexed",
+        "FeedOrder::NewestByFeedPosition",
+        "FeedItemProjection::feed_rows()",
+    ] {
+        assert!(
+            content.contains(required),
+            "G7 DX GAP: login-timeline example must teach `{required}` as part \
+             of the declared feed-spec path.\n{content}"
+        );
+    }
+
+    for retired in [
+        "open_active_follows_op_feed",
+        "ProjectionKey::app_owned",
+        "open_interest",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "G7 DX GAP: login-timeline example must not teach retired feed path \
+             `{retired}`.\n{content}"
+        );
+    }
 }
