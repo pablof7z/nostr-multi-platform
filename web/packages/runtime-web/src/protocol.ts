@@ -237,11 +237,25 @@ export type FeedSessionHandle = {
   session_id: number;
 };
 
+export type FeedLoadStopReason =
+  | "window_filled"
+  | "source_exhausted"
+  | "source_scan_budget_reached"
+  | "source_gap"
+  | "source_unavailable"
+  | "session_unavailable";
+
+export type FeedLoadStatus = {
+  changed: boolean;
+  reason: FeedLoadStopReason;
+};
+
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
   | { type: "action_accepted"; action_type: string; correlation_id: string }
   | { type: "feed_opened"; handle: FeedSessionHandle; correlation_id: string }
+  | { type: "feed_load_status"; status: FeedLoadStatus; correlation_id: string }
   | { type: "update_bytes"; bytes: Uint8Array }
   | {
       type: "capability_failure";
@@ -281,6 +295,7 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
     case "runtime_status":
     case "action_accepted":
     case "feed_opened":
+    case "feed_load_status":
     case "error":
       return event.correlation_id;
     case "capability_failure":

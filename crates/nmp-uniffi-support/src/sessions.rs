@@ -16,7 +16,8 @@
 //! note in `lib.rs`.
 
 use nmp_native_runtime::{
-    decode_and_validate_feed_params, FeedHandle, FeedSessionId, NmpApp, ProjectionKey,
+    decode_and_validate_feed_params, FeedHandle, FeedLoadStatus, FeedSessionId, NmpApp,
+    ProjectionKey,
 };
 
 /// Outcome of opening (or reopening) a feed session.
@@ -83,9 +84,16 @@ pub fn open_feed_session(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, 
 /// handles are silent no-ops returning `false`.
 #[must_use]
 pub fn load_older_feed_session(app: &NmpApp, opened: &OpenedFeed) -> bool {
+    load_older_feed_session_status(app, opened).changed
+}
+
+/// Page a feed session and return the Rust-owned load stop reason.
+#[must_use]
+pub fn load_older_feed_session_status(app: &NmpApp, opened: &OpenedFeed) -> FeedLoadStatus {
     opened
         .runtime_handle()
-        .is_some_and(|handle| app.load_older_feed(&handle))
+        .map(|handle| app.load_older_feed_status(&handle))
+        .unwrap_or_else(FeedLoadStatus::session_unavailable)
 }
 
 /// Tear down a feed session opened by [`open_feed_session`], addressed by its
@@ -212,5 +220,20 @@ mod tests {
             session_id: 99_999,
         };
         assert!(!close_feed_session(&app, &unknown));
+    }
+
+    #[test]
+    fn load_status_unknown_session_is_typed() {
+        let app = nmp_native_runtime::new_app();
+        let unknown = OpenedFeed {
+            projection_key: "app.feed.support.unknown".to_string(),
+            session_id: 99_999,
+        };
+        let status = load_older_feed_session_status(&app, &unknown);
+        assert!(!status.changed);
+        assert_eq!(
+            status.reason,
+            nmp_native_runtime::FeedLoadStopReason::SessionUnavailable
+        );
     }
 }

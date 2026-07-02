@@ -158,11 +158,11 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
     }
 
     fn load_older_feed(&self, key: &str) -> bool {
-        let changed = self.feed_registry.load_older(key);
-        if changed {
+        let status = self.feed_registry.load_older_status(key);
+        if status.changed {
             self.command_sender.mark_changed_since_emit();
         }
-        changed
+        status.changed
     }
 
     fn register_feed_window_source<S, F>(

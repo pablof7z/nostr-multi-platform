@@ -39,9 +39,9 @@ impl NmpRuntimeCore {
             return not_started_error(Some(req.correlation_id));
         };
 
-        let _ = handle.feeds().load_older(&req.handle);
-        vec![WorkerEvent::ActionAccepted {
-            action_type: "nmp.feed.load_older".to_string(),
+        let status = handle.feeds().load_older_status(&req.handle);
+        vec![WorkerEvent::FeedLoadStatus {
+            status,
             correlation_id: req.correlation_id,
         }]
     }

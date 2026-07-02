@@ -52,9 +52,17 @@ fn feed_open_json_returns_handle_and_close_tears_down_session() {
         })
         .to_string(),
     );
-    assert!(
-        load_resp.contains("nmp.feed.load_older"),
+    let load_events: serde_json::Value =
+        serde_json::from_str(&load_resp).expect("valid load events");
+    assert_eq!(
+        load_events[0]["type"], "feed_load_status",
         "resp={load_resp}"
+    );
+    assert_eq!(load_events[0]["correlation_id"], "feed-load-1");
+    assert_eq!(load_events[0]["status"]["changed"], false);
+    assert_eq!(
+        load_events[0]["status"]["reason"], "source_unavailable",
+        "active-follows feed without an active account fails closed"
     );
 
     let close_resp = core.handle_json_request(
@@ -71,6 +79,28 @@ fn feed_open_json_returns_handle_and_close_tears_down_session() {
         0,
         "feed_close must tear down the live feed session"
     );
+}
+
+#[test]
+fn feed_load_older_unknown_handle_returns_typed_status() {
+    let mut core = NmpRuntimeCore::new();
+    let _ = core.handle_json_request(&start_req());
+
+    let load_resp = core.handle_json_request(
+        &serde_json::json!({
+            "type": "feed_load_older",
+            "handle": {
+                "projection_key": "app.web.feed.missing",
+                "session_id": 9999
+            },
+            "correlation_id": "feed-load-missing"
+        })
+        .to_string(),
+    );
+    let events: serde_json::Value = serde_json::from_str(&load_resp).expect("valid load events");
+    assert_eq!(events[0]["type"], "feed_load_status", "resp={load_resp}");
+    assert_eq!(events[0]["status"]["changed"], false);
+    assert_eq!(events[0]["status"]["reason"], "session_unavailable");
 }
 
 #[test]

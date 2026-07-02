@@ -7,7 +7,7 @@ use super::{
     controller_with_pages, inserted, opaque_shape, page, real_shape, FakeFeed, PullFeedController,
     PullFn,
 };
-use crate::{FeedController, FeedWindowPolicy};
+use crate::{FeedController, FeedLoadStopReason, FeedWindowPolicy};
 
 /// THE bug fix: a low-`created_at` event ingested LATE (higher seq) is NOT
 /// skipped — a later `load_older` drains it by seq, and the feed's display sort
@@ -121,7 +121,9 @@ fn window_policy_source_page_size_bounds_one_load_older_drain() {
         },
     );
 
-    assert!(ctrl.load_older());
+    let status = ctrl.load_older_status();
+    assert!(status.changed);
+    assert_eq!(status.reason, FeedLoadStopReason::WindowFilled);
     assert_eq!(
         seen.lock().unwrap().as_slice(),
         &[0, 1],
@@ -172,7 +174,9 @@ fn window_policy_source_scan_budget_bounds_unmatched_work() {
         },
     );
 
-    assert!(!ctrl.load_older());
+    let status = ctrl.load_older_status();
+    assert!(!status.changed);
+    assert_eq!(status.reason, FeedLoadStopReason::SourceScanBudgetReached);
     assert_eq!(
         seen.lock().unwrap().as_slice(),
         &[0],
@@ -180,7 +184,9 @@ fn window_policy_source_scan_budget_bounds_unmatched_work() {
     );
     assert!(feed.ingested.lock().unwrap().is_empty());
 
-    assert!(ctrl.load_older());
+    let status = ctrl.load_older_status();
+    assert!(status.changed);
+    assert_eq!(status.reason, FeedLoadStopReason::SourceScanBudgetReached);
     assert_eq!(
         seen.lock().unwrap().as_slice(),
         &[0, 1],
@@ -210,7 +216,9 @@ fn empty_advancing_pull_does_not_loop() {
         vec![page(vec![], 9, 9)], // advanced to seq 9, store caught up
         Arc::clone(&seen),
     );
-    assert!(!ctrl.load_older(), "no new events ⇒ no visible change");
+    let status = ctrl.load_older_status();
+    assert!(!status.changed, "no new events ⇒ no visible change");
+    assert_eq!(status.reason, FeedLoadStopReason::SourceExhausted);
     assert_eq!(
         seen.lock().unwrap().len(),
         1,
@@ -236,7 +244,9 @@ fn pull_gap_rebases_explicitly_no_silent_continuity() {
         })
     });
     let ctrl = PullFeedController::new(real_shape(), pull, feed.apply(), feed.advance());
-    assert!(!ctrl.load_older(), "a pure gap drained no events");
+    let status = ctrl.load_older_status();
+    assert!(!status.changed, "a pure gap drained no events");
+    assert_eq!(status.reason, FeedLoadStopReason::SourceGap);
     assert_eq!(
         ctrl.after_seq(),
         42,
@@ -253,8 +263,12 @@ fn inexpressible_shape_fails_closed_to_projection() {
     let pull: PullFn = Arc::new(|_scope, after, _limits| page(vec![], after, after));
     let ctrl = PullFeedController::new(opaque_shape(), pull, feed.apply(), feed.advance());
     assert!(
-        !ctrl.load_older(),
+        !ctrl.load_older_status().changed,
         "no real shape ⇒ load_older returns false ⇒ projection-only fallback"
+    );
+    assert_eq!(
+        ctrl.load_older_status().reason,
+        FeedLoadStopReason::SourceUnavailable
     );
     assert!(
         feed.ingested.lock().unwrap().is_empty(),

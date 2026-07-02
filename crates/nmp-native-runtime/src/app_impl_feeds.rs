@@ -11,6 +11,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionId;
+use nmp_feed::{FeedHandle, FeedLoadStatus};
 
 use crate::app_struct::NmpApp;
 
@@ -30,11 +31,27 @@ impl NmpApp {
 
     #[must_use]
     pub(crate) fn load_older_feed_by_key(&self, key: &str) -> bool {
-        let changed = self.feed_registry.load_older(key);
-        if changed {
+        self.load_older_feed_by_key_status(key).changed
+    }
+
+    #[must_use]
+    pub(crate) fn load_older_feed_by_key_status(&self, key: &str) -> FeedLoadStatus {
+        let status = self.feed_registry.load_older_status(key);
+        if status.changed {
             self.mark_changed_since_emit();
         }
-        changed
+        status
+    }
+
+    #[must_use]
+    pub fn load_older_feed_status(&self, handle: &FeedHandle) -> FeedLoadStatus {
+        let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
+            return FeedLoadStatus::session_unavailable();
+        };
+        if projection_key != handle.projection_key {
+            return FeedLoadStatus::session_unavailable();
+        }
+        self.load_older_feed_by_key_status(projection_key.as_str())
     }
 
     /// ADR-0062 + relay-pin — open an observed interest and route it to exactly

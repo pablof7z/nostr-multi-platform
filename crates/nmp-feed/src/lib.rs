@@ -16,6 +16,7 @@
 mod admit;
 mod custom_policy;
 mod flat;
+mod load_status;
 mod pager;
 mod params;
 mod pull_controller;
@@ -33,6 +34,7 @@ pub use custom_policy::{
     CustomAdmissionDef, CustomFeedPolicyRegistry, CustomOrderDef, CustomSourceDef,
 };
 pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
+pub use load_status::{FeedLoadStatus, FeedLoadStopReason};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,

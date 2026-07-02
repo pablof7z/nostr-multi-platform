@@ -330,8 +330,8 @@ pub use account::{
     account_change_observer_from_sink, register_account_change_sink, unregister_account_change_sink,
 };
 pub use sessions::{
-    close_feed_session, load_older_feed_session, open_feed_session, reopen_feed_session,
-    FeedSessionError, OpenedFeed,
+    close_feed_session, load_older_feed_session, load_older_feed_session_status, open_feed_session,
+    reopen_feed_session, FeedSessionError, OpenedFeed,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.

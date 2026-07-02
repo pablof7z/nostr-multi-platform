@@ -700,6 +700,11 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func loadOlderFeed(handle: FeedSessionHandle)  -> Bool
 
     /**
+     * Advance a feed's viewport and return the Rust-owned stop reason.
+     */
+    func loadOlderFeedStatus(handle: FeedSessionHandle)  -> FeedLoadStatus
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -1362,6 +1367,17 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
 open func loadOlderFeed(handle: FeedSessionHandle) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
+        FfiConverterTypeFeedSessionHandle_lower(handle),$0
+    )
+})
+}
+
+    /**
+     * Advance a feed's viewport and return the Rust-owned stop reason.
+     */
+open func loadOlderFeedStatus(handle: FeedSessionHandle) -> FeedLoadStatus  {
+    return try!  FfiConverterTypeFeedLoadStatus_lift(try! rustCall() {
+    uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed_status(self.uniffiClonePointer(),
         FfiConverterTypeFeedSessionHandle_lower(handle),$0
     )
 })
@@ -2055,6 +2071,79 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
 
 
 /**
+ * Result of a feed load command.
+ */
+public struct FeedLoadStatus {
+    public var changed: Bool
+    public var reason: FeedLoadStopReason
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(changed: Bool, reason: FeedLoadStopReason) {
+        self.changed = changed
+        self.reason = reason
+    }
+}
+
+#if compiler(>=6)
+extension FeedLoadStatus: Sendable {}
+#endif
+
+
+extension FeedLoadStatus: Equatable, Hashable {
+    public static func ==(lhs: FeedLoadStatus, rhs: FeedLoadStatus) -> Bool {
+        if lhs.changed != rhs.changed {
+            return false
+        }
+        if lhs.reason != rhs.reason {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(changed)
+        hasher.combine(reason)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeedLoadStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeedLoadStatus {
+        return
+            try FeedLoadStatus(
+                changed: FfiConverterBool.read(from: &buf),
+                reason: FfiConverterTypeFeedLoadStopReason.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FeedLoadStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.changed, into: &buf)
+        FfiConverterTypeFeedLoadStopReason.write(value.reason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedLoadStatus_lift(_ buf: RustBuffer) throws -> FeedLoadStatus {
+    return try FfiConverterTypeFeedLoadStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedLoadStatus_lower(_ value: FeedLoadStatus) -> RustBuffer {
+    return FfiConverterTypeFeedLoadStatus.lower(value)
+}
+
+
+/**
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
  * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
@@ -2601,6 +2690,107 @@ public func FfiConverterTypeEventShape_lower(_ value: EventShape) -> RustBuffer 
 
 
 extension EventShape: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Mechanical reason a feed load stopped.
+ */
+
+public enum FeedLoadStopReason {
+
+    case windowFilled
+    case sourceExhausted
+    case sourceScanBudgetReached
+    case sourceGap
+    case sourceUnavailable
+    case sessionUnavailable
+}
+
+
+#if compiler(>=6)
+extension FeedLoadStopReason: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeedLoadStopReason: FfiConverterRustBuffer {
+    typealias SwiftType = FeedLoadStopReason
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeedLoadStopReason {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .windowFilled
+
+        case 2: return .sourceExhausted
+
+        case 3: return .sourceScanBudgetReached
+
+        case 4: return .sourceGap
+
+        case 5: return .sourceUnavailable
+
+        case 6: return .sessionUnavailable
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FeedLoadStopReason, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .windowFilled:
+            writeInt(&buf, Int32(1))
+
+
+        case .sourceExhausted:
+            writeInt(&buf, Int32(2))
+
+
+        case .sourceScanBudgetReached:
+            writeInt(&buf, Int32(3))
+
+
+        case .sourceGap:
+            writeInt(&buf, Int32(4))
+
+
+        case .sourceUnavailable:
+            writeInt(&buf, Int32(5))
+
+
+        case .sessionUnavailable:
+            writeInt(&buf, Int32(6))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedLoadStopReason_lift(_ buf: RustBuffer) throws -> FeedLoadStopReason {
+    return try FfiConverterTypeFeedLoadStopReason.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedLoadStopReason_lower(_ value: FeedLoadStopReason) -> RustBuffer {
+    return FfiConverterTypeFeedLoadStopReason.lower(value)
+}
+
+
+extension FeedLoadStopReason: Equatable, Hashable {}
 
 
 
@@ -4431,6 +4621,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 54730) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {

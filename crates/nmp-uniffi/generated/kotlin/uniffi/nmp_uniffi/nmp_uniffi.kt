@@ -879,6 +879,8 @@ internal open class UniffiVTableCallbackInterfaceUpdateSink(
 
 
 
+
+
 // For large crates we prevent `MethodTooLargeException` (see #2340)
 // N.B. the name of the extension is very misleading, since it is
 // rather `InterfaceTooLargeException`, caused by too many methods
@@ -929,6 +931,8 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_external_signer(
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed(
+): Short
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri(
 ): Short
@@ -1088,6 +1092,8 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
+fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed_status(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
 fun uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(`ptr`: Pointer,`paramsJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -1344,6 +1350,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 54730.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
@@ -2049,6 +2058,11 @@ public interface NmpAppInterface {
      * succeeds, never panics).
      */
     fun `loadOlderFeed`(`handle`: FeedSessionHandle): kotlin.Boolean
+
+    /**
+     * Advance a feed's viewport and return the Rust-owned stop reason.
+     */
+    fun `loadOlderFeedStatus`(`handle`: FeedSessionHandle): FeedLoadStatus
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -2808,6 +2822,21 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
+     * Advance a feed's viewport and return the Rust-owned stop reason.
+     */override fun `loadOlderFeedStatus`(`handle`: FeedSessionHandle): FeedLoadStatus {
+            return FfiConverterTypeFeedLoadStatus.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed_status(
+        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
      *
      * Returns `None` when called before `init_signer_broker` or when relay
@@ -3538,6 +3567,41 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
 
 
 /**
+ * Result of a feed load command.
+ */
+data class FeedLoadStatus (
+    var `changed`: kotlin.Boolean,
+    var `reason`: FeedLoadStopReason
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFeedLoadStatus: FfiConverterRustBuffer<FeedLoadStatus> {
+    override fun read(buf: ByteBuffer): FeedLoadStatus {
+        return FeedLoadStatus(
+            FfiConverterBoolean.read(buf),
+            FfiConverterTypeFeedLoadStopReason.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FeedLoadStatus) = (
+            FfiConverterBoolean.allocationSize(value.`changed`) +
+            FfiConverterTypeFeedLoadStopReason.allocationSize(value.`reason`)
+    )
+
+    override fun write(value: FeedLoadStatus, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`changed`, buf)
+            FfiConverterTypeFeedLoadStopReason.write(value.`reason`, buf)
+    }
+}
+
+
+
+/**
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
  * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
@@ -3807,6 +3871,43 @@ public object FfiConverterTypeEventShape: FfiConverterRustBuffer<EventShape> {
     override fun allocationSize(value: EventShape) = 4UL
 
     override fun write(value: EventShape, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * Mechanical reason a feed load stopped.
+ */
+
+enum class FeedLoadStopReason {
+
+    WINDOW_FILLED,
+    SOURCE_EXHAUSTED,
+    SOURCE_SCAN_BUDGET_REACHED,
+    SOURCE_GAP,
+    SOURCE_UNAVAILABLE,
+    SESSION_UNAVAILABLE;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFeedLoadStopReason: FfiConverterRustBuffer<FeedLoadStopReason> {
+    override fun read(buf: ByteBuffer) = try {
+        FeedLoadStopReason.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: FeedLoadStopReason) = 4UL
+
+    override fun write(value: FeedLoadStopReason, buf: ByteBuffer) {
         buf.putInt(value.ordinal + 1)
     }
 }
