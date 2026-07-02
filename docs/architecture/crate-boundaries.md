@@ -37,14 +37,14 @@ implementation is injected at composition time.
 
 | Layer | Owns | Durable crate owners |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip65-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
-| 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-ownership`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip65-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url`, `nmp-nostr-id` |
+| 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-sqlite-wasm`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-note-feed`, `nmp-feed-session`, `nmp-replies`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wot` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
-| 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
-| Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
+| 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned delivery crates |
+| Sidecars | Tooling, tests, diagnostics, conformance vehicles, and private proofs | `nmp-cli`, `nmp-codegen`, `nmp-component-registry`, `nmp-testing`, `nmp-browser-runtime-conformance`, `nmp-sqlite-wasm-conformance`, `nmp-example-login-timeline`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
 their declared responsibility. Binding crates are siblings: one binding crate
@@ -118,16 +118,11 @@ result ranking, domain target classes, or result projection — those belong to
 `nmp-nip50`. NIP-51 kind:10007 relay-list parsing belongs to `nmp-nip51`
 (`SearchRelayListProjection`). There is no `EventClass::Search` variant.
 
-> **Label-vocabulary drift (known, minor).** The scope labels `nip50.profiles`,
-> `nip50.notes`, and `nip50.longform` are defined as named constants in
-> `crates/nmp-nip50/src/scopes.rs` (`SCOPE_LABEL_PROFILES`,
-> `SCOPE_LABEL_NOTES`, `SCOPE_LABEL_LONGFORM`) but the name parts
-> (`"profiles"`, `"notes"`, `"longform"`) are re-hardcoded as bare string
-> literals in `crates/nmp-intent/src/classifier/text.rs` rather than imported
-> from those constants. Centralising the name-part constants (or importing the
-> existing ones via the `nmp-nip50` dep that `nmp-intent` already carries) is a
-> follow-up cleanup; it is not a correctness bug but is a known small duplication
-> to eliminate before the scope set grows.
+NIP-50 scope vocabulary lives in `nmp-nip50`: `SCOPE_NAME_PROFILES`,
+`SCOPE_NAME_NOTES`, and `SCOPE_NAME_LONGFORM` define the name fragments, while
+`SCOPE_LABEL_PROFILES`, `SCOPE_LABEL_NOTES`, and `SCOPE_LABEL_LONGFORM` define
+the full `nip50.*` labels. Consumers such as `nmp-intent` import those constants
+instead of hard-coding parallel label fragments.
 
 ---
 

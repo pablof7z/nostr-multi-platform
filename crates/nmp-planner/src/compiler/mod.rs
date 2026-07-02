@@ -485,7 +485,7 @@ impl<'a> SubscriptionCompiler<'a> {
 // the `compile()` vs `compile_with_context` plan-id contract.
 
 #[cfg(test)]
-#[path = "tests.rs"]
+#[path = "tests/mod.rs"]
 mod tests;
 
 #[cfg(test)]
