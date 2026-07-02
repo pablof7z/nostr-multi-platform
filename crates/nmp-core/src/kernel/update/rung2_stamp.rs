@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 2 — wire-contract stamping helpers.
+//! ADR-0070 Rung 2 — wire-contract stamping helpers.
 //!
 //! Extracted from `update::make_update` so the hot emit path stays within the
 //! 500-LOC file ceiling (mirrors how Rung 1 siblinged `kernel_impl.rs` /
@@ -11,7 +11,7 @@ use crate::update_envelope::{FrameEpochStamp, TypedProjectionData, WireProjectio
 
 /// Build the frame-level epoch stamp (`snapshot_epoch` + `session_id`) from the
 /// per-tick manifest. The host detects a new kernel run when `session_id`
-/// changes and a full baseline when `snapshot_epoch` changes (ADR-0055 D4).
+/// changes and a full baseline when `snapshot_epoch` changes (ADR-0070 D4).
 #[must_use]
 pub(super) fn epoch_stamp(manifest: &ProjectionManifest) -> FrameEpochStamp {
     FrameEpochStamp {

@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the blossom upload typed FlatBuffers payload
-//! doorway (ADR-0064 / S9 #1747).
+//! doorway (ADR-0071 / S9 #1747).
 //!
 //! These tests prove the fail-closed `schema_version` gate in
 //! `ActionRegistry::start_bytes` rejects bad payloads BEFORE `start()` runs,
@@ -12,7 +12,7 @@
 
 // ---- S9 gap tests: bad-version trip for nmp.blossom.upload ------------------
 
-/// ADR-0064 / S9 (#1747) — `nmp.blossom.upload` with a bad `schema_version`
+/// ADR-0071 / S9 (#1747) — `nmp.blossom.upload` with a bad `schema_version`
 /// MUST be rejected BEFORE `start()` runs, proving the fail-closed gate covers
 /// the upload namespace at the registry level.
 #[test]
@@ -41,7 +41,7 @@ fn start_bytes_rejects_wrong_schema_version_for_upload() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — round-trip encode → `start_bytes` accepts a
+/// ADR-0071 / S9 (#1747) — round-trip encode → `start_bytes` accepts a
 /// well-formed, correct-version payload (positive path through the registry).
 #[test]
 fn start_bytes_accepts_well_formed_upload_payload() {

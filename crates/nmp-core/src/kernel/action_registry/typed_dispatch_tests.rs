@@ -1,4 +1,4 @@
-//! End-to-end tests for the typed-bytes (ADR-0064 / S3 #1751) registry doorway:
+//! End-to-end tests for the typed-bytes (ADR-0071 / S3 #1751) registry doorway:
 //! a `DispatchEnvelope` payload's bytes → `start_bytes`/`execute_bytes` → typed
 //! decode → `start()`/`execute()`. Every fail-closed gate asserts the NEGATIVE
 //! (bad schema_version / not-typed-capable / unknown namespace → REJECTED).
@@ -275,7 +275,7 @@ fn execute_bytes_unknown_namespace_reports_no_executor() {
     assert!(!failure.enqueued);
 }
 
-// ─── Typed-only byte-doorway gate (ADR-0064 / #1756) ─────────────────────────
+// ─── Typed-only byte-doorway gate (ADR-0071 / #1756) ─────────────────────────
 //
 // Beyond the per-dispatch fail-closed negatives above, the registry exposes the
 // invariant intrinsically: `untyped_namespaces()` lists every registered module
@@ -296,7 +296,7 @@ fn default_registry_has_no_untyped_namespaces() {
         untyped.is_empty(),
         "every module reachable via the byte doorway must be typed (override \
          `decode_payload`); untyped (JSON-only) namespaces are a doctrine \
-         violation (ADR-0064 / #1756 — no JSON-compat shim): {untyped:?}"
+         violation (ADR-0071 / #1756 — no JSON-compat shim): {untyped:?}"
     );
 }
 

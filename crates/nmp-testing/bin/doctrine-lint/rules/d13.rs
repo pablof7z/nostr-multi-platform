@@ -1,9 +1,9 @@
-//! D13 — DM-path raw-key isolation (ADR-0026 enforcement).
+//! D13 — DM-path raw-key isolation (ADR-0072 enforcement).
 //!
-//! ADR-0026 establishes a single seam — `RemoteSignerHandle::nip44_encrypt` /
+//! ADR-0072 establishes a single seam — `RemoteSignerHandle::nip44_encrypt` /
 //! `nip44_decrypt` — for every code path that needs sender-held key material to
 //! seal a NIP-59 gift-wrap (NIP-17 DMs, future NIP-57 zaps, future raw NIP-44
-//! payloads). ADR-0050 §D5 routes the seal step through the actor's signer port
+//! payloads). ADR-0072 §D5 routes the seal step through the actor's signer port
 //! (`Nip44EncryptForAccount` → `SignEventForAccount`), so the same call site
 //! works for local keys (`nostr::Keys`) and a remote bunker
 //! (`Box<dyn RemoteSignerHandle>`); reaching past it to read raw key material on
@@ -26,16 +26,16 @@
 //! - `.secret_key()` — direct read of a `Keys`'s secret half.
 //! - `Keys::parse(` — building a `Keys` from a hex/bech32 nsec inside the
 //!   DM path.
-//! - `mls_local_nsec` — the Marmot ADR-0025 credential-slot exception is not a DM
+//! - `mls_local_nsec` — the Marmot ADR-0072 credential-slot exception is not a DM
 //!   path concern (D13 Part B forbids it outside the marmot crate; Part A
 //!   forbids the symbol from leaking into the DM seal path even by name).
 //!
 //! ### Part B — `mls_local_nsec` reads outside the marmot crate
 //!
-//! ADR-0025 names exactly one parser of the `mls_local_nsec` slot:
+//! ADR-0072 names exactly one parser of the `mls_local_nsec` slot:
 //! `nmp-marmot`, whose group state cannot be recovered without the user's raw
 //! nsec. Every other crate — and the kernel itself — must consume key material
-//! through the actor's identity runtime, never through the Marmot ADR-0025
+//! through the actor's identity runtime, never through the Marmot ADR-0072
 //! credential slot.
 //!
 //! In every file outside `crates/nmp-marmot/`, the literal token
@@ -159,7 +159,7 @@ pub fn check_part_a(
                 col,
                 format!(
                     "raw key access `{}` on a DM seal path violates D13 — \
-                     ADR-0050 §D5 requires routing seal material through the actor \
+                     ADR-0072 §D5 requires routing seal material through the actor \
                      signer port (`Nip44EncryptForAccount` / `SignEventForAccount`)",
                     banned
                 ),
@@ -193,7 +193,7 @@ pub fn check_part_b(line: &str, is_comment: bool) -> Vec<(usize, String, String)
         col,
         format!(
             "read of `{}` outside `crates/nmp-marmot/` violates D13 — the \
-             ADR-0025 raw-nsec escape has exactly one allowed consumer (the \
+             ADR-0072 raw-nsec escape has exactly one allowed consumer (the \
              Marmot MLS bridge); every other caller must route through \
              `IdentityRuntime` instead",
             needle
@@ -299,7 +299,7 @@ mod tests {
 
     #[test]
     fn part_a_clean_signer_call_does_not_fire() {
-        // ADR-0050 §D5 — pinning the account via `active_account_pubkey` and
+        // ADR-0072 §D5 — pinning the account via `active_account_pubkey` and
         // signing through the port is the legitimate seam; no raw-key read.
         let hits = check_part_a(
             "    let signer_hex = ctx.active_account_pubkey()?;",

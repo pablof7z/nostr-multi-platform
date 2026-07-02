@@ -1,4 +1,4 @@
-//! Cardinal-trap tests for [`FeedEmissionState`] — ADR-0055 Rung 6 S1.
+//! Cardinal-trap tests for [`FeedEmissionState`] — ADR-0070 Rung 6 S1.
 //!
 //! Group A: every visible-output mutation must produce different bytes (emit +
 //! rev bump). Group B: non-output mutations produce identical bytes (omit, rev

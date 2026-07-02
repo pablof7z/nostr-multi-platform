@@ -14,7 +14,7 @@ pub(crate) struct RelayRoleOption {
 /// `canonical_relay_role`.
 ///
 /// Distinct from `nmp_network::role::RelayRole` (transport-lane discriminator:
-/// Content | Indexer | Wallet) — see ADR-0021.
+/// Content | Indexer | Wallet) — see ADR-0072.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Nip65Role {
     pub read: bool,

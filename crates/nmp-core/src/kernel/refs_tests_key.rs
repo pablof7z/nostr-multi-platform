@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 Lane D) — raw event-key parse coverage for the `resolve_ref`
+//! ADR-0070 (#1671 Lane D) — raw event-key parse coverage for the `resolve_ref`
 //! Event seam. The FFI/JNI contract documents the event `key` as a raw 64-char
 //! LOWERCASE hex event-id OR a `kind:pubkey:d` coordinate — NOT a `nostr:`/NIP-21
 //! URI. The original Lane D bug parsed the key as a URI, so a host passing the
@@ -42,7 +42,7 @@ fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-/// The canonical raw `kind:pubkey:d` coordinate key (ADR-0063 / FFI contract).
+/// The canonical raw `kind:pubkey:d` coordinate key (ADR-0070 / FFI contract).
 fn coord_key(kind: u32, author: &str, d_tag: &str) -> String {
     format!("{kind}:{author}:{d_tag}")
 }

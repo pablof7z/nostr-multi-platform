@@ -1,6 +1,6 @@
-//! K3 Stage D2 (ADR-0056 §4) — the fixture-relay JOURNEY test: the merge gate.
+//! K3 Stage D2 (ADR-0072 §4) — the fixture-relay JOURNEY test: the merge gate.
 //!
-//! ADR-0056 §4 mandates that Stage D not land without a fixture-relay journey
+//! ADR-0072 §4 mandates that Stage D not land without a fixture-relay journey
 //! test proving the **H1 headline** end to end: *follow a user AFTER a thread
 //! reply from them is already stored, and confirm the author's FULL history
 //! backfills* — the floor must no longer suppress below-the-stray history. A

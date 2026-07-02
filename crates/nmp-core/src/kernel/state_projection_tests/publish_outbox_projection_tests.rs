@@ -1,6 +1,6 @@
 //! `projections.publish_outbox` and `projections.outbox_summary`: pending
 //! event details, per-relay rationale, `skip_serializing_if` empty-reason
-//! omission, and the aggregate status counters. ADR-0032 / aim.md §2 #4: no
+//! omission, and the aggregate status counters. ADR-0072 / aim.md §2 #4: no
 //! pre-formatted title/preview/status_label/target_summary strings — shells
 //! compute display strings from the raw fields.
 
@@ -46,7 +46,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     assert_eq!(outbox.len(), 1);
     assert_eq!(outbox[0]["handle"].as_str(), Some(signed.id.as_str()));
     assert_eq!(outbox[0]["kind"].as_u64(), Some(1));
-    // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
+    // ADR-0072 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
     // removed from the projection — shells own all presentation formatting.
     assert!(
         outbox[0].get("title").is_none(),
@@ -74,7 +74,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     // The kernel emits the decision; the shell binds it directly (no Swift
     // `if status != "sending"` branch).
     assert_eq!(outbox[0]["can_retry"].as_bool(), Some(false));
-    // V-115 / ADR-0032: `target_summary` removed — shell composes
+    // V-115 / ADR-0072: `target_summary` removed — shell composes
     // "N relays · <time>" from `target_relays` + `created_at` (raw Unix secs).
     assert!(
         outbox[0].get("target_summary").is_none(),
@@ -88,7 +88,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     // Raw Unix-seconds timestamp — shell formats with its own locale/TZ.
     assert!(
         outbox[0]["created_at"].as_u64().is_some(),
-        "created_at must carry raw Unix seconds (V-115 / ADR-0032)"
+        "created_at must carry raw Unix seconds (V-115 / ADR-0072)"
     );
     assert!(
         outbox[0].get("created_at_display").is_none(),
@@ -98,7 +98,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
         outbox[0]["relays"][0]["relay_url"].as_str(),
         Some("wss://outbox.test")
     );
-    // ADR-0032 / aim.md §2 #4: `status_label` and `attempt_label` removed —
+    // ADR-0072 / aim.md §2 #4: `status_label` and `attempt_label` removed —
     // shells compute these from the raw `status` token and `attempt` counter.
     assert!(
         outbox[0]["relays"][0].get("status_label").is_none(),
@@ -225,7 +225,7 @@ fn publish_outbox_omits_empty_relay_reason_from_json() {
 }
 
 /// `outbox_summary` projects raw per-status counters when nothing is pending.
-/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
+/// ADR-0072 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
 /// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_empty_state_strings() {
@@ -249,7 +249,7 @@ fn outbox_summary_projects_empty_state_strings() {
 }
 
 /// `outbox_summary` projects raw per-status counters when rows are in flight.
-/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
+/// ADR-0072 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings are
 /// NOT emitted from the kernel — shells compute display strings from counters.
 #[test]
 fn outbox_summary_projects_sending_counters_and_strings() {

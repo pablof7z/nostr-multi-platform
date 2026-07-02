@@ -1,7 +1,7 @@
 //! Wave C identity cluster slice of
 //! [`Kernel::builtin_typed_projections`].
 //!
-//! V-112 (ADR-0042): `author_view` / `thread_view` conditional typed projections
+//! V-112 (ADR-0076): `author_view` / `thread_view` conditional typed projections
 //! deleted. The three built-ins here (`accounts` / `active_account` / `profile`)
 //! are all unconditional. Each Model is built from the SAME accessor the generic
 //! JSON projection reads, in the same tick, so the typed and JSON wire forms cannot
@@ -70,7 +70,7 @@ impl super::super::Kernel {
             schema_version: ACCOUNTS_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(ACCOUNTS_FILE_IDENTIFIER).into_owned(),
             payload: encode_accounts(&accounts),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -87,7 +87,7 @@ impl super::super::Kernel {
             schema_version: ACTIVE_ACCOUNT_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(ACTIVE_ACCOUNT_FILE_IDENTIFIER).into_owned(),
             payload: encode_active_account(&active_account),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -100,7 +100,7 @@ impl super::super::Kernel {
             schema_version: PROFILE_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(PROFILE_FILE_IDENTIFIER).into_owned(),
             payload: encode_profile(&profile),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 

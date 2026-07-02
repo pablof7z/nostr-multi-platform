@@ -1,5 +1,5 @@
 // D21 positive fixture — ambient-authority process-global statics that MUST
-// fire (K2 / ADR-0052 §D6 regression gate). Each banned declaration below is a
+// fire (K2 / ADR-0072 §D6 regression gate). Each banned declaration below is a
 // module-level `static`/`OnceLock`/`Lazy`/`lazy_static!` holding NON-CONST,
 // mutable or interior-mutable, process-wide state that confers authority — the
 // exact shape of the five globals K2 rungs 5.2/5.3/5.5 deleted

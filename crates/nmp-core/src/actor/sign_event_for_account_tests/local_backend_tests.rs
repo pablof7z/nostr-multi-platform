@@ -3,7 +3,9 @@
 //! a named roster key. Also covers the "named pubkey has no signer" Err path
 //! (D6 — no stuck spinner).
 
-use super::signer_fixtures_support::{capture_continuation, draft_unsigned, fresh_identity, TEST_NSEC};
+use super::signer_fixtures_support::{
+    capture_continuation, draft_unsigned, fresh_identity, TEST_NSEC,
+};
 use crate::actor::commands;
 use crate::actor::signer_port_test_harness::dispatch_one;
 use crate::actor::{ActorCommand, SignCommand};

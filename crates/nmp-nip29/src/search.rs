@@ -122,7 +122,7 @@ impl SearchScopeProvider for GroupMetadataSearchScope {
 
 /// Register the NIP-29 search scope(s) against `host`.
 ///
-/// Composition-root house style (ADR-0046 / ADR-0049 — no linkme/inventory): a
+/// Composition-root house style (ADR-0069 / ADR-0069 — no linkme/inventory): a
 /// host calls this one-liner during composition to add the `nip29.groups`
 /// cache-only group-metadata FTS scope. A duplicate scope id yields to the
 /// existing registration (first wins).

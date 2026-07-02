@@ -1,4 +1,4 @@
-//! ADR-0044 — the Tier-3 `SnapshotFrame` encoder that carries the typed
+//! ADR-0072 — the Tier-3 `SnapshotFrame` encoder that carries the typed
 //! projection sidecar and the typed Tier-3 envelope fields.
 //!
 //! Split out of `update_envelope.rs` to keep that file under the LOC ceiling.
@@ -17,7 +17,7 @@ use super::{
 use crate::transport::wire as fb;
 use flatbuffers::FlatBufferBuilder;
 
-/// ADR-0055 Rung 2: frame-level epoch identity passed from the kernel to the
+/// ADR-0070 Rung 2: frame-level epoch identity passed from the kernel to the
 /// encoder. Both values come from the `ProjectionManifest` built by
 /// `Kernel::projection_manifest()` in `make_update`.
 pub(crate) struct FrameEpochStamp {
@@ -28,13 +28,13 @@ pub(crate) struct FrameEpochStamp {
 }
 
 /// Encode a snapshot with the typed projection sidecar AND the typed Tier-3
-/// envelope fields (ADR-0044).
+/// envelope fields (ADR-0072).
 ///
-/// ADR-0055 Rung 2: `epoch` carries the frame-level epoch identity stamps
+/// ADR-0070 Rung 2: `epoch` carries the frame-level epoch identity stamps
 /// (`snapshot_epoch` + `session_id`) so old readers ignore them (tail-appended
 /// on the wire) while Rung-2 hosts decode and store them for future use.
 ///
-/// ADR-0055 Rung 3 (D3-6): `builder` is the kernel-owned reusable
+/// ADR-0070 Rung 3 (D3-6): `builder` is the kernel-owned reusable
 /// `FlatBufferBuilder`. It is `reset()` at the top of this function so the
 /// kernel can hold one builder across ticks and avoid per-tick heap allocation.
 /// The returned `UpdateFrameBytes` (`Vec<u8>`) owns its bytes independently —
@@ -53,7 +53,7 @@ pub(crate) fn encode_snapshot_with_envelope(
     envelope: &crate::kernel::KernelSnapshot,
     epoch: &FrameEpochStamp,
 ) -> UpdateFrameBytes {
-    // ADR-0055 Rung 3 (D3-6): reset the reused builder in place of
+    // ADR-0070 Rung 3 (D3-6): reset the reused builder in place of
     // `FlatBufferBuilder::new()`. This preserves the internal heap allocation
     // across ticks (capacity is stable after the first tick warms up), so each
     // 4 Hz encode avoids a fresh heap allocation. The `to_vec()` at the end of
@@ -87,7 +87,7 @@ pub(crate) fn encode_snapshot_with_envelope(
             store_open_failure: tier3.store_open_failure,
             no_configured_relays: tier3.no_configured_relays,
             negentropy_sync_stats: Some(tier3.negentropy_sync_stats),
-            // ADR-0055 Rung 2: stamp frame-level epoch identity (D4). Tail-
+            // ADR-0070 Rung 2: stamp frame-level epoch identity (D4). Tail-
             // appended so old readers ignore them (FlatBuffers backward-safety).
             snapshot_epoch: epoch.snapshot_epoch,
             session_id: epoch.session_id,
@@ -102,7 +102,7 @@ pub(crate) fn encode_snapshot_with_envelope(
         },
     );
     fb::finish_update_frame_buffer(builder, root);
-    // ADR-0055 Rung 3 (D3-6): copy the finished bytes OUT of the builder
+    // ADR-0070 Rung 3 (D3-6): copy the finished bytes OUT of the builder
     // buffer into an owned Vec<u8> BEFORE this function returns. The builder
     // will be reset() on the next encode call; no reference into its internal
     // buffer may survive past here. This is the single ownership transfer point

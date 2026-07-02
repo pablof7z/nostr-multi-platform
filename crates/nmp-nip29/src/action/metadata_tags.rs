@@ -18,7 +18,7 @@
 //!
 //! `children` is intentionally NOT built here. Reordering a parent's child
 //! list is a parent-admin 9002 the relay maintains during adopt/detach; the
-//! general child-list editor is a larger surface (see ADR-0060 / future
+//! general child-list editor is a larger surface (see ADR-0070 / future
 //! `edit_metadata`) and is out of scope for the subgroup increment.
 
 use crate::action::{GroupAccess, GroupVisibility};

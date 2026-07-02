@@ -1,4 +1,4 @@
-//! K3 Stage D1 — kernel-side coverage-ledger WRITE-path tests (ADR-0056 §3).
+//! K3 Stage D1 — kernel-side coverage-ledger WRITE-path tests (ADR-0072 §3).
 //!
 //! These tests drive the production `handle_message`/`handle_text` EOSE seam
 //! (the same surface `eose_ok_notice_ingest_tests` uses) and the
@@ -91,7 +91,7 @@ fn eose_on_floored_req_does_not_overclaim_below_floor() {
 
     // A `since`-floored REQ: the EOSE proves only `[floor, now]`, NOT `[0, now]`.
     // The downward-closed ledger must therefore NOT advance — recording `now`
-    // would over-claim `[0, floor)`, the very unsoundness ADR-0056 §1 names.
+    // would over-claim `[0, floor)`, the very unsoundness ADR-0072 §1 names.
     register_req(
         &mut kernel,
         r#"{"kinds":[1],"authors":["aa"],"since":1500000000}"#,

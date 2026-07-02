@@ -6,7 +6,7 @@
 //! `"action_lifecycle"`: `action_lifecycle_projection()` — an object
 //! `{ in_flight: [LifecycleEntry], recent_terminal: [LifecycleEntry] }`. This
 //! module adds a **typed FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection.
 //!
 //! ## Why this codec parses a `serde_json::Value` (deviation from #1031)

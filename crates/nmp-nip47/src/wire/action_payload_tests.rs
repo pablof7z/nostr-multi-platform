@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the three wallet action-payload codecs
-//! (ADR-0064 / #1756). Every fail-closed gate asserts the NEGATIVE, and the
+//! (ADR-0071 / #1756). Every fail-closed gate asserts the NEGATIVE, and the
 //! `Option<u64>` presence on `pay_invoice` is exercised in both states (the
 //! `Some(0)` vs `None` distinction the companion `has_amount_msats` flag
 //! protects).

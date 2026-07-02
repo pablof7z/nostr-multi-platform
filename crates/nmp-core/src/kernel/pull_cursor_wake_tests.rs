@@ -1,4 +1,4 @@
-//! Tests for the ADR-0058 §10 step-3a pull-cursor wake + registry path.
+//! Tests for the ADR-0072 §10 step-3a pull-cursor wake + registry path.
 //!
 //! Covers register/advance/unregister wake arming, the level-triggered re-arm
 //! in `drain_pull_wakes`, coalescing, the `MAX_PULL_CURSORS` cap (loud no-op),

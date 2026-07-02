@@ -14,7 +14,7 @@ export type WorkerRequest =
       database_name: string;
       correlation_id: string;
     }
-  /** ADR-0063 structured reference-resolution control. This is not an app
+  /** ADR-0070 structured reference-resolution control. This is not an app
    *  write doorway and cannot carry arbitrary action namespaces. */
   | {
       type: "resolve_ref";
@@ -29,7 +29,7 @@ export type WorkerRequest =
       event_author?: string | null;
       correlation_id: string;
     }
-  /** ADR-0063 structured reference release. */
+  /** ADR-0070 structured reference release. */
   | {
       type: "release_ref";
       namespace: number;
@@ -55,7 +55,7 @@ export type WorkerRequest =
       handle: FeedSessionHandle;
       correlation_id: string;
     }
-  /** ADR-0064 / S2 (#1750) — the typed binary write doorway. `bytes` are a
+  /** ADR-0071 / S2 (#1750) — the typed binary write doorway. `bytes` are a
    *  finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying the
    *  correlation_id + generated action_namespace + opaque typed payload. This
    *  is the ONLY app-level write path (the hand-rolled `app_action` envelope was
@@ -160,7 +160,7 @@ export type WorkerRequest =
    *
    *  kind: "nip07" — the browser host called window.nostr.getPublicKey() first
    *    and provides pubkey_hex. Signing is a begin_sign capability round-trip
-   *    routed back to the main thread (ADR-0064 §5). Does NOT install a
+   *    routed back to the main thread (ADR-0071 §5). Does NOT install a
    *    persistent signer. This is the path the current nmp-browser-runtime
    *    wires end-to-end.
    *
@@ -187,7 +187,7 @@ export type WorkerRequest =
       identity_relays?: IdentityRelayPermission[];
     }
   /** #1753 S6 — begin a NIP-07 sign capability round-trip. The worker parks a
-   *  sign op (ADR-0050 §D1) and emits a `sign_request` event the MAIN THREAD
+   *  sign op (ADR-0072 §D1) and emits a `sign_request` event the MAIN THREAD
    *  fulfils via window.nostr.signEvent (Workers have no window.nostr). Pure
    *  message re-entry: no polling (D8). */
   | {
@@ -196,7 +196,7 @@ export type WorkerRequest =
       unsigned_json: string;
     }
   /** #1753 S6 — the main-thread broker delivers the signer response (the
-   *  `sign`-verb fulfiller feeding ADR-0050 §D3b). Exactly one of `signed_json`
+   *  `sign`-verb fulfiller feeding ADR-0072 §D3b). Exactly one of `signed_json`
    *  / `error` is set. Account-pinned: the worker rejects a signature authored
    *  by a different account than the round-trip was begun for. */
   | {

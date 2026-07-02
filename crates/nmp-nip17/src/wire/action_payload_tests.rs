@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the nip17 action typed payload codecs
-//! (ADR-0064 / S9 #1747). Every fail-closed gate asserts the NEGATIVE.
+//! (ADR-0071 / S9 #1747). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
 use crate::action::{HydratePeerRelayListInput, SendDmInput};

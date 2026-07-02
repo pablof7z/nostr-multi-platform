@@ -79,7 +79,7 @@ class KernelBridge {
         app?.galleryRegistryJson().orEmpty()
 
     /**
-     * ADR-0063 (#1671) - resolve a visible profile reference. Idempotent per
+     * ADR-0070 (#1671) - resolve a visible profile reference. Idempotent per
      * (pubkey, consumerId); matching [releaseProfileRef] required when the view
      * disappears.
      */
@@ -127,7 +127,7 @@ class KernelBridge {
     }
 
     /**
-     * ADR-0048 Stage 2 - begin a NIP-55 sign-in routed to `signerPackage`
+     * ADR-0072 Stage 2 - begin a NIP-55 sign-in routed to `signerPackage`
      * (null = let the OS resolver pick).
      */
     fun signInNip55(signerPackage: String?) {
@@ -135,7 +135,7 @@ class KernelBridge {
     }
 
     /**
-     * ADR-0048 Stage 2 / issue #1612 - register a push listener for outbound
+     * ADR-0072 Stage 2 / issue #1612 - register a push listener for outbound
      * NIP-55 capability requests.
      */
     fun setSignerRequestListener(listener: KernelSignerRequestListener) {
@@ -153,7 +153,7 @@ class KernelBridge {
     }
 
     /**
-     * ADR-0048 Stage 2 - report a raw `ExternalSignerResponse` JSON back to
+     * ADR-0072 Stage 2 - report a raw `ExternalSignerResponse` JSON back to
      * the Rust NIP-55 driver (D7: verbatim, Kotlin decides nothing).
      */
     fun deliverSignerResponse(responseJson: String) {
@@ -169,7 +169,7 @@ class KernelBridge {
     }
 
     /**
-     * ADR-0063 (#1671) - decode one FlatBuffers snapshot frame to the gallery
+     * ADR-0070 (#1671) - decode one FlatBuffers snapshot frame to the gallery
      * JSON shape. Returns null on decode failure (D6).
      */
     fun decodeSnapshotJson(frame: ByteArray): String? =

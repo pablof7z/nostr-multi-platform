@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS lru_access (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS idx_lru_seq ON lru_access (seq);
 
--- K3 coverage ledger (ADR-0056 §3): per (filter_hash, relay) the downward-closed
+-- K3 coverage ledger (ADR-0072 §3): per (filter_hash, relay) the downward-closed
 -- `covered_through` watermark. The relay-agnostic store + per-relay ledger is
 -- why GC's D3 backstop lowers the right row when it evicts a covered event.
 CREATE TABLE IF NOT EXISTS coverage (
@@ -192,7 +192,7 @@ CREATE TABLE IF NOT EXISTS domain_versions (
     version   INTEGER NOT NULL
 ) WITHOUT ROWID;
 
--- Volatile ingest-log retention claims (ADR-0058 §6): the slowest `Protected`
+-- Volatile ingest-log retention claims (ADR-0072 §6): the slowest `Protected`
 -- cursors that pin the seq-keyed log GC floor. Replaced wholesale each kernel
 -- pass; read inside the append-time trim txn. Not durable understanding — a
 -- stale row self-evicts once its lag exceeds `max_lag_entries`.

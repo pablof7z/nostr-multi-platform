@@ -101,7 +101,11 @@ impl LocalServer {
         }
     }
 
-    pub(in crate::relay_worker) fn await_event(&self, want: ServerObserved, budget: Duration) -> bool {
+    pub(in crate::relay_worker) fn await_event(
+        &self,
+        want: ServerObserved,
+        budget: Duration,
+    ) -> bool {
         let deadline = Instant::now() + budget;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());

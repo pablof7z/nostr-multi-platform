@@ -1,4 +1,4 @@
-// ADR-0063 Lane A twin (#2722) — vitest for the GENERATED `KeyedRefCache`
+// ADR-0070 Lane A twin (#2722) — vitest for the GENERATED `KeyedRefCache`
 // merge engine. Ported from `web/nmp-gallery/src/nmp/refRowCache.test.ts`
 // (the pre-#2722 hand-maintained implementation this generator replaces) —
 // same invariants, adjusted to the generated class's `merge(projectionKey,
@@ -71,7 +71,7 @@ function decode(bytes: Uint8Array | undefined): string | undefined {
   return bytes ? new TextDecoder().decode(bytes) : undefined;
 }
 
-describe("KeyedRefCache.merge (ADR-0063 twin, #2722)", () => {
+describe("KeyedRefCache.merge (ADR-0070 twin, #2722)", () => {
   it("a baseline seeds rows; a Changed delta updates one key", () => {
     const cache = new KeyedRefCache();
     cache.merge(PROJECTION_KEY, encodeBatch(true, [changed("a", 1), changed("b", 1)]), 1n, 1n);

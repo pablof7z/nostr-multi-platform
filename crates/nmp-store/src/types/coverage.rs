@@ -1,4 +1,4 @@
-//! K3 Stage D1 — coverage-ledger row type (ADR-0056 §3).
+//! K3 Stage D1 — coverage-ledger row type (ADR-0072 §3).
 //!
 //! A `CoverageRow` records, per `(filter_hash, relay)`, the timestamp through
 //! which a sync has actually **completed** — EOSE for a plain REQ, NEG-DONE for
@@ -7,7 +7,7 @@
 //! opposed to the *presence* watermark the live since-floor currently derives
 //! from stored events ("what is the newest thing I have that looks like this?").
 //! Presence ≠ coverage; the gap between them is the class of permanent backfill
-//! holes ADR-0056 §1 names (H1 cross-shape floor poisoning, H2 NEG inherits the
+//! holes ADR-0072 §1 names (H1 cross-shape floor poisoning, H2 NEG inherits the
 //! floor).
 //!
 //! ## Honest, downward-closed semantics
@@ -17,13 +17,13 @@
 //! It is therefore recorded ONLY when the completed sync genuinely covered the
 //! window from the origin:
 //!
-//! - a NEG-DONE reconciliation runs un-floored over `[0, ∞)` (ADR-0056 Stage A),
+//! - a NEG-DONE reconciliation runs un-floored over `[0, ∞)` (ADR-0072 Stage A),
 //!   so it honestly advances `covered_through` to `now`;
 //! - an EOSE on an **un-floored** plain REQ (`since` absent or `0`) likewise
 //!   covers `[0, now]`;
 //! - an EOSE on a **`since`-floored** plain REQ proves coverage only of
 //!   `[floor, now]`, NOT `[0, now]`. Advancing `covered_through` to `now` there
-//!   would over-claim `[0, floor)` — the very over-claim ADR-0056 §1 says makes
+//!   would over-claim `[0, floor)` — the very over-claim ADR-0072 §1 says makes
 //!   presence unsound. Such an EOSE therefore records NOTHING; the presence
 //!   floor remains the floor source for that shape until Stage D2's read swap,
 //!   and the un-floored NEG path (Stage A) is what fills the ledger for the
@@ -89,7 +89,7 @@ pub fn coverage_key_parts(key: &[u8]) -> Option<(String, String)> {
 pub type CoverageMatchFn =
     std::sync::Arc<dyn Fn(&str, &str, u32, u64, &[Vec<String>]) -> bool + Send + Sync>;
 
-/// K3 Stage D3 (ADR-0056 §3.D3) — the eviction⇄ledger coherence BACKSTOP input.
+/// K3 Stage D3 (ADR-0072 §3.D3) — the eviction⇄ledger coherence BACKSTOP input.
 ///
 /// One guard per active covered `(filter_hash, relay)`: it pairs the coverage
 /// bound with a predicate that decides whether an about-to-be-evicted event

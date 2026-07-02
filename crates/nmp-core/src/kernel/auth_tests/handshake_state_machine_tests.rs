@@ -330,7 +330,7 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     );
     assert_eq!(*calls.lock().unwrap(), 1);
 
-    // Caller queues a REQ during the Failed window. T76 / ADR-0019:
+    // Caller queues a REQ during the Failed window. T76 / ADR-0072:
     // Failed is FAIL-CLOSED — the REQ is dropped, never emitted to an
     // unauthenticated relay and never deferred (bounded-buffer).
     let pass = kernel.partition_auth_paused(vec![OutboundMessage {

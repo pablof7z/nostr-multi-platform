@@ -6,7 +6,7 @@
 //! `notify_event_observers` exactly once per accepted event. The cache-serve
 //! replay seam (`crates/nmp-core/src/kernel/cache_serve/`) reaches observers
 //! through that same `project_accepted_event` door, so store-first and
-//! network-first events fan out identically (ADR-0045 single-mechanism
+//! network-first events fan out identically (ADR-0070 single-mechanism
 //! cache-serve).
 //!
 //! A NEW scattered `notify_event_observers` call — a feature path that decides
@@ -107,7 +107,7 @@ fn message() -> String {
      D24 (event-flow lock). The kernel fans out to app-facing observers from \
      ONE place — `project_accepted_event` (kernel/ingest/projection.rs) — and every \
      other path (incl. cache-serve replay) reaches observers through that same \
-     door (ADR-0045 single-mechanism cache-serve). A scattered observer notify \
+     door (ADR-0070 single-mechanism cache-serve). A scattered observer notify \
      fires the host twice and breaks the once-per-accepted-event invariant"
         .to_string()
 }

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use super::recognizer::InputScopeRecognizer;
 
-/// Composition-ledger seam name for input-scope registrations (ADR-0049 Part 2).
+/// Composition-ledger seam name for input-scope registrations (ADR-0069 Part 2).
 pub const INPUT_SCOPE_LEDGER_SEAM: &str = "input_scope";
 
 /// Register an [`InputScopeRecognizer`] against the host. A narrow registration
@@ -15,7 +15,7 @@ pub const INPUT_SCOPE_LEDGER_SEAM: &str = "input_scope";
 /// `AppHost`.
 pub trait InputScopeRegistrar {
     /// Register `recognizer`. Pre-start, additive; a duplicate [`super::id::InputScopeId`]
-    /// yields (ADR-0049 — first registration wins; the later one is recorded as
+    /// yields (ADR-0069 — first registration wins; the later one is recorded as
     /// `YieldedToExisting` in the `"input_scope"` ledger seam).
     fn register_input_scope(&self, recognizer: Arc<dyn InputScopeRecognizer>);
 }
@@ -27,7 +27,7 @@ pub enum InputScopeDisposition {
     /// First registration for this scope id.
     Installed,
     /// A later registration for an already-claimed scope id — yielded
-    /// (ADR-0049). The existing recognizer keeps the scope.
+    /// (ADR-0069). The existing recognizer keeps the scope.
     YieldedToExisting,
 }
 
@@ -46,7 +46,7 @@ impl InputScopeRegistry {
         Self::default()
     }
 
-    /// Register a recognizer. Yields (ADR-0049) on a duplicate scope id: the
+    /// Register a recognizer. Yields (ADR-0069) on a duplicate scope id: the
     /// first registration keeps the scope; a later one for the same id is NOT
     /// installed and returns [`InputScopeDisposition::YieldedToExisting`]. The
     /// caller (FFI shell) records the disposition in the `"input_scope"` ledger
@@ -89,7 +89,7 @@ impl InputScopeRegistry {
 /// The registry is itself an [`InputScopeRegistrar`] so a composition root /
 /// integration harness that holds the bare registry (without an `AppHost`) can
 /// drive registration directly; the `AppHost`/FFI shell forwards to the same
-/// `register` method, so ADR-0049 yield semantics are identical on both paths.
+/// `register` method, so ADR-0069 yield semantics are identical on both paths.
 impl InputScopeRegistrar for InputScopeRegistry {
     fn register_input_scope(&self, recognizer: Arc<dyn InputScopeRecognizer>) {
         let _ = self.register(recognizer);

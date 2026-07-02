@@ -2,14 +2,14 @@
 //!
 //! Owns [`ProfileCard`], the kernel's raw kind:0 profile projection.
 //!
-//! ADR-0057 PR 2 context: the kernel-owned `Profile` struct + the
+//! ADR-0070 PR 2 context: the kernel-owned `Profile` struct + the
 //! `profiles: HashMap<…>` field were deleted — the kind:0 profile cache is now
 //! capability-owned (`nmp_nip01::ProfileCache` behind `Arc<dyn ProfileLookup>`,
 //! the writer being the registered `nmp_nip01::Kind0Parser`). The kernel reads
 //! cached profiles as `crate::substrate::ProfileView` through
 //! `Kernel::profile_lookup()`; it no longer names the kind:0 wire format (D0).
 //!
-//! ADR-0063 Lane H context: `ProfileCard::from_mention()` and
+//! ADR-0070 Lane H context: `ProfileCard::from_mention()` and
 //! `MentionProfilePayload` were deleted; the mention_profiles projection is
 //! removed and profile data is served via the `refs.profile` KPRF NRRD
 //! row-delta sidecar.
@@ -26,7 +26,7 @@ use super::Serialize;
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
-    // D6 / ADR-0032: `npub` (bech32) field removed — projection sends raw hex
+    // D6 / ADR-0072: `npub` (bech32) field removed — projection sends raw hex
     // pubkey only; shells encode bech32 host-side via UniFFI `encode_profile`
     // or their own implementation. Closes V-115.
     /// Display name from kind:0 (`display_name` / `displayName` / `name`,

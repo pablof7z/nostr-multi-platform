@@ -4,7 +4,7 @@
 //! the serde JSON of [`SearchResultsSnapshot`] (see `snapshot_json`); this
 //! module adds the typed FlatBuffers (`N50S`) encoding the `open_search`
 //! higher-order entrypoint registers as the per-session typed sidecar
-//! (ADR-0037, S9). The schema (`crates/nmp-nip50/schema/search_results.fbs`)
+//! (ADR-0072, S9). The schema (`crates/nmp-nip50/schema/search_results.fbs`)
 //! mirrors the Rust snapshot field-for-field.
 //!
 //! Honours D6 (no panics): decode returns `Err(String)` on any malformed input;

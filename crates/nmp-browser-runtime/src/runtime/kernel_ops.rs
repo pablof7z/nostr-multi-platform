@@ -126,7 +126,7 @@ impl BrowserRuntimeHandle {
         )
     }
 
-    /// Apply a raw-key resolve-ref operation (ADR-0063).
+    /// Apply a raw-key resolve-ref operation (ADR-0070).
     pub(crate) fn apply_resolve_ref_with_metadata(
         &mut self,
         namespace: RefNamespace,
@@ -147,7 +147,7 @@ impl BrowserRuntimeHandle {
         )
     }
 
-    /// Apply a raw-key release-ref operation (ADR-0063).
+    /// Apply a raw-key release-ref operation (ADR-0070).
     pub(crate) fn apply_release_ref(
         &mut self,
         namespace: RefNamespace,
@@ -176,7 +176,7 @@ impl BrowserRuntimeHandle {
     }
 
     /// Apply a `DispatchEnvelope` byte payload through the action registry and
-    /// kernel (ADR-0064 / S3 #1751). Mirrors the retired `nmp-wasm`'s `dispatch_bytes` /
+    /// kernel (ADR-0071 / S3 #1751). Mirrors the retired `nmp-wasm`'s `dispatch_bytes` /
     /// `route_decoded_dispatch` but operates on the owned `BrowserRuntime`
     /// fields (not `Rc<RefCell<>>`) so it is usable from `BrowserRuntimeHandle`
     /// methods.

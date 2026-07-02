@@ -1,4 +1,4 @@
-//! Cardinal-trap tests for [`TypedProjectionEmissionState`] — ADR-0055 Rung 6 S2.
+//! Cardinal-trap tests for [`TypedProjectionEmissionState`] — ADR-0070 Rung 6 S2.
 //!
 //! These tests validate the generic whole-value omit mechanism that is SHARED
 //! by an app-owned feed session (R6-S1), `refs.event.envelopes` (R6-S2), and

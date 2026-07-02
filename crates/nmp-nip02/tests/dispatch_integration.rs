@@ -1,7 +1,7 @@
 //! Integration test: prove the compatibility `register_actions` helper wires
 //! follow/unfollow plus delegated NIP-25 reaction namespaces against a real
 //! `NmpApp` and that each one round-trips through the typed byte doorway
-//! `nmp_app_dispatch_action_bytes` (ADR-0064 / S4, #1996).
+//! `nmp_app_dispatch_action_bytes` (ADR-0071 / S4, #1996).
 //!
 //! This is the migration-success contract — the same shape the chirp
 //! `social_verbs_dispatch_through_action_registry` test enforces, lifted
@@ -14,7 +14,7 @@ use nmp_core::substrate::ActionPayload;
 use nmp_native_runtime::NmpApp;
 
 /// Mint a process-local unique host correlation id. On the byte lane the host
-/// supplies the id and the doorway echoes it back verbatim (ADR-0064 §4) — it
+/// supplies the id and the doorway echoes it back verbatim (ADR-0071 §4) — it
 /// is NOT a kernel-minted 32-hex id.
 fn next_correlation_id() -> String {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -134,7 +134,7 @@ fn register_actions_wires_compat_social_bundle() {
     unsafe { drop(Box::from_raw(app)) };
 }
 
-/// ADR-0064 / S3 (#1751) — the TYPED FlatBuffers payload doorway end-to-end:
+/// ADR-0071 / S3 (#1751) — the TYPED FlatBuffers payload doorway end-to-end:
 /// `DispatchEnvelope` payload bytes → `ActionRegistry::start_bytes` → typed
 /// decode → `start()`, then `execute_bytes` enqueues the `ActorCommand`. Drives
 /// the nip25 + nip02 trio members this crate registers, plus the NEGATIVE
@@ -257,7 +257,7 @@ fn build_bad_version_follow_payload() -> Vec<u8> {
 
 // ---- S3 gap tests: bad-version trip for every migrated nip02 namespace -------
 
-/// ADR-0064 / S3 (#1751) — `nmp.unfollow` uses the same `FollowActionPayload`
+/// ADR-0071 / S3 (#1751) — `nmp.unfollow` uses the same `FollowActionPayload`
 /// wire shape as `nmp.follow`. A bad `schema_version` MUST be rejected BEFORE
 /// `start()` runs, proving the fail-closed gate covers the unfollow namespace.
 #[test]
@@ -286,7 +286,7 @@ fn start_bytes_rejects_wrong_schema_version_for_unfollow() {
     }
 }
 
-/// ADR-0064 / S3 (#1751) — `nmp.follow_many` uses `FollowManyActionPayload`.
+/// ADR-0071 / S3 (#1751) — `nmp.follow_many` uses `FollowManyActionPayload`.
 /// A bad `schema_version` MUST be rejected BEFORE `start()` runs.
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_follow_many() {

@@ -4,7 +4,7 @@ use super::super::Kernel;
 use super::helpers;
 
 impl Kernel {
-    /// ADR-0057 — the SINGLE shared post-store projection fan-out, called by
+    /// ADR-0070 — the SINGLE shared post-store projection fan-out, called by
     /// BOTH the live ingest chokepoint ([`Self::ingest_accepted_event`]) AND the
     /// cache-serve replay path ([`Self::feed_served_event`]).
     ///
@@ -53,7 +53,7 @@ impl Kernel {
         if profile_before != profile_after {
             self.cached_estimated_store_bytes.set(None);
             self.projection_rev_tracker.source_versions.bump_profiles();
-            // ADR-0063 Lane B (D6a) — per-key rev (ingest site 3 of 3): a kind:0
+            // ADR-0070 Lane B (D6a) — per-key rev (ingest site 3 of 3): a kind:0
             // rewrote this author's row, so bump ITS rev (and only its) when the
             // author is a live `refs.profile` ref. Gating on a live claim keeps the
             // per-key map bounded to resolved refs (unclaimed authors never enter

@@ -5,7 +5,7 @@ import {
   encodeDispatchEnvelope,
 } from "./dispatchEnvelope";
 
-describe("dispatch envelope (ADR-0064 typed write transport)", () => {
+describe("dispatch envelope (ADR-0071 typed write transport)", () => {
   it("stamps the NMPD file identifier at byte offset 4", () => {
     // Cross-host wire contract: the Rust decoder
     // (nmp_core::dispatch_envelope::decode_dispatch_envelope) reads the raw

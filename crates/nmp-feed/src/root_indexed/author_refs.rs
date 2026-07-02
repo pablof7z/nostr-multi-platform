@@ -1,6 +1,6 @@
 //! [`FeedAuthorRefs`] — the set of author keys a feed projection will RENDER.
 //!
-//! ADR-0063 D7 (#1671): the coverage hole is "a row carries an author the shell
+//! ADR-0070 D7 (#1671): the coverage hole is "a row carries an author the shell
 //! forgot to resolve, so it renders a blank avatar." This trait lets the kernel
 //! auto-resolve every author a feed will render, through the SAME `resolve_ref`
 //! path, by extracting that author set from the engine's projection surface

@@ -56,7 +56,7 @@ public extension EnvironmentValues {
 public extension View {
     /// Bind the embed host, event-ref resolver, and kind registry so any nested
     /// `NostrContentView` renders `nostr:` event refs through the kind-dispatch
-    /// registry (ADR-0034).
+    /// registry (ADR-0072).
     func embedEnvelopeSource(
         _ source: EmbedEnvelopeSource?,
         eventRefResolver: EventRefResolverProtocol? = nil,

@@ -1,4 +1,4 @@
-//! ADR-0055 R6-S2 per-key cardinal-trap tests for the `nip46_onboarding` typed
+//! ADR-0070 R6-S2 per-key cardinal-trap tests for the `nip46_onboarding` typed
 //! projection emission gate.
 //!
 //! The generic omit logic is exercised exhaustively in

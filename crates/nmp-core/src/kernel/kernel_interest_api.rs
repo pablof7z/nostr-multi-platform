@@ -80,7 +80,7 @@ impl Kernel {
         removed
     }
 
-    /// M2 (ADR-0042) — attach one owner to a generic feed interest; enqueues a recompile trigger.
+    /// M2 (ADR-0076) — attach one owner to a generic feed interest; enqueues a recompile trigger.
     pub(crate) fn open_interest_sub(
         &mut self,
         identity: crate::subs::SubIdentity,
@@ -99,7 +99,7 @@ impl Kernel {
         outcomes[0].newly_installed
     }
 
-    /// M2 (ADR-0042) — detach one owner from a generic feed interest; enqueues a recompile trigger.
+    /// M2 (ADR-0076) — detach one owner from a generic feed interest; enqueues a recompile trigger.
     pub(crate) fn close_interest_sub(&mut self, identity: &crate::subs::SubIdentity) -> bool {
         let removed = self.lifecycle.registry_mut().drop_owner(identity);
         if removed {

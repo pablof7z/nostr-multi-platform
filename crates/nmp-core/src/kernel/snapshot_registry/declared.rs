@@ -1,4 +1,4 @@
-//! Host-declared **consumed-projection set** (ADR-0053 / Workstream-E4).
+//! Host-declared **consumed-projection set** (ADR-0070 / Workstream-E4).
 //!
 //! The output-side sibling of the relay interest-install lattice: a host declares,
 //! once at app init, the static set of snapshot **projection keys it consumes**.
@@ -41,7 +41,7 @@ use std::collections::BTreeSet;
 
 /// The host-declared projection-consumption intent — a tri-state that makes
 /// "consume everything" an explicit choice and "no declaration" a loud bug
-/// rather than a silent firehose (ADR-0053 / Workstream-E4).
+/// rather than a silent firehose (ADR-0070 / Workstream-E4).
 ///
 /// `Narrow` carries a `BTreeSet` for deterministic iteration and cheap
 /// membership; the set is tiny (≤ the count of
@@ -97,7 +97,7 @@ impl DeclaredProjections {
     }
 
     /// Declare the explicit "consume every Tier-2 built-in" intent — the only
-    /// non-footgun way to get the full set (ADR-0053 / Workstream-E4).
+    /// non-footgun way to get the full set (ADR-0070 / Workstream-E4).
     pub fn consume_all(&mut self) {
         *self = DeclaredProjections::All;
     }
@@ -132,7 +132,7 @@ impl DeclaredProjections {
         }
     }
 
-    /// **Workstream-E3 / ADR-0053 drift gate** — the declared keys that are
+    /// **Workstream-E3 / ADR-0070 drift gate** — the declared keys that are
     /// absent from `decodable`, the framework's authoritative emittable/decodable
     /// Tier-2 key set
     /// ([`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS)).
@@ -165,7 +165,7 @@ impl DeclaredProjections {
         }
     }
 
-    /// **Workstream-E3 / ADR-0053 drift gate enforcement.** Assert the declared
+    /// **Workstream-E3 / ADR-0070 drift gate enforcement.** Assert the declared
     /// (narrow) set is a subset of the framework's authoritative
     /// emittable/decodable set
     /// ([`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS),
@@ -192,7 +192,7 @@ impl DeclaredProjections {
                  not kernel-owned Tier-2 built-ins (KERNEL_BUILTIN_PROJECTION_KEYS). A \
                  stray key has no gating effect but flips the set into narrowing mode, so \
                  a renamed/typo'd built-in silently drops the real key from every frame \
-                 (ADR-0053 / Workstream-E3 drift gate). Declare only kernel built-ins; \
+                 (ADR-0070 / Workstream-E3 drift gate). Declare only kernel built-ins; \
                  Tier-1 host/protocol projections self-gate by registration and must not \
                  be declared here."
             );
@@ -206,7 +206,7 @@ impl DeclaredProjections {
 }
 
 impl super::SnapshotRegistry {
-    /// ADR-0053 — declare (union into) the set of Tier-2 built-in projection
+    /// ADR-0070 — declare (union into) the set of Tier-2 built-in projection
     /// keys this host consumes (the narrowing path).
     ///
     /// Additive: call more than once and the sets union (e.g. a base set from
@@ -228,7 +228,7 @@ impl super::SnapshotRegistry {
         self.declared_projections.enforce_no_drift();
     }
 
-    /// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+    /// ADR-0070 / Workstream-E4 — declare the explicit "I consume every Tier-2
     /// built-in" intent ([`DeclaredProjections::All`]).
     ///
     /// This is the ONE non-footgun way to receive the full set. Full Rust

@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed codec tests for the nip29 typed action payloads
-//! (ADR-0064 / S9 #1747). Every fail-closed gate asserts the NEGATIVE; every
+//! (ADR-0071 / S9 #1747). Every fail-closed gate asserts the NEGATIVE; every
 //! optional-string PRESENCE invariant asserts both `None` and `Some("")`.
 
 use crate::action::{

@@ -23,7 +23,7 @@ namespace nmp.kernel;
 //   flatc --rust -o crates/nmp-core/src/kernel/typed_projections/generated \
 //         crates/nmp-core/schema/outbox_summary.fbs
 
-// ADR-0032 / aim.md §2 #4: `title` and `subtitle` pre-formatted English
+// ADR-0072 / aim.md §2 #4: `title` and `subtitle` pre-formatted English
 // strings removed; shells derive display strings from the raw counters.
 table OutboxSummarySnapshot {
   // Total in-flight publishes (sending + retrying + queued + failed).

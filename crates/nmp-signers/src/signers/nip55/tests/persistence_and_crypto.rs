@@ -194,7 +194,7 @@ fn persistence_payload_json_round_trips() {
     assert_eq!(p.user_pubkey_hex, local.pubkey().to_hex());
 }
 
-/// ADR-0048 §D5 + V-08 degrade pin: `nip44_decrypt` is implemented in
+/// ADR-0072 §D5 + V-08 degrade pin: `nip44_decrypt` is implemented in
 /// `Nip55Signer` (the capability is complete) but is NOT wired to the
 /// DM-inbox path (deferred to V-08/#961).
 ///
@@ -237,6 +237,6 @@ fn nip55_nip44_decrypt_capability_exists_but_receive_path_is_deferred() {
 
     // Staging note: V-08/#961 is where the DM-inbox path is wired to use this.
     // The method is intentionally not called from the kernel's DM-inbox today
-    // (staged with V-08 per ADR-0048 D5). The test above confirms the
+    // (staged with V-08 per ADR-0072 D5). The test above confirms the
     // `RemoteSignerHandle::nip44_decrypt` seam works for NIP-55 in isolation.
 }

@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 integration glue, codex "Artifact 1") — the `refs.profile` /
+//! ADR-0070 (#1671 integration glue, codex "Artifact 1") — the `refs.profile` /
 //! `refs.event` row-delta producer slice of the Tier-2 built-in typed sidecar.
 //!
 //! Unlike every other Tier-2 cluster (which encodes a whole-map snapshot every
@@ -17,7 +17,7 @@
 //! baseline-latch reset and the manifest assembly (where live `&mut self` is
 //! available). See `kernel/update.rs`.
 //!
-//! ## Baseline semantics (ADR-0063 invariant #3 / ADR-0055 D4)
+//! ## Baseline semantics (ADR-0070 invariant #3 / ADR-0070 D4)
 //!
 //! The tracker is BASELINED (`.reset()` → next build is a full re-emit) when:
 //! - `baseline_pending` (a host just declared incremental-apply — first attach),
@@ -57,7 +57,7 @@ impl super::super::Kernel {
     /// `incremental_apply_state()` this tick; pass it in so a fresh host attach
     /// forces a full re-baseline of the carrier too.
     ///
-    /// `profile_permitted` / `event_permitted` are this tick's ADR-0053
+    /// `profile_permitted` / `event_permitted` are this tick's ADR-0070
     /// declared-set verdict for each `refs.*` key (`declared.permits(key)`).
     /// They gate the tracker per namespace so the tracker is NEVER advanced
     /// while a key is filtered off the wire:
@@ -66,7 +66,7 @@ impl super::super::Kernel {
     ///   empty batch). The retained `is_narrowing` filter in `make_update`
     ///   drops the entry anyway; not advancing the tracker keeps it at its
     ///   last-permitted state so live rows are NOT silently consumed.
-    /// - PERMITTED after being UNPERMITTED last tick (a false→true ADR-0053
+    /// - PERMITTED after being UNPERMITTED last tick (a false→true ADR-0070
     ///   ADDITIVE declaration) → force a full BASELINE for that namespace
     ///   (`reset_namespace` + `build_baseline`) so a newly-declaring host
     ///   receives the complete live row set — exactly as other built-ins
@@ -125,7 +125,7 @@ impl super::super::Kernel {
     }
 }
 
-/// Build one namespace's row-delta batch, honouring the per-key ADR-0053 permit
+/// Build one namespace's row-delta batch, honouring the per-key ADR-0070 permit
 /// gate. Returns an EMPTY (non-baseline, no-row) batch WITHOUT advancing the
 /// tracker when the key is unpermitted this tick — the retained `is_narrowing`
 /// filter drops it off the wire and the tracker must not record live rows as
@@ -151,7 +151,7 @@ fn build_namespace_batch(
     }
     if baseline {
         // Forced full re-emit for this namespace: drop its last-emitted map so
-        // build_baseline re-seeds every live row as Changed (ADR-0063 #3).
+        // build_baseline re-seeds every live row as Changed (ADR-0070 #3).
         tracker.reset_namespace(namespace);
         tracker.build_baseline(namespace, source)
     } else {

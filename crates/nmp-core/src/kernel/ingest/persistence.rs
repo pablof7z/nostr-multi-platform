@@ -5,7 +5,7 @@ use super::helpers;
 
 impl Kernel {
     /// Verify and persist an event to the `EventStore` — persistence ONLY
-    /// (ADR-0057: sig-verify -> store.insert -> raw-tap -> provenance accounting
+    /// (ADR-0070: sig-verify -> store.insert -> raw-tap -> provenance accounting
     /// -> TTL stamping). The post-store projection fan-out (parser dispatch +
     /// transition sweep + clamped observer notify) is the caller's job via the
     /// shared [`Self::project_accepted_event`] helper.
@@ -126,7 +126,7 @@ impl Kernel {
                     }
                 }
 
-                self.maybe_bump_claimed_event_content(&outcome, event); // ADR-0055 (F1)
+                self.maybe_bump_claimed_event_content(&outcome, event); // ADR-0070 (F1)
                 Some((outcome, verified_for_dispatch))
             }
             Err(e) => {

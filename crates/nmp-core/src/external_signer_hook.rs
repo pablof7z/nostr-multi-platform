@@ -1,4 +1,4 @@
-//! Pluggable hook for NIP-55 external-signer session restore (ADR-0048 D4).
+//! Pluggable hook for NIP-55 external-signer session restore (ADR-0072 D4).
 //! Installed by app/FFI composition at app init into a **per-app**
 //! [`ExternalSignerHookSlot`]; invoked by the actor's cold-start session
 //! restore when the persisted active-signer kind is `"nip55"`.
@@ -7,12 +7,12 @@
 //! knows there is *something* on the other side that can reconstruct a
 //! remote signer from an opaque payload, but it does not name
 //! `nmp-signers` or any NIP-55 type. Structural twin of [`crate::bunker_hook`]
-//! — the ADR-0031 worker-feeds-actor indirection precedent.
+//! — the ADR-0072 worker-feeds-actor indirection precedent.
 //!
-//! ## Per-app slot — no process-global (ADR-0052 §D3)
+//! ## Per-app slot — no process-global (ADR-0072 §D3)
 //!
 //! Like the bunker hook, this lives in an `Arc<Mutex<Option<…>>>` slot created
-//! in `nmp_app_new` and dropped in `nmp_app_free` (mirroring ADR-0051's
+//! in `nmp_app_new` and dropped in `nmp_app_free` (mirroring ADR-0072's
 //! relay-connected hook slot). Two apps get two independent hooks; a
 //! freed-then-recreated app re-installs cleanly. The actor's `IdentityRuntime`
 //! owns one `Arc` clone; the FFI `nmp_external_signer_init` holds the other and

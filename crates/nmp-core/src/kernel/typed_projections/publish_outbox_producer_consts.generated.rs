@@ -5,7 +5,7 @@
 //   version). Regenerate + verify drift via
 //   `.github/workflows/codegen-drift.yml` (gen producer-consts --check).
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
-/// snapshot key (ADR-0037 shared-keyspace contract).
+/// snapshot key (ADR-0072 shared-keyspace contract).
 pub const PUBLISH_OUTBOX_SCHEMA_ID: &str = "publish_outbox";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const PUBLISH_OUTBOX_FILE_IDENTIFIER: &[u8; 4] = b"KPBO";

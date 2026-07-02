@@ -1,6 +1,6 @@
 //! Round-trip proof for the `outbox_summary` Tier-2 typed codec.
 //!
-//! ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted English
+//! ADR-0072 / aim.md §2 #4: `title` / `subtitle` pre-formatted English
 //! strings removed from the wire; only raw counters remain.
 
 use super::*;

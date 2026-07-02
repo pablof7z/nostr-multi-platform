@@ -1,4 +1,4 @@
-//! ADR-0053 — host-declared projection subscriptions: end-to-end gating proofs.
+//! ADR-0070 — host-declared projection subscriptions: end-to-end gating proofs.
 //!
 //! These drive `make_update` (the path the host actually consumes) and assert
 //! WHICH Tier-2 built-in projection keys appear in the emitted snapshot under
@@ -7,7 +7,7 @@
 //! - empty declared set ⇒ every Tier-2 built-in is present (no narrowing);
 //! - non-empty declared set ⇒ only declared keys present, undeclared omitted;
 //! - the gate applies to BOTH the generic JSON map and the typed sidecar (the
-//!   ADR-0037 divergence-safety invariant extended to the gate);
+//!   ADR-0072 divergence-safety invariant extended to the gate);
 //! - the drain-on-emit keys (`action_results` …) still work when declared;
 //! - `relay_diagnostics` — the headline waste — is omitted unless declared.
 
@@ -39,7 +39,7 @@ fn kernel_with_slot() -> (
 }
 
 /// Empty declared set = NO narrowing: every Tier-2 built-in is emitted, exactly
-/// as before ADR-0053. This is the "host expressed no opinion" semantic and the
+/// as before ADR-0070. This is the "host expressed no opinion" semantic and the
 /// guarantee that the kernel's own Rust consumers / test helpers keep working
 /// with zero declaration.
 #[test]
@@ -50,7 +50,7 @@ fn empty_declared_set_emits_all_builtins() {
     // The unconditional Tier-2 built-ins must all be present (the drain-on-emit
     // four are absent in steady state — that is their own convention, unrelated
     // to the declared-set gate).
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
+    // ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
     for key in [
         "publish_queue",
         "publish_outbox",
@@ -75,7 +75,7 @@ fn empty_declared_set_emits_all_builtins() {
 /// undeclared keys absent. `relay_diagnostics` (the headline) is NOT declared
 /// here and must be omitted.
 ///
-/// ADR-0063 Lane H: resolved_profiles / claimed_events JSON projections deleted;
+/// ADR-0070 Lane H: resolved_profiles / claimed_events JSON projections deleted;
 /// use live JSON built-ins here. refs.event declaration semantics are covered by
 /// the keyed row-delta integration tests.
 #[test]
@@ -104,7 +104,7 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
     // THE acceptance criterion: relay_diagnostics is gated out.
     assert!(
         !projections.contains_key("relay_diagnostics"),
-        "undeclared `relay_diagnostics` must NOT be serialized (ADR-0053 headline); \
+        "undeclared `relay_diagnostics` must NOT be serialized (ADR-0070 headline); \
          got keys {:?}",
         projections.keys().collect::<Vec<_>>()
     );
@@ -116,16 +116,16 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
             projections.keys().collect::<Vec<_>>()
         );
     }
-    // ADR-0063 Lane H: these deleted projections must never appear.
+    // ADR-0070 Lane H: these deleted projections must never appear.
     for key in ["claimed_profiles", "mention_profiles", "resolved_profiles"] {
         assert!(
             !projections.contains_key(key),
-            "deleted projection `{key}` must never appear (ADR-0063 Lane H)"
+            "deleted projection `{key}` must never appear (ADR-0070 Lane H)"
         );
     }
 }
 
-/// The gate applies to the TYPED sidecar identically to the JSON map (ADR-0037
+/// The gate applies to the TYPED sidecar identically to the JSON map (ADR-0072
 /// divergence-safety): a declared key's typed entry is present; an undeclared
 /// key's typed entry is absent.
 #[test]

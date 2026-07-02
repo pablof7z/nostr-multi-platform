@@ -61,7 +61,7 @@ import androidx.compose.ui.unit.dp
 // ── SignerState wire ──────────────────────────────────────────────────────────
 
 /**
- * Minimal ADR-0048 D6 signer-state projection consumed by [NostrLoginBlock].
+ * Minimal ADR-0072 D6 signer-state projection consumed by [NostrLoginBlock].
  *
  * This is the gallery-local mirror that keeps the login-block self-contained.
  * External app copies must match the Rust `SignerStateDto` wire.
@@ -81,7 +81,7 @@ data class LoginBlockSignerState(
 // ── Presentation state (pure — unit-testable without Compose) ────────────────
 
 /** Visual tone of a signer card. Derived ONLY from the pre-computed `is*`
- *  flags (ADR-0032 D6 — the shell never re-derives state from strings). */
+ *  flags (ADR-0072 D6 — the shell never re-derives state from strings). */
 enum class SignerCardTone { Default, InProgress, Ready, Degraded }
 
 /**
@@ -133,7 +133,7 @@ internal fun signerCardUi(state: LoginBlockSignerState?): SignerCardUi {
  *
  * When the user taps "Sign in with Amber":
  * 1. `onSignerSelected` fires with the chosen [NostrSignerInfo].
- * 2. The app should initiate the ADR-0048 `get_public_key` capability
+ * 2. The app should initiate the ADR-0072 `get_public_key` capability
  *    request via the [ExternalSignerCapabilityBridge].
  * 3. The `signerState` projection drives the `isAwaitingApproval` /
  *    `isReady` / `isUnavailable` / `isFailed` states shown inline.

@@ -35,7 +35,7 @@ use crate::planner::Pubkey;
 ///
 /// The same logical subscription (e.g. "the thread for event X") hashes to the
 /// same `SubKey` across restarts and processes, which is what gives the action
-/// ledger and ADR-0007 diagnostics a stable handle.
+/// ledger and ADR-0072 diagnostics a stable handle.
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct SubKey(pub u64);
 

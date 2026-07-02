@@ -45,7 +45,7 @@ mod config;
 mod dispatch;
 #[cfg(all(feature = "native", any(test, feature = "test-support")))]
 mod test_actor_spawn;
-// ADR-0050 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
+// ADR-0072 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
 // delivery), split out to keep `dispatch.rs` within budget. Native-only (uses
 // the native `ActorContext`).
 #[cfg(feature = "native")]
@@ -53,7 +53,7 @@ mod fairness;
 #[cfg(feature = "native")]
 mod signer_port_dispatch;
 mod signer_source;
-// ADR-0050 §D3a — always-compiled command sender and inbox mail; the relay-side
+// ADR-0072 §D3a — always-compiled command sender and inbox mail; the relay-side
 // scheduler / sink / `Inbox` are `native`-gated inside.
 mod inbox;
 // Inbox command/relay lane priority + fairness tests, extracted from `inbox.rs`
@@ -155,7 +155,7 @@ pub use run_loop::run_actor_with_observers;
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
-// ADR-0062: targeted observer delivery and muted-registration helpers.
+// ADR-0070: targeted observer delivery and muted-registration helpers.
 // `notify_observer_by_id` is crate-internal (kernel replay path only).
 // `register_rust_observer_muted` is pub so nmp-ffi can call it.
 // Scoped activation is also used by the kernel replay path (wasm/no-native too).
@@ -191,7 +191,7 @@ pub(crate) use commands::BunkerHandshakeSlot;
 // handing it to the actor; promoted to `pub` for the extracted crate.
 #[cfg(feature = "native")]
 pub use commands::new_bunker_handshake_slot;
-// ADR-0048 D6: generalised remote-signer health slot (hard-break rename of
+// ADR-0072 D6: generalised remote-signer health slot (hard-break rename of
 // the former `BunkerConnectionStateSlot` — no compat aliases). The DTO itself
 // stays `commands`-private; callers drive it only through the actor commands.
 #[cfg(feature = "native")]
@@ -232,13 +232,13 @@ pub use commands::ConformanceHarness;
 // them is gated.
 #[cfg(feature = "native")]
 pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlots};
-// ADR-0050 §D3a — always-compiled transport types; both name no protocol
+// ADR-0072 §D3a — always-compiled transport types; both name no protocol
 // concept (D0).
 pub use command_sender::{
     CommandSendError, CommandSendStatus, CommandSender, ACTOR_INBOX_CAPACITY,
 };
 pub use inbox::ActorMail;
-// ADR-0050 §D1 — always-compiled port continuations named by the (always-
+// ADR-0072 §D1 — always-compiled port continuations named by the (always-
 // compiled) `ActorCommand` sign / cipher verbs.
 pub use continuations::{CipherContinuation, SignContinuation};
 
@@ -270,7 +270,7 @@ pub(crate) use relay_roles::{canonical_relay_role, relay_role_options};
 #[cfg(feature = "native")]
 pub use relay_roles::nostrconnect_relay_url;
 
-// ADR-0065 — `ActorCommand` collapsed into typed command-family payloads.
+// ADR-0071 — `ActorCommand` collapsed into typed command-family payloads.
 // The top-level enum + sub-enum families live in `actor_command.rs`; the
 // `SignerSource` type lives in `signer_source.rs` (extracted by #1903). Both
 // are re-exported here so existing `use crate::actor::ActorCommand` /

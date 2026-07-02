@@ -18,7 +18,7 @@ use crate::runtime::WalletRuntimeHandle;
 
 /// [`PaymentPort`] backed by a per-app NIP-47 [`WalletRuntimeHandle`].
 ///
-/// Holds the same handle the wallet `ActionModule`s mutate (ADR-0052 rung 5.2
+/// Holds the same handle the wallet `ActionModule`s mutate (ADR-0072 rung 5.2
 /// — per-app, not a process-global), so a zap pays through the same wallet
 /// runtime the app installed.
 pub struct WalletPaymentPort {

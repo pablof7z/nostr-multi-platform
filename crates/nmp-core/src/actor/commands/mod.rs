@@ -44,7 +44,7 @@
 //!   through the handle's non-blocking `sign_active_nonblocking` path.
 //!
 //! The actor never imports `nmp-signers`; it only touches the trait. NIP-42
-//! AUTH now routes through the remote signer via the ADR-0050 async signer port
+//! AUTH now routes through the remote signer via the ADR-0072 async signer port
 //! (V-06 / #960): `sync_kernel` binds the AUTH *pubkey* for a remote account,
 //! `handle_auth_challenge` parks the kind:22242, and the actor signs it through
 //! the same `sign_*_nonblocking` seam as every other write — one uniform async
@@ -72,10 +72,10 @@ mod conformance_support;
 // Box::new(SendGiftWrappedDmCommand { ... }))`.
 mod event_observer;
 mod identity;
-// ADR-0052 §D3 — per-app signer-hook accessors on `IdentityRuntime`
+// ADR-0072 §D3 — per-app signer-hook accessors on `IdentityRuntime`
 // (`impl` block split out of `identity.rs` for file-size discipline).
 mod signer_hooks;
-// ADR-0050 §D1 NIP-44 cipher helpers (split from `identity.rs` for file-size).
+// ADR-0072 §D1 NIP-44 cipher helpers (split from `identity.rs` for file-size).
 #[cfg(feature = "native")]
 mod cipher;
 mod lifecycle;
@@ -90,7 +90,7 @@ mod publish_finalize;
 #[cfg(feature = "native")]
 mod relays;
 
-// ADR-0065 — `ActorCommand` sub-enum families. Each sub-enum groups cohesive
+// ADR-0071 — `ActorCommand` sub-enum families. Each sub-enum groups cohesive
 // command verbs under one top-level `ActorCommand` variant. The dispatch arm
 // matches the family first, then the verb (see `actor/dispatch/mod.rs`).
 // Always-compiled (no `native` gate): the command *types* are pure data, even
@@ -130,7 +130,7 @@ pub(super) use identity::{
     add_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
     remove_account, restore_bunker_session, restore_nip55_session, switch_active, IdentityRuntime,
 };
-// ADR-0048 D6: the NIP-55 writer into the shared `signer_state` slot, driven
+// ADR-0072 D6: the NIP-55 writer into the shared `signer_state` slot, driven
 // by the `ActorCommand::Nip55SignerStateChanged` dispatch arm (Stage 2 —
 // emitted by the nmp-ffi NIP-55 driver when the host capability bridge
 // reports an outcome).
@@ -148,7 +148,7 @@ pub(crate) use identity::build_nip46_onboarding_dto;
 // them as `commands::sign_active_nonblocking` / `commands::sign_with_account_nonblocking`.
 #[cfg(feature = "native")]
 pub(super) use identity::{sign_active_nonblocking, sign_with_account_nonblocking};
-// ADR-0050 §D1 — the cipher port verbs (`Nip44EncryptForAccount` /
+// ADR-0072 §D1 — the cipher port verbs (`Nip44EncryptForAccount` /
 // `Nip44DecryptForAccount`) reach these non-blocking NIP-44 helpers as
 // `commands::nip44_encrypt_nonblocking` / `commands::nip44_decrypt_nonblocking`,
 // the cipher siblings of the sign helpers above (in the `cipher` submodule to
@@ -173,7 +173,7 @@ pub use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 // gated to test builds so it never widens the production surface.
 #[cfg(all(test, feature = "native"))]
 pub(crate) use identity::BunkerHandshakeDto;
-// ADR-0048 D6: generalised remote-signer health slot + constructor.
+// ADR-0072 D6: generalised remote-signer health slot + constructor.
 // V-14 step b's `bunker_connection_state` slot is now `signer_state` — a
 // hard-break rename (no compat aliases); all callers updated in the same PR.
 #[cfg(feature = "native")]
@@ -210,7 +210,7 @@ pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_P
 // kernel/event_observer.rs unconditionally. The slot constructors and
 // registration helpers are native FFI only.
 pub(crate) use event_observer::notify_observers;
-// ADR-0062: targeted observer delivery (crate-internal replay path).
+// ADR-0070: targeted observer delivery (crate-internal replay path).
 pub(crate) use event_observer::notify_observer_by_id;
 // `ObservedProjectionSinkSlot` is reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::ObservedProjectionSinkSlot`.
@@ -218,7 +218,7 @@ pub use event_observer::ObservedProjectionSinkSlot;
 // Headless slot constructor — safe on wasm32 (no background thread).
 // Used by `KernelReducer::new` on all targets.
 pub(crate) use event_observer::new_event_observer_slot_headless;
-// ADR-0062: muted observer registration and activation are available on all
+// ADR-0070: muted observer registration and activation are available on all
 // targets. The kernel replay path activates muted observers after targeted
 // catch-up, so wasm/no-native reducer builds need the same pure helper.
 pub use event_observer::activate_observer_scoped;

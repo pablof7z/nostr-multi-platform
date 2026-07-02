@@ -5,7 +5,7 @@
 //! as a single typed action. Apps dispatch `nmp.blossom.upload`, retain the
 //! returned `correlation_id`, and read the blob descriptor (`url`, `sha256`, …)
 //! from the `action_results[correlation_id].result` projection on a later tick —
-//! the canonical completion carrier (ADR-0043 Decision 4, issue #1648). Use
+//! the canonical completion carrier (ADR-0071 Decision 4, issue #1648). Use
 //! [`parse_upload_completion`] to decode the terminal `result` body. Do **not**
 //! use `register_action_result_observer` for completion — that push channel
 //! fires on accept/enqueue only. No HTTP, base64, header construction, or
@@ -19,7 +19,7 @@
 //! - **`action`** — [`UploadAction`] (`ActionModule`, `nmp.blossom.upload`).
 //!
 //! Signing goes through `nmp-core`'s generic, backend-transparent
-//! `SignEventForAccount` port (ADR-0043 Decision 2): local nsec and NIP-46
+//! `SignEventForAccount` port (ADR-0071 Decision 2): local nsec and NIP-46
 //! bunker accounts are both supported, transparently. `nmp-core` learns no
 //! Blossom noun and imports no HTTP crate (D0); the kind constant lives in the
 //! Layer-0 `nmp-kinds` registry.
@@ -29,7 +29,7 @@ pub mod auth;
 pub mod kinds;
 pub mod result;
 pub mod upload;
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload codec (`ActionPayload`
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload codec (`ActionPayload`
 // impl for `UploadInput`).
 mod wire;
 

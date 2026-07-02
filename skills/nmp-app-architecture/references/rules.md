@@ -11,7 +11,7 @@ RMP starts from one idea: one Rust core owns behavior and each platform renders 
 - Data flow is TEA/Elm: `AppAction` enters Rust, one actor processes it, state changes, a snapshot/update is emitted, native applies it on the UI thread and renders.
 - `dispatch()` is fire-and-forget. It must not block and must not return operation success. The acceptance outcome (a `correlation_id`) is not publish/operation success — terminal status arrives later as projected state. See `write-intents-and-publishing.md`.
 - The actor is the single writer. Async work reports back through explicit internal events. Reducers do not await.
-- Incremental, typed-projection emission is the steady-state default (ADR-0055): the transport omits unchanged projections and emits a `Changed` row carrying that projection's full current value only when its encoded bytes differ. Full snapshots are the cold-start / resync baseline, not every tick. The generic `payload:Value` JSON lane is deleted — all projections are typed FlatBuffers sidecars. See `projections-and-emission.md`.
+- Incremental, typed-projection emission is the steady-state default (ADR-0070): the transport omits unchanged projections and emits a `Changed` row carrying that projection's full current value only when its encoded bytes differ. Full snapshots are the cold-start / resync baseline, not every tick. The generic `payload:Value` JSON lane is deleted — all projections are typed FlatBuffers sidecars. See `projections-and-emission.md`.
 - Native navigation may use native widgets, gestures, and transitions, but Rust owns navigation state.
 - Apps must feel fully native: 60fps scrolling, instant touch response, platform-native navigation, platform-native accessibility, and no visible "Rust is involved" tax.
 

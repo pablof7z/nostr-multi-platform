@@ -5,7 +5,7 @@
 //   version). Regenerate + verify drift via
 //   `.github/workflows/codegen-drift.yml` (gen producer-consts --check).
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
-/// snapshot key (ADR-0037 shared-keyspace contract).
+/// snapshot key (ADR-0072 shared-keyspace contract).
 pub const ACCOUNTS_SCHEMA_ID: &str = "accounts";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const ACCOUNTS_FILE_IDENTIFIER: &[u8; 4] = b"KACC";

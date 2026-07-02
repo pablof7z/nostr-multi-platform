@@ -215,10 +215,10 @@ fn wildcard_kind_dedup_no_double_fan_out() {
     );
 }
 
-/// ADR-0057 §1 latent-bug fix oracle — an ephemeral event (20000–29999) is NOT
+/// ADR-0070 §1 latent-bug fix oracle — an ephemeral event (20000–29999) is NOT
 /// persisted (the store returns `InsertOutcome::Ephemeral` without writing) BUT
 /// still reaches BOTH the NIP `IngestParser` registry AND the app-facing
-/// `ObservedProjectionSink` seam. Pre-ADR-0057 the per-arm observer fire gated on
+/// `ObservedProjectionSink` seam. Pre-ADR-0070 the per-arm observer fire gated on
 /// `Inserted | Replaced` only, so an ephemeral reached the parsers but NOT the
 /// app observers — an app could not react to an ephemeral it never stores.
 /// Moving `notify_event_observers` into the chokepoint under the canonical
@@ -268,7 +268,7 @@ fn ephemeral_event_reaches_parsers_and_observers_but_is_not_persisted() {
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
-        "an ephemeral event must reach app ObservedProjectionSinks (ADR-0057 §1 latent-bug fix)"
+        "an ephemeral event must reach app ObservedProjectionSinks (ADR-0070 §1 latent-bug fix)"
     );
     // NIP parser fired.
     assert_eq!(

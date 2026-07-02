@@ -50,7 +50,7 @@ table BunkerHandshake {
   is_terminal_success:bool;
   // True when a cancel action would do something (handshake in flight).
   can_cancel:bool;
-  // ADR-0032 / aim.md §2 #4 (#1493 P9 — labels-to-shells, mirrors #1568): the
+  // ADR-0072 / aim.md §2 #4 (#1493 P9 — labels-to-shells, mirrors #1568): the
   // pre-formatted English `stage_label` string was removed from this wire.
   // Shells derive the label from the raw `stage` token themselves — Rust emits
   // the raw token, the iOS/Android shells render the English. See aim.md:62.

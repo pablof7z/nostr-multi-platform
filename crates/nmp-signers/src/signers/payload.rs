@@ -33,7 +33,7 @@ pub enum SignerPayload {
     Nip07(Nip07Payload),
     /// NIP-55 Android external signer (Amber / `nostrsigner:`).  Carries
     /// pubkey + package name only — no key material ever enters the NMP
-    /// process (ADR-0048).
+    /// process (ADR-0072).
     Nip55(Nip55Payload),
 }
 
@@ -117,7 +117,7 @@ pub struct Nip07Payload {
 /// NIP-55 Android external-signer payload.
 ///
 /// Contains only the user's pubkey and the signer app's package name — no
-/// private key ever enters the NMP process (ADR-0048). Derives `Debug`
+/// private key ever enters the NMP process (ADR-0072). Derives `Debug`
 /// directly because no secret is stored here.
 #[derive(Clone, Debug, Eq, PartialEq, Default, Serialize, Deserialize)]
 pub struct Nip55Payload {

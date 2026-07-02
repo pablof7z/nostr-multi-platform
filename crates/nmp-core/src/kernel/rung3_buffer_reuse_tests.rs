@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 (D3-6) — encoder buffer reuse safety tests.
+//! ADR-0070 Rung 3 (D3-6) — encoder buffer reuse safety tests.
 //!
 //! Validates that the kernel-owned reusable `FlatBufferBuilder` (`snapshot_builder`)
 //! does not alias frames across ticks. The key correctness invariant:
@@ -53,7 +53,7 @@ fn kernel_with_slot() -> Kernel {
 /// Drive 100 sequential `make_update` ticks and verify EACH collected frame
 /// decodes independently and correctly.
 ///
-/// The safety invariant under test (ADR-0055 D3-6): `encode_snapshot_with_envelope`
+/// The safety invariant under test (ADR-0070 D3-6): `encode_snapshot_with_envelope`
 /// calls `builder.reset()` and then copies out the finished bytes via
 /// `builder.finished_data().to_vec()` before returning. The returned `Vec<u8>`
 /// therefore owns its data independently of the builder's internal buffer.

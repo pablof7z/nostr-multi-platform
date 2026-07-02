@@ -1,4 +1,4 @@
-//! ADR-0064 / #2169 (M14-1c) — typed FlatBuffers payload codec for the
+//! ADR-0071 / #2169 (M14-1c) — typed FlatBuffers payload codec for the
 //! `nmp.marmot` `ActionModule` (the MLS-over-Nostr write seam).
 //!
 //! Implements [`ActionPayload`] for [`MarmotAction`] so the byte doorway can

@@ -1,5 +1,5 @@
 //! `IdentityCommand` — signer roster + account lifecycle + remote-signer
-//! health (ADR-0065).
+//! health (ADR-0071).
 //!
 //! Grouped under `ActorCommand::Identity(IdentityCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_identity.rs`.
@@ -11,7 +11,7 @@ use super::super::SignerSource;
 /// Signer-roster management + account lifecycle + remote-signer health slots.
 ///
 /// These are *roster mutations* — they change which signers the actor knows
-/// about and which one is active. The ADR-0050 capability-port *verbs* (sign,
+/// about and which one is active. The ADR-0072 capability-port *verbs* (sign,
 /// nip44_encrypt, nip44_decrypt) live in [`super::super::SignCommand`] — they
 /// *use* the roster rather than mutating it.
 pub enum IdentityCommand {
@@ -71,7 +71,7 @@ pub enum IdentityCommand {
         message: Option<String>,
     },
     /// V-14 step b — relay-layer connection state update for the NIP-46 bunker
-    /// session. The actor writes it to the shared `SignerStateSlot` (ADR-0048
+    /// session. The actor writes it to the shared `SignerStateSlot` (ADR-0072
     /// D6 — the unified remote-signer health slot); the built-in
     /// `"signer_state"` snapshot projection reads the slot on every tick. D4:
     /// the actor is the sole writer of the slot — the broker callback routes
@@ -83,7 +83,7 @@ pub enum IdentityCommand {
         /// Optional human-readable reason (error message on reconnect/failed).
         reason: Option<String>,
     },
-    /// ADR-0048 D6 — NIP-55 external-signer health update for the unified
+    /// ADR-0072 D6 — NIP-55 external-signer health update for the unified
     /// `signer_state` projection. Emitted by the `nmp-ffi` NIP-55 driver when
     /// the host capability bridge reports an outcome that affects long-lived
     /// signer health (awaiting approval, ready, rejected, unavailable).
@@ -95,7 +95,7 @@ pub enum IdentityCommand {
         reason: Option<String>,
     },
     /// Deliver an inbound remote-signer response for correlation-keyed
-    /// dispatch (ADR-0050 §D3b) — the actor-mailbox completion path for
+    /// dispatch (ADR-0072 §D3b) — the actor-mailbox completion path for
     /// steady-state replies. Both backends route here instead of resolving
     /// the parked op on a foreign thread: NIP-46 via the broker's opaque
     /// completion sink, NIP-55 via `external_signer.rs::deliver`. The arm
@@ -110,7 +110,7 @@ pub enum IdentityCommand {
         /// each handle's `deliver_response`.
         response_json: String,
     },
-    /// ADR-0040 §3 — re-entry command from the serialized capability-worker
+    /// ADR-0072 §3 — re-entry command from the serialized capability-worker
     /// thread (V-90 Site 2). The worker runs `dispatch_capability` off the
     /// actor thread and posts this command with the result; the actor
     /// applies it inside a normal tick (D4 single-writer invariant).

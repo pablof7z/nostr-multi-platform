@@ -1,4 +1,4 @@
-# ADR-0048 NIP-55 Amber E2E Runbook
+# ADR-0072 NIP-55 Amber E2E Runbook
 
 Acceptance procedure for the Stage-4 emulator E2E that gates the `compose/login-block`
 registry entry from `soon` to `stable`. Run this whenever the NIP-55 stack is touched.

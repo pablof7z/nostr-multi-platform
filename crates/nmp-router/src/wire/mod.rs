@@ -1,5 +1,5 @@
 //! Typed FlatBuffers action-payload codec for the router-owned relay-list
-//! action (ADR-0064 / #1756 — WRITE direction):
+//! action (ADR-0071 / #1756 — WRITE direction):
 //!
 //! - [`action_payload`] — `nmp.nip65.publish_relay_list` (`N65P`).
 //!

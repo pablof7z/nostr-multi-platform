@@ -15,7 +15,7 @@ mod action;
 // counts + reactor pubkeys.
 mod aggregate;
 mod projection;
-// ADR-0064 / S3 (#1751) — typed FlatBuffers payload codecs (`ActionPayload`
+// ADR-0071 / S3 (#1751) — typed FlatBuffers payload codecs (`ActionPayload`
 // impls for `ReactAction` / `UnreactAction`) PLUS the read-side
 // reaction-aggregate sidecar codec (`reaction_aggregate_fb`).
 mod wire;

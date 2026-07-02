@@ -11,7 +11,7 @@
 // object, not module exports — they cannot be named in a `module` extern until
 // a wrapper like this one hoists them into real exports.
 //
-// Engine choice (ADR-0054 §1): the OPFS *SyncAccessHandle pool* VFS
+// Engine choice (ADR-0072 §1): the OPFS *SyncAccessHandle pool* VFS
 // ("opfs-sahpool"). Unlike the older async `opfs` VFS, opfs-sahpool is
 // synchronous after a one-time async pool open and does NOT require COOP/COEP
 // cross-origin isolation or SharedArrayBuffer — so it works on a plain static
@@ -24,7 +24,7 @@
 import sqlite3InitModule from "./sqlite3.mjs";
 
 // Cached singletons. The store is owned by exactly one Web Worker actor
-// (ADR-0047 §1 / ADR-0054 §3), so no locking is needed: init runs at most once.
+// (ADR-0072 §1 / ADR-0072 §3), so no locking is needed: init runs at most once.
 let sqlite3 = null;
 let poolUtil = null;
 let initPromise = null;

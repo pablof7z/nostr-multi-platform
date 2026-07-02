@@ -184,7 +184,7 @@ second framework native public API.
 | Marmot native surface under `crates/nmp-marmot` | Deleted. Current Marmot installation is Rust explicit composition through `nmp_marmot::install`; native shells use generic action dispatch plus pushed typed projections. | #2232 / #2495 |
 
 Any proposal to keep a raw native byte lane after its UniFFI replacement exists
-must meet ADR-0030's exception gate: measured production budget failure through
+must meet ADR-0072's exception gate: measured production budget failure through
 UniFFI bytes, an internal wrapper behind the UniFFI API, named owner,
 thresholds, retest date, and delete trigger.
 

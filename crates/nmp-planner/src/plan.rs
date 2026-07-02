@@ -200,7 +200,7 @@ pub struct RelayAttribution {
 /// A single merged filter that will be emitted as one wire REQ.
 ///
 /// The wire-emitter renders each `SubShape` as exactly one `["REQ", sub_id, filter]`
-/// frame. The `canonical_filter_hash` provides stable identity for ADR-0007
+/// frame. The `canonical_filter_hash` provides stable identity for ADR-0072
 /// `WireSubscriptionStatus` records across re-emissions.
 ///
 /// # Wire-emitter lifecycle field

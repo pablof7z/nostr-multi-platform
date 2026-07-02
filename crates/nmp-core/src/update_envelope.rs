@@ -3,8 +3,8 @@
 //! Every runtime frame is a binary `nmp.transport.UpdateFrame` with file
 //! identifier `NMPU`. The frame has exactly two variants:
 //!
-//! - `Snapshot`: carries the typed Tier-3 envelope fields (ADR-0044) plus the
-//!   per-projection typed FlatBuffers sidecar (ADR-0037).
+//! - `Snapshot`: carries the typed Tier-3 envelope fields (ADR-0072) plus the
+//!   per-projection typed FlatBuffers sidecar (ADR-0072).
 //! - `Panic`: terminal actor-thread death signal.
 //!
 //! The generic `payload:Value` JSON tree no longer exists in the schema.
@@ -40,7 +40,7 @@ pub type UpdateFrameBytes = Vec<u8>;
 /// that Rust consumers (chirp-tui, chirp-desktop) read instead of walking the
 /// deleted generic payload tree.
 ///
-/// Mirrors the fields written by `encode_snapshot_with_envelope` (ADR-0044).
+/// Mirrors the fields written by `encode_snapshot_with_envelope` (ADR-0072).
 /// Fields absent from the wire (never-written or default-zero) are returned as
 /// `0` / `false` / `None` — same semantics as FlatBuffers native defaults.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -51,7 +51,7 @@ pub struct SnapshotEnvelope {
     /// transport `schema_version` field.
     pub kernel_schema_version: u32,
     /// Wall-clock timestamp of this tick (ms since Unix epoch). Actor-liveness
-    /// signal (ADR-0028).
+    /// signal (ADR-0072).
     pub last_tick_ms: u64,
     /// Whether the kernel actor is in the running state.
     pub running: bool,
@@ -86,7 +86,7 @@ pub struct SnapshotEnvelope {
     pub last_error_category: Option<String>,
     /// Last planner error message, if any.
     pub last_planner_error: Option<String>,
-    // --- ADR-0055 Rung 2: frame-level epoch identity (D4) ---
+    // --- ADR-0070 Rung 2: frame-level epoch identity (D4) ---
     /// Within-session monotonic counter. Bumped on events that invalidate the
     /// host's entire cached projection set (account-switch, schema-change,
     /// explicit resync). On bump → the next frame is a full baseline in Rung 3.
@@ -96,7 +96,7 @@ pub struct SnapshotEnvelope {
     /// across process restarts. When the host sees a changed `session_id` it MUST
     /// discard all per-key applied-rev state and re-baseline. 0 on old frames.
     pub session_id: u64,
-    // --- ADR-0055 Rung 3 S5: encode-time diagnostic (one-tick lag) ---
+    // --- ADR-0070 Rung 3 S5: encode-time diagnostic (one-tick lag) ---
     /// Microseconds spent in the previous tick's `encode_snapshot_with_envelope`
     /// call (one-tick lag: the value in frame N+1 reflects tick N's encode time).
     /// Used by the S6 harness to assert no encode-time regression under
@@ -175,11 +175,11 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         last_error_toast: snapshot.last_error_toast().map(str::to_string),
         last_error_category: snapshot.last_error_category().map(str::to_string),
         last_planner_error: snapshot.last_planner_error().map(str::to_string),
-        // ADR-0055 Rung 2: decode frame-level epoch identity (D4). Old
+        // ADR-0070 Rung 2: decode frame-level epoch identity (D4). Old
         // (pre-Rung-2) frames return 0 for both (FlatBuffers default) — safe.
         snapshot_epoch: snapshot.snapshot_epoch(),
         session_id: snapshot.session_id(),
-        // ADR-0055 Rung 3 S5: one-tick-lag encode time for harness comparison.
+        // ADR-0070 Rung 3 S5: one-tick-lag encode time for harness comparison.
         serialize_us,
     }
 }
@@ -234,7 +234,7 @@ pub enum UpdateEnvelope {
 /// `file_identifier`. The transport layer never interprets these bytes; it only
 /// carries them losslessly alongside the typed Tier-3 snapshot envelope.
 ///
-/// ADR-0055 Rung 2: `projection_rev` and `state` fields added (tail-appended on
+/// ADR-0070 Rung 2: `projection_rev` and `state` fields added (tail-appended on
 /// the wire — old decoders read them as default 0 / Changed, treating every entry
 /// as a payload update).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -249,13 +249,13 @@ pub struct TypedProjectionData {
     pub file_identifier: String,
     /// Opaque typed payload bytes, carried verbatim by the transport.
     pub payload: Vec<u8>,
-    /// ADR-0055 Rung 2: monotonic revision for this projection key, derived
+    /// ADR-0070 Rung 2: monotonic revision for this projection key, derived
     /// by the kernel's `ProjectionRevTracker` (SUM of source-version counters
     /// across the key's declared dependencies). Hosts store this alongside the
     /// decoded value and use it in Rung 3 to skip re-decode on unchanged keys.
     /// 0 on old (pre-Rung-2) frames.
     pub projection_rev: u64,
-    /// ADR-0055 Rung 2: presence classification for this tick. Hosts decode and
+    /// ADR-0070 Rung 2: presence classification for this tick. Hosts decode and
     /// store this value; no behavior change in Rung 2 (all projections are still
     /// emitted). In Rung 3 `Cleared` tells the host to drop its cached value and
     /// `Changed` tells it to decode `payload` and update the cache.
@@ -356,7 +356,7 @@ pub fn encode_snapshot_frame(
             last_error_toast,
             last_error_category,
             last_planner_error,
-            // ADR-0055 Rung 2: stamp frame-level epoch identity (D4).
+            // ADR-0070 Rung 2: stamp frame-level epoch identity (D4).
             snapshot_epoch: envelope.snapshot_epoch,
             session_id: envelope.session_id,
             ..Default::default()
@@ -406,7 +406,7 @@ fn encode_typed_projections<'bldr>(
                 &fb::TypedProjectionArgs {
                     key: Some(key),
                     payload: Some(typed_payload),
-                    // ADR-0055 Rung 2: stamp per-projection rev + state.
+                    // ADR-0070 Rung 2: stamp per-projection rev + state.
                     projection_rev: entry.projection_rev,
                     state: entry.state.into(),
                 },
@@ -435,7 +435,7 @@ pub fn encode_panic(msg: impl Into<String>) -> UpdateFrameBytes {
 }
 
 /// Decode one update frame into the canonical discriminated envelope
-/// (ADR-0001 / T103): the FlatBuffers `FrameKind` tag IS the discriminant.
+/// (ADR-0070 / T103): the FlatBuffers `FrameKind` tag IS the discriminant.
 ///
 /// The `Snapshot` arm carries the typed [`SnapshotEnvelope`]; the generic JSON
 /// payload no longer exists on the wire or in the schema.

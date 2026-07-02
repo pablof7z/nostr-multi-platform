@@ -1,4 +1,4 @@
-//! V-06 / issue #960 — NIP-42 AUTH through the ADR-0050 async signer port.
+//! V-06 / issue #960 — NIP-42 AUTH through the ADR-0072 async signer port.
 //!
 //! Before this fix the kernel signed the kind:22242 AUTH event with a
 //! *synchronous* `AuthSignerFn`, and `sync_kernel` cleared that signer whenever

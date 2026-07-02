@@ -5,7 +5,9 @@
 use super::{author_interest, pk, write_snapshot};
 use crate::compiler::mailbox::{InMemoryMailboxCache, MailboxSnapshot};
 use crate::compiler::SubscriptionCompiler;
-use crate::interest::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::interest::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::plan::RoutingSource;
 use std::collections::BTreeSet;
 

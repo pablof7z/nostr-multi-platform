@@ -1,4 +1,4 @@
-//! `FlatFeed` — a predicate-gated flat note feed (ADR-0042 §5.1).
+//! `FlatFeed` — a predicate-gated flat note feed (ADR-0076 §5.1).
 //!
 //! The M2 author/thread read-path replacement. Unlike the OP-centric root-indexed feed
 //! ([`crate::OpFeedEngine`] / [`crate::register_op_feed`]), which is a stream of
@@ -261,7 +261,7 @@ impl ObservedProjectionSink for FlatFeed {
 }
 
 impl FeedInterestShape for FlatFeed {
-    /// The feed's covered pull interest, or `None` to fail closed (ADR-0058 §8
+    /// The feed's covered pull interest, or `None` to fail closed (ADR-0072 §8
     /// 6B). The host pairs the feed with a `nmp_feed::PullFeedController`, which
     /// is constructed UNCONDITIONALLY; its `load_older` re-reads this shape on
     /// every call and fails closed (returns `false`, no pull, no broad-scan)
@@ -279,7 +279,7 @@ impl FeedController for FlatFeed {
 
 /// Build the **author-feed** pull [`InterestShape`]: `{authors:[pk], kinds}` —
 /// the covered E1 `AuthorsKind` shape the kernel pull substrate maps to
-/// `idx_kind_author_time` (ADR-0045). Pair with [`author_feed_predicate`] and a
+/// `idx_kind_author_time` (ADR-0070). Pair with [`author_feed_predicate`] and a
 /// `nmp_feed::PullFeedController` so `load_older` drains older notes by that
 /// author. The `kinds` argument is the compiled acquisition set derived from the
 /// app's primary-kind declaration.
@@ -295,7 +295,7 @@ pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
 /// `{kinds, #e:[root]}` — the covered E2 `Etag` shape. This pages the *replies*
 /// that reference `root_id` via `#e`; the root note itself is an event-id-only
 /// interest that the pull substrate does not cover, so the screen/component that
-/// needs the root owns that separate dependency (ADR-0058 §8 6B). Pair with
+/// needs the root owns that separate dependency (ADR-0072 §8 6B). Pair with
 /// [`thread_feed_predicate`] (which still admits the root by id) and a
 /// `nmp_feed::PullFeedController`.
 #[must_use]

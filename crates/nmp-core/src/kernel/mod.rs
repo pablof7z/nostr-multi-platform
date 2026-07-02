@@ -22,16 +22,16 @@ mod diagnostic_counters;
 mod discovery;
 pub(crate) mod event_claim_released; // V-59 rung 1 — event-claim released observer ring.
 mod event_observer;
-/// ADR-0054 §X — KernelPorts facade: 10 typed port newtypes (#1721 slice 1).
+/// ADR-0072 §X — KernelPorts facade: 10 typed port newtypes (#1721 slice 1).
 pub mod kernel_ports;
 mod observer_replay;
 pub(crate) mod pull;
-pub mod pull_cursor; // ADR-0058 §3a — non-durable pull-cursor registry + actor commands.
+pub mod pull_cursor; // ADR-0072 §3a — non-durable pull-cursor registry + actor commands.
 pub(crate) mod pull_wake;
 mod ram_eviction;
 mod store_wakeup;
-/// ADR-0052 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
-pub mod wallet_access; // ADR-0062 — observer-scoped read-model catch-up.
+/// ADR-0072 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
+pub mod wallet_access; // ADR-0070 — observer-scoped read-model catch-up.
 pub use dependent_interests::DependentInterestChild;
 pub(crate) use observer_replay::ObserverReplayRequest;
 mod external_event_sink;
@@ -63,10 +63,10 @@ mod requests;
 pub mod routing_trace; // V-51 — bounded ring-buffer projection of recent routing decisions.
 pub mod routing_trace_dto; // V-51 — JSON DTO renderer for the routing-trace projection.
 pub use requests::ProfileLiveness;
-pub(crate) mod refs; // ADR-0063 (#1671) — kernel RefResolver.
+pub(crate) mod refs; // ADR-0070 (#1671) — kernel RefResolver.
 pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 mod feed_author_refs;
-/// ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+/// ADR-0070 Rung 1 — kernel-owned per-projection revision manifest.
 pub(crate) mod projection_rev;
 mod ref_row_source;
 pub(crate) mod snapshot_registry;
@@ -81,7 +81,7 @@ mod tier3_negentropy_tests;
 mod timeline_order_tests;
 #[cfg(test)]
 mod timeline_perf_tests;
-/// Tier-2 kernel-owned typed-projection codecs + `make_update` wiring (ADR-0037).
+/// Tier-2 kernel-owned typed-projection codecs + `make_update` wiring (ADR-0072).
 mod typed_projections;
 #[cfg(test)]
 mod typed_projections_tests;
@@ -208,7 +208,7 @@ pub use relay_projection::{AppRelayList, AppRelaySlot};
 use relay_transport::RelayTransportMap;
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
-pub use snapshot_registry::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7
+pub use snapshot_registry::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0070 D7
 use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
 use types::{
@@ -229,13 +229,13 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
-    /// ADR-0055 per-projection revision tracker (Rung 2/3 stamp/omit).
+    /// ADR-0070 per-projection revision tracker (Rung 2/3 stamp/omit).
     pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
-    /// ADR-0063 row-delta producer state for `typed_projections::builtins_refs`.
+    /// ADR-0070 row-delta producer state for `typed_projections::builtins_refs`.
     ref_row_delta_tracker: crate::refs::RefRowDeltaTracker,
     ref_row_last_identity: Option<(u64, u64)>,
     ref_row_last_permits: (bool, bool),
-    /// ADR-0055 biconditional completeness oracle (test/test-support only; zero cost in production).
+    /// ADR-0070 biconditional completeness oracle (test/test-support only; zero cost in production).
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) projection_oracle: projection_rev::oracle::OracleState,
     /// Test-support GC budget ceiling; `None` = production default (LRU disabled).
@@ -245,7 +245,7 @@ pub struct Kernel {
     timing: TimingMilestones,
     relays: HashMap<RelayRole, RelayHealth>,
     transport_relays: RelayTransportMap,
-    /// Kind:0 profile lookup substrate (D0, ADR-0057 PR 2).
+    /// Kind:0 profile lookup substrate (D0, ADR-0070 PR 2).
     profile_lookup: Arc<dyn ProfileLookup>,
     events: HashMap<String, StoredEvent>,
     /// Count of cached kind:1 events ever inserted into `events`.
@@ -282,7 +282,7 @@ pub struct Kernel {
     /// Substrate-generic outbound public tags appended by the publish policy
     /// to `PublicRoutable` events (the kernel names no NIP-89 noun — D0).
     outbound_public_tags: Vec<Vec<String>>,
-    /// Per-NIP ingest parser registry (ADR-0057, V-40).
+    /// Per-NIP ingest parser registry (ADR-0070, V-40).
     ingest_dispatcher: Arc<std::sync::RwLock<EventIngestDispatcher>>,
     /// Test-only handle to `TestDmInboxRelayCache`.
     #[cfg(any(test, feature = "test-support"))]
@@ -298,16 +298,16 @@ pub struct Kernel {
     >,
     /// pubkey → consumer-id refcount (profile claims).
     profile_claims: HashMap<String, BTreeSet<String>>,
-    /// ADR-0063 pubkey → Live-liveness consumer-id set.
+    /// ADR-0070 pubkey → Live-liveness consumer-id set.
     live_profile_claims: HashMap<String, BTreeSet<String>>,
-    /// ADR-0063 primary_id → Live-liveness consumer-id set.
+    /// ADR-0070 primary_id → Live-liveness consumer-id set.
     live_event_claims: HashMap<String, BTreeSet<String>>,
-    /// ADR-0063 pubkey → per-consumer demanded `ProfileShape`.
+    /// ADR-0070 pubkey → per-consumer demanded `ProfileShape`.
     ref_profile_shapes: HashMap<String, BTreeMap<String, refs::ProfileShape>>,
-    /// ADR-0063 primary_id → per-consumer demanded `EventShape`.
+    /// ADR-0070 primary_id → per-consumer demanded `EventShape`.
     ref_event_shapes: HashMap<String, BTreeMap<String, refs::EventShape>>,
-    auto_profile_refs_by_consumer: BTreeMap<String, BTreeSet<String>>, // ADR-0063 D7 (Lane H)
-    /// primary_id → consumer-id refcount (event claims, F-CR-06 / ADR-0034).
+    auto_profile_refs_by_consumer: BTreeMap<String, BTreeSet<String>>, // ADR-0070 D7 (Lane H)
+    /// primary_id → consumer-id refcount (event claims, F-CR-06 / ADR-0072).
     event_claims: HashMap<String, BTreeSet<String>>,
     /// primary_ids with an in-flight `OneshotApi` interest.
     event_claim_requested: BTreeSet<String>,
@@ -421,13 +421,13 @@ pub struct Kernel {
     negentropy_sync_stats: types::NegentropySyncStats,
     last_gc: Option<crate::store::GcReport>,
     last_gc_at_ms: Option<u64>,
-    /// ADR-0045 E1 completion set for store-cache serve (one-shot per interest shape).
+    /// ADR-0070 E1 completion set for store-cache serve (one-shot per interest shape).
     pub(in crate::kernel) served_interest_shapes: HashSet<u64>,
-    /// ADR-0045 §5 continuation queue for chunked store-cache serves.
+    /// ADR-0070 §5 continuation queue for chunked store-cache serves.
     pub(in crate::kernel) pending_cache_serves: VecDeque<cache_serve::PendingCacheServe>,
-    /// ADR-0058 §10 actor-owned store-wakeup subsystem (cache-serve re-arm + pull-cursor wakes).
+    /// ADR-0072 §10 actor-owned store-wakeup subsystem (cache-serve re-arm + pull-cursor wakes).
     pub(in crate::kernel) store_wakeups: store_wakeup::StoreWakeups,
-    /// ADR-0058 §3 non-durable pull-cursor registry.
+    /// ADR-0072 §3 non-durable pull-cursor registry.
     pub(in crate::kernel) pull_cursor_registry: pull_cursor::PullCursorRegistrySlot,
     snapshot_builder: flatbuffers::FlatBufferBuilder<'static>, // Rung 3 D3-6: reset+to_vec pattern
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.

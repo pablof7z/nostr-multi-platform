@@ -46,7 +46,7 @@ on:
 
 jobs:
   gallery-android-junit:
-    # ADR-0048 Stage 2 — NIP-55 proof gate (advances #1124).
+    # ADR-0072 Stage 2 — NIP-55 proof gate (advances #1124).
     #
     # The gallery is the canonical source of the `login-block` component; Chirp,
     # the web registry, and the CLI registry carry vendored copies. The

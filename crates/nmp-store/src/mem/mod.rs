@@ -129,7 +129,7 @@ pub(super) struct MemState {
     /// in-memory backend used by tests and the lmdb-off build.
     pub(super) replaceable_freshness: HashMap<crate::ReplaceableKey, u64>,
 
-    /// K3 coverage ledger (ADR-0056 §3, Stage D1): `(filter_hash, relay)` →
+    /// K3 coverage ledger (ADR-0072 §3, Stage D1): `(filter_hash, relay)` →
     /// `covered_through` unix-seconds. Parity with the LMDB backend's
     /// `nmp-coverage` sub-db. Downward-closed and monotonic — see
     /// `EventStore::record_coverage` / `crate::CoverageRow`.
@@ -141,7 +141,7 @@ pub(super) struct MemState {
     /// Domain schema versions.
     pub(super) domain_versions: HashMap<&'static str, u32>,
 
-    // ─── Ingest log (ADR-0058 §3) ───────────────────────────────────────────────
+    // ─── Ingest log (ADR-0072 §3) ───────────────────────────────────────────────
     /// Monotonic ingest sequence counter. Starts at 0 (no entries); first real seq is 1.
     /// D4: incremented only inside the MemState mutex.
     pub(super) ingest_seq: u64,
@@ -152,7 +152,7 @@ pub(super) struct MemState {
     /// GC floor: the lowest seq that has been trimmed. Entries ≤ this value are gone.
     pub(super) log_gc_floor: u64,
 
-    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0058 §6, step-4).
+    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0072 §6, step-4).
     ///
     /// Held under the SAME mutex as `ingest_log` / `log_gc_floor` / `ingest_seq`,
     /// so the append-time trim reads a consistent claim set within the same

@@ -122,7 +122,7 @@ pub struct LastTerminal {
     /// (sign-step failure, NWC pay-invoice success).
     pub event_id: Option<String>,
     /// Opaque structured result body the action carried to a success terminal
-    /// (ADR-0043 Decision 4). `nmp-core` NEVER parses this — it is forwarded
+    /// (ADR-0071 Decision 4). `nmp-core` NEVER parses this — it is forwarded
     /// verbatim into the `action_results[correlation_id]` row's `result` field
     /// so a protocol crate can attach a descriptor (e.g. a Blossom blob
     /// descriptor) without `nmp-core` learning any protocol noun (D0). Publish

@@ -61,7 +61,7 @@ impl RelayTextInterceptor for WalletInterceptor {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
-        // ADR-0052 §D5: the runtime helpers name only the narrow
+        // ADR-0072 §D5: the runtime helpers name only the narrow
         // `WalletKernelAccess` capability. The interceptor holds a real
         // `&mut Kernel`, so wrap it through `as_wallet_access` — the same
         // surface the `Protocol` dispatch arm installs on the command context.
@@ -132,7 +132,7 @@ impl RelayTextInterceptor for WalletInterceptor {
 /// This is the reusable composition root for Nostr Wallet Connect: it
 ///
 /// 1. registers the three `nmp.wallet.{connect,disconnect,pay_invoice}`
-///    action modules — ADR-0052 rung 5.2: each module VALUE owns a clone of
+///    action modules — ADR-0072 rung 5.2: each module VALUE owns a clone of
 ///    the per-app [`WalletRuntimeHandle`], so dispatch reaches THIS app's
 ///    runtime with no process-global;
 /// 2. constructs the [`WalletRuntime`] behind a shared handle, installing the
@@ -183,7 +183,7 @@ pub fn register_wallet(
     }
 
     // 3. Action modules — exposed under `nmp.wallet.{connect,disconnect,
-    //    pay_invoice}`. ADR-0052 rung 5.2: each module VALUE owns a clone of
+    //    pay_invoice}`. ADR-0072 rung 5.2: each module VALUE owns a clone of
     //    the per-app handle (no process-global install).
     app.register_action(WalletConnectModule::new(Arc::clone(&handle)))
         .expect("duplicate registration: nmp-nip47 WalletConnectModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
@@ -198,7 +198,7 @@ pub fn register_wallet(
         runtime: Arc::clone(&handle),
     }));
 
-    // 5/6. The typed `"wallet"` sidecar (ADR-0037) — emitted ALONGSIDE the
+    // 5/6. The typed `"wallet"` sidecar (ADR-0072) — emitted ALONGSIDE the
     //    generic `Value` projection above, never replacing it.
     app.register_typed_snapshot_projection(
         nmp_ownership::DeclaredProjectionKey::framework("wallet", "projection.wallet"),
@@ -206,7 +206,7 @@ pub fn register_wallet(
     );
 
     // Hand the per-app handle back so the caller can thread it into the NIP-57
-    // zap auto-chain (ADR-0052 rung 5.2; `nmp-nip47` must not depend on
+    // zap auto-chain (ADR-0072 rung 5.2; `nmp-nip47` must not depend on
     // `nmp-nip57`, so the zap override lives at the caller).
     handle
 }

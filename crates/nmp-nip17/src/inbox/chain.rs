@@ -6,7 +6,7 @@
 //! envelope and self-drives. Extracted from `inbox.rs` to keep that file within
 //! its LOC ceiling and to localise the async decrypt machinery.
 //!
-//! # Two sequential NIP-44 decrypts (ADR-0050 §D6)
+//! # Two sequential NIP-44 decrypts (ADR-0072 §D6)
 //!
 //! Unsealing ONE kind:1059 envelope needs two sequential decrypts, each routed
 //! through `ActorCommand::Nip44DecryptForAccount`:

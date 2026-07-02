@@ -325,7 +325,7 @@ impl RelayTextInterceptor for NegentropySyncRuntime {
                             need.len() as u64,
                             session.local_item_count,
                         );
-                        // K3 Stage D1 (ADR-0056 §3) — reconciliation COMPLETED
+                        // K3 Stage D1 (ADR-0072 §3) — reconciliation COMPLETED
                         // for this (filter, relay). Per Stage A the NEG window is
                         // un-floored `[0, ∞)`, so the completed sync honestly
                         // covers `[0, now]`; advance the coverage ledger. Gated

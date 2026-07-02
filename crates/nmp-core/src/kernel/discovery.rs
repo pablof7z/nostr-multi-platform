@@ -82,7 +82,7 @@ impl Kernel {
     /// `profiles` are borrowed `&` — disjoint fields, so the caller passes
     /// `&event.tags` (no clone) from the ingest path.
     pub(in crate::kernel) fn collect_unknown_refs(&mut self, tags: &[Vec<String>]) {
-        // ADR-0057 PR 2 — `profiles` is now the capability-owned cache behind
+        // ADR-0070 PR 2 — `profiles` is now the capability-owned cache behind
         // `Arc<dyn ProfileLookup>` (interior-mutable, `&self`), so the old
         // `&mut self` field split-borrow over `events` + `profiles` collapses
         // to: clone the cheap `Arc` handle, then borrow `unknown_ids` / `events`
@@ -126,7 +126,7 @@ impl Kernel {
             return;
         }
 
-        // ADR-0057 PR 2 — clone the cheap capability-owned profile-cache `Arc`
+        // ADR-0070 PR 2 — clone the cheap capability-owned profile-cache `Arc`
         // (interior-mutable, `&self`) so the membership check reads through it
         // while `unknown_ids` is borrowed `&mut` below.
         let profile_lookup = std::sync::Arc::clone(&self.profile_lookup);

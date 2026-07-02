@@ -6,7 +6,7 @@
 //!    ALLOWED — this is the in-process relay-forwarding policy seam, not the
 //!    deleted native push sink).
 //! 2. The canonical external mirror pull path: `GlobalLog` cursor +
-//!    UniFFI `NmpApp::mirror_pull_page` + `AdvancePullCursor` (ADR-0058).
+//!    UniFFI `NmpApp::mirror_pull_page` + `AdvancePullCursor` (ADR-0072).
 //!    References to `after_seq`, `AdvancePullCursor`, and
 //!    `NmpApp::mirror_pull_page` must NOT be flagged — they are the canonical
 //!    replacement for the deleted native sink.

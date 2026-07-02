@@ -43,7 +43,7 @@
 //!
 //! Call [`register_input_scopes`] once during host composition (before
 //! `nmp_app_start`). Duplicate scope ids yield to the existing registration
-//! (ADR-0049 — first wins).
+//! (ADR-0069 — first wins).
 
 use std::sync::Arc;
 
@@ -152,7 +152,7 @@ impl InputScopeRecognizer for GroupInputScopeRecognizer {
 
 /// Register the NIP-29 group input scope against `host`.
 ///
-/// Composition-root house style (ADR-0046 / ADR-0049 — no linkme/inventory):
+/// Composition-root house style (ADR-0069 / ADR-0069 — no linkme/inventory):
 /// a host calls this one-liner during composition to add the `nip29.groups`
 /// input recognizer. A duplicate scope id yields to the existing registration
 /// (first wins).

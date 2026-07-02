@@ -1,4 +1,4 @@
-//! ADR-0063 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
+//! ADR-0070 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
 //! seam, extracted from `snapshot.rs` to keep that file under the 500-LOC hard
 //! ceiling (AGENTS.md file-size rule). These are inherent [`NmpApp`] methods, so
 //! the mount point (`#[path]` from `snapshot.rs`) is irrelevant to callers.
@@ -6,7 +6,7 @@
 use super::NmpApp;
 
 impl NmpApp {
-    /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for a
+    /// ADR-0070 D7 (#1671 Lane H) — register the feed-author-set provider for a
     /// feed snapshot key (e.g. `"app.feed.following"`).
     ///
     /// `f` returns the raw author keys the feed will RENDER for its CURRENT
@@ -29,7 +29,7 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H, BLOCKING 1) — register a feed's typed sidecar
+    /// ADR-0070 D7 (#1671 Lane H, BLOCKING 1) — register a feed's typed sidecar
     /// AND its feed-author auto-resolve provider from ONE source, STRUCTURALLY
     /// paired.
     ///
@@ -111,7 +111,7 @@ impl NmpApp {
         });
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — the feed-author-provider keys currently
+    /// ADR-0070 D7 (#1671 Lane H) — the feed-author-provider keys currently
     /// registered, without running any provider. Use in structural-pairing tests
     /// to assert that registering a feed's typed sidecar ALSO registered its
     /// author provider under the same key (and that closing the feed removes both).
@@ -128,7 +128,7 @@ impl NmpApp {
             .unwrap_or_default()
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — run ONE feed-author provider by key and
+    /// ADR-0070 D7 (#1671 Lane H) — run ONE feed-author provider by key and
     /// return its current visible-author set (test introspection: prove a
     /// dynamic feed's rendered authors are surfaced for auto-resolve).
     #[must_use]

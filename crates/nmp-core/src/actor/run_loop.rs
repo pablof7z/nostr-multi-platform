@@ -34,7 +34,7 @@ use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 /// `Arc<Mutex<…>>` instances so registrations from outside the actor are
 /// visible without crossing the FFI on each event.
 ///
-/// Single-inbox priority design (ADR-0050 §D3a): `inbox_rx` carries both
+/// Single-inbox priority design (ADR-0072 §D3a): `inbox_rx` carries both
 /// commands and relay events as [`ActorMail`]. Each iteration drains the
 /// command lane via `try_recv` first (budgeted, stashing any relay mail seen
 /// along the way), then makes the loop's single blocking `recv_timeout` — so a
@@ -84,7 +84,7 @@ pub fn run_actor_with_observers(
     // keepalive constants, `RelayRole::Content` default lane) matches the
     // pre-Pool actor behaviour bit-for-bit; per-URL role attribution still
     // flows through `Pool::ensure_open_with_role` from `ensure_relay_worker`.
-    // ADR-0050 §D3a — the pool delivers relay events through a
+    // ADR-0072 §D3a — the pool delivers relay events through a
     // `RelayMailSink` that wraps each `PoolEvent` into `ActorMail::Relay` and
     // pushes it onto the SAME inbox `inbox_rx` receives commands on. There is
     // no longer a separate `relay_rx`: relay traffic and commands share one
@@ -92,7 +92,7 @@ pub fn run_actor_with_observers(
     let inbox = Inbox::new(inbox_rx);
     let pool = config.build_pool(command_tx_self.relay_sink());
 
-    // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
+    // The lane scheduler (ADR-0072 §D3a). It owns the relay backlog so any
     // relay mail stashed while draining the command lane each iteration is
     // replayed in order.
     let mut scheduler = MailScheduler::new();
@@ -108,7 +108,7 @@ pub fn run_actor_with_observers(
     if let Ok(mut guard) = event_store.lock() {
         *guard = Some(kernel.event_store_handle());
     }
-    // ADR-0058 step 3b — publish the kernel's pull-cursor registry handle so the
+    // ADR-0072 step 3b — publish the kernel's pull-cursor registry handle so the
     // synchronous FFI `pull_page` path can snapshot a registration. Re-published
     // on `Reset` (see dispatch.rs) the same way the event-store handle is.
     if let Ok(mut guard) = pull_cursor_registry.lock() {
@@ -188,9 +188,9 @@ pub fn run_actor_with_observers(
     // D4: the identity runtime is the sole writer of the shared
     // bunker-handshake slot. The built-in `"bunker_handshake"` snapshot
     // projection registered above reads the same `Arc<Mutex<…>>` clone on
-    // every tick. Same for `signer_state` (ADR-0048 D6).
+    // every tick. Same for `signer_state` (ADR-0072 D6).
     let mut identity = IdentityRuntime::new(bunker_handshake, signer_state);
-    // ADR-0052 §D3 — bind the per-app signer hook slots so the FFI broker /
+    // ADR-0072 §D3 — bind the per-app signer hook slots so the FFI broker /
     // NIP-55 driver install into the SAME slots this runtime reads.
     identity.set_signer_hook_slots(bunker_hook, external_signer_hook);
     // V-38: the wallet runtime moved to `nmp-nip47`. The actor no longer
@@ -227,7 +227,7 @@ pub fn run_actor_with_observers(
     // (performance-timing) read, never the business clock — D9-clean.
     let mut last_gc = Instant::now();
     let mut startup_sent = false;
-    // The single unified parked-op queue (ADR-0050 §D2; #1753). `dispatch_command`
+    // The single unified parked-op queue (ADR-0072 §D2; #1753). `dispatch_command`
     // pushes a `ParkedOp` whenever a remote (NIP-46 / NIP-55) signer goes
     // `Pending` — publish, sign-and-return, the generic sign port, and the
     // cipher port (§D1) all land here and are drained in ONE `drive` below.
@@ -238,7 +238,7 @@ pub fn run_actor_with_observers(
     let mut queued_publish_outbound = Vec::new();
     let mut first_command = None;
 
-    // ADR-0040 §3 — spawn the serialized capability-worker thread (V-90 Site 2).
+    // ADR-0072 §3 — spawn the serialized capability-worker thread (V-90 Site 2).
     // The worker owns the Receiver; the actor holds `capability_work_tx` and
     // hands borrows of it to `ActorContext` on each dispatch. Dropping
     // `capability_work_tx` on actor teardown closes the channel and the worker

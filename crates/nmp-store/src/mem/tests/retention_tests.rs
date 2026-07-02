@@ -1,4 +1,4 @@
-//! ADR-0058 §6 step-4 — Protected-cursor log-retention tests (`MemEventStore`).
+//! ADR-0072 §6 step-4 — Protected-cursor log-retention tests (`MemEventStore`).
 //!
 //! Exercises the append-time trim rule directly (white-box) so the
 //! `DEFAULT_LOG_MAX_ENTRIES` (10_000) normal floor can be crossed without

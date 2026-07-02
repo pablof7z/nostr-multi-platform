@@ -30,7 +30,7 @@ impl NmpApp {
             return status;
         }
         if let Ok(mut slot) = self.composition.coverage_hook.lock() {
-            // ADR-0049 Part 2 — record before overwriting so `had_previous`
+            // ADR-0069 Part 2 — record before overwriting so `had_previous`
             // reflects the pre-write state of this last-writer-wins slot.
             self.record_slot_decision("coverage_hook", "coverage_hook", slot.is_some());
             *slot = Some(hook);
@@ -73,7 +73,7 @@ impl NmpApp {
     ///
     /// The handler is the bridge between an [`nmp_core::substrate::ActionModule`]
     /// whose `execute()` body emits an `ActorCommand::Protocol` carrying a
-    /// `nmp_core::substrate::HostOpCommand` (ADR-0052 §D4, K2 rung 5.4 - the
+    /// `nmp_core::substrate::HostOpCommand` (ADR-0072 §D4, K2 rung 5.4 - the
     /// bespoke `DispatchHostOp` arm was merged into the single `Protocol` write
     /// seam) and app-owned state the op mutates. Marmot no longer uses this
     /// path; it installs a crate-owned runtime. The actor snapshots the
@@ -180,7 +180,7 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0051 — install a [`nmp_core::substrate::RelayConnectedHook`]
+    /// ADR-0072 — install a [`nmp_core::substrate::RelayConnectedHook`]
     /// (today `nmp-nip11`); the actor snapshots installed hooks at start and
     /// fans them on `PoolEvent::Opened`. Additive.
     pub fn add_relay_connected_hook(

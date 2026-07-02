@@ -52,7 +52,7 @@ pub(crate) struct CompositionConfig {
     pub(crate) host_op_handler: nmp_core::substrate::HostOpHandlerSlot,
     /// V-38: substrate-generic relay-text interceptor slot.
     pub(crate) relay_text_interceptor: nmp_core::substrate::RelayTextInterceptorSlot,
-    /// ADR-0051 — relay-connected hook slot.
+    /// ADR-0072 — relay-connected hook slot.
     pub(crate) relay_connected_hook: nmp_core::substrate::RelayConnectedHookSlot,
     /// Test-support kernel-clock injection slot.
     pub(crate) kernel_clock: nmp_core::slots::KernelClockSlot,
@@ -68,7 +68,7 @@ pub(crate) struct CompositionConfig {
     pub(crate) bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot.
     pub(crate) dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
-    /// ADR-0057 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
+    /// ADR-0070 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
     pub(crate) profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.
     pub(crate) blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
@@ -79,7 +79,7 @@ pub(crate) struct CompositionConfig {
     pub(crate) search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
     /// #1804 — shared crate-registered input-scope recognizer registry.
     pub(crate) input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry>,
-    /// ADR-0052 §D3 — per-app bunker-URI hook slot. Belongs here (not in
+    /// ADR-0072 §D3 — per-app bunker-URI hook slot. Belongs here (not in
     /// `CapabilityPorts`) because `nmp_signer_broker_init` guards it with
     /// `ensure_prestart_config` — it cannot be refreshed after start.
     // Feature-conditionally live: read only under the `signer-broker` feature
@@ -109,7 +109,7 @@ pub(crate) struct CapabilityPorts {
     /// NIP-50 higher-order search relay source (kind:10007 read seam +
     /// app-default fallback).
     pub(crate) search_relay_source: SearchRelaySourceSlot,
-    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
+    /// ADR-0072 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
     /// `CompositionConfig`) because `nmp_external_signer_init` can refresh it
     /// after start.
     // Feature-conditionally live: read only under the `external-signer` feature
@@ -129,7 +129,7 @@ pub(crate) struct ReadHandles {
     /// V-83 — the kernel's `EventStore` handle, published back by the actor
     /// right after kernel construction (and re-published on `Reset`).
     pub(crate) event_store_handle: EventStoreSlot,
-    /// ADR-0058 step 3b — the kernel's pull-cursor registry handle.
+    /// ADR-0072 step 3b — the kernel's pull-cursor registry handle.
     pub(crate) pull_cursor_registry: PullCursorRegistryHandleSlot,
     /// V-51 phase 4 — slot the actor publishes the kernel's
     /// `RoutingTraceProjection` clone into right after kernel construction.

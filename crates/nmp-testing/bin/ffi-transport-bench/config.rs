@@ -67,7 +67,7 @@ pub const STEADY_EMIT_HZ: u32 = 4;
 /// Burst ceiling from app_lifecycle_ffi.rs clamp_emit_hz() — 12 Hz.
 pub const BURST_EMIT_HZ: u32 = 12;
 
-// ── Frame-size buckets (ADR-0055 omit-unchanged regime) ──────────────────────
+// ── Frame-size buckets (ADR-0070 omit-unchanged regime) ──────────────────────
 /// SMALL bucket: 256 B – 2 KB (1–3 changed sidecar entries, incremental diff).
 pub const SMALL_MIN_BYTES: usize = 256;
 pub const SMALL_MAX_BYTES: usize = 2048;

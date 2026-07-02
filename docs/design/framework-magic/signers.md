@@ -3,7 +3,7 @@
 > Parent: `docs/design/framework-magic.md`.
 > Read first: `docs/product-spec/subsystems.md` §7.4 (sessions + signer catalog);
 > `docs/design/kernel-substrate.md` (capabilities, actions, and composition);
-> ADR-0015.
+> ADR-0072.
 
 ## C11. Signer onboarding: bunker:// + nsec creation as kernel actions
 
@@ -85,7 +85,7 @@ unencrypted key material; signing remains Rust-owned).
 
 ## Cross-references
 
-- ADR-0015 — signer crate boundary and session ownership.
+- ADR-0072 — signer crate boundary and session ownership.
 - `docs/design/kernel-substrate.md` — capability/action/projection substrate.
 - `docs/product-spec/subsystems.md` §7.4 — `SessionState` + `Account` shapes.
 - The `nostr-connect` and `nostr-keyring` crates (aim.md §3) — the protocol/OS primitives the framework composes.

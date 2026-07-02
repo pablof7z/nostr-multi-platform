@@ -7,7 +7,7 @@
 //! `take_signed_events_projection()` object keyed by `correlation_id`, each value
 //! `{ "ok": true, "signed_json": "…" }` or `{ "ok": false, "error": "…" }`. This
 //! module adds a **typed FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection.
 //!
 //! ## Why this codec parses a `serde_json::Value` (deviation from #1031)

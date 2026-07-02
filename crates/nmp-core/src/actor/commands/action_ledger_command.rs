@@ -69,7 +69,7 @@ pub enum ActionLedgerCommand {
     /// benign no-op for the host.
     RecordSuccess {
         correlation_id: String,
-        /// ADR-0043 Decision 4 — opaque structured result body forwarded
+        /// ADR-0071 Decision 4 — opaque structured result body forwarded
         /// verbatim into the `action_results[correlation_id]` row's `result`
         /// field. `nmp-core` NEVER parses it (D0: no protocol noun in the
         /// substrate). `None` for the NWC pay-invoice path; `Some(json)` for a

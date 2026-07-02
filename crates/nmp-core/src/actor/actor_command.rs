@@ -1,9 +1,9 @@
-//! `ActorCommand` — the actor inbox command type (ADR-0065).
+//! `ActorCommand` — the actor inbox command type (ADR-0071).
 //!
 //! The top-level enum has 11 variants, each carrying a sub-payload enum
 //! grouped by cohesive ownership. The families match the existing
 //! `actor/dispatch/cmd_*.rs` dispatch split (D4: one dispatch authority, one
-//! type authority). See `docs/decisions/0065-actor-command-sub-enum-collapse.md`
+//! type authority). See `docs/decisions/0071-write-intents-and-route-provenance.md`
 //! for the full rationale.
 //!
 //! The `actor` module is private (`mod actor`, not `pub mod actor`), so this
@@ -29,7 +29,7 @@ pub use super::commands::test_support_command::TestSupportCommand;
 // re-exported through `actor/mod.rs` → `crate::SignerSource`. No duplication
 // here.
 
-/// The single waking-inbox command type for the actor (ADR-0050 §D3a).
+/// The single waking-inbox command type for the actor (ADR-0072 §D3a).
 ///
 /// Every host intent, every capability completion, every protocol-crate
 /// write, and every test-support hook is one variant. The families group
@@ -43,7 +43,7 @@ pub enum ActorCommand {
     /// Signer-roster management + account lifecycle + remote-signer health
     /// slots. These *mutate* the roster; the [`Self::Sign`] family *uses* it.
     Identity(IdentityCommand),
-    /// ADR-0050 signer-session capability port verbs: `sign |
+    /// ADR-0072 signer-session capability port verbs: `sign |
     /// nip44_encrypt | nip44_decrypt`. Backend-transparent: local keys
     /// resolve inline, remote signers park under the continuation sink.
     Sign(SignCommand),
@@ -53,9 +53,9 @@ pub enum ActorCommand {
     Contacts(ContactsCommand),
     /// Relay-list edits + transport-layer control.
     Relay(RelayCommand),
-    /// Refcounted reference-resolution verbs (ADR-0063 unified + legacy).
+    /// Refcounted reference-resolution verbs (ADR-0070 unified + legacy).
     Refs(RefsCommand),
-    /// Subscription-registry verbs + pull cursors (ADR-0042 M2 / ADR-0058).
+    /// Subscription-registry verbs + pull cursors (ADR-0076 M2 / ADR-0072).
     Interests(InterestsCommand),
     /// Action-stage ledger: host ACK + worker terminal recording.
     ActionLedger(ActionLedgerCommand),

@@ -21,7 +21,7 @@ nmp-planner = { path = "../nmp-planner" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent used in tests and
 # action implementations — the nmp_core::store compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
-# Typed FlatBuffers sidecar codecs for the snapshot projections (ADR-0037).
+# Typed FlatBuffers sidecar codecs for the snapshot projections (ADR-0072).
 # Workspace-pinned to 25.12.19, enforced by ci/check-flatbuffers-version-pins.sh.
 flatbuffers = { workspace = true }
 # `nostr::SingleLetterTag` to build the cache-only `StoreQuery::Tags { #h }` read
@@ -32,7 +32,7 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 # `native` enables `ActionRegistry` (via `__ffi_internal`) for the registry-level
-# bad-version trip tests (ADR-0064 / S9 #1747). `test-support` enables store
+# bad-version trip tests (ADR-0071 / S9 #1747). `test-support` enables store
 # harness helpers.
 # The NIP-29 read-view integration tests that drove an `NmpApp` (the typed
 # sidecar + group-chat round-trip proofs) moved out of this crate in the

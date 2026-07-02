@@ -1,4 +1,4 @@
-//! #1723 / ADR-0053 — CLI handlers for the two Rust-const generators driven by
+//! #1723 / ADR-0070 — CLI handlers for the two Rust-const generators driven by
 //! the neutral projection contract: `nmp gen builtin-keys` (the kernel built-in
 //! projection key set) and `nmp gen builtin-deps` (the kernel built-in
 //! projection-revision dependency table). Split out of `cli.rs` to keep that

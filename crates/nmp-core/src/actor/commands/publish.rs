@@ -102,7 +102,7 @@ pub(crate) fn publish_unsigned_event(
             // Remote signer pending. Action-dispatched calls park WITH their
             // correlation_id so the broker turn-around settles under the id
             // the host is waiting on. The deadline is the SIGNING account's
-            // per-op budget (ADR-0048 D3 — NIP-46 = 5s, NIP-55 = 90s).
+            // per-op budget (ADR-0072 D3 — NIP-46 = 5s, NIP-55 = 90s).
             let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
             parked_ops.push(ParkedOp::publish(
                 op,
@@ -209,7 +209,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
             // Remote signer not yet responded — park the op WITH its target
             // and correlation_id so pinned routing + spinner round-trip both
             // survive the broker round-trip. The deadline is the SIGNING
-            // account's per-op budget (ADR-0048 D3).
+            // account's per-op budget (ADR-0072 D3).
             let deadline = identity.sign_deadline_for(signer_pubkey.as_deref());
             parked_ops.push(ParkedOp::publish(
                 op,

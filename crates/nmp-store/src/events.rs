@@ -265,7 +265,7 @@ pub trait EventStore: Send + Sync {
         self.gc_step_with_pins(budget, now_secs, &HashSet::new())
     }
 
-    /// K3 Stage D3 (ADR-0056 §3.D3) — one bounded GC pass with both an explicit
+    /// K3 Stage D3 (ADR-0072 §3.D3) — one bounded GC pass with both an explicit
     /// pin set AND the eviction⇄ledger coherence backstop.
     ///
     /// Identical to [`gc_step_with_pins`](Self::gc_step_with_pins), but if
@@ -358,7 +358,7 @@ pub trait EventStore: Send + Sync {
     /// missed stamp simply means the next claim re-verifies eagerly).
     fn set_check_again_after(&self, _key: ReplaceableKey, _ts_ms: u64) {}
 
-    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+    // ─── K3 coverage ledger (ADR-0072 §3, Stage D1) ────────────────────────────
 
     /// Advance the downward-closed coverage watermark for `(filter_hash, relay)`
     /// to `max(existing, covered_through)`.
@@ -389,7 +389,7 @@ pub trait EventStore: Send + Sync {
         None
     }
 
-    // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
+    // ─── Ingest log (ADR-0072 §3, step 1) ────────────────────────────────────────
     /// The highest seq allocated so far (0 if the log is empty).
     fn latest_ingest_seq(&self) -> Result<u64, StoreError>;
     /// The lowest seq still available in the log, or `None` if the log is empty.
@@ -402,7 +402,7 @@ pub trait EventStore: Send + Sync {
     ) -> Result<crate::ingest_log::ScanLogResult, StoreError>;
 
     /// Replace the whole `Protected`-cursor log-retention claim set wholesale
-    /// (volatile; pins the seq-keyed log GC floor). Rationale: ADR-0058 §6 and
+    /// (volatile; pins the seq-keyed log GC floor). Rationale: ADR-0072 §6 and
     /// `pull_cursor.rs`. Default no-op; both shipped ingest-log backends override.
     fn replace_log_retention_claims(&self, _claims: &[crate::ingest_log::LogRetentionClaim]) {}
 

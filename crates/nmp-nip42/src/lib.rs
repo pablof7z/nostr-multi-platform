@@ -33,7 +33,7 @@
 //!   "FlatBuffers Through UniFFI" section of `docs/ffi-surface.md`, which
 //!   owns the `NMPU` update-frame path this diagnostic rides on; not added by
 //!   this crate).
-//! - ADR-0007 §1 — `RelayAuthState` enum matches the diagnostics contract
+//! - ADR-0072 §1 — `RelayAuthState` enum matches the diagnostics contract
 //!   exactly (`NotRequired | ChallengeReceived | Authenticating |
 //!   Authenticated | Failed`).
 //!

@@ -63,7 +63,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
    stand-in for the ReducedSource dependent-interest replacement; the source
    update, ingest fan, and `drain_tick` routing it exercises are real.
 2. **C13 is now `[DONE]`.** The D1 placeholder substrate
-   (`Placeholder<T>` newtype, `picture_placeholder`, ADR-0017) and the actor
+   (`Placeholder<T>` newtype, `picture_placeholder`, ADR-0070) and the actor
    projection path now satisfy the active proof target. The prior RED note is
    retained in git history, not in the current status table.
 

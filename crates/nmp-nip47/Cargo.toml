@@ -21,6 +21,6 @@ tracing = "0.1"
 
 [dev-dependencies]
 # `native` pulls in the `__ffi_internal::ActionRegistry` seam the
-# dispatch_integration test drives through `start_bytes` (ADR-0064 / #1756).
+# dispatch_integration test drives through `start_bytes` (ADR-0071 / #1756).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 tempfile = "3"

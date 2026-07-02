@@ -1,6 +1,6 @@
 namespace nmp.marmot;
 
-// ADR-0064 / #2169 (M14-1c) — typed FlatBuffers payload for the `nmp.marmot`
+// ADR-0071 / #2169 (M14-1c) — typed FlatBuffers payload for the `nmp.marmot`
 // `ActionModule` (the MLS-over-Nostr write seam). The OPAQUE
 // `DispatchEnvelope.payload` for `action_namespace = "nmp.marmot"`.
 //

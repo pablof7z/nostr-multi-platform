@@ -133,17 +133,17 @@ impl Kernel {
     }
 
     pub(crate) fn profile_for_pubkey(&self, pubkey: &str) -> Option<ProfileView> {
-        // ADR-0057 PR 2 — profiles are capability-owned (`nmp_nip01::ProfileCache`
+        // ADR-0070 PR 2 — profiles are capability-owned (`nmp_nip01::ProfileCache`
         // behind `Arc<dyn ProfileLookup>`). The cache uses interior mutability so
         // this read hands back an owned `ProfileView` (no borrow leaks out of the
-        // lock). Single-mechanism (ADR-0045 Rev 2, #1193): locally-published
+        // lock). Single-mechanism (ADR-0070 Rev 2, #1193): locally-published
         // kind:0 profiles land in the same cache via the unified ingest chokepoint
         // (`verify_and_persist` → `Kind0Parser`), identical to the relay path — so
         // this read needs no overlay merge.
         self.profile_lookup().profile(pubkey)
     }
 
-    // V-112 (ADR-0042): profile_action_for() deleted — it was called only from
+    // V-112 (ADR-0076): profile_action_for() deleted — it was called only from
     // the deleted author_view() projection builder. Follow/unfollow actions now
     // flow through the chirp nmp-app-chirp ActionModule seam directly.
 
@@ -172,7 +172,7 @@ impl Kernel {
             .collect()
     }
 
-    // V-112 (ADR-0042): author_view(), author_items(), thread_view(),
+    // V-112 (ADR-0076): author_view(), author_items(), thread_view(),
     // thread_items(), thread_root_id() deleted. View state and item lists now
     // live in handle-opened per-app Flat feeds.
 }

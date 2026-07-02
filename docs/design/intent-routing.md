@@ -1,7 +1,7 @@
 # Intent-classed routing + NIP-50 search — design
 
 > **Status:** ADR accepted; substrate/search pieces are partially implemented.
-> **ADR:** `docs/decisions/0020-intent-classed-routing-and-search.md`.
+> **ADR:** `docs/decisions/0071-write-intents-and-route-provenance.md`.
 > **Date:** 2026-05-18 (search reconciled higher-order, 2026-06-22).
 > **Scope:** Core/planner own the generic search/index **seams** —
 > `InterestShape.search` wire-filter field, generic blocked-relay subtraction,

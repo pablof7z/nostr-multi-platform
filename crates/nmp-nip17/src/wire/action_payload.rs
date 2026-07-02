@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codecs for the nip17 DM action payloads
-//! (ADR-0064 / S9 #1747): `nmp.nip17.send` ([`SendDmInput`]) and
+//! (ADR-0071 / S9 #1747): `nmp.nip17.send` ([`SendDmInput`]) and
 //! `nmp.nip17.publish_relay_list` ([`PublishDmRelayListInput`]).
 //!
 //! These are the WRITE-direction typed payloads carried as the OPAQUE

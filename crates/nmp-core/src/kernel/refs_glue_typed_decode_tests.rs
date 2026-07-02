@@ -1,4 +1,4 @@
-//! ADR-0063 Lane C (#1671) — the TYPED ROW-PAYLOAD decode proof.
+//! ADR-0070 Lane C (#1671) — the TYPED ROW-PAYLOAD decode proof.
 //!
 //! Lane A built the per-key host cache but left the host surface returning raw
 //! `Data` / `ByteArray`: its default decoder accepted any non-empty payload

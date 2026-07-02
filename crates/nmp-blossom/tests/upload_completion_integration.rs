@@ -1,6 +1,6 @@
 //! End-to-end proof: blossom upload terminal surfaces `url` + `sha256` in the
 //! kernel-owned `action_results` projection, keyed by the dispatch-returned
-//! `correlation_id` (issue #1648 / ADR-0043 Decision 4).
+//! `correlation_id` (issue #1648 / ADR-0071 Decision 4).
 //!
 //! This is the canonical completion carrier — NOT `register_action_result_observer`
 //! (which fires on accept/enqueue only).

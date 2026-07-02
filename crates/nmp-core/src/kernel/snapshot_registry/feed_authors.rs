@@ -1,4 +1,4 @@
-//! ADR-0063 D7 (#1671 Lane H) — the feed-author auto-resolve provider registry
+//! ADR-0070 D7 (#1671 Lane H) — the feed-author auto-resolve provider registry
 //! and the emitted-author sink for the structural guardrail.
 //!
 //! Extracted from `snapshot_registry.rs` (the `impl SnapshotRegistry` methods
@@ -14,7 +14,7 @@ use super::bounds::admit_keyed;
 use super::{record_emitted_feed_authors, EmittedFeedAuthorsSlot, SnapshotRegistry};
 
 impl SnapshotRegistry {
-    /// ADR-0063 D7 (#1671 Lane H) — register the feed-author-set provider for
+    /// ADR-0070 D7 (#1671 Lane H) — register the feed-author-set provider for
     /// `feed_key` (e.g. `"microblog.timeline.home"`).
     ///
     /// Last-writer-wins on the key (a re-register replaces the closure, no
@@ -43,7 +43,7 @@ impl SnapshotRegistry {
     /// Return the set of feed-author-provider keys currently registered —
     /// without running any provider closure.
     ///
-    /// Intended for structural-pairing coverage tests (ADR-0063 D7, #1671 Lane H):
+    /// Intended for structural-pairing coverage tests (ADR-0070 D7, #1671 Lane H):
     /// a test asserts that registering a feed's typed sidecar ALSO registered its
     /// author provider under the same key (and that closing the feed removes
     /// both), proving the pairing cannot be split.
@@ -61,7 +61,7 @@ impl SnapshotRegistry {
         self.feed_author_providers.remove(feed_key).is_some()
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — record the actual author keys a feed's typed
+    /// ADR-0070 D7 (#1671 Lane H) — record the actual author keys a feed's typed
     /// producer ENCODED onto the wire this tick, under its `feed-author:<feed_key>`
     /// consumer id, keyed by `tick_rev`.
     ///
@@ -79,7 +79,7 @@ impl SnapshotRegistry {
         record_emitted_feed_authors(&self.emitted_feed_authors, tick_rev, consumer_id, authors);
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — a clone of the emitted-author sink handle, for
+    /// ADR-0070 D7 (#1671 Lane H) — a clone of the emitted-author sink handle, for
     /// a typed-producer closure to write to WITHOUT re-locking the registry (it
     /// runs inside `run_typed()` while the registry mutex is held). Write through
     /// the free function [`record_emitted_feed_authors`].
@@ -88,7 +88,7 @@ impl SnapshotRegistry {
         Arc::clone(&self.emitted_feed_authors)
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — drain the emitted-author sink for the
+    /// ADR-0070 D7 (#1671 Lane H) — drain the emitted-author sink for the
     /// structural guardrail (BLOCKING 2).
     ///
     /// Returns `(consumer_id, author_key)` pairs for every author a feed encoded
@@ -110,7 +110,7 @@ impl SnapshotRegistry {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — run ONE registered feed-author provider by
+    /// ADR-0070 D7 (#1671 Lane H) — run ONE registered feed-author provider by
     /// key and return its current visible-author set (test introspection).
     ///
     /// Returns an empty vec when no provider is registered under `feed_key`. A

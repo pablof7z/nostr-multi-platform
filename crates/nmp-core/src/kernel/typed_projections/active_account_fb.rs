@@ -6,7 +6,7 @@
 //! `"active_account"`: the active account pubkey string (`account_snapshot().1`),
 //! `null` when no account is active. This module adds a **typed FlatBuffers**
 //! encoding of the same value, carried in the `typed_projections` sidecar
-//! (ADR-0037) ALONGSIDE — never replacing — the generic `Value` projection.
+//! (ADR-0072) ALONGSIDE — never replacing — the generic `Value` projection.
 //!
 //! [`ActiveAccountModel`] is built from the same `account_snapshot().1` the JSON
 //! path reads, in the same tick, so the two wire forms cannot diverge. The

@@ -83,10 +83,7 @@ fn remove_members_shrinks_group_and_view_converges() {
     let group_id = bootstrap_pair(&alice, &bob);
 
     // Grow to 3 (Carol).
-    let carol_kp = carol
-        .service
-        .publish_key_package(test_relays())
-        .unwrap();
+    let carol_kp = carol.service.publish_key_package(test_relays()).unwrap();
     let add = alice
         .service
         .add_members(&group_id, &[carol_kp.event_30443])

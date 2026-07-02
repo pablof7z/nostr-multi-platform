@@ -31,7 +31,7 @@ use nmp_core::ObservedProjectionSink;
 ///    active account exists. This replays matching cached rows before live
 ///    activation without opening a broad kind-only observer.
 /// 3. **Snapshot projection (typed)** — registers a typed FlatBuffers sidecar
-///    (ADR-0037, `NMUT`) under the `"nmp.nip51.mute_list"` key. Reads the same
+///    (ADR-0072, `NMUT`) under the `"nmp.nip51.mute_list"` key. Reads the same
 ///    `MuteListSnapshot` read model so it cannot structurally diverge from the
 ///    projection.
 /// 4. **Identity-change observer** — registered LAST. On every account change
@@ -45,7 +45,7 @@ use nmp_core::ObservedProjectionSink;
 /// # Ordering contract
 ///
 /// The observed projection MUST NOT open until the active pubkey is known.
-/// Opening with `authors=[active]` uses the ADR-0062 replay path, so cold-start
+/// Opening with `authors=[active]` uses the ADR-0070 replay path, so cold-start
 /// cache rows hydrate the projection before activation.
 ///
 /// # Account-switch safety
@@ -88,12 +88,12 @@ pub fn register_mute_runtime(
 
     // ── 2. Snapshot projection (typed sidecar) ────────────────────────────────
     //
-    // Typed FlatBuffers sidecar (ADR-0037, `NMUT`) registered under the
+    // Typed FlatBuffers sidecar (ADR-0072, `NMUT`) registered under the
     // `"nmp.nip51.mute_list"` key. Reads the same `MuteListSnapshot` read model
     // so it cannot structurally diverge from the projection. Pure read — no
     // side effects (D0). The projection key carries no NIP-51 nouns through
     // `nmp-core` — the composition root (this crate) is entitled to name NIP
-    // constants directly per ADR-0046.
+    // constants directly per ADR-0069.
     let mute_for_typed = Arc::clone(&mute);
     app.register_typed_snapshot_projection(
         nmp_ownership::DeclaredProjectionKey::framework(

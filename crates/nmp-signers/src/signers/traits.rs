@@ -1,6 +1,6 @@
 //! Core `Signer` trait and supporting types.
 //!
-//! See [`Signer`] for the contract.  See ADR-0015 for the design rationale.
+//! See [`Signer`] for the contract.  See ADR-0072 for the design rationale.
 
 use std::fmt::Debug;
 

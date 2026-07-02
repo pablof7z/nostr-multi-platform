@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the nip29 typed FlatBuffers payload doorway
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 //!
 //! Two contracts, per migrated namespace:
 //!

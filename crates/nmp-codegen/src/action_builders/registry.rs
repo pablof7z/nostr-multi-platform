@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — the action-builder registry: the single source of
+//! ADR-0071 §3 (#1783) — the action-builder registry: the single source of
 //! truth describing every generated typed write builder.
 //!
 //! Each [`ActionBuilder`] describes one app-facing typed write method and its
@@ -128,7 +128,7 @@ pub struct ActionBuilder {
     pub doc: &'static str,
 }
 
-/// The flat-table builders (ADR-0064 §3 acceptance scope) live in the sibling
+/// The flat-table builders (ADR-0071 §3 acceptance scope) live in the sibling
 /// [`table`] submodule (`registry/table.rs`) — a size-management seam so this
 /// module stays under the file-size gate.
 ///
@@ -145,7 +145,7 @@ mod host_called;
 mod table;
 pub use table::ACTION_BUILDERS;
 
-// ── nmp.publish — the UNION-bodied builders (ADR-0064 §3) ────────────────────
+// ── nmp.publish — the UNION-bodied builders (ADR-0071 §3) ────────────────────
 // `nmp.publish` is the namespace EVERY second-app consumer (hl / tenex-off /
 // podcast, iOS + Android) actually writes through, so the typed builders don't
 // unblock those migrations without it. Unlike the flat tables above, the

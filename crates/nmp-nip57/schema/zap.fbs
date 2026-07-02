@@ -1,6 +1,6 @@
 namespace nmp.nip57;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip57.zap`
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip57.zap`
 // `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
 // registry adapter (S9) decodes against THIS schema, gating `schema_version`
 // BEFORE `start()` (fail-closed on mismatch).

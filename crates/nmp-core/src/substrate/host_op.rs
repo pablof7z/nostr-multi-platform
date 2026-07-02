@@ -1,7 +1,7 @@
 //! `HostOpCommand` — the [`ProtocolCommand`] that expresses a stateful,
 //! host-owned op dispatch through the single write seam.
 //!
-//! # Why this exists (ADR-0052 §D4 — K2 rung 5.4)
+//! # Why this exists (ADR-0072 §D4 — K2 rung 5.4)
 //!
 //! Before rung 5.4 there were **two** `ActorCommand` write seams for the same
 //! concern (a host runs a write op on the actor thread, panic-isolated, with a
@@ -57,7 +57,7 @@ use crate::substrate::protocol::{ProtocolCommand, ProtocolCommandContext, Protoc
 /// Construct via [`host_op_command`]; enqueue as
 /// `ActorCommand::Protocol(Box::new(host_op_command(action_json, correlation_id)))`.
 /// Replaces the deleted `ActorCommand::DispatchHostOp { action_json,
-/// correlation_id }` variant (ADR-0052 §D4).
+/// correlation_id }` variant (ADR-0072 §D4).
 #[derive(Debug)]
 pub struct HostOpCommand {
     /// JSON-encoded action body. The handler parses this into its own typed

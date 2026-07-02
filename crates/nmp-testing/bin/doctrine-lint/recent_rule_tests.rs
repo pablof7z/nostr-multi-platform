@@ -46,8 +46,8 @@ fn d19_positive_fixture_fires() {
         stdout
     );
     assert!(
-        stdout.contains("ADR-0032"),
-        "d19 finding message must reference ADR-0032; stdout:\n{}",
+        stdout.contains("ADR-0072"),
+        "d19 finding message must reference ADR-0072; stdout:\n{}",
         stdout
     );
     assert!(
@@ -205,7 +205,7 @@ fn wasm_reachable_crates_are_d20_clean() {
     }
 }
 
-// ─── D21 (no ambient authority — K2 / ADR-0052 §D6 regression gate) ───────────
+// ─── D21 (no ambient authority — K2 / ADR-0072 §D6 regression gate) ───────────
 
 #[test]
 fn d21_positive_fixture_fires() {
@@ -293,7 +293,7 @@ fn d21_negative_fixture_clean() {
     );
 }
 
-/// Integration guard (K2 / ADR-0052): every K2 blast-radius crate — the crates
+/// Integration guard (K2 / ADR-0072): every K2 blast-radius crate — the crates
 /// that hosted the five deleted process-global singletons (`ACTIVE_WALLET_RUNTIME`
 /// in nmp-nip47, the bunker/NIP-55 `HOOK`s + `kernel_mut` in nmp-core,
 /// the bunker/NIP-55 process-globals) plus the two read-once-config

@@ -5,7 +5,7 @@
 //! doc for the return-type / scope rationale.
 //!
 //! Split from `kernel/mod.rs` to keep it under the file-size gate.
-// ADR-0063 Lane H: decode_claimed_profiles / decode_resolved_profiles /
+// ADR-0070 Lane H: decode_claimed_profiles / decode_resolved_profiles /
 // ClaimedProfilesModel / ResolvedProfilesModel / CLAIMED_PROFILES_* /
 // RESOLVED_PROFILES_* deleted. Profile resolution is now served by refs.profile.
 pub use super::typed_projections::{
@@ -25,9 +25,9 @@ pub use super::typed_projections::{
     decode_outbox_summary,
     // profile
     decode_profile,
-    // V-112 (ADR-0042): decode_author_view, AuthorViewModel, ProfileActionModel,
+    // V-112 (ADR-0076): decode_author_view, AuthorViewModel, ProfileActionModel,
     // ProfileDispatchSpecModel, AUTHOR_VIEW_* deleted.
-    // V-112 (ADR-0042): decode_thread_view, ThreadViewModel, TimelineItemModel,
+    // V-112 (ADR-0076): decode_thread_view, ThreadViewModel, TimelineItemModel,
     // THREAD_VIEW_* deleted.
     // publish_outbox
     decode_publish_outbox,
@@ -40,7 +40,7 @@ pub use super::typed_projections::{
     // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
     decode_signed_events,
     encode_claimed_events,
-    // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)
+    // profile (encode: ADR-0070 Lane F — build a refs.profile KPRF row payload)
     encode_profile,
     AccountSummaryRow,
     AccountsModel,

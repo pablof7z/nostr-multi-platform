@@ -8,7 +8,11 @@ pub fn padded_pubkey(seed: &str) -> String {
     format!("{seed:0>64}").chars().take(64).collect()
 }
 
-pub fn put_write_mailbox(cache: &mut nmp_planner::InMemoryMailboxCache, author: String, relay: &str) {
+pub fn put_write_mailbox(
+    cache: &mut nmp_planner::InMemoryMailboxCache,
+    author: String,
+    relay: &str,
+) {
     cache.put(
         author,
         nmp_planner::MailboxSnapshot {

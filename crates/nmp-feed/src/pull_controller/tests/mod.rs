@@ -1,4 +1,4 @@
-//! Controller-level tests for the single pull paging path (ADR-0058 §8 step-6B).
+//! Controller-level tests for the single pull paging path (ADR-0072 §8 step-6B).
 //!
 //! These exercise `PullFeedController::load_older` end-to-end with stub closures
 //! (no real `Kernel`): a fake `pull_fn` feeds canned pages, a fake `apply`

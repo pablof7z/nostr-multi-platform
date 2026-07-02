@@ -1,4 +1,4 @@
-//! ADR-0055 publish-cluster regressions.
+//! ADR-0070 publish-cluster regressions.
 //!
 //! Split out of `tests.rs` so the REAL-driven scenario suite stays under the
 //! file-size cap. These tests drive real kernel publish entrypoints and rely on

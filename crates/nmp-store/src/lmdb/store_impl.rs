@@ -244,7 +244,7 @@ impl EventStore for LmdbEventStore {
         }
     }
 
-    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+    // ─── K3 coverage ledger (ADR-0072 §3, Stage D1) ────────────────────────────
 
     fn record_coverage(&self, filter_hash: &str, relay: &str, covered_through: u64) {
         // D6 graceful degrade: a coverage-write failure must never block ingest
@@ -285,7 +285,7 @@ impl EventStore for LmdbEventStore {
             }
         }
     }
-    // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
+    // ─── Ingest log (ADR-0072 §3, step 1) ────────────────────────────────────────
 
     fn latest_ingest_seq(&self) -> Result<u64, StoreError> {
         ingest_log::latest_seq(self.inner.ingest_meta, &self.inner.env)
@@ -314,7 +314,7 @@ impl EventStore for LmdbEventStore {
     }
 
     fn replace_log_retention_claims(&self, claims: &[crate::ingest_log::LogRetentionClaim]) {
-        // ADR-0058 §6 step-4: single-writer (kernel) wholesale replace of the
+        // ADR-0072 §6 step-4: single-writer (kernel) wholesale replace of the
         // VOLATILE claim set. A poisoned lock is non-fatal — a missed update only
         // means the next append-time trim uses the prior set; the consumer
         // degrades to an explicit PullGap, never a silent skip.

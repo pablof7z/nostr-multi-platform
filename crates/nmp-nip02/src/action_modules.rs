@@ -2,7 +2,7 @@
 //! (`nmp.follow` / `nmp.unfollow` / `nmp.follow_many`).
 //!
 //! Extracted from `lib.rs` to keep that file under the 500-LOC hand-authored
-//! ceiling (AGENTS.md / V-12) after the ADR-0064 / S3 (#1751) typed-payload
+//! ceiling (AGENTS.md / V-12) after the ADR-0071 / S3 (#1751) typed-payload
 //! `decode_payload` overrides landed. The public `*Module` structs and the
 //! action shapes stay in `lib.rs`; this file holds only the trait impls.
 //!
@@ -22,7 +22,7 @@ impl ActionModule for FollowModule {
         nmp_core::substrate::DeclaredActionNamespace::framework("nmp.follow", "action.nmp.follow");
     type Action = PubkeyAction;
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PubkeyAction as ActionPayload>::decode(bytes))
@@ -51,7 +51,7 @@ impl ActionModule for UnfollowModule {
         );
     type Action = PubkeyAction;
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PubkeyAction as ActionPayload>::decode(bytes))
@@ -80,7 +80,7 @@ impl ActionModule for FollowManyModule {
         );
     type Action = FollowManyAction;
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<FollowManyAction as ActionPayload>::decode(bytes))

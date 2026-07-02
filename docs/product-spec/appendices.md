@@ -10,7 +10,7 @@ The current runtime contract is:
 - browser public bindings through `nmp-browser-runtime` wasm-bindgen exports;
 - binary `UpdateFrame` push callbacks for state;
 - typed projection payloads for host-rendered views;
-- ADR-0064 dispatch envelopes for writes;
+- ADR-0071 dispatch envelopes for writes;
 - no generic JSON snapshot payload and no platform polling for app data.
 
 `SnapshotEnvelope` is bounded by what is open. It carries screen-shaped state and
@@ -30,7 +30,7 @@ decision belongs in a fresh ADR.
 | 09 | Deletion events | §7.1 |
 | 17 | Private DMs | §7.10 |
 | 19 | bech32 entities | §7.12 |
-| 22 | Comments | comments/read-model docs and ADR-0061 |
+| 22 | Comments | comments/read-model docs and ADR-0070 |
 | 23 | Long-form content | content rendering and feeds |
 | 25 | Reactions | §6.3, §7.6 |
 | 29 | Relay-based groups | NIP-29 crate/docs |

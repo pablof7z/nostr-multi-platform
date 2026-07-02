@@ -11,7 +11,7 @@
 //! # Ordering contract
 //!
 //! The observed projection is not opened until the active pubkey is known.
-//! Opening uses the ADR-0062 muted-observer path, so the cache replay reaches
+//! Opening uses the ADR-0070 muted-observer path, so the cache replay reaches
 //! the projection before live activation and never relies on a broad kind-only
 //! observer that filters by author after the fact.
 

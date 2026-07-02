@@ -2,13 +2,13 @@
 //!
 //! The canonical FFI shape is the serde JSON of `GroupEventsSnapshot`
 //! (`GroupEventsProjection::snapshot_json`). This module adds a **typed
-//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
+//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0072)
 //! carried alongside the generic `Value` projection under the same
 //! `"nmp.nip29.group_events"` key. The serde shape stays authoritative; this is the
 //! typed payload a `NGEV`-aware host decodes with generated accessors instead of
 //! JSON reflection.
 //!
-//! Raw data only (ADR-0032): every field is the raw protocol value — hex event
+//! Raw data only (ADR-0072): every field is the raw protocol value — hex event
 //! ids / pubkeys, verbatim content, Unix-second `created_at`, raw kind. No
 //! `display::` forwarder runs on the encode path.
 //!

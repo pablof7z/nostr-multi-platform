@@ -8,7 +8,7 @@
 //!   built from a followed author's NIP-10 reply.
 //! * [`register_op_feed`] — constructs the note-feed instance of
 //!   `RootIndexedFeed` and returns it for the composition root to register.
-//! * [`FeedEmissionState`] — ADR-0055 Rung 6 S1: trap-proof per-tick emission
+//! * [`FeedEmissionState`] — ADR-0070 Rung 6 S1: trap-proof per-tick emission
 //!   state that omits an unchanged feed frame when the host has declared
 //!   incremental-apply capability (exact byte equality, monotonic rev).
 //!

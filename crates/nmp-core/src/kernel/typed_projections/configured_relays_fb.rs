@@ -6,7 +6,7 @@
 //! `"configured_relays"`: the serialisation of `configured_relays_snapshot()`,
 //! a slice of [`AppRelay`](crate::kernel::AppRelay) (`{ url, role }`). This
 //! module adds a **typed FlatBuffers** encoding of the same shape, carried in
-//! the `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! the `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection.
 //!
 //! [`ConfiguredRelaysModel`] is built directly from the same `AppRelay` slice

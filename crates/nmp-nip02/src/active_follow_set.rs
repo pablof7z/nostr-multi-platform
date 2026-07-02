@@ -10,7 +10,7 @@
 //! `FollowSetLookup` trait and the `LogicalInterest::SocialTimeline` planner
 //! variant in favour of a closure produced here and wired at the composition
 //! root (`explicit composition`, rung 6). The rationale is recorded in
-//! [ADR-0036](../../docs/decisions/0036-composition-root-followset-expansion.md).
+//! [ADR-0076](../../docs/decisions/0076-app-facing-feed-helpers.md).
 //!
 //! `ActiveFollowSet` is the **producer** of that closure. Internally it uses
 //! Trellis as a private source graph: the graph takes the active account and

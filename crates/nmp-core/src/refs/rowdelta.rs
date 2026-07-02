@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A — owned `RefRow` / `RefRowDeltaBatch` types + FlatBuffers
+//! ADR-0070 Lane A — owned `RefRow` / `RefRowDeltaBatch` types + FlatBuffers
 //! codec for the keyed-projection row-delta carrier (`schema/ref_rowdelta.fbs`).
 //!
 //! The batch is the opaque `TypedPayload.payload` of a keyed `refs.*`
@@ -12,7 +12,7 @@ use std::fmt;
 /// Per-row presence at ROW grain (mirrors `nmp.refs.RefRowState`).
 ///
 /// `Unchanged` is NOT an enumerator: it is represented by ABSENCE of the row
-/// from the batch (ADR-0063 invariant #1). A clear is ALWAYS explicit.
+/// from the batch (ADR-0070 invariant #1). A clear is ALWAYS explicit.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum RefRowState {
     /// Row's per-key `rev` advanced; `payload` present and authoritative.
@@ -57,7 +57,7 @@ impl From<RefRowState> for fb::RefRowState {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RefRow {
     /// Entity key: raw hex pubkey (`profile`) or event id / coordinate
-    /// (`event`). Raw forms only (ADR-0032).
+    /// (`event`). Raw forms only (ADR-0072).
     pub key: String,
     /// Per-key monotonic revision (Lane B's `ref_row_rev(ns, key)`).
     pub rev: u64,
@@ -97,7 +97,7 @@ pub struct RefRowDeltaBatch {
     /// Resolver namespace: `"profile"` or `"event"`.
     pub namespace: String,
     /// True iff this batch is a FULL baseline (every live row present as
-    /// `Changed`). See ADR-0063 invariant #3.
+    /// `Changed`). See ADR-0070 invariant #3.
     pub baseline: bool,
     /// Changed/cleared rows. A key absent here is Unchanged (invariant #1).
     pub rows: Vec<RefRow>,

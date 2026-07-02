@@ -206,7 +206,7 @@ mod wasm_impl {
             JsValue::from_str(&result)
         }
 
-        /// Handle raw `DispatchEnvelope` bytes (ADR-0064 binary write doorway).
+        /// Handle raw `DispatchEnvelope` bytes (ADR-0071 binary write doorway).
         ///
         /// Avoids JSON round-tripping the binary payload, which would corrupt it.
         /// Returns a JSON array of `WorkerEvent`s (same as `handle_json`).

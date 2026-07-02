@@ -34,7 +34,7 @@ impl core::fmt::Display for RegistrationError {
             f,
             "action namespace '{}' already registered by '{}'; \
              a second app registration ('{}') is a composition collision \
-             (ADR-0049). Two app modules must not claim the same namespace.",
+             (ADR-0069). Two app modules must not claim the same namespace.",
             self.namespace, self.prior_provider, self.new_provider
         )
     }

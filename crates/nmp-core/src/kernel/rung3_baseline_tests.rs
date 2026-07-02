@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 — integration tests for baseline semantics (D3-5).
+//! ADR-0070 Rung 3 — integration tests for baseline semantics (D3-5).
 //!
 //! Verifies:
 //! 1. First frame after `declare_incremental_apply` ⇒ full baseline (all live

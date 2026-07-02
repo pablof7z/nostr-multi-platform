@@ -1,4 +1,4 @@
-//! Tests for ADR-0062 — observer-scoped read-model catch-up.
+//! Tests for ADR-0070 — observer-scoped read-model catch-up.
 //!
 //! Each test injects events into the kernel read-cache via the existing
 //! `ingest_pre_verified_event` test-support path (which populates

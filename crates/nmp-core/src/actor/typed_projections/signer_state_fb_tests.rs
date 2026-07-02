@@ -1,5 +1,5 @@
 //! Round-trip tests for the `signer_state` typed FlatBuffers codec
-//! (ADR-0048 D6 — the generalised remote-signer health surface).
+//! (ADR-0072 D6 — the generalised remote-signer health surface).
 //!
 //! These tests mirror the `bunker_handshake_fb_tests` pattern and prove:
 //! 1. A `SignerStateModel` encodes to a buffer with the `KSST` file identifier.
@@ -60,7 +60,7 @@ fn encode_nip46_failed_with_reason_round_trips() {
 
 #[test]
 fn encode_nip55_awaiting_approval_round_trips() {
-    // ADR-0048 D6: the NIP-55 Intent round-trip drives the shell's
+    // ADR-0072 D6: the NIP-55 Intent round-trip drives the shell's
     // "Waiting for approval…" rendering off `is_awaiting_approval`.
     let model = model_for("nip55", "awaiting_approval", None);
     let bytes = encode_signer_state(&model);
@@ -128,7 +128,7 @@ fn file_identifier_constant_is_ksst() {
 
 #[test]
 fn schema_id_constant_matches_projection_key() {
-    // The schema_id and projection key must be identical per ADR-0037
+    // The schema_id and projection key must be identical per ADR-0072
     // shared-keyspace contract.
     assert_eq!(SIGNER_STATE_SCHEMA_ID, "signer_state");
 }

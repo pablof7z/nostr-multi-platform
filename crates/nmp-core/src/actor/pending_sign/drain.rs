@@ -1,4 +1,4 @@
-//! The single parked-op drain (ADR-0050 §D2).
+//! The single parked-op drain (ADR-0072 §D2).
 //!
 //! One `retain_mut` pass over one `Vec<ParkedOp>` replaces the two former
 //! drains (the inline publish block in `actor/mod.rs` and

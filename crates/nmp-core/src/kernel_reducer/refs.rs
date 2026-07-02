@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671) — unified reference-resolution surface for
+//! ADR-0070 (#1671) — unified reference-resolution surface for
 //! [`super::KernelReducer`] (the wasm dispatch path).
 //!
 //! Split from `kernel_reducer.rs` to keep that file under the 500-LOC hard
@@ -13,7 +13,7 @@ use crate::relay::OutboundMessage;
 use crate::time::Instant;
 
 impl KernelReducer {
-    /// ADR-0063 D1 — the unified, origin-blind reference-resolution seam.
+    /// ADR-0070 D1 — the unified, origin-blind reference-resolution seam.
     /// Refcounts the consumer per `(namespace, key)` (a raw hex pubkey for
     /// `profile`, a hex event-id / `kind:pubkey:d` coordinate for `event`),
     /// registers the kernel-owned fetch on the cold-resolve transition, and feeds

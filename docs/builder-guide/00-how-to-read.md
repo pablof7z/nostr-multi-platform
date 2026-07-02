@@ -25,7 +25,7 @@ Before reading the numbered sections, orient yourself with the two canonical
 architecture references:
 
 - **[`docs/architecture/high-level-app-architecture.md`](../architecture/high-level-app-architecture.md)** — the canonical clean-break architecture overview. Explains how an app is structured, how data flows, the public surface, and what each named mechanism does or does not expose. Start here if you want the "what and how" of the current design.
-- **[`docs/decisions/README.md`](../decisions/README.md)** — the ADR index. ADR-0069 through ADR-0073 are the decision spine for the clean-break redesign; start here for rationale and migration history (the "why").
+- **[`docs/decisions/README.md`](../decisions/README.md)** — the ADR index. ADR-0069 through ADR-0073 are the decision spine for the clean-break redesign; start here for rationale and enforcement boundaries (the "why").
 
 The numbered guide sections below assume you have read the architecture overview.
 

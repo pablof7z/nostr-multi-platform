@@ -11,11 +11,11 @@ import android.net.Uri
 // exercise the SAME logic the bridge executes (no test-side copies).
 //
 // Vendored with ExternalSignerCapabilityBridge.kt + ExternalSignerWire.kt as
-// one unit (ADR-0048 Stage 2): byte-identical copies except the package line,
+// one unit (ADR-0072 Stage 2): byte-identical copies except the package line,
 // see VendorDriftGateTest.
 
 /**
- * THE transport-selection rule (ADR-0048 D2) — a mechanical consequence of
+ * THE transport-selection rule (ADR-0072 D2) — a mechanical consequence of
  * fields Rust set on the request, never host policy (D7):
  *
  * | Condition | Mechanism |

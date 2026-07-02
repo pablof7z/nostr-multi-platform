@@ -1,4 +1,4 @@
-//! ADR-0057 — single accepted-event chokepoint oracles.
+//! ADR-0070 — single accepted-event chokepoint oracles.
 //!
 //! Covers the §7 verification oracles for the unified ingest chokepoint
 //! ([`Kernel::ingest_accepted_event`]): read-your-writes for locally-published
@@ -91,7 +91,7 @@ fn signed_contact_list(keys: &::nostr::Keys, follow: &str, created_at: u64) -> S
     }
 }
 
-/// V-112 (ADR-0042): `author_view.primary_action` was deleted with the author
+/// V-112 (ADR-0076): `author_view.primary_action` was deleted with the author
 /// view state machine. The underlying property being tested — that publishing a
 /// kind:3 contact list updates the event store — is now observed directly.
 #[test]
@@ -252,7 +252,7 @@ fn relay_echo_of_local_kind3_does_not_double_fire_observers() {
 /// relay ingest arm uses — AND populate the kernel's profile projection
 /// immediately, without waiting for the relay echo (which dedups to
 /// `Duplicate` and never re-fires fan-out). Retires the
-/// `local_profile_intents` overlay (single-mechanism, ADR-0045 Rev 2).
+/// `local_profile_intents` overlay (single-mechanism, ADR-0070 Rev 2).
 #[test]
 fn local_kind0_publish_fans_out_to_event_observers() {
     let keys = ::nostr::Keys::generate();

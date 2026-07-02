@@ -81,7 +81,7 @@ struct FollowListSnapshotPayload<'a> {
 /// Owned snapshot of the active account's follow list — the typed read-model
 /// behind both [`FollowListProjection::snapshot_json`] (the authoritative serde
 /// shape) and [`FollowListProjection::snapshot`] (the typed-FB sidecar source,
-/// ADR-0037). A named field (rather than a bare `Vec`) leaves room to add
+/// ADR-0072). A named field (rather than a bare `Vec`) leaves room to add
 /// sibling fields later without a breaking re-shape, and mirrors the
 /// `{"follows": […]}` JSON object the host already consumes.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -119,7 +119,7 @@ impl FollowListProjection {
 
     /// The active account's follow list as an owned typed snapshot — the
     /// single source of truth behind both [`Self::snapshot_json`] (serde shape)
-    /// and the typed-FB sidecar (ADR-0037).
+    /// and the typed-FB sidecar (ADR-0072).
     ///
     /// Reads the active account's latest kind:3 from the event store. An empty
     /// `follows` vector when:

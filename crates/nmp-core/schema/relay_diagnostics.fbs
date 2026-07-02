@@ -79,7 +79,7 @@ table RelayDiagnosticsWireSub {
   close_reason:string;
 }
 
-// ADR-0051 — relay-information document (NIP-11), mirror of
+// ADR-0072 — relay-information document (NIP-11), mirror of
 // `RelayDiagnosticsInfo`. Carried as an OPTIONAL child table on
 // `RelayDiagnosticsRow.info`: a null table means "no document fetched yet"
 // (the JSON `info: null` case), so no `has_info` flag is needed — table
@@ -189,7 +189,7 @@ table RelayDiagnosticsRow {
   last_error:string;
   // Per-wire-subscription detail rows (kernel-sorted by `wire_id`).
   wire_subs:[RelayDiagnosticsWireSub];
-  // ADR-0051 — the relay's NIP-11 information document; null until
+  // ADR-0072 — the relay's NIP-11 information document; null until
   // `nmp-nip11` has fetched it (or the relay serves no document).
   info:RelayDiagnosticsInfo;
   // Raw discovery kind numbers from open wire subscriptions (deduplicated,

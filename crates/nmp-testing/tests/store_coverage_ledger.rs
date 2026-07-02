@@ -1,4 +1,4 @@
-//! K3 Stage D1 — coverage-ledger store-layer tests (ADR-0056 §3).
+//! K3 Stage D1 — coverage-ledger store-layer tests (ADR-0072 §3).
 //!
 //! Exercises the `EventStore::record_coverage` / `get_coverage` write path on
 //! BOTH backends via `for_each_backend!`. These are pure store-layer tests: the

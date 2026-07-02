@@ -10,7 +10,7 @@
 
 // A reintroduced native push sink register symbol — banned by no_raw_tap.
 // External mirrors must use UniFFI NmpApp::mirror_pull_page + GlobalLog cursor
-// instead (ADR-0058, docs/architecture/external-consumers.md).
+// instead (ADR-0072, docs/architecture/external-consumers.md).
 pub unsafe extern "C" fn nmp_app_register_event_sink(
     _app: *mut std::ffi::c_void,
     _callback: extern "C" fn(*mut std::ffi::c_void, *const u8, usize) -> bool,

@@ -169,7 +169,7 @@ impl NmpApp {
     }
 
     /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the
-    /// app's action registry — ADR-0027's single-call typed seam, and the
+    /// app's action registry — ADR-0071's single-call typed seam, and the
     /// sole host action-registration path on master.
     ///
     /// `M::start` handles validation AND `M::execute` handles execution, both
@@ -177,7 +177,7 @@ impl NmpApp {
     /// partial-registration gap.
     ///
     /// Registration MUST happen during host init, before runtime start and
-    /// before any dispatch-action call. ADR-0052 rung
+    /// before any dispatch-action call. ADR-0072 rung
     /// 5.2: takes the module **value** so a stateful module (e.g. one owning
     /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
     /// composition time, instead of reaching a process-global.
@@ -188,7 +188,7 @@ impl NmpApp {
         self.action_registry.register(module)
     }
 
-    /// Register a typed action module as a **yielding default** (ADR-0049
+    /// Register a typed action module as a **yielding default** (ADR-0069
     /// Part 1): install it only if its namespace is unclaimed; otherwise yield
     /// to the existing registration regardless of call order.
     pub fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
@@ -204,7 +204,7 @@ impl NmpApp {
         &self.action_registry
     }
 
-    /// Typed-only byte-doorway gate probe (ADR-0064 / #1756).
+    /// Typed-only byte-doorway gate probe (ADR-0071 / #1756).
     #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn untyped_action_namespaces(&self) -> Vec<String> {
@@ -218,7 +218,7 @@ impl NmpApp {
         self.action_registry.action_namespaces()
     }
 
-    /// ADR-0049 — read-only handle to the composition ledger for
+    /// ADR-0069 — read-only handle to the composition ledger for
     /// the C ABI composition-report wrapper.
     #[must_use]
     pub fn composition_ledger(&self) -> &Arc<nmp_core::CompositionLedger> {
@@ -241,7 +241,7 @@ impl NmpApp {
             .claim_once("composition_root", key, provider)
     }
 
-    /// ADR-0049 Part 2 — record a last-writer-wins **wiring-slot** decision.
+    /// ADR-0069 Part 2 — record a last-writer-wins **wiring-slot** decision.
     ///
     /// `seam`/`key` name the slot (e.g. `"routing_substrate"`). When the app is
     /// already started the value is dropped by the actor (it read the slot once

@@ -50,7 +50,7 @@ pub(super) fn open_impl_with_limits(
     // `gc_step_with_pins`).  The nmp-watermarks sub-db was removed in #1090
     // Stage 3 (dead persisted-watermark machinery had zero production callers);
     // the K3 coverage ledger below is its purpose-built, actually-read successor
-    // (ADR-0056 §2.1 / §3 — re-created, not re-activated).
+    // (ADR-0072 §2.1 / §3 — re-created, not re-activated).
     //
     // #1811 bump 13 → 16: three durable full-text-search sub-dbs — nmp-fts-postings,
     // nmp-fts-doc-terms, nmp-fts-term-stats (the persistent inverted index, the
@@ -93,10 +93,10 @@ pub(super) fn open_impl_with_limits(
     let relay_index = open("nmp-relay-index", &mut txn)?;
     // #1518 — relay×kind index: relay_url || 0x00 || kind(BE4) || event_id(32) → empty.
     let relay_kind = open("nmp-relay-kind", &mut txn)?;
-    // K3 Stage D1 (ADR-0056 §3) — coverage ledger:
+    // K3 Stage D1 (ADR-0072 §3) — coverage ledger:
     // filter_hash || 0x1F || relay_url → covered_through(8 BE).
     let coverage = open("nmp-coverage", &mut txn)?;
-    // ADR-0058 §4 — ingest-log sub-dbs.
+    // ADR-0072 §4 — ingest-log sub-dbs.
     let ingest_log_db = open("nmp-ingest-log", &mut txn)?;
     let ingest_meta_db = open("nmp-ingest-meta", &mut txn)?;
     // #1811 — durable FTS inverted index. Key codecs documented in `fts.rs`.
@@ -181,7 +181,7 @@ pub(super) fn open_impl_with_limits(
             // #1811 — empty until `install_search_index_specs` runs at composition.
             fts_specs: std::sync::RwLock::new(Vec::new()),
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
-            // ADR-0058 §6 step-4: volatile, never persisted — empty on every open.
+            // ADR-0072 §6 step-4: volatile, never persisted — empty on every open.
             retention_claims: std::sync::RwLock::new(Vec::new()),
         }),
     })

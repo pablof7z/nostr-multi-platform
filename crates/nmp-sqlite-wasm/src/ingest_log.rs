@@ -6,7 +6,7 @@
 //! that operate on them live in the wasm-gated [`crate::ingest_log_store`]
 //! module; this file re-exports its append helpers for `insert`/`delete`.
 //!
-//! Semantics mirror the LMDB ingest log (ADR-0058 §3-4): every accepted write
+//! Semantics mirror the LMDB ingest log (ADR-0072 §3-4): every accepted write
 //! appends one entry inside the same transaction as the write (D4 — the seq is
 //! allocated and committed atomically with the event); the `seq` column is
 //! `INTEGER PRIMARY KEY AUTOINCREMENT`, so it is monotonic and never reused even
@@ -16,7 +16,7 @@
 use crate::conv::EngineEvent;
 use crate::outcome::EventId;
 
-/// Default maximum ingest-log entries retained (ADR-0058 R2.4). The append-time
+/// Default maximum ingest-log entries retained (ADR-0072 R2.4). The append-time
 /// trim keeps `[latest_seq - DEFAULT_LOG_MAX_ENTRIES + 1, latest_seq]`, modulo
 /// any still-eligible protected-cursor claim.
 pub const DEFAULT_LOG_MAX_ENTRIES: u64 = 10_000;
@@ -24,7 +24,7 @@ pub const DEFAULT_LOG_MAX_ENTRIES: u64 = 10_000;
 /// `nmp_meta` key holding the seq-keyed ingest-log GC floor.
 pub(crate) const KEY_INGEST_GC_FLOOR: &str = "ingest_gc_floor";
 
-/// Why an event was semantically removed (ADR-0058 §3). LRU eviction and
+/// Why an event was semantically removed (ADR-0072 §3). LRU eviction and
 /// `delete_by_filter(ByRelayOnly)` emit NO row — those are retention removals.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DeleteReason {
@@ -79,7 +79,7 @@ pub enum LogOp {
     },
 }
 
-/// One entry in the store's ingest log (ADR-0058 §3).
+/// One entry in the store's ingest log (ADR-0072 §3).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StoreLogEntry {
     /// Monotonic ingest-order sequence (never reused, starts at 1).
@@ -110,7 +110,7 @@ pub struct PullPage {
 }
 
 /// Explicit gap — returned when `after_seq` is behind the GC floor. Never a
-/// silent skip (ADR-0058 §6 `GapAllowed` contract).
+/// silent skip (ADR-0072 §6 `GapAllowed` contract).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PullGap {
     /// The `after_seq` the caller requested.
@@ -128,7 +128,7 @@ pub enum ScanLogResult {
     Gap(PullGap),
 }
 
-/// A `Protected`-cursor log-retention claim (ADR-0058 §6). VOLATILE — the kernel
+/// A `Protected`-cursor log-retention claim (ADR-0072 §6). VOLATILE — the kernel
 /// replaces the whole set each pass. A claim pins the seq-keyed GC floor to
 /// `after_seq` only while the cursor's lag stays within `max_lag_entries`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

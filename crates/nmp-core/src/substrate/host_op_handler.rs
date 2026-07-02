@@ -14,7 +14,7 @@
 //! those crates an `ActorCommand` variant per op would force `nmp-core` to name
 //! the app's nouns — exactly what D0 forbids.
 //!
-//! Marmot used this seam during the ADR-0025 migration, but now owns a typed
+//! Marmot used this seam during the ADR-0072 migration, but now owns a typed
 //! `ProtocolCommand` in `nmp-marmot` and no longer routes through
 //! `HostOpHandler`. The remaining owner is the substrate-generic FFI extension
 //! surface (`nmp-ffi::NmpApp::set_host_op_handler`) for host-owned, JSON-shaped
@@ -26,7 +26,7 @@
 //! state, run this op for me" without knowing what the op is. The host
 //! installs an `Arc<dyn HostOpHandler>` into [`NmpApp::set_host_op_handler`];
 //! the [`crate::substrate::HostOpCommand`] (dispatched through the single
-//! `ActorCommand::Protocol` write seam — ADR-0052 §D4, K2 rung 5.4) clones the
+//! `ActorCommand::Protocol` write seam — ADR-0072 §D4, K2 rung 5.4) clones the
 //! handler from the actor's start-time config and calls
 //! [`HostOpHandler::handle`].
 //! Before rung 5.4 a bespoke `ActorCommand::DispatchHostOp` arm did this; that
@@ -63,7 +63,7 @@
 //!
 //! Implementations MUST NOT panic. The [`crate::substrate::HostOpCommand`]
 //! wraps the call in `catch_unwind` (and the `Protocol` dispatch arm wraps the
-//! whole command body too — ADR-0052 §D4), so a panic is converted to a
+//! whole command body too — ADR-0072 §D4), so a panic is converted to a
 //! `Failed` action stage rather than unwinding the actor thread — but a
 //! well-behaved impl returns an `{"ok":false,"error":...}` envelope for soft
 //! failures instead of relying on the catch.

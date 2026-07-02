@@ -9,7 +9,7 @@
 //! in the instance crate or mounted component that supplies `R`, `A`, and the
 //! closures.
 //!
-//! See `docs/decisions/0035-generic-root-indexed-feed-engine.md` and
+//! See `docs/decisions/0076-app-facing-feed-helpers.md` and
 //! `docs/perf/op-centric-feed-architecture.md` §3 for the full design, and
 
 mod attribution;

@@ -1,4 +1,4 @@
-//! ADR-0053 / Workstream-E4 — projection-tier classification.
+//! ADR-0070 / Workstream-E4 — projection-tier classification.
 //!
 //! #1723 (epic #1719): the tier classification is no longer hand-maintained
 //! here. The neutral [`crate::projection_contract`] manifest owns each

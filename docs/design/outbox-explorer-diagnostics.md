@@ -122,7 +122,7 @@ pub(super) struct WireSubDiagnostic {
 
 pub(super) struct RelayMetrics {
     pub connection_state: String,  // mirrors RelayHealth::connection
-    pub auth_state: String,        // NIP-42, ADR-0007 keys
+    pub auth_state: String,        // NIP-42, ADR-0072 keys
     pub nip77_verdict: String,     // negentropy capability
     pub reconnect_count: u32,
     pub frames_rx: u64,

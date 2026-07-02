@@ -26,7 +26,7 @@ import org.nmp.gallery.registry.WireNostrUriKind
 import org.nmp.gallery.registry.defaultMentionLabel
 
 /**
- * Showcase pages for the kind-dispatch embed renderers (ADR-0034 / M16).
+ * Showcase pages for the kind-dispatch embed renderers (ADR-0072 / M16).
  *
  * Each page builds a [ContentTreeWire] of surrounding prose plus an
  * `EventRef` (or `Mention`) for a real bech32 URI, then renders it through
@@ -118,7 +118,7 @@ private fun ArticleEmbedPage(
     // iOS's typed ArticleEmbed does). Without an explicit claim the kernel
     // never fetches Gigi's kind:0, and the byline falls back to hex.
     //
-    // Component-owned resolving (ADR-0034; mirrors iOS #847 / ProfileEmbedPage
+    // Component-owned resolving (ADR-0072; mirrors iOS #847 / ProfileEmbedPage
     // below): the presentation component claims the author's profile so the
     // kernel resolves it into `refs.profile` — the kernel must NEVER fetch
     // an author's kind:0 as a side effect of event ingest. The author hex is

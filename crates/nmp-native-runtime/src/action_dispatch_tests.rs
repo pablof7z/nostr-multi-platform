@@ -149,7 +149,7 @@ fn oversize_bytes_produce_error_outcome() {
     assert!(outcome.correlation_id.is_none());
 }
 
-/// ADR-0064 §4: accepted dispatch echoes the host-supplied correlation_id.
+/// ADR-0071 §4: accepted dispatch echoes the host-supplied correlation_id.
 #[test]
 fn dispatch_preserves_host_supplied_correlation_id() {
     let mut app = new_app();

@@ -1,9 +1,9 @@
-// ADR-0063 Lane A — row-grain delta carrier for KEYED reference-resolution
+// ADR-0070 Lane A — row-grain delta carrier for KEYED reference-resolution
 // projections (`refs.profile` / `refs.event`, issue #1671).
 //
 // ## Why a dedicated payload schema, NOT a change to nmp_update.fbs
 //
-// ADR-0055 already ships a per-PROJECTION rev/state carrier on the transport
+// ADR-0070 already ships a per-PROJECTION rev/state carrier on the transport
 // (`TypedProjection.projection_rev` + `TypedProjection.state`, nmp_update.fbs).
 // D8 of that ADR explicitly designates intra-projection ROW deltas as "an
 // optional per-projection encoding INSIDE a Changed frame, negotiated per
@@ -18,7 +18,7 @@
 // gate (Changed when any row changed; Cleared when the whole namespace empties);
 // this batch refines it to row grain.
 //
-// ## Invariants carried by this encoding (ADR-0063 §"Invariants that MUST hold")
+// ## Invariants carried by this encoding (ADR-0070 §"Invariants that MUST hold")
 //
 // 1. ABSENCE of a `RefRow` for a key == Unchanged, NEVER Cleared. A clear is
 //    ALWAYS an explicit `RefRow{state: Cleared}` row. A producer that drops a
@@ -50,7 +50,7 @@ enum RefRowState:ubyte {
 // One row of a keyed reference projection.
 table RefRow {
   // Entity key: raw hex pubkey (`profile`) or event id / `kind:pubkey:d`
-  // coordinate (`event`). Raw forms only (ADR-0032: no npub/bech32 on the wire).
+  // coordinate (`event`). Raw forms only (ADR-0072: no npub/bech32 on the wire).
   key:string;
   // Per-key monotonic revision, sourced from Lane B's `ref_row_rev(ns, key)`.
   // The host keys its row cache on (key, rev) and skips a row whose rev is not

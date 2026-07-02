@@ -1,7 +1,7 @@
 # Subscription Compilation §5 + §8 — Four-Lane Diagnostics
 
 > Parent: `docs/design/subscription-compilation.md`.
-> Read first: ADR-0007 (`docs/decisions/0007-diagnostics-and-non-nostr-domain-data.md`) — every record here extends ADR-0007 types; it does not replace them.
+> Read first: ADR-0072 (`docs/decisions/0072-runtime-capability-and-shell-boundary.md`) — every record here extends ADR-0072 types; it does not replace them.
 
 The compiler's routing decisions are the most subtle correctness surface in the M2 milestone. They are also the easiest to silently get wrong (`docs/design/ndk-applesauce-lessons.md` §3, "automatic behaviour also needs strong tests"). Diagnostics make the four sources of relay knowledge legible — separately, never collapsed.
 
@@ -39,7 +39,7 @@ pub enum RelayFactLane {
 
 ## 5.1 Per-lane record schemas
 
-Each lane has one record type. All four are exposed to the platform via the existing ADR-0007 `ViewBatch` lane (low-cadence, coalesced to 1–4 Hz per ADR-0007 "How status crosses the bridge"). They feed into the diagnostics screen, not into normal product UI.
+Each lane has one record type. All four are exposed to the platform via the existing ADR-0072 `ViewBatch` lane (low-cadence, coalesced to 1–4 Hz per ADR-0072 "How status crosses the bridge"). They feed into the diagnostics screen, not into normal product UI.
 
 ### Lane 1 — `Nip65RelayFact`
 
@@ -103,7 +103,7 @@ pub struct ProvenanceRelayFact {
 }
 ```
 
-Emitted by `handle_event` (`crates/nmp-core/src/kernel/ingest.rs:134-164`) for every EVENT arrival. This is the highest-cardinality lane and the only one where coalescing matters at the ADR-0007 boundary: the platform diagnostic view consumes a summarised projection (`ProvenanceSummary` per author or per event), not the raw fact stream.
+Emitted by `handle_event` (`crates/nmp-core/src/kernel/ingest.rs:134-164`) for every EVENT arrival. This is the highest-cardinality lane and the only one where coalescing matters at the ADR-0072 boundary: the platform diagnostic view consumes a summarised projection (`ProvenanceSummary` per author or per event), not the raw fact stream.
 
 ### Lane 4 — `UserConfiguredRelayFact`
 
@@ -211,12 +211,12 @@ of our timeline."
 
 One `RelayCoverageSpec`/relay → ≤ N records, where N is the number of relays currently in the planner's union of `RelayPlan`s. For typical Nostr usage that is in the low tens; rendering all of them on one diagnostic screen is fine.
 
-Emission cadence follows ADR-0007's diagnostic-view rule: material-transition immediately, otherwise 1–4 Hz. The provenance counter ticks every second; the `by_lane` counts only emit on `CompiledPlan` recompiles or new mailbox arrivals.
+Emission cadence follows ADR-0072's diagnostic-view rule: material-transition immediately, otherwise 1–4 Hz. The provenance counter ticks every second; the `by_lane` counts only emit on `CompiledPlan` recompiles or new mailbox arrivals.
 
 ## 8.4 Why it lives in diagnostics, not in product UI
 
 Per `docs/aim.md` §4.4 ("the developer does not pick relays per operation;
-the framework does") and ADR-0007's domain-of-diagnostics separation, end-user
+the framework does") and ADR-0072's domain-of-diagnostics separation, end-user
 product UIs do not show "relay X is serving 12 authors." That is
 operator/debug surface. Normal apps consume the `LogicalInterestStatus`
 summaries; `RelayCoveragePayload` is for diagnostics screens.

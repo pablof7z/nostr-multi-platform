@@ -3,9 +3,9 @@
 use super::*;
 
 fn sample() -> PublishOutboxModel {
-    // ADR-0032 / V-115: `created_at` is raw Unix seconds; `target_summary`
+    // ADR-0072 / V-115: `created_at` is raw Unix seconds; `target_summary`
     // removed. Shells format timestamps and compose "N relays · time" themselves.
-    // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
+    // ADR-0072 / aim.md §2 #4: `title`, `preview`, `system_image`, `status_label`
     // removed; `content` (raw event content) added.
     PublishOutboxModel {
         items: vec![

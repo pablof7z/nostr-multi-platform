@@ -61,7 +61,7 @@ fn controller() -> (
     (controller, active_pubkey, rx)
 }
 
-/// Drain whatever the controller enqueued (ADR-0050 §D3a: the inbox
+/// Drain whatever the controller enqueued (ADR-0072 §D3a: the inbox
 /// carries `ActorMail`).
 fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
     rx.try_iter()

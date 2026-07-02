@@ -70,7 +70,7 @@ struct ComponentDetailView: View {
         case "content-quote-card":
             ContentQuoteCardPage()
         // Embed pages — exercise the renderer-driven claim path
-        // (ADR-0034 / M16). Each page builds a tree with a real bech32
+        // (ADR-0072 / M16). Each page builds a tree with a real bech32
         // URI; `EmbeddedEvent` fires the claim and the kernel resolves
         // through the OneshotApi.
         case "embed-article":

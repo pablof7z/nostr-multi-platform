@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 6 — reusable per-typed-projection omit helper.
+//! ADR-0070 Rung 6 — reusable per-typed-projection omit helper.
 //!
 //! [`TypedProjectionEmissionState`] is the trap-proof byte-equality omit
 //! mechanism first built for an app-owned feed session (R6-S1) and generalised

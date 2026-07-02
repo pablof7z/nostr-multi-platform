@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 integration glue, codex "Artifact 1") — the campaign's
+//! ADR-0070 (#1671 integration glue, codex "Artifact 1") — the campaign's
 //! headline gate: an end-to-end `incremental == full` integration test driving
 //! the REAL seam.
 //!
@@ -10,7 +10,7 @@
 //! - Lane A: the real NRRD decoder (`decode_ref_row_delta_batch`) applied to a
 //!   real `RefRowCache` incrementally across ticks.
 //!
-//! It asserts the four ADR-0063 invariants the whole campaign exists to protect:
+//! It asserts the four ADR-0070 invariants the whole campaign exists to protect:
 //! 1. incremental-applied cache == a full snapshot of the live resolver state;
 //! 2. an epoch re-baseline fully repairs a corrupted host cache;
 //! 3. a released key becomes `Cleared` (not stale);
@@ -163,7 +163,7 @@ fn kernel_with_incremental() -> (
     (kernel, slot)
 }
 
-/// ADR-0053 / #1671 codex bug — a host that starts NARROWED to exclude
+/// ADR-0070 / #1671 codex bug — a host that starts NARROWED to exclude
 /// `refs.profile` / `refs.event` must NOT have the row-delta tracker advanced
 /// while those keys are filtered off the wire. When the host LATER additively
 /// declares them, the FIRST emission must be a full BASELINE carrying every live

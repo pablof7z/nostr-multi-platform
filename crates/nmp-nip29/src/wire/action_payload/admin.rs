@@ -1,5 +1,5 @@
-//! `ActionPayload` codecs for the ADR-0060 admin actions: `put_user`
-//! (kind:9000) and `create_invite` (kind:9009) (ADR-0064 / S9 #1747).
+//! `ActionPayload` codecs for the ADR-0070 admin actions: `put_user`
+//! (kind:9000) and `create_invite` (kind:9009) (ADR-0071 / S9 #1747).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 

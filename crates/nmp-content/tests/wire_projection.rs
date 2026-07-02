@@ -1,5 +1,5 @@
 //! ContentTree → wire → JSON → wire round-trip + depth-collapse tests.
-//! See `docs/decisions/0018-content-tree-ffi-projection.md` (T93).
+//! See `docs/decisions/0072-runtime-capability-and-shell-boundary.md` (T93).
 
 use nmp_content::{
     ContentTree, ContentTreeWire, InvoiceKind, MarkdownInline, MarkdownNode, MediaKind,

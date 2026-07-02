@@ -17,7 +17,7 @@ use nmp_core::{
 };
 
 /// The JSON projection key the native shells read for resolved profiles.
-/// ADR-0063 (#1671): the map is SOURCED from the `refs.profile` row-delta
+/// ADR-0070 (#1671): the map is SOURCED from the `refs.profile` row-delta
 /// projection (merged into a stateful [`RefProfileStore`]) and emitted under
 /// that same key — the retired `resolved_profiles` whole-map projection is
 /// gone end-to-end (Rust emitter + Swift/Kotlin readers).
@@ -31,7 +31,7 @@ pub(crate) fn snapshot_json_from_update_frame(
     let envelope = decode_snapshot_envelope(bytes).map_err(|err| err.to_string())?;
     let typed = decode_snapshot_typed_projections(bytes).map_err(|err| err.to_string())?;
 
-    // ADR-0063 (#1671): merge this frame's `refs.profile` row-delta batch into
+    // ADR-0070 (#1671): merge this frame's `refs.profile` row-delta batch into
     // the stateful store (the sole app-side mirror, D4), then materialise the
     // current full set. A malformed sidecar is a fail-closed no-op inside the
     // store (prior rows retained).
@@ -89,7 +89,7 @@ fn find_projection<'a>(
     }
 }
 
-/// Render the materialised `refs.profile` set (ADR-0063 #1671 — the resolve_ref
+/// Render the materialised `refs.profile` set (ADR-0070 #1671 — the resolve_ref
 /// output, merged in the caller's [`RefProfileStore`]) as the native shells'
 /// `refs.profile` JSON map. Replaces the retired `resolved_profiles` whole-map
 /// projection decode.

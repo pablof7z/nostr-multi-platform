@@ -7,7 +7,6 @@ This file is an index. Each section lives in its own file to stay within the rep
 - [Product Spec: Overview And Developer Experience](product-spec/overview-and-dx.md)
 - [Product Spec: API Surface](product-spec/api-surface.md)
 - [Product Spec: Subsystems](product-spec/subsystems.md)
-- [Product Spec: Chirp Web](product-spec/chirp-web.md)
 - [Product Spec: CLI, Toolchain, Phasing](product-spec/cli-toolchain-phasing.md)
 - [Product Spec: Appendices](product-spec/appendices.md)
 
@@ -16,7 +15,6 @@ This file is an index. Each section lives in its own file to stay within the rep
 - Sections 1-5: [overview and developer experience](product-spec/overview-and-dx.md)
 - Section 6: [API surface](product-spec/api-surface.md)
 - Section 7: [subsystems](product-spec/subsystems.md)
-- Product surface: [Chirp Web](product-spec/chirp-web.md)
 - Sections 8-14: [CLI, toolchain, phasing, open questions, glossary](product-spec/cli-toolchain-phasing.md)
 - Principles: [offline-first and flaky-relay resilience](product-spec/offline-first.md)
 - Appendices: [FFI details and NIP glossary](product-spec/appendices.md)

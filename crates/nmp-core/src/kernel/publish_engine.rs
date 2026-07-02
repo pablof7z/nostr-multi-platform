@@ -221,7 +221,7 @@ impl Kernel {
                         Some(serde_json::json!({ "event_id": event_id })),
                     );
                 }
-                // ADR-0057 — route the locally-published event through the
+                // ADR-0070 — route the locally-published event through the
                 // single accepted-event chokepoint with `local://publish`
                 // provenance, exactly as a relay-delivered event flows through
                 // it. This gives read-your-writes for ALL kinds (incl. kind:1

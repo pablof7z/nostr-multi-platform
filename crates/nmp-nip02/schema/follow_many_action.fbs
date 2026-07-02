@@ -1,6 +1,6 @@
 namespace nmp.nip02;
 
-// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow_many`
+// ADR-0071 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow_many`
 // `ActionModule` (the race-free bulk-follow primitive).
 //
 // The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter

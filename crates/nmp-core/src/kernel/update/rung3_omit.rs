@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 S1b — omit `Unchanged` projections from the wire frame
+//! ADR-0070 Rung 3 S1b — omit `Unchanged` projections from the wire frame
 //! and synthesize `Cleared` rows for conditionally-present keys whose tracker
 //! went empty this tick.
 //!
@@ -11,7 +11,7 @@
 //! Mirrors `rung2_stamp.rs` in structure: a single pure function with no
 //! side-effects on kernel state.
 //!
-//! ## Invariants (ADR-0055 §3 D3-1 / D3-2 / D3-7 + §10.2 / §10.3)
+//! ## Invariants (ADR-0070 §3 D3-1 / D3-2 / D3-7 + §10.2 / §10.3)
 //!
 //! - `!enabled` → return `typed` unchanged (full rows, no omission).
 //! - `enabled` + `Unchanged` → DROP the row entirely (absence == Unchanged
@@ -137,7 +137,7 @@ pub(super) fn omit_unchanged(
                      from typed — this is a producer bug (an unconditional Tier-2 key \
                      must always emit a row when Changed). Do NOT synthesize Cleared here \
                      (would delete live host state). File a bug and investigate. \
-                     (ADR-0055 §10.2 / issue #1390)",
+                     (ADR-0070 §10.2 / issue #1390)",
                     ps.key
                 );
                 tracing::warn!(

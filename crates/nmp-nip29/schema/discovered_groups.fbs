@@ -4,15 +4,15 @@ namespace nmp.nip29;
 // (`nmp_nip29::projection::DiscoveredGroupsSnapshot`), schema_id
 // "nmp.nip29.discovered_groups".
 //
-// This is the typed sidecar (ADR-0037) carried alongside the existing generic
+// This is the typed sidecar (ADR-0072) carried alongside the existing generic
 // `serde_json::Value` projection registered under the same key in
 // `nmp_nip29::register::open_group_discovery`. The serde shape
 // (`DiscoveredGroupsProjection::snapshot_json`) stays authoritative; this buffer
 // mirrors it byte-for-byte in field semantics so a host with a `NDGS` decoder can
 // read typed accessors instead of JSON reflection. An un-updated host falls back
-// to the generic `Value` subtree (the permanent fallback from ADR-0037).
+// to the generic `Value` subtree (the permanent fallback from ADR-0072).
 //
-// Raw data only (ADR-0032): protocol fields are raw values — the in-relay group
+// Raw data only (ADR-0072): protocol fields are raw values — the in-relay group
 // id (`["d", _]` tag value), the host relay URL, raw `["name"/"picture"/"about"]`
 // tag values, raw `["p", _]` tag cardinalities. Presentation-layer formatting
 // (display-name fallback, avatar initials, subtitle) is the shell's

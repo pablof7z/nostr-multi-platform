@@ -162,7 +162,7 @@ pub struct BlockRelayInput {
 /// The `nmp.nip51.block_relay` [`ActionModule`].
 ///
 /// Holds an [`Arc<InMemoryBlockedRelayCache>`] so it can read the active
-/// account's current blocked set without reaching through the kernel (ADR-0052
+/// account's current blocked set without reaching through the kernel (ADR-0072
 /// rung 5.2 — stateful module carries its dependency, captured at composition
 /// time by [`register_block_relay_actions`]).
 pub struct BlockRelayAction {
@@ -189,7 +189,7 @@ impl ActionModule for BlockRelayAction {
         );
     type Action = BlockRelayInput;
 
-    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<BlockRelayInput as ActionPayload>::decode(bytes))
@@ -289,7 +289,7 @@ impl ActionModule for UnblockRelayAction {
         );
     type Action = UnblockRelayInput;
 
-    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<UnblockRelayInput as ActionPayload>::decode(bytes))
@@ -350,7 +350,7 @@ impl ActionModule for UnblockRelayAction {
 // ─── Registration ────────────────────────────────────────────────────────────
 
 /// Register the `nmp.nip51.block_relay` and `nmp.nip51.unblock_relay` action
-/// modules as **yielding defaults** (ADR-0049 Part 1): an app may pre-empt
+/// modules as **yielding defaults** (ADR-0069 Part 1): an app may pre-empt
 /// either regardless of call order.
 ///
 /// Both modules share a clone of `cache` — the SAME

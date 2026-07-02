@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::SignerError;
 
-/// Capability namespace for the NIP-55 external-signer bridge (ADR-0048 D2).
+/// Capability namespace for the NIP-55 external-signer bridge (ADR-0072 D2).
 ///
 /// `ExternalSignerRequest` rides the existing `CapabilityRequest` carrier as
 /// `payload_json` under this namespace; the host adapter recognises it and
@@ -61,7 +61,7 @@ pub const PENDING_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
 /// An Android Intent round-trip requires the user to foreground Amber and tap
 /// approve — 5–30s in typical usage, occasionally more if the app is cold. 90s
 /// gives ample headroom without stranding the publish queue indefinitely
-/// (ADR-0048 D3). `Nip55Signer` returns this via `RemoteSignerHandle::op_timeout()`.
+/// (ADR-0072 D3). `Nip55Signer` returns this via `RemoteSignerHandle::op_timeout()`.
 pub const EXTERNAL_SIGN_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Methods the Rust layer can request from a NIP-55 external signer.

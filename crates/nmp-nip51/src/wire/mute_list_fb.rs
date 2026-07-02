@@ -5,14 +5,14 @@
 //! `crates/explicit composition/src/runtimes/mute_runtime.rs` (`register_mute_runtime`)
 //! via `register_snapshot_projection`. This module adds a **typed FlatBuffers**
 //! encoding of the same shape, carried in the `typed_projections` sidecar
-//! (ADR-0037) ALONGSIDE — never replacing — the generic `Value` projection.
+//! (ADR-0072) ALONGSIDE — never replacing — the generic `Value` projection.
 //!
 //! [`crate::MuteListSnapshot`] is the SINGLE read model both wire forms share:
 //! its `Serialize` impl drives the generic `Value` projection (the producer's
 //! `snapshot_json` closure serialises it) AND this module's codec drives the
 //! typed sidecar, so the two can never structurally diverge.
 //!
-//! Both vectors carry raw protocol data only (ADR-0032): 64-char lowercase hex
+//! Both vectors carry raw protocol data only (ADR-0072): 64-char lowercase hex
 //! pubkeys and event ids. Empty and absent are the same observable state (no
 //! active account / no kind:10000 yet), so no presence flag is needed.
 //!

@@ -1,4 +1,4 @@
-//! NIP-55 first-connect flow (ADR-0048 Stage 2).
+//! NIP-55 first-connect flow (ADR-0072 Stage 2).
 //!
 //! [`Nip55Connect`] owns the initial `get_public_key` round-trip that happens
 //! BEFORE a [`Nip55Signer`] exists: it builds the request (carrying the

@@ -9,4 +9,4 @@ source_refs:
 
 # DispatchEnvelope
 
-FlatBuffers encoding for a typed action, pushed through dispatch_action — the single FFI command lane (ADR-0064), identical in shape across native and browser
+FlatBuffers encoding for a typed action, pushed through dispatch_action — the single FFI command lane (legacy decision 0064), identical in shape across native and browser

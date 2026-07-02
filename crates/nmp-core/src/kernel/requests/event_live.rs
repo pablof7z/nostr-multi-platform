@@ -1,5 +1,5 @@
 //! Event-claim resolution support: the `Live`/Tailing addressable-event slot
-//! (ADR-0063 #1671 Lane B), the read-cache lookup, and the cold-start parking
+//! (ADR-0070 #1671 Lane B), the read-cache lookup, and the cold-start parking
 //! drain.
 //!
 //! Split out of `requests/event.rs` to keep that file under the 500-LOC hard
@@ -27,7 +27,7 @@ fn event_claim_identity(primary_id: &str, consumer_id: &str) -> SubIdentity {
 }
 
 impl Kernel {
-    /// ADR-0063 — register or upgrade the deduped *tailing* interest for a
+    /// ADR-0070 — register or upgrade the deduped *tailing* interest for a
     /// `Live` claim on an addressable (naddr) coordinate. Mirrors
     /// [`Kernel::register_profile_claim_interest`]: one
     /// `(SubScope::Global, event-claim:<primary_id>)` slot per coordinate; each
@@ -76,7 +76,7 @@ impl Kernel {
         );
     }
 
-    /// ADR-0063 (BLOCKING 1) — detach THIS consumer's `Live` tailing owner for
+    /// ADR-0070 (BLOCKING 1) — detach THIS consumer's `Live` tailing owner for
     /// `primary_id`, tearing the deduped slot down when the LAST live owner
     /// leaves. Called on EVERY event release (per-consumer lifecycle), not only
     /// on total teardown: that is what stops the first of two `Live` consumers —
@@ -117,7 +117,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0063 (BLOCKING 3) — retire a `CacheOk` one-shot interest for
+    /// ADR-0070 (BLOCKING 3) — retire a `CacheOk` one-shot interest for
     /// `primary_id` when a `Live` claim upgrades the key to a tailing slot, so
     /// exactly ONE interest / wire REQ exists per key (Live wins). The profile
     /// path shares ONE slot across liveness levels via in-place `set_sub`; events
@@ -249,7 +249,7 @@ impl Kernel {
         out
     }
 
-    /// ADR-0063 (#1671 Lane B) — drop `consumer_id`'s COLD-PARK stake for
+    /// ADR-0070 (#1671 Lane B) — drop `consumer_id`'s COLD-PARK stake for
     /// `primary_id` from `pending_event_claims`, the queue the relay-ready drain
     /// replays. Called from the release path BEFORE `teardown_event_claim_key`:
     /// the unified teardown only cleans the LIVE per-key maps (`event_claims`,
@@ -279,7 +279,7 @@ impl Kernel {
         });
     }
 
-    /// ADR-0063 (#1671 Lane B, BLOCKING 1 + 2) — the SINGLE internal teardown for a
+    /// ADR-0070 (#1671 Lane B, BLOCKING 1 + 2) — the SINGLE internal teardown for a
     /// fully-released `event` ref key. Called from BOTH `release_event_ref` (last
     /// consumer gone) and the controller's terminal-miss path
     /// (`terminate_claim`, `Exhausted` / `Budget`: no relay holds the event). It
@@ -298,7 +298,7 @@ impl Kernel {
     ///    registry owner,
     /// 5. stamp the projection (`changed_since_emit`, `claimed_event_content_ver`),
     /// 6. `clear_event_row`: bump the per-key rev to its final post-clear value
-    ///    (the value an ADR-0055 `Cleared` row would carry) and IMMEDIATELY remove
+    ///    (the value an ADR-0070 `Cleared` row would carry) and IMMEDIATELY remove
     ///    the entry in the same call — no retained-rev / pending state, so the map
     ///    stays bounded to live keys (D8). The downstream row-delta emitter
     ///    (Lane A) is out of this branch's scope, so the returned final rev is
@@ -330,7 +330,7 @@ impl Kernel {
         self.release_claim_expansion(primary_id);
 
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+        // ADR-0070 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
         self.projection_rev_tracker
             .source_versions
             .bump_claimed_event_content();

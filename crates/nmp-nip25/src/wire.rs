@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codecs for the nip25 reaction actions
-//! (ADR-0064 / S3 #1751): `nmp.nip25.react` ([`ReactAction`]) and
+//! (ADR-0071 / S3 #1751): `nmp.nip25.react` ([`ReactAction`]) and
 //! `nmp.nip25.unreact` ([`UnreactAction`]).
 //!
 //! These are the WRITE-direction typed payloads carried as the OPAQUE

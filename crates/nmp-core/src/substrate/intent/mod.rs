@@ -23,7 +23,7 @@
 //! identifier) or opaque JSON. The protocol/app crates that name those nouns
 //! implement [`InputScopeRecognizer`] and produce the targets.
 //!
-//! # Registration house style (ADR-0046 / ADR-0049 — NO linkme/inventory)
+//! # Registration house style (ADR-0069 / ADR-0069 — NO linkme/inventory)
 //!
 //! A crate registers a recognizer through the [`InputScopeRegistrar`] trait on
 //! the `AppHost`; the registry records a [`crate::Disposition`] in the

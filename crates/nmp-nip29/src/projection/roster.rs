@@ -33,7 +33,7 @@
 //!   catalog the relay knows about for this group. Optional (many relays omit
 //!   it); folded into the snapshot's `roles` list when present.
 //!
-//! ## Display separation (ADR-0032)
+//! ## Display separation (ADR-0072)
 //!
 //! Raw protocol data only: hex pubkeys and verbatim role tokens. No
 //! display-name fallback, avatar initials, or role-label formatting runs here —
@@ -58,7 +58,7 @@ use crate::kinds::{d_tag_value, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROU
 
 /// One member of a NIP-29 group's roster.
 ///
-/// Raw protocol data only (ADR-0032): `pubkey` is the 64-char hex author key,
+/// Raw protocol data only (ADR-0072): `pubkey` is the 64-char hex author key,
 /// `roles` are verbatim role tokens (the 3rd+ elements of the member's `p`
 /// tag). `is_admin` / `is_member` reflect which relay-signed snapshot(s) carry
 /// the pubkey (a pubkey can be both — admins are usually members too).

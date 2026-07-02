@@ -5,7 +5,7 @@
 //!   2. Sign in as alice (establishes an active account with a local key signer).
 //!   3. Dispatch PublishProfile with display_name = "Alice".
 //!      — `publish_profile` signs the kind:0 locally, then
-//!        `record_local_publish_intent` routes it (since #1193, ADR-0045 Rev 2
+//!        `record_local_publish_intent` routes it (since #1193, ADR-0070 Rev 2
 //!        single-mechanism) through `verify_and_persist` + `ingest_profile`
 //!        into the canonical `profiles` cache — the EXACT relay-ingest sequence.
 //!        The later relay echo dedups to `Duplicate` (no-op).

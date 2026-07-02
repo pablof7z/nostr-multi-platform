@@ -5,7 +5,7 @@
 //! store is held behind an `Arc` so each in-flight gift-UNWRAP port chain
 //! (`super::chain`) carries a clone into its terminal continuation and inserts
 //! the decrypted message even though the chain outlives the synchronous
-//! `ingest_gift_wrap` call (ADR-0050 §D6). The `generation` counter is the §D6
+//! `ingest_gift_wrap` call (ADR-0072 §D6). The `generation` counter is the §D6
 //! epoch guard against cross-account leaks.
 
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ use nmp_core::substrate::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 
 use super::{DmConversation, DmMessage};
 
-/// Per-account bound on concurrently-in-flight decrypt chains (ADR-0050 §D7).
+/// Per-account bound on concurrently-in-flight decrypt chains (ADR-0072 §D7).
 ///
 /// A LOCAL account resolves each decrypt `Ready` inline on the actor thread, so
 /// its chains terminate within the same `ingest_gift_wrap` dispatch and the
@@ -29,7 +29,7 @@ use super::{DmConversation, DmMessage};
 /// signer-kind label (one mechanism, §D7 "strictly sequential per-account").
 pub(crate) const MAX_IN_FLIGHT_DECRYPTS: u64 = 8;
 
-/// Policy state for the inbox decrypt pipeline (ADR-0050 §D7) — the
+/// Policy state for the inbox decrypt pipeline (ADR-0072 §D7) — the
 /// errors-as-state replacement for the old `remote_signer_unsupported: bool`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum DecryptState {

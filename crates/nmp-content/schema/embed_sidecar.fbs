@@ -1,7 +1,7 @@
 namespace nmp.embed;
 
 // Typed FlatBuffers wire for the `refs.event.envelopes` derived projection
-// (issue #1283 / ADR-0034 §embed-sidecar). `nmp-native-runtime` and browser
+// (issue #1283 / ADR-0072 §embed-sidecar). `nmp-native-runtime` and browser
 // runtimes derive this payload from the authoritative `refs.event` row store and carry the
 // pre-resolved map (`primary_id -> EmbeddedEventEnvelope`) so typed-frame shells
 // can decode the kind-dispatched `EmbedKindProjection` WITHOUT re-implementing

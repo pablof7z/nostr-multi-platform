@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codec for the nip51 bookmark ACTIONS
-//! (ADR-0064 / S9 #1747): `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`
+//! (ADR-0071 / S9 #1747): `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`
 //! ([`BookmarkUpdateInput`]). Both namespaces carry the SAME input shape, so they
 //! share this one codec.
 //!

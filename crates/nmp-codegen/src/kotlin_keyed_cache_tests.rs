@@ -1,4 +1,4 @@
-//! Structural unit tests for the generated Kotlin `KeyedRefCache` (ADR-0063).
+//! Structural unit tests for the generated Kotlin `KeyedRefCache` (ADR-0070).
 //! The Kotlin compile + JUnit run is the CI harness's gate
 //! (`apps/chirp/android/app/src/test/java/org/nmp/android/KeyedRefCacheTest.kt`); these
 //! Rust tests guard the generator's emitted shape.
@@ -18,7 +18,7 @@ fn emits_namespace_routing() {
     }
 }
 
-/// ADR-0063 Lane G (#1671): the public per-namespace surface is the TYPED
+/// ADR-0070 Lane G (#1671): the public per-namespace surface is the TYPED
 /// accessor (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`),
 /// NEVER a dishonest raw `ByteArray?` accessor (invariant #4). The accessor
 /// decodes the cached row bytes through the namespace's typed Kotlin reader; the

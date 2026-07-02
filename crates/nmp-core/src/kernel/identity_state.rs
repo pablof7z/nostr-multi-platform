@@ -212,13 +212,13 @@ impl super::Kernel {
             self.accounts = accounts;
             self.active_account = active;
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump source version counters.
+            // ADR-0070 Rung 1: bump source version counters.
             self.projection_rev_tracker.source_versions.bump_accounts();
             if active_changed {
                 self.projection_rev_tracker
                     .source_versions
                     .bump_active_account();
-                // ADR-0055 Rung 1 (F6): an account switch invalidates every
+                // ADR-0070 Rung 1 (F6): an account switch invalidates every
                 // account-scoped projection cache on the host — bump the epoch so
                 // Rung 3's host re-baselines all projections (treats the next emit
                 // as a full snapshot, not a delta).
@@ -249,11 +249,11 @@ impl super::Kernel {
         self.active_account = Some(pubkey);
         self.changed_since_emit = true;
         if changed {
-            // ADR-0055 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
+            // ADR-0070 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
             self.projection_rev_tracker
                 .source_versions
                 .bump_active_account();
-            // ADR-0055 Rung 1 (F6): account switch → epoch bump (host re-baseline).
+            // ADR-0070 Rung 1 (F6): account switch → epoch bump (host re-baseline).
             self.projection_rev_tracker.bump_epoch();
         }
         if let Ok(mut guard) = self.active_account_handle.lock() {
@@ -271,7 +271,7 @@ impl super::Kernel {
             self.publish_queue.drain(0..drop);
         }
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump publish_ver.
+        // ADR-0070 Rung 1: bump publish_ver.
         self.projection_rev_tracker.source_versions.bump_publish();
     }
 
@@ -285,7 +285,7 @@ impl super::Kernel {
         };
         self.publish_queue.remove(idx);
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump publish_ver.
+        // ADR-0070 Rung 1: bump publish_ver.
         self.projection_rev_tracker.source_versions.bump_publish();
         true
     }
@@ -328,7 +328,7 @@ impl super::Kernel {
             publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
+        // ADR-0070 Rung 1: bump publish_ver on terminal state transition.
         self.projection_rev_tracker.source_versions.bump_publish();
     }
 
@@ -391,7 +391,7 @@ impl super::Kernel {
         if changed {
             self.configured_relays = rows.clone();
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump configured_relays_ver.
+            // ADR-0070 Rung 1: bump configured_relays_ver.
             // (diagnostics_inputs_ver is NOT co-bumped here — F5 derives it from the
             // relay_diagnostics payload fingerprint each emit, not per mutation site.)
             self.projection_rev_tracker

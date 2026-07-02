@@ -7,7 +7,7 @@
 //! `crate::actor::relay_role_options()`, a `Vec<RelayRoleOption>`
 //! (`{ value, is_default }`). This module adds a **typed
 //! FlatBuffers** encoding of the same shape, carried in the `typed_projections`
-//! sidecar (ADR-0037) ALONGSIDE — never replacing — the generic `Value`
+//! sidecar (ADR-0072) ALONGSIDE — never replacing — the generic `Value`
 //! projection.
 //!
 //! [`RelayRoleOptionsModel`] is built directly from the same option vector the

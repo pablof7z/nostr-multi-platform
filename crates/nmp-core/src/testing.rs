@@ -7,7 +7,7 @@ pub use crate::kernel::{
     PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED,
     PROCESS_STORE_LRU_EVICTED,
 };
-pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
+pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0070 churn
 
 /// NIP golden-tag conformance harness — drives the (crate-private) command
 /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
@@ -27,7 +27,7 @@ pub fn spawn_actor() -> (
     crate::CommandSender,
     mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
 ) {
-    // ADR-0029 / ADR-0050 §D3a — one bounded waking inbox of `ActorMail`.
+    // ADR-0072 / ADR-0072 §D3a — one bounded waking inbox of `ActorMail`.
     // The host handle and the actor's self-feedback handle are both
     // `CommandSender`s over this one channel, so any accepted command wakes the
     // actor without giving the FFI lane unbounded memory.

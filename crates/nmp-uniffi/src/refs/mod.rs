@@ -1,6 +1,6 @@
 //! Reference resolution UniFFI surface (#2125).
 //!
-//! `nmp-uniffi` is the sole native binding surface for ADR-0063 Lane D
+//! `nmp-uniffi` is the sole native binding surface for ADR-0070 Lane D
 //! reference resolution (M14 complete; the legacy `nmp-ffi` C-ABI crate has
 //! been deleted). Each sub-module adds a `#[uniffi::export] impl NmpApp`
 //! block exposing typed methods.

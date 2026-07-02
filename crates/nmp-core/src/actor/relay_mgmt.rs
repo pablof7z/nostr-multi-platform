@@ -79,7 +79,7 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 /// `open_firehose` / sign-in-driven retarget sends its REQ now or parks until a
 /// relay connects. Its value is computed once per dispatch at `actor/mod.rs` and
 /// fed to every consumer as `relays_ready` / `can_send`.
-/// V-68 / V-112 (ADR-0042): `open_author` / `open_thread` deleted.
+/// V-68 / V-112 (ADR-0076): `open_author` / `open_thread` deleted.
 ///
 /// # #1938 — URL-derived gate
 ///

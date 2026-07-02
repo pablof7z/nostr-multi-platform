@@ -1,4 +1,4 @@
-//! K3 Stage D3 — eviction⇄ledger coherence BACKSTOP, store layer (ADR-0056 §3.D3).
+//! K3 Stage D3 — eviction⇄ledger coherence BACKSTOP, store layer (ADR-0072 §3.D3).
 //!
 //! The backstop leg: even if the floor-coherent pin set is bypassed or
 //! budget-truncated, LRU eviction MUST NOT leave the coverage ledger

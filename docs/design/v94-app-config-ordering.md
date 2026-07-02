@@ -1,7 +1,7 @@
 # V-94 design — type-and-runtime enforcement of pre-start wiring order
 
 Status: IMPLEMENTED (2026-05-30) — `NmpAppBuilder<S>` typestate shipped in PR #858.
-ADR-0068 / #2205 later moved the durable native runtime owner to
+ADR-0072 / #2205 later moved the durable native runtime owner to
 `nmp-native-runtime`; the three open design decisions (§7.i-iii) remain
 resolved as: consume-and-return typestate, phantom-typed states,
 builder-is-the-AppHost.
@@ -78,7 +78,7 @@ already blesses (docs/architecture/crate-boundaries.md:269, :835). V-94's
 ### 3.1 `NmpAppBuilder` in `nmp-native-runtime` (the Rust enforcement, (a) + F-08)
 
 A single config/builder type that owns the wiring phase and makes start the only
-terminal transition. PR #858 first proved the V-94/F-08 builder shape; ADR-0068
+terminal transition. PR #858 first proved the V-94/F-08 builder shape; ADR-0072
 settled the durable crate owner as `nmp-native-runtime`. The deleted defaults
 bundle is no longer a composition target.
 
@@ -115,14 +115,14 @@ a runtime guard:
   surfaces (or the Rust enum on internal setters) and records
   `Disposition::DroppedLateWiring` in the composition ledger.
 - Hosts pull `nmp_app_debug_info(app, domain=1)` (composition-report domain) to inspect the
-  rejected seam/key. This keeps the signal on the ADR-0049 composition surface
+  rejected seam/key. This keeps the signal on the ADR-0069 composition surface
   instead of adding a second diagnostic channel.
 - `nmp_app_set_storage_path` specifically returns a nonzero status so Swift,
   Kotlin, TUI, and desktop startup paths can assert/fail loudly before the app
   silently falls back to in-memory storage.
 
 **Status (2026-06-16):** §3.2 is implemented as explicit status codes plus the
-ADR-0049 composition ledger. No update-channel `LateWiring` frame is used.
+ADR-0069 composition ledger. No update-channel `LateWiring` frame is used.
 
 ### 3.3 V-95 folded in
 
@@ -144,7 +144,7 @@ the install-before-dispatch ordering is now expressed in the type system, not in
 prose. The C-ABI runtime guard (`NmpApp::started: AtomicBool` set in the Start
 dispatch arm; every `nmp_app_set_*` setter records `Disposition::DroppedLateWiring`
 into the composition ledger when called post-start) was already shipped by
-ADR-0049 Part 2 and remains the irreducible backstop for raw-C-ABI hosts,
+ADR-0069 Part 2 and remains the irreducible backstop for raw-C-ABI hosts,
 alongside the `active_wallet_runtime()` `Err` guard in each wallet
 `ActionModule::execute`.
 
@@ -186,7 +186,7 @@ alongside the `active_wallet_runtime()` `Err` guard in each wallet
    with one pointer to the builder contract + the diagnostic.
 
 **Steps 3-5 are complete as of PR #858, with durable ownership moved to
-`nmp-native-runtime` by ADR-0068 / #2205.** Steps 1-2 and 6-8 remain open.
+`nmp-native-runtime` by ADR-0072 / #2205.** Steps 1-2 and 6-8 remain open.
 
 ## 6. Risks
 

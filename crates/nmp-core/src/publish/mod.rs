@@ -51,7 +51,7 @@ mod test_resolver;
 mod tests;
 mod traits;
 mod view;
-// ADR-0064 / S3 (#1751) — typed FlatBuffers payload codec for the `nmp.publish`
+// ADR-0071 / S3 (#1751) — typed FlatBuffers payload codec for the `nmp.publish`
 // action (the engine-generic publish noun). The `ActionPayload` impl for
 // `PublishAction` lives here. Pre-signed publish is intentionally absent from
 // the app-facing wire schema; `pub(crate)` lets registry typed-dispatch tests

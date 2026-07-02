@@ -171,16 +171,16 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedGroupEventsDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
     // Profile key — serves via the refs.profile KPRF NRRD row-delta sidecar
-    // (ADR-0063). The old claimed_profiles (KCPR) and resolved_profiles (KRPR)
+    // (ADR-0070). The old claimed_profiles (KCPR) and resolved_profiles (KRPR)
     // JSON-snapshot decoders are deleted in Lane H.
     assert!(out.contains("enum TypedProfileDecoder {"));
     assert!(
         !out.contains("enum TypedClaimedProfilesDecoder {"),
-        "claimed_profiles deleted — ADR-0063 Lane H"
+        "claimed_profiles deleted — ADR-0070 Lane H"
     );
     assert!(
         !out.contains("enum TypedResolvedProfilesDecoder {"),
-        "resolved_profiles deleted — ADR-0063 Lane H"
+        "resolved_profiles deleted — ADR-0070 Lane H"
     );
     // NIP-17 DM cluster. The enum name derives from `swift_field`, so the
     // dotted producer keys map to camelCase decoders.
@@ -204,7 +204,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
     assert!(out.contains("enum TypedWalletDecoder {"));
     assert!(out.contains("enum TypedSettingsHubDecoder {"));
     // Wave C: action_results, action_stages.
-    // V-112 (ADR-0042): author_view / thread_view deleted from registry.
+    // V-112 (ADR-0076): author_view / thread_view deleted from registry.
     assert!(out.contains("enum TypedActionResultsDecoder {"));
     assert!(out.contains("enum TypedActionStagesDecoder {"));
     assert!(
@@ -233,7 +233,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
          relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
          nmp.follow_list, nmp.nip29.group_events, \
          nmp.nip29.discovered_groups; the profile cluster: profile; \
-         ADR-0063 Lane H: claimed_profiles + resolved_profiles + \
+         ADR-0070 Lane H: claimed_profiles + resolved_profiles + \
          claimed_events DELETED; \
          the NIP-17 DM cluster: \
          nmp.nip17.dm_inbox, nmp.nip17.dm_relay_list; the \
@@ -241,7 +241,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
          flips; Wave C: action_results, action_stages; signer_state \
-         (ADR-0048 D6, generalised from V-14 bunker_connection_state); \
+         (ADR-0072 D6, generalised from V-14 bunker_connection_state); \
          #1283 Phase 1: \
          refs.event.envelopes (NEMB); #2091: global zaps sidecar deleted; \
          nmp.nip29.group_defaults DELETED (dead projection, no live \

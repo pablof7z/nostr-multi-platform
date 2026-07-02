@@ -1,7 +1,7 @@
 //! Test-support seam for the K2 rung 5.3 per-app signer-port oracle
 //! (`nmp-testing/tests/k2_per_app_signer_ports_isolation.rs`).
 //!
-//! ADR-0052 §D3. These `pub fn`s (Rust ABI, not C-ABI) let an integration test
+//! ADR-0072 §D3. These `pub fn`s (Rust ABI, not C-ABI) let an integration test
 //! install a recording hook into an app's per-app bunker / NIP-55 hook slot and
 //! invoke it through the SAME slot the actor's `IdentityRuntime` reads —
 //! proving the slot is instance-scoped (two apps don't crosstalk) and survives

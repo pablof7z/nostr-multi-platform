@@ -1,4 +1,4 @@
-//! T76 — NIP-42 failed-auth fail-closed regressions (ADR-0019).
+//! T76 — NIP-42 failed-auth fail-closed regressions (ADR-0072).
 //!
 //! Split from `auth_tests.rs` (handshake happy/sad paths) so each file
 //! stays under the AGENTS.md LOC ceiling and the fail-closed contract has
@@ -9,7 +9,7 @@ use super::*;
 use crate::relay::{RelayRoleTestExt, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::RelayAuthState;
 
-// Spec'd by T76 / ADR-0019. An AUTH-required relay that REJECTS the AUTH
+// Spec'd by T76 / ADR-0072. An AUTH-required relay that REJECTS the AUTH
 // event must FAIL-CLOSED for that relay:
 //   1. its AUTH-gated REQs are withheld (dropped, not emitted, not deferred),
 //   2. other relays are completely unaffected,

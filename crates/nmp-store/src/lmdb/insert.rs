@@ -1,7 +1,7 @@
 //! §7.1 insert invariants for the LMDB backend.
 //!
 //! Wraps `nmp_nostr_lmdb::Lmdb::save_event_with_txn` with the pre/post
-//! compensation defined in ADR-0012. Every step runs inside a single
+//! compensation defined in ADR-0071. Every step runs inside a single
 //! `heed::RwTxn` so the event write + NMP-side secondaries either all
 //! land or all roll back (D6 atomicity).
 
@@ -64,7 +64,7 @@ pub(super) fn insert(
         .write_txn()
         .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
 
-    // ADR-0058 §6 step-4: snapshot the retention claims once for this event txn
+    // ADR-0072 §6 step-4: snapshot the retention claims once for this event txn
     // so every append-time trim within it sees a consistent set.
     let retention_claims = inner.retention_claims_snapshot();
 
@@ -207,7 +207,7 @@ pub(super) fn insert(
                         .delete_freshness(&mut txn, &freshness_key)
                         .map_err(|e| StoreError::Io(format!("delete_freshness: {e}")))?;
                 }
-                // ADR-0058 §3: emit Replaced log entry inside this txn (D4).
+                // ADR-0072 §3: emit Replaced log entry inside this txn (D4).
                 ingest_log::append_replaced(
                     inner.ingest_log,
                     inner.ingest_meta,
@@ -226,7 +226,7 @@ pub(super) fn insert(
                     replaced_id,
                 }
             } else {
-                // ADR-0058 §3: emit Inserted log entry inside this txn (D4).
+                // ADR-0072 §3: emit Inserted log entry inside this txn (D4).
                 ingest_log::append_inserted(
                     inner.ingest_log,
                     inner.ingest_meta,

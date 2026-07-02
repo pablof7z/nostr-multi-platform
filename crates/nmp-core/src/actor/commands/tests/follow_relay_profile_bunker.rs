@@ -12,7 +12,7 @@ fn sign_in_bunker_seeds_handshake_progress() {
     //
     // Stage 4 also added a fallback: if no broker hook is installed, the
     // actor clears the seeded "connecting" stage and surfaces a toast.
-    // ADR-0052 §D3: install a no-op hook into this runtime's per-app slot so
+    // ADR-0072 §D3: install a no-op hook into this runtime's per-app slot so
     // the test exercises the happy path.
     let (mut id, mut kernel) = fresh();
     id.install_bunker_hook_for_test(Arc::new(|_req| {}));

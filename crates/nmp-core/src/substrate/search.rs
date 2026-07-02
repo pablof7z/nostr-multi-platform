@@ -16,12 +16,12 @@
 //! only the opaque extractor + the shared tokenizer.
 //!
 //! Registration follows the explicit composition-root house style
-//! (ADR-0046 / ADR-0049 — NO linkme/inventory): a crate registers through the
+//! (ADR-0069 / ADR-0069 — NO linkme/inventory): a crate registers through the
 //! [`SearchScopeRegistrar`] trait on the `AppHost`, the registry records a
 //! [`crate::Disposition`] in the `"search_scope"` composition-ledger seam, and
 //! a duplicate scope id is a **yielding default** (the first registration keeps
 //! the slot; the later one is recorded as `YieldedToExisting`, never silently
-//! replaced — ADR-0049).
+//! replaced — ADR-0069).
 
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
@@ -93,7 +93,7 @@ pub trait SearchScopeProvider: Send + Sync {
 /// the whole `AppHost`.
 pub trait SearchScopeRegistrar {
     /// Register `provider`. Pre-start, additive; a duplicate scope id yields
-    /// (ADR-0049 — first registration wins, the later one is recorded as
+    /// (ADR-0069 — first registration wins, the later one is recorded as
     /// `YieldedToExisting` in the `"search_scope"` ledger seam).
     fn register_search_scope(&self, provider: Arc<dyn SearchScopeProvider>);
 }
@@ -105,7 +105,7 @@ pub enum SearchScopeDisposition {
     /// First registration for this scope id.
     Installed,
     /// A later registration for an already-claimed scope id — yielded
-    /// (ADR-0049). The existing provider keeps the scope.
+    /// (ADR-0069). The existing provider keeps the scope.
     YieldedToExisting,
 }
 
@@ -128,7 +128,7 @@ impl SearchScopeRegistry {
         Self::default()
     }
 
-    /// Register a provider. Yields (ADR-0049) on a duplicate scope id: the
+    /// Register a provider. Yields (ADR-0069) on a duplicate scope id: the
     /// first registration keeps the scope; a later one for the same id is NOT
     /// installed and returns [`SearchScopeDisposition::YieldedToExisting`]. The
     /// caller (FFI shell) records the disposition in the `"search_scope"`
@@ -186,7 +186,7 @@ impl SearchScopeRegistry {
 /// driven directly against a bare `SearchScopeRegistry` (composition roots /
 /// integration harnesses that hold the registry without an `AppHost`). The
 /// `AppHost`/FFI shell forwards to the same `register` method, so the
-/// ADR-0049 yield semantics are identical on both paths.
+/// ADR-0069 yield semantics are identical on both paths.
 impl SearchScopeRegistrar for SearchScopeRegistry {
     fn register_search_scope(&self, provider: Arc<dyn SearchScopeProvider>) {
         let _ = self.register(provider);

@@ -6,7 +6,7 @@
 //! every host renderer actually decodes is
 //! [`crate::wire::ContentTreeWire`], produced by the pure projection
 //! [`ContentTree::to_wire`]. See
-//! `docs/decisions/0018-content-tree-ffi-projection.md`. Changing a variant's
+//! `docs/decisions/0072-runtime-capability-and-shell-boundary.md`. Changing a variant's
 //! shape still ripples through the wire projection, so add fields
 //! conservatively.
 

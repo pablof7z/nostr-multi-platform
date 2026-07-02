@@ -14,7 +14,7 @@ path = "src/lib.rs"
 # the `events.raw` blob is canonical NIP-01 JSON (mirroring the LMDB backend's
 # JSON round-trip), and `TombstoneOrigin` derives serde for parity with
 # `nmp_store::TombstoneOrigin`. Both are pure Rust and build on wasm32 and
-# native alike — they are NOT the "external SQLite engine" ADR-0054 §1 forbids
+# native alike — they are NOT the "external SQLite engine" ADR-0072 §1 forbids
 # (that engine remains the vendored artifact), so they belong here, not under
 # the wasm-only target table below.
 [dependencies]
@@ -30,7 +30,7 @@ serde_json = { workspace = true }
 # impl that bridges this engine (`OpfsSqliteEventStore`, parallel to
 # `LmdbEventStore`) lives in `nmp-store` behind the feature, not here. This
 # crate owns only the SQLite-on-OPFS engine + the `OpfsSqliteStore` handle and
-# its single scoped `unsafe impl Send/Sync` (ADR-0054 §3).
+# its single scoped `unsafe impl Send/Sync` (ADR-0072 §3).
 
 # wasm-only JS/OPFS interop. SQLite-on-OPFS is a browser-only backend: the
 # engine reaches the filesystem through `web-sys`/`js-sys` and is driven from
@@ -43,6 +43,6 @@ wasm-bindgen = "0.2.121"
 # Bridges the async halves of the shim (`sqlite3InitModule` / opfs-sahpool pool
 # open both return JS Promises) into Rust `Future`s via `JsFuture`. Part of the
 # wasm-bindgen toolchain (MIT/Apache-2.0), not an external engine dependency —
-# ADR-0054 §1's "zero external Rust crates" refers to the SQLite engine, which
+# ADR-0072 §1's "zero external Rust crates" refers to the SQLite engine, which
 # remains a vendored artifact, not a crate.
 wasm-bindgen-futures = "0.4.72"

@@ -2,7 +2,7 @@
 //!
 //! Extracted from `action.rs` to keep `action/mod.rs` under the 500-LOC cap.
 //! The guard is per-[`WalletPayInvoiceModule`](super::WalletPayInvoiceModule)
-//! instance (ADR-0052 rung 5.2: no process-global), so two `NmpApp` instances
+//! instance (ADR-0072 rung 5.2: no process-global), so two `NmpApp` instances
 //! in one process dedup independently.
 
 use std::collections::HashMap;

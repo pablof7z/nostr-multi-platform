@@ -8,7 +8,7 @@
 //! Extracted from `dispatch/mod.rs` to keep it under the 500-LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
 //!
-//! ADR-0065 — the `dispatch` function below matches the `InterestsCommand`
+//! ADR-0071 — the `dispatch` function below matches the `InterestsCommand`
 //! sub-enum and routes each verb to its existing handler.
 
 use crate::actor::InterestsCommand;
@@ -97,7 +97,7 @@ pub(super) fn open_interest(
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
-    // M2 (ADR-0042) — generic feed-subscription front door. Parse the
+    // M2 (ADR-0076) — generic feed-subscription front door. Parse the
     // verbatim NIP-01 filter into an InterestShape, derive the
     // `(owner, key, scope)` identity from it, and run the same
     // ensure_sub + CompileTrigger body as the `EnsureInterest` arm.
@@ -129,7 +129,7 @@ pub(super) fn open_observed_interest(
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
-    // ADR-0062 — open interest + catch-up replay to a single muted observer,
+    // ADR-0070 — open interest + catch-up replay to a single muted observer,
     // then activate it. D6: a malformed filter is a silent no-op.
     if let Some((identity, interest)) =
         build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
@@ -165,7 +165,7 @@ pub(super) fn close_interest(
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
-    // M2 (ADR-0042) — detach one owner; drop the live sub on the last
+    // M2 (ADR-0076) — detach one owner; drop the live sub on the last
     // leave. The `(owner, key, scope)` identity is reconstructed from
     // the SAME filter + consumer + scope + relay_pin the open used, so
     // the InterestShape hash lands on the same registry slot.
@@ -273,7 +273,7 @@ pub(super) fn trigger_gc_step(
     Some(Vec::new())
 }
 
-/// ADR-0065 — `InterestsCommand` family dispatch. Matches the sub-enum and
+/// ADR-0071 — `InterestsCommand` family dispatch. Matches the sub-enum and
 /// routes each verb to its existing handler.
 pub(super) fn dispatch(
     cmd: InterestsCommand,

@@ -1,4 +1,4 @@
-//! `RefsCommand` — reference resolution (ADR-0063 unified).
+//! `RefsCommand` — reference resolution (ADR-0070 unified).
 //!
 //! Grouped under `ActorCommand::Refs(RefsCommand)`. Dispatch home:
 //! `actor/dispatch/mod.rs` (thin delegator to the kernel's `resolve_ref` /
@@ -10,7 +10,7 @@
 /// pair to the matching resolver body, failing closed (D6) on a mismatch.
 #[derive(Debug)]
 pub enum RefsCommand {
-    /// ADR-0063 Lane D/H — unified, origin-blind reference-resolution seam.
+    /// ADR-0070 Lane D/H — unified, origin-blind reference-resolution seam.
     ///
     /// The kernel's `Kernel::resolve_ref` dispatches the typed `(namespace,
     /// shape)` pair to the matching resolver body, failing closed (D6) on a
@@ -37,7 +37,7 @@ pub enum RefsCommand {
         force: bool,
         metadata: crate::kernel::RefResolveMetadata,
     },
-    /// ADR-0063 Lane D — release a reference previously registered via
+    /// ADR-0070 Lane D — release a reference previously registered via
     /// [`Self::Resolve`]. Decrements the refcount; the slot is torn down when
     /// the last consumer releases. `(namespace, key, consumer_id)` must match
     /// the original `Resolve` call. A release of an unknown key is a silent

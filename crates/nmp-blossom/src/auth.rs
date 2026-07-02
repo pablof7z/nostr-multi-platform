@@ -20,7 +20,7 @@ use nmp_signer_iface::UnsignedEvent;
 
 use crate::kinds::KIND_BLOSSOM_AUTH;
 
-/// Authorization-event lifetime in seconds (ADR-0043 user decision: 5 minutes).
+/// Authorization-event lifetime in seconds (ADR-0071 user decision: 5 minutes).
 /// The `expiration` tag is `created_at + AUTH_TTL_SECS`; a Blossom server
 /// rejects the header after this instant. Long enough for a multi-MB upload
 /// over a slow link, short enough that a leaked header is quickly useless.

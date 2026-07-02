@@ -7,7 +7,7 @@ use super::dto::{BunkerHandshakeDto, SignerStateDto};
 use super::runtime::IdentityRuntime;
 
 /// Update the `"signer_state"` projection when the NIP-46 relay-layer
-/// connection state changes. V-14 step b, generalised by ADR-0048 D6.
+/// connection state changes. V-14 step b, generalised by ADR-0072 D6.
 ///
 /// `state` is one of `"connected"` | `"reconnecting"` | `"failed"`.
 /// `"connected"` is mapped to `"ready"` in the unified `SignerStateDto` surface
@@ -34,7 +34,7 @@ pub(crate) fn bunker_connection_state_changed(
 
 /// Update the `"signer_state"` projection for a NIP-55 signer event.
 ///
-/// ADR-0048 D6: called from the capability-bridge result path when the host
+/// ADR-0072 D6: called from the capability-bridge result path when the host
 /// reports a NIP-55 operation outcome that affects the long-lived signer
 /// health (e.g. signer unavailable, rejected, awaiting approval).
 pub(crate) fn nip55_signer_state_changed(
@@ -84,7 +84,7 @@ pub(crate) fn bunker_handshake_progress(
 pub(super) fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
     // Stage 4 of NIP-46 wiring: actor delegates the handshake to the broker
-    // hook installed in this app's per-app `bunker_hook` slot (ADR-0052 §D3 —
+    // hook installed in this app's per-app `bunker_hook` slot (ADR-0072 §D3 —
     // installed by `nmp_signer_broker_init`; no process-global).
     //
     // Here we shape-validate the URI, seed the snapshot with `"connecting"`
@@ -143,7 +143,7 @@ pub(crate) fn restore_bunker_session(
     }
 }
 
-/// ADR-0048 D4 — restore a persisted NIP-55 account on cold start.
+/// ADR-0072 D4 — restore a persisted NIP-55 account on cold start.
 ///
 /// Unlike the bunker restore there is no handshake: the payload is
 /// pubkey-only, so the registered driver hook synchronously reconstructs

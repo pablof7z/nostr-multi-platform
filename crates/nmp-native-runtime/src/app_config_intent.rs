@@ -23,7 +23,7 @@ impl NmpApp {
     ///
     /// SHOULD be called before `nmp_app_start` (composition-root house style;
     /// mirrors `register_search_scope`). A duplicate scope id **yields**
-    /// (ADR-0049): the first registration keeps the scope; a later one for the
+    /// (ADR-0069): the first registration keeps the scope; a later one for the
     /// same id is recorded as `YieldedToExisting` in the `"input_scope"`
     /// composition-ledger seam and is NOT installed.
     pub fn register_input_scope(
@@ -39,7 +39,7 @@ impl NmpApp {
             return status;
         }
         let disposition = self.composition.input_scope_registry.register(recognizer);
-        // ADR-0049 Part 2 — record the install/yield decision in the
+        // ADR-0069 Part 2 — record the install/yield decision in the
         // "input_scope" ledger seam.
         let ledger_disposition = match disposition {
             nmp_core::substrate::InputScopeDisposition::Installed => {

@@ -17,7 +17,7 @@ impl Kernel {
     /// Schnorr signature is valid over that id — the same gate `kernel::ingest`
     /// applies to inbound events (`VerifiedEvent::try_from_raw`).
     ///
-    /// **Opacity preserved (ADR-0025).** Validates the OUTER signed envelope
+    /// **Opacity preserved (ADR-0072).** Validates the OUTER signed envelope
     /// only; it never decodes or validates NIP-specific inner shape. A
     /// gift-wrapped / Marmot event (kind:1059, kind:14) is opaque ciphertext
     /// under a well-formed signed envelope — accepted as long as the envelope's

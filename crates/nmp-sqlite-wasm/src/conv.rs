@@ -19,7 +19,7 @@
 //! ## Blob format
 //!
 //! The `events.raw` column stores the event as canonical NIP-01 JSON
-//! (`serde_json`), mirroring the LMDB backend's JSON round-trip (ADR-0012). The
+//! (`serde_json`), mirroring the LMDB backend's JSON round-trip (ADR-0071). The
 //! arrival metadata (`received_at_ms`) is **not** part of the event; it is a
 //! separate primary-row column so [`StoredEngineEvent`] can be reconstructed
 //! without polluting the wire blob.

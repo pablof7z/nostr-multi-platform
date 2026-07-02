@@ -48,7 +48,7 @@ namespace nmp.kernel;
 table LifecycleEntry {
   // The action's correlation id.
   correlation_id:string;
-  // Collapsed snake_case stage string. The vocabulary is GENERIC (ADR-0064
+  // Collapsed snake_case stage string. The vocabulary is GENERIC (ADR-0071
   // §lifecycle; sign/publish decoupled): `"requested"` /
   // `"awaiting_capability"` (covers signing + any capability) / `"publishing"`
   // (separate, optional) / `"accepted"` / `"failed"` / `"cancelled"`

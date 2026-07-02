@@ -1,6 +1,6 @@
 namespace nmp.nip29;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip29.leave`
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip29.leave`
 // `ActionModule` (publishes a kind:9022 leave-request).
 //
 // The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter

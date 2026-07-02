@@ -38,9 +38,9 @@ pub(super) fn log_append(
     seq
 }
 
-/// Trim the log, advancing the GC floor (ADR-0058 §6, step-4).
+/// Trim the log, advancing the GC floor (ADR-0072 §6, step-4).
 ///
-/// Called after every `log_append` so the log is never unbounded (ADR-0058
+/// Called after every `log_append` so the log is never unbounded (ADR-0072
 /// R2.4). The floor target is the normal retention floor
 /// (`latest_seq - DEFAULT_LOG_MAX_ENTRIES`), capped by the slowest still-eligible
 /// `Protected`-cursor claim so its unconsumed rows survive.

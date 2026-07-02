@@ -1,6 +1,6 @@
 //! K3 coverage ledger + F-TTL replaceable-freshness cache (#1007 PR-5).
 //!
-//! Mirrors `nmp-store/src/lmdb/coverage.rs` (ADR-0056 §3). The `coverage` table
+//! Mirrors `nmp-store/src/lmdb/coverage.rs` (ADR-0072 §3). The `coverage` table
 //! maps `(filter_hash, relay)` → `covered_through` (the downward-closed,
 //! monotonic watermark through which a sync has COMPLETED for that shape on that
 //! relay — see `nmp_store::CoverageRow`). The store is relay-agnostic but the
@@ -19,7 +19,7 @@ use std::sync::Arc;
 /// logic. Args: `(event_id_hex, author_hex, kind, created_at, tags)`.
 pub type CoverageMatchFn = Arc<dyn Fn(&str, &str, u32, u64, &[Vec<String>]) -> bool + Send + Sync>;
 
-/// K3 Stage D3 (ADR-0056 §3.D3) — the eviction⇄ledger coherence backstop input.
+/// K3 Stage D3 (ADR-0072 §3.D3) — the eviction⇄ledger coherence backstop input.
 ///
 /// One guard per active covered `(filter_hash, relay)`. When LRU eviction
 /// deletes an event the guard `matches` whose `created_at <= covered_through`,

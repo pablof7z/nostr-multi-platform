@@ -3,7 +3,7 @@ use crate::actor::{ActionLedgerCommand, ActorCommand, InterestsCommand, PublishC
 use crate::relay::OutboundMessage;
 
 impl<'a> ProtocolCommandContext<'a> {
-    /// ADR-0043 Decision 2 — the generic, backend-transparent sign-account
+    /// ADR-0071 Decision 2 — the generic, backend-transparent sign-account
     /// port helper. Build an [`ActorCommand::SignEventForAccount`] for
     /// `unsigned` (signed with the active account when `signer_pubkey` is
     /// `None`, else the named roster key) carrying `continuation`, and send it
@@ -32,7 +32,7 @@ impl<'a> ProtocolCommandContext<'a> {
         ));
     }
 
-    /// ADR-0052 §D5 — borrow the narrow [`WalletKernelAccess`] capability (the
+    /// ADR-0072 §D5 — borrow the narrow [`WalletKernelAccess`] capability (the
     /// NIP-47 wallet runtime's bounded kernel-mutation surface). Replaces the
     /// deleted `kernel_mut()`: a wallet command drives its nine kernel methods
     /// and nothing else of the kernel.
@@ -87,7 +87,7 @@ impl<'a> ProtocolCommandContext<'a> {
         self.recipients
     }
 
-    /// ADR-0052 §D4 — clone the configured host-op handler (`None` when none
+    /// ADR-0072 §D4 — clone the configured host-op handler (`None` when none
     /// was installed before actor start). D15-wrapped: a panicking accessor
     /// falls back to `None` (the genuinely-absent-handler
     /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
@@ -111,7 +111,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// Wall-clock seconds since the Unix epoch (D15-wrapped
     /// [`KernelClock::now_secs`]). Returns `0` on a panicking adapter.
     ///
-    /// ADR-0052 §D5: always goes through the [`KernelClock`] capability — the
+    /// ADR-0072 §D5: always goes through the [`KernelClock`] capability — the
     /// prior kernel-direct fast-path (which dodged the now-deleted `with_kernel`
     /// exclusive borrow) is gone.
     pub fn now_secs(&self) -> u64 {
@@ -139,7 +139,7 @@ impl<'a> ProtocolCommandContext<'a> {
             .unwrap_or(None)
     }
 
-    /// ADR-0050 §D1 cipher-port helper — the NIP-44 encrypt twin of
+    /// ADR-0072 §D1 cipher-port helper — the NIP-44 encrypt twin of
     /// [`sign_event_for_account`](Self::sign_event_for_account). Sends an
     /// [`ActorCommand::Nip44EncryptForAccount`] for `plaintext` → `peer_pubkey`
     /// (named `Some(hex)` or active `None` account). Local-vs-bunker is invisible
@@ -220,7 +220,7 @@ impl<'a> ProtocolCommandContext<'a> {
         .unwrap_or_default()
     }
 
-    /// ADR-0052 §D5 — borrow the [`ZapProfileLookup`] capability (the zap-only
+    /// ADR-0072 §D5 — borrow the [`ZapProfileLookup`] capability (the zap-only
     /// cached-profile read). Replaces the deleted generic `lnurl_for_pubkey`
     /// accessor; the NIP-57 zap command reads its destination via
     /// `ctx.zap_profiles().lnurl_for_pubkey(pk)`, and no other command can.

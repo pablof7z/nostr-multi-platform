@@ -177,7 +177,7 @@ impl InterestShape {
     ///
     /// This is the inverse of `nmp_core::subs::wire::filter_json_for` and the
     /// app-facing entry point for the M2 `open_interest` / `close_interest`
-    /// C-ABI surface (ADR-0042): the host passes a verbatim Nostr filter string
+    /// C-ABI surface (ADR-0076): the host passes a verbatim Nostr filter string
     /// (e.g. `{"kinds":[1],"#t":["nostr"]}`) and the substrate derives a
     /// deterministically-hashable shape from it. Two call sites passing the same
     /// filter — regardless of JSON key ordering or array element ordering — map
@@ -281,7 +281,7 @@ impl InterestShape {
         Some(shape)
     }
 
-    /// Does an inbound event match this interest's wire filter? (ADR-0042 §5.1)
+    /// Does an inbound event match this interest's wire filter? (ADR-0076 §5.1)
     ///
     /// This is the client-side analogue of a relay's NIP-01 REQ filter match,
     /// used by `Kernel::should_store_event` to admit an event that satisfies an

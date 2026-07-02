@@ -24,7 +24,7 @@ fn pool_event() -> PoolEvent {
     }
 }
 
-/// ADR-0050 §D3a core property: a thread blocked in `recv_timeout` with a
+/// ADR-0072 §D3a core property: a thread blocked in `recv_timeout` with a
 /// long timeout wakes *immediately* when a command is sent — it does not
 /// wait out the timeout. This is the regression the whole change fixes.
 #[test]
@@ -63,7 +63,7 @@ fn command_send_wakes_a_blocked_inbox() {
     );
 }
 
-/// ADR-0029 / #2221: dispatch is fire-and-forget and bounded. When the actor
+/// ADR-0072 / #2221: dispatch is fire-and-forget and bounded. When the actor
 /// inbox is full, a new command is shed immediately, accepted-command order is
 /// preserved, and the drop is observable on the shared sender.
 #[test]

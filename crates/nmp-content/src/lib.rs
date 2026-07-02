@@ -13,7 +13,7 @@
 //! - [`embed_registry::EmbedClaimRegistry`] — per-id refcounted claim/release
 //!   (namespace `nmp.content.embed_registry`)
 //! - [`embed_projection`] — kind-dispatched `EmbedKindProjection` +
-//!   `resolve_embed_projection` (ADR-0034 / F-CR-01) — the single place that
+//!   `resolve_embed_projection` (ADR-0072 / F-CR-01) — the single place that
 //!   does `match event.kind` for embedded event rendering.
 //!
 //! # Design constraints (load-bearing)

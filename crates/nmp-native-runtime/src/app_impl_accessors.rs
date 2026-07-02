@@ -121,7 +121,7 @@ impl NmpApp {
         Arc::clone(&self.read_handles.event_store_handle)
     }
 
-    /// ADR-0058 step 3b — clone of the kernel's pull-cursor registry handle slot.
+    /// ADR-0072 step 3b — clone of the kernel's pull-cursor registry handle slot.
     #[must_use]
     pub fn pull_cursor_registry_handle(&self) -> PullCursorRegistryHandleSlot {
         Arc::clone(&self.read_handles.pull_cursor_registry)
@@ -401,7 +401,7 @@ impl nmp_core::substrate::ActionRegistrar for NmpApp {
         self.action_registry.register(module)
     }
 
-    /// ADR-0049 Part 1 — override the trait default so the canonical NMP
+    /// ADR-0069 Part 1 — override the trait default so the canonical NMP
     /// defaults (`nmp_nip02` / `nmp_nip17` / `nmp_nip57` / `nmp_router`, which
     /// register through `&mut impl AppHost`) get true entry-or-insert yielding
     /// semantics.

@@ -1,5 +1,5 @@
 //! Typed FlatBuffers wire codec for `nmp-nip50` search-results projection
-//! (ADR-0037, S9).
+//! (ADR-0072, S9).
 //!
 //! The serde JSON shape of [`crate::SearchResultsSnapshot`] stays the in-crate
 //! authority; this module adds the typed-sidecar (`N50S`) counterpart the host

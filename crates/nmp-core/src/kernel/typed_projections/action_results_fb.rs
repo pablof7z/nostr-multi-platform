@@ -6,7 +6,7 @@
 //! `"action_results"` when an action settled this tick: the DRAINED
 //! `take_action_results_projection()` array of `{correlation_id, status, error,
 //! result?}` rows. This module adds a **typed FlatBuffers** encoding of the same
-//! shape, carried in the `typed_projections` sidecar (ADR-0037) ALONGSIDE —
+//! shape, carried in the `typed_projections` sidecar (ADR-0072) ALONGSIDE —
 //! never replacing — the generic `Value` projection.
 //!
 //! ## Why this codec parses a `serde_json::Value` (deviation from #1031)
@@ -60,7 +60,7 @@ pub struct ActionResultRow {
     pub status: String,
     /// Error string when the action failed; `None` on success.
     pub error: Option<String>,
-    /// The opaque structured result body (ADR-0043 Decision 4), carried as its
+    /// The opaque structured result body (ADR-0071 Decision 4), carried as its
     /// SERIALISED JSON string. `None` mirrors an absent `result` field.
     pub result: Option<String>,
     /// The nostr `event_id` of the signed event this terminal concerns, when one

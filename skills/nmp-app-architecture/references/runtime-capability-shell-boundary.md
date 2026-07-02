@@ -1,7 +1,7 @@
 # Runtime, Capability, and Shell Boundary
 
-> Doctrine home: ADR-0072, with ADR-0040, ADR-0048, ADR-0050, ADR-0066, and the runtime
-> ownership split of ADR-0067/0068. For the binding-surface story (UniFFI vs wasm-bindgen,
+> Doctrine home: ADR-0072, with ADR-0072, ADR-0072, ADR-0072, ADR-0072, and the runtime
+> ownership split of ADR-0072/0068. For the binding-surface story (UniFFI vs wasm-bindgen,
 > facades), see `ffi-and-native-surface.md`.
 
 ## The Three-Tier Runtime Stack
@@ -49,12 +49,12 @@ The UniFFI path (`CapabilitySink::on_capability_request(String) -> String`,
 route through one `CapabilityCallbackGate` with `in_flight + Condvar` quiescence: after
 `set_capability_callback` returns, the previous sink is neither registered nor mid-invocation.
 
-### Execution (ADR-0040) — off-actor, serialized, FIFO
+### Execution (ADR-0072) — off-actor, serialized, FIFO
 The capability worker (`crates/nmp-core/src/actor/capability_worker.rs`) drains a FIFO queue
 with blocking `recv`, executes the native callback on its own thread, and re-enters the actor
 via `ActorCommand::Identity(IdentityCommand::CapabilityResultReady)`. The actor never blocks
 on capability work. A wedged operation reports timeout/error as data; it must not mutate kernel
-state from the worker thread. `CapabilityResultReady` is a **genuine actor wake** (ADR-0050 D3a,
+state from the worker thread. `CapabilityResultReady` is a **genuine actor wake** (ADR-0072 D3a,
 `actor/inbox.rs`): completion latency = mailbox latency. The 250 ms idle sweep is solely a
 deadline-expiry gate, not how completions are noticed. Cold-start local Keychain reads known
 not to involve biometric/UI waits may stay synchronous; blocking paths use the worker.
@@ -75,18 +75,18 @@ not to involve biometric/UI waits may stay synchronous; blocking paths use the w
 **OS mechanism choice is execution, not policy.** When a bridge picks between OS transport
 paths (e.g. NIP-55 Intent vs ContentResolver), the rule is a mechanical consequence of a field
 in the Rust-built request (`granted_permissions`); the host checks the field and selects the
-primitive — it does not decide retry, routing, or ciphertext interpretation (ADR-0048 D2).
+primitive — it does not decide retry, routing, or ciphertext interpretation (ADR-0072 D2).
 
 ## Signer Capability (special case)
 
 An external signer implements `RemoteSignerHandle` (`crates/nmp-core/src/remote_signer.rs`),
 not a bare capability, so it is backend-transparent at the sign port (V-78). Three verbs
-(ADR-0050 D1): `sign`, `nip44_encrypt`, `nip44_decrypt`. Per-op deadline is
+(ADR-0072 D1): `sign`, `nip44_encrypt`, `nip44_decrypt`. Per-op deadline is
 `RemoteSignerHandle::op_timeout() -> Duration` (NIP-46 = 5 s, NIP-55 = 90 s), computed from the
-**named signing account**, not the active account (ADR-0050 D4). Signer backend identity is
+**named signing account**, not the active account (ADR-0072 D4). Signer backend identity is
 invisible at the port; `nmp-core` never imports signer implementations (D0). Signer health is
 one `signer_state` projection (`is_ready`, `is_awaiting_approval`, `is_unavailable`,
-`is_failed`, `signer_kind`) — not per-backend projections. ADR-0066 reserves an optional NIP-46
+`is_failed`, `signer_kind`) — not per-backend projections. ADR-0072 reserves an optional NIP-46
 batch decrypt session (`begin/batch/end`) that returns plaintext only; no key material crosses
 the boundary.
 

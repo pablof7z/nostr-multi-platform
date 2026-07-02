@@ -33,7 +33,9 @@ pub(crate) enum DomainHandleInner {
         backend: Arc<nmp_sqlite_wasm::OpfsSqliteStore>,
     },
     #[cfg(any(test, feature = "test-support"))]
-    FailingPut { namespace: &'static str },
+    FailingPut {
+        namespace: &'static str,
+    },
 }
 
 /// Type alias for domain scan iterators.

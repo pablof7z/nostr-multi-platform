@@ -11,7 +11,7 @@ import org.nmp.gallery.registry.ExternalSignerResponse
 import org.nmp.gallery.registry.shouldUseContentResolver
 
 /**
- * ADR-0048 Stage 2 — the Kotlin half of the sign-in loop, exercised against
+ * ADR-0072 Stage 2 — the Kotlin half of the sign-in loop, exercised against
  * the EXACT wire JSON the Rust driver produces and consumes.
  *
  * Loop coverage split (the full proof spans two suites):
@@ -28,7 +28,7 @@ import org.nmp.gallery.registry.shouldUseContentResolver
  *
  * The remaining seam — the real Intent / ContentResolver OS round-trip — is
  * Android-runtime territory and is covered by the Stage-4 emulator E2E
- * against a real Amber APK (ADR-0048 D7: emulator E2E is the acceptance
+ * against a real Amber APK (ADR-0072 D7: emulator E2E is the acceptance
  * oracle; the unit layers are the merge gates).
  */
 class ExternalSignerLoopContractTest {

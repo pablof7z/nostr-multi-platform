@@ -104,7 +104,7 @@ impl Kernel {
         // affordance rather than a hard-failure prompt.
         relay.error_category = Some(super::super::closed_reason::ERR_TRANSIENT.to_string());
         relay.reconnect_count = relay.reconnect_count.saturating_add(1);
-        // V-112 (ADR-0042): thread_view.ids_inflight / replies_inflight deleted.
+        // V-112 (ADR-0076): thread_view.ids_inflight / replies_inflight deleted.
         self.changed_since_emit = true;
         self.log(format!(
             "{} relay error ({}): {}",

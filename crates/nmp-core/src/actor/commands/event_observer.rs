@@ -108,7 +108,7 @@ pub(crate) fn register_rust_observer(
     id
 }
 
-/// Register an in-process Rust sink in muted state (ADR-0062).
+/// Register an in-process Rust sink in muted state (ADR-0070).
 ///
 /// The sink will not receive events from `notify_observers` until
 /// `activate_observer_scoped` is called. It remains addressable by

@@ -1,6 +1,6 @@
 #![cfg(test)]
 //! Tests for typed sidecar projections: `bunker_handshake`, `nip46_onboarding`,
-//! and `signer_state` (ADR-0048 D6).
+//! and `signer_state` (ADR-0072 D6).
 //!
 //! These tests prove the projections are driven by REAL transitions through the
 //! identity-runtime setter and that the snapshot reflects them correctly.
@@ -12,12 +12,12 @@ use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 // ──────────────────────────────────────────────────────────────────────────
-// Typed-sidecar frame proofs (ADR-0037 + ADR-0048 D6)
+// Typed-sidecar frame proofs (ADR-0072 + ADR-0072 D6)
 // ──────────────────────────────────────────────────────────────────────────
 
 #[test]
 fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
-    // Full-frame integration proof (ADR-0037): register BOTH the generic and
+    // Full-frame integration proof (ADR-0072): register BOTH the generic and
     // the typed `"bunker_handshake"` projections exactly as the actor does
     // (`run_actor_with_observers`), then decode the SnapshotFrame `make_update`
     // actually emits. The typed sidecar entry must be ABSENT while the slot is
@@ -70,7 +70,7 @@ fn frame_carries_bunker_handshake_typed_sidecar_only_when_some() {
 
 #[test]
 fn frame_carries_nip46_onboarding_typed_sidecar_always() {
-    // Full-frame integration proof (ADR-0037): unlike `bunker_handshake`, the
+    // Full-frame integration proof (ADR-0072): unlike `bunker_handshake`, the
     // `"nip46_onboarding"` typed sidecar is ALWAYS present (the static
     // signer-app table is emitted even when idle), mirroring the JSON
     // projection's never-`null` contract.
@@ -104,7 +104,7 @@ fn frame_carries_nip46_onboarding_typed_sidecar_always() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// ADR-0048 D6: `signer_state` projection tests (generalised from the V-14
+// ADR-0072 D6: `signer_state` projection tests (generalised from the V-14
 // step b `bunker_connection_state` projection).
 //
 // These tests prove the `"signer_state"` projection is driven by REAL
@@ -145,7 +145,7 @@ fn signer_state_projection_reflects_transitions() {
     );
 
     // 2. Simulate the broker reporting "connected" after handshake completes.
-    // ADR-0048 D6: "connected" is mapped to "ready" in the unified SignerStateDto.
+    // ADR-0072 D6: "connected" is mapped to "ready" in the unified SignerStateDto.
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let (_v, typed) = kernel.make_update_typed_for_test(true);
     let entry = typed
@@ -238,7 +238,7 @@ fn signer_state_slot_reflects_direct_write() {
     assert!(!dto.is_failed);
     assert_eq!(dto.reason.as_deref(), Some("timeout"));
 
-    // Overwrite with "connected" (mapped to "ready" by ADR-0048 D6).
+    // Overwrite with "connected" (mapped to "ready" by ADR-0072 D6).
     bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
     let dto = id
         .signer_state_for_test()
@@ -266,7 +266,7 @@ fn signer_state_slot_reflects_direct_write() {
 
 #[test]
 fn signer_state_slot_reflects_nip55_transitions() {
-    // ADR-0048 D6: the NIP-55 capability path writes into the SAME slot via
+    // ADR-0072 D6: the NIP-55 capability path writes into the SAME slot via
     // `nip55_signer_state_changed`, stamping `signer_kind = "nip55"` and the
     // NIP-55-specific states (`awaiting_approval` / `unavailable`).
     use crate::actor::commands::{new_signer_state_slot, nip55_signer_state_changed};

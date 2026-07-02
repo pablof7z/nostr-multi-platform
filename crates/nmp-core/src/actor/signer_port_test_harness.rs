@@ -1,4 +1,4 @@
-//! Shared test harness for the ADR-0050 signer-port dispatch tests.
+//! Shared test harness for the ADR-0072 signer-port dispatch tests.
 //!
 //! [`dispatch_one`] builds a fully-wired [`ActorContext`] and runs a single
 //! `dispatch_command(cmd, ctx)`, returning the parked-op queue so the sign /

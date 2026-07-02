@@ -1,4 +1,4 @@
-//! ADR-0063 D7 (#1671 Lane H) — feed-author auto-resolve + guardrail tests.
+//! ADR-0070 D7 (#1671 Lane H) — feed-author auto-resolve + guardrail tests.
 //!
 //! Proves the coverage-hole closure bites:
 //! - a feed tick with N visible authors auto-resolves N profile refs through the

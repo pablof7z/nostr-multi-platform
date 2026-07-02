@@ -1,13 +1,13 @@
 # Blossom (BUD-02) blob uploads — a v1 NMP protocol crate (workspace member).
 # kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT,
-# signing via the backend-transparent SignEventForAccount port (ADR-0043).
+# signing via the backend-transparent SignEventForAccount port (ADR-0071).
 [package]
 name = "nmp-blossom"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0043)."
+description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0071)."
 
 [dependencies]
 nmp-ownership = { workspace = true }

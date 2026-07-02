@@ -4,14 +4,14 @@ namespace nmp.nip50;
 // search-results noun projected onto the snapshot under the per-session key
 // `nmp.nip50.search.<consumer>`).
 //
-// This is the typed sidecar (ADR-0037, S9) the host platforms (Swift / Kotlin /
+// This is the typed sidecar (ADR-0072, S9) the host platforms (Swift / Kotlin /
 // TypeScript) decode with generated accessors instead of JSON reflection. The
 // `open_search` higher-order entrypoint registers ONE such buffer per live
 // search session; an un-updated host has no NIP-50 search surface to fall back
 // to, so this typed payload is the authoritative search-results transport.
 //
 // Field-for-field mirror of the Rust structs (raw protocol values only,
-// ADR-0032):
+// ADR-0072):
 //   * `SearchResultsSnapshot { hits: Vec<SearchHit> }` becomes `[SearchHit]`,
 //     already newest-first then id-stable sorted by the projection.
 //   * `SearchHit { id, author, kind, created_at, content, tags,

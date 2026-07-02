@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed trip tests for the write-command byte transport
-//! (ADR-0064 / S2 #1750). Every fail-closed gate has a test that asserts the
+//! (ADR-0071 / S2 #1750). Every fail-closed gate has a test that asserts the
 //! NEGATIVE — the bad case is REJECTED, never silently accepted.
 
 use super::{

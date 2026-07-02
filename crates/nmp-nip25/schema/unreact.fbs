@@ -1,6 +1,6 @@
 namespace nmp.nip25;
 
-// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.nip25.unreact`
+// ADR-0071 / S3 (#1751) — typed FlatBuffers payload for the `nmp.nip25.unreact`
 // `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
 // registry adapter (S3) decodes against THIS schema, gating `schema_version`
 // BEFORE `start()` (fail-closed on mismatch).

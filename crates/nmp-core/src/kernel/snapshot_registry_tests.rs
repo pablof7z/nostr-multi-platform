@@ -1,5 +1,5 @@
 //! Host-extensible snapshot output — end-to-end proof for the typed
-//! FlatBuffers sidecar seam (ADR-0037).
+//! FlatBuffers sidecar seam (ADR-0072).
 //!
 //! The generic (`serde_json::Value`) projection lane has been removed; only
 //! typed projections are tested here. Tests that previously exercised
@@ -14,7 +14,7 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 use std::sync::Arc;
 
 /// Build a minimal opaque [`TypedProjectionData`] entry for the typed-sidecar
-/// tests (ADR-0037). Payload bytes are arbitrary — `nmp-core` never reads them.
+/// tests (ADR-0072). Payload bytes are arbitrary — `nmp-core` never reads them.
 fn typed_entry(key: &str, payload: &[u8]) -> TypedProjectionData {
     TypedProjectionData {
         key: key.to_string(),
@@ -58,7 +58,7 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // identity pair
             "accounts",
             "active_account",
-            // ADR-0063 Lane H: claimed_profiles / mention_profiles /
+            // ADR-0070 Lane H: claimed_profiles / mention_profiles /
             // resolved_profiles / claimed_events JSON projections deleted.
             // Profile/event resolution is now served by refs.profile / refs.event
             // NRRD row-delta sidecars.
@@ -121,7 +121,7 @@ fn builtin_projection_keys_const_matches_runtime() {
     }
 
     // Reverse: every const key is either emitted on an idle tick or one of the
-    // four documented drain-on-emit conditionals, OR one of the two ADR-0063
+    // four documented drain-on-emit conditionals, OR one of the two ADR-0070
     // (#1671) keyed row-delta carriers (`refs.profile` / `refs.event`). The
     // latter are typed-sidecar-ONLY built-ins (an opaque NRRD per-key batch
     // consumed by the host `RefRowCache`) — they have no generic JSON
@@ -145,7 +145,7 @@ fn builtin_projection_keys_const_matches_runtime() {
     }
 }
 
-/// ADR-0037: `run_typed` carries registered opaque bytes by projection key.
+/// ADR-0072: `run_typed` carries registered opaque bytes by projection key.
 #[test]
 fn registered_typed_projection_surfaces_through_run_typed() {
     let slot = new_snapshot_projection_slot();

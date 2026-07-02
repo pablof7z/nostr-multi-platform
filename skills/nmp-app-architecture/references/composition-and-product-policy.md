@@ -1,6 +1,6 @@
 # Explicit Feature Composition and App-Owned Product Policy
 
-> Canonical source: ADR-0069, amending ADR-0046 and ADR-0049.
+> Canonical source: ADR-0069.
 > Enforcement: `cargo test -p nmp-testing --test doctrine_lint_smoke`.
 
 ## The Composition Contract (production)
@@ -113,7 +113,7 @@ clean. If it is buried inside a preset or a framework crate, D0 is violated. The
 tier is the one exception — it is generic Nostr-client infrastructure (routing, mailbox
 caches, publish resolver), not product policy.
 
-## Ordering and the Composition Ledger (ADR-0049)
+## Ordering and the Composition Ledger (ADR-0069)
 
 All registrations must complete before `nmp_app_start`. Late wiring is recorded as
 `DroppedLateWiring` and silently dropped (D6 — failures are state, not exceptions). The

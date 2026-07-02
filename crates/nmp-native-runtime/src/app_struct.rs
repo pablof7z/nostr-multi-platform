@@ -219,9 +219,9 @@ pub struct NmpApp {
     pub(crate) update_listener_thread: Mutex<Option<JoinHandle<()>>>,
     /// M6 — namespace-keyed action-dispatch registry.
     pub(crate) action_registry: ActionRegistry,
-    /// ADR-0049 Part 2 — the composition ledger.
+    /// ADR-0069 Part 2 — the composition ledger.
     pub(crate) composition_ledger: Arc<nmp_core::CompositionLedger>,
-    /// ADR-0049 Part 2 — flips to `true` the first time `nmp_app_start` sends
+    /// ADR-0069 Part 2 — flips to `true` the first time `nmp_app_start` sends
     /// `ActorCommand::Start`.
     pub(crate) started: AtomicBool,
     /// Host-extensible typed snapshot output registry.
@@ -240,11 +240,11 @@ pub struct NmpApp {
     /// Test-only last-command-variant tag.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) last_cmd_tag: std::sync::Mutex<Option<&'static str>>,
-    /// ADR-0052 §D3 — per-app NIP-46 actor-lane runtime handle (set during
+    /// ADR-0072 §D3 — per-app NIP-46 actor-lane runtime handle (set during
     /// config phase by `nmp_signer_broker_init`; `None` until then).
     #[cfg(feature = "signer-broker")]
     pub(crate) nip46_runtime: Arc<Mutex<Option<nmp_nip46_runtime::Nip46RuntimeHandle>>>,
-    /// ADR-0052 §D3 — per-app NIP-55 driver handle.
+    /// ADR-0072 §D3 — per-app NIP-55 driver handle.
     #[cfg(feature = "external-signer")]
     pub(crate) external_signer_driver: Arc<Mutex<Option<Arc<crate::external_signer::Nip55Driver>>>>,
     /// Live NIP-50 search sessions, keyed by host session id.

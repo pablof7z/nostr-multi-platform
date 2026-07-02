@@ -1,4 +1,4 @@
-//! Shared test-support fixtures for the ADR-0045 interest-install cache-serve
+//! Shared test-support fixtures for the ADR-0070 interest-install cache-serve
 //! regression tests (`interest_install_cache_serve_tests`).
 //!
 //! Extracted into a sibling `_support` module so the test file stays under the

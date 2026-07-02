@@ -55,10 +55,10 @@ pub(super) struct PoolInner {
     pub(super) url_to_slot: HashMap<RelayUrl, u32>,
     /// Event sink handed to [`super::Pool::new`]. An `Arc<dyn PoolEventSink>`
     /// so the actor can deliver relay events onto its unified command/relay
-    /// inbox (ADR-0050 §D3a) while other callers keep handing in a plain
+    /// inbox (ADR-0072 §D3a) while other callers keep handing in a plain
     /// `Sender<PoolEvent>` (blanket impl). The translator clones this handle
     /// out under the inner lock and then *drops the lock before* calling
-    /// `send_event` (ADR-0050 §D3a follow-up #1231): no sink is ever invoked
+    /// `send_event` (ADR-0072 §D3a follow-up #1231): no sink is ever invoked
     /// while the `PoolInner` mutex is held, so a sink can never stall a
     /// concurrent `Pool::send`.
     pub(super) events: Arc<dyn super::PoolEventSink>,
@@ -384,11 +384,11 @@ fn translator_loop(
             None => continue,
         };
         // Clone the sink handle (an `Arc` bump, O(1)) and DROP the lock before
-        // delivering (ADR-0050 §D3a follow-up #1231). The cross-lock-send
+        // delivering (ADR-0072 §D3a follow-up #1231). The cross-lock-send
         // invariant is now structural rather than relying on the sink being
         // non-blocking: even if a future sink blocked, it could not stall a
         // concurrent `Pool::send`, since the `PoolInner` mutex is released
-        // first. `send_event` swallows a gone-consumer error (ADR-0050 §D3a);
+        // first. `send_event` swallows a gone-consumer error (ADR-0072 §D3a);
         // the translator stops naturally when its workers exit and the
         // `worker_event_rx.recv()` above returns `Err` on the next poll.
         let sink = Arc::clone(&guard.events);

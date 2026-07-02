@@ -349,7 +349,7 @@ mod tests {
         assert!(file_is_test_only(Path::new("foo/bar/tests_scenario.rs")));
         // `*_tests_*.rs` infix — files like `refs_tests_event.rs` whose
         // `#[cfg(test)] mod refs_tests_event;` declaration lives in the parent
-        // (ADR-0063 #1671 Lane B). The cfg gate is invisible to the line walker.
+        // (ADR-0070 #1671 Lane B). The cfg gate is invisible to the line walker.
         assert!(file_is_test_only(Path::new(
             "crates/nmp-core/src/kernel/refs_tests_event.rs"
         )));

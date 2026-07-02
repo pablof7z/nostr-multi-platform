@@ -70,7 +70,7 @@ pub(super) fn format_next_count_label(count: usize) -> String {
     }
 }
 
-/// ADR-0055 Rung 0 — projection-churn measurement.
+/// ADR-0070 Rung 0 — projection-churn measurement.
 ///
 /// The ENTIRE module is gated on `cfg(any(test, feature = "test-support"))`,
 /// so a production build of `nmp-core` compiles none of it: no hashing, no
@@ -210,7 +210,7 @@ pub(crate) mod churn {
     }
 }
 
-/// ADR-0055 Rung 1 (F5): fingerprint the `relay_diagnostics` payload bytes from
+/// ADR-0070 Rung 1 (F5): fingerprint the `relay_diagnostics` payload bytes from
 /// the typed sidecar. The kernel reconciles this against `diagnostics_inputs_ver`
 /// each emit (`reconcile_diagnostics_fingerprint`) so the broad diagnostic stamp
 /// advances iff the projection's encoded content actually changed — leak-proof

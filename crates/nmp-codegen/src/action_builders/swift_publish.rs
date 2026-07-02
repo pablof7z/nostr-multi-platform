@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — Swift emitter for the `nmp.publish` UNION builders.
+//! ADR-0071 §3 (#1783) — Swift emitter for the `nmp.publish` UNION builders.
 //!
 //! Split out of [`crate::action_builders::swift`] purely as a size-management
 //! seam (AGENTS.md / V-12): the flat-table emitter and this union emitter

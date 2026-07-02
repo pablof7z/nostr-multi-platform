@@ -1,6 +1,6 @@
 namespace nmp.nip29;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the
 // `nmp.nip29.edit_metadata` `ActionModule` (publishes a kind:9002 edit-metadata
 // editing an EXISTING NIP-29 group's name / about / picture / visibility /
 // access). Admin-gated at the relay; structurally validated + host-pinned here.

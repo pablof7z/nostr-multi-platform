@@ -12,14 +12,14 @@ namespace nmp.nip25;
 // job (a relay-pinned `#h` + `kinds:[5,7]` filter, so relay-delivered kind:5
 // deletions decrement the fold); this schema bakes in no group/h-tag concept.
 //
-// This is the typed sidecar (ADR-0037) carried alongside the generic
+// This is the typed sidecar (ADR-0072) carried alongside the generic
 // `serde_json::Value` projection registered under the same key by the reaction
 // typed read session. The serde shape
 // (`ReactionAggregateProjection::snapshot_json`) stays authoritative; this
 // buffer mirrors it byte-for-byte in field semantics so a host with an `N25A`
 // decoder can read typed accessors instead of JSON reflection.
 //
-// Raw data only (ADR-0032): the emoji `token` is the verbatim reaction content
+// Raw data only (ADR-0072): the emoji `token` is the verbatim reaction content
 // (empty content normalizes to the `"+"` like token) and `reactors` are raw hex
 // pubkeys. No `display::` forwarder runs on the encode path.
 //

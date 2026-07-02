@@ -1,6 +1,6 @@
 namespace nmp.nip29;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the
 // `nmp.nip29.set_parent` `ActionModule` (publishes a kind:9002 edit-metadata
 // that adopts a NIP-29 group under a parent or detaches it to a root, per
 // nips PR #2319).

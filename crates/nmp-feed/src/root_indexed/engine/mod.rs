@@ -140,7 +140,7 @@ where
     /// Current visible-window limit — the **render viewport**, grown one page at
     /// a time by [`Self::grow_visible_window`].
     ///
-    /// ADR-0058 §8 step-6B: this is a pure render-ordering viewport, NOT a paging
+    /// ADR-0072 §8 step-6B: this is a pure render-ordering viewport, NOT a paging
     /// source of truth. Completeness rides the ingest-seq pull pager
     /// (`crate::PullFeedController`); the engine is no longer itself a
     /// `FeedController`. The viewport grows only as a *consequence* of a
@@ -304,7 +304,7 @@ where
     /// Grow the **render viewport** by one page, revealing more of the
     /// `(created_at, id)`-sorted roots already ingested.
     ///
-    /// ADR-0058 §8 step-6B: this is the viewport step of the single pull paging
+    /// ADR-0072 §8 step-6B: this is the viewport step of the single pull paging
     /// path — it is called ONLY by [`crate::PullFeedController`] after a
     /// successful seq-ordered pull drain has ingested a page of (possibly older)
     /// events through [`nmp_core::ObservedProjectionSink::on_kernel_event`]. It is

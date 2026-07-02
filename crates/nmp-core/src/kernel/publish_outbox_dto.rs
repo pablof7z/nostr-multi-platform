@@ -19,11 +19,11 @@ pub(super) struct PublishOutboxItem {
     pub(super) kind: u32,
     /// Raw verbatim content of the event being published. The shell formats
     /// this for display (truncation, encrypted-content placeholder, etc.).
-    /// ADR-0032 / aim.md §2 #4: presentation formatting lives in the shell,
+    /// ADR-0072 / aim.md §2 #4: presentation formatting lives in the shell,
     /// not in the kernel. Replaces the removed `preview` / `title` /
     /// `system_image` pre-formatted fields.
     pub(super) content: String,
-    /// Raw Unix-seconds creation timestamp. ADR-0032: projection sends raw
+    /// Raw Unix-seconds creation timestamp. ADR-0072: projection sends raw
     /// epoch seconds; shells format for display with their own locale/TZ.
     /// Replaces the removed `created_at_display` wire field (V-115).
     pub(super) created_at: u64,
@@ -34,7 +34,7 @@ pub(super) struct PublishOutboxItem {
     /// deciding what the app should *do*.
     pub(super) can_retry: bool,
     pub(super) target_relays: usize,
-    // ADR-0032 / V-115: `target_summary` removed — shells compose "N relays ·
+    // ADR-0072 / V-115: `target_summary` removed — shells compose "N relays ·
     // <formatted time>" themselves from `target_relays` + `created_at`.
     pub(super) relays: Vec<PublishOutboxRelay>,
 }
@@ -62,7 +62,7 @@ pub(super) struct PublishOutboxRelay {
 /// The kernel owns the per-status counts; the shell derives any display
 /// strings (headline, subtitle) from these raw counts using its own locale.
 ///
-/// ADR-0032 / aim.md §2 #4: presentation formatting lives in the shell.
+/// ADR-0072 / aim.md §2 #4: presentation formatting lives in the shell.
 /// The previously-emitted `title` / `subtitle` pre-formatted English strings
 /// have been removed; shells now compute them from the raw counters.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]

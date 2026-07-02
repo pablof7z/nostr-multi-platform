@@ -290,12 +290,12 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
     }
 }
 
-// V-112 (ADR-0042): t121_thread_hydration_routes_ids_by_resolved_author_write_relays
+// V-112 (ADR-0076): t121_thread_hydration_routes_ids_by_resolved_author_write_relays
 // deleted — ThreadViewState (including pending_ids / requested_ids) and
 // maybe_open_thread_hydration() removed from kernel. Thread hydration is now
 // owned by the handle-opened per-app Flat feed.
 
-// M2 (ADR-0042): `hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap`
+// M2 (ADR-0076): `hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap`
 // was deleted with the `open_firehose_tag` kernel method it exercised. Hashtag
 // feeds now register as a generic `open_interest` (`{"kinds":[1],"#t":[…]}`,
 // scope Global) and route through the `SubscriptionCompiler`'s standard

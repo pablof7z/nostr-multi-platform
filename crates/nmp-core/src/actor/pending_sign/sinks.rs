@@ -1,4 +1,4 @@
-//! The unified parked-op type and its terminal sinks (ADR-0050 §D2).
+//! The unified parked-op type and its terminal sinks (ADR-0072 §D2).
 //!
 //! Before this module the actor parked remote signer ops in **two** separate
 //! `Vec`s with duplicated poll/timeout machinery:
@@ -135,7 +135,7 @@ pub(crate) struct ParkedOp {
     /// Terminal sink + the in-flight op.
     pub sink: ParkedOpSink,
     /// Drop-dead time, sourced from the SIGNING account's
-    /// `RemoteSignerHandle::op_timeout()` budget (ADR-0050 D4 — NIP-46 = 5s,
+    /// `RemoteSignerHandle::op_timeout()` budget (ADR-0072 D4 — NIP-46 = 5s,
     /// NIP-55 = 90s) via `IdentityRuntime::sign_deadline_for` /
     /// `active_sign_deadline`. Past this the op is abandoned with an error
     /// terminal so the host never hangs (D6).

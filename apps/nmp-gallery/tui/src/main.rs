@@ -422,7 +422,7 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
 
 fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<Vec<u8>>) {
     thread::spawn(move || {
-        // ADR-0063 (#1671): the stateful refs row-delta mirrors live in the
+        // ADR-0070 (#1671): the stateful refs row-delta mirrors live in the
         // snapshot thread (the reader of the kernel frames), merged across
         // ticks so per-key deltas accumulate. They are the sole app-side stores
         // (D4); each frame materialises their current sets into the snapshot.

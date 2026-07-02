@@ -115,7 +115,7 @@ pub(super) struct RelayDiagnosticsRow {
     /// on this relay (deduplicated, sorted). Shells format for display;
     /// they do not parse REQ filter JSON.
     pub(super) discovery_kinds: Vec<u64>,
-    /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
+    /// ADR-0072 — the relay's NIP-11 information document, once `nmp-nip11`
     /// has fetched it. `None` until the fetch resolves (or the relay serves
     /// no document). Apps read `info.name` / `info.icon` / … directly — no
     /// HTTP, no JSON, no awareness of NIP-11.

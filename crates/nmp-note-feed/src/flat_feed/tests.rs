@@ -1,5 +1,5 @@
 //! Tests for [`super::FlatFeed`] — the predicate-gated flat note feed
-//! (ADR-0042 §5.1, ADR-0058 §8 6B viewport grow).
+//! (ADR-0076 §5.1, ADR-0072 §8 6B viewport grow).
 
 use super::*;
 
@@ -280,7 +280,7 @@ fn on_kernel_event_observer_entrypoint_renders_matching_event() {
 
 #[test]
 fn bare_flat_feed_fails_closed_no_pull_interest() {
-    // ADR-0058 §8 6B: a `FlatFeed::new` has no covered pull interest, so it
+    // ADR-0072 §8 6B: a `FlatFeed::new` has no covered pull interest, so it
     // fails closed — a `PullFeedController` would refuse to construct and the
     // feed renders projection-only.
     let feed = FlatFeed::new(author_feed_predicate(

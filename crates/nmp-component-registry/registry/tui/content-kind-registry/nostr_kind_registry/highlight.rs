@@ -4,8 +4,8 @@
 
 use nmp_content::embed_projection::EmbedKindProjection;
 
-use super::super::kind_renderer::{author_byline, KindRenderer};
 use super::super::super::nostr_mention_chip::NostrMentionProfileHost;
+use super::super::kind_renderer::{author_byline, KindRenderer};
 use super::text_layout::{render_two_line, text_height};
 use super::NostrKindRegistry;
 

@@ -13,7 +13,7 @@
 //     (see `compose/content-core`).
 //   - Mention display labels are provided by the app via `mentionLabel`.
 //   - Embedded events (`nostr:nevent…` / `nostr:naddr…`) render via the
-//     kind-dispatch registry (ADR-0034): `EventRefBlock` delegates to the
+//     kind-dispatch registry (ADR-0072): `EventRefBlock` delegates to the
 //     `EmbeddedEvent` composable from `compose/content-kind-registry`, which
 //     resolves the URI, reads the kernel-resolved `EmbeddedEventEnvelope` from
 //     `LocalResolvedEventEmbeds`, and dispatches to the per-kind renderer in

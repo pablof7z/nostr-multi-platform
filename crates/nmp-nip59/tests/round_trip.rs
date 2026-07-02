@@ -27,7 +27,7 @@ fn make_rumor(alice: &Keys) -> UnsignedEvent {
 }
 
 /// Test-only shorthand: wrap `rumor` for `receiver` with the sender's local
-/// keys via the pure `gift_wrap_local` composition (ADR-0050 §D5).
+/// keys via the pure `gift_wrap_local` composition (ADR-0072 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
     gift_wrap_local(sender, receiver, rumor, Timestamp::now())
         .expect("gift_wrap_local should succeed")

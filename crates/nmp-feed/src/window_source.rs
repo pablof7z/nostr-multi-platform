@@ -1,5 +1,5 @@
 //! [`FeedWindowSource`] — the per-tick materialized window a feed's typed
-//! producer AND its author-resolve provider BOTH read (ADR-0063 D7, #1671 Lane H).
+//! producer AND its author-resolve provider BOTH read (ADR-0070 D7, #1671 Lane H).
 //!
 //! ## Why this exists — the structural-pairing + no-gap fix
 //!

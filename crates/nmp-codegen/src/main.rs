@@ -30,12 +30,12 @@ fn run() -> Result<(), String> {
         // decoders. Writes `TypedProjectionDecoders.generated.swift` from the
         // registry's `typed_sidecar` metadata; no schema-document stdin needed.
         "typed-decoders" => cli::run_gen_typed_decoders(args, &h),
-        // ADR-0055 R3-S3 — generated `ProjectionMergeCache`. Writes
+        // ADR-0070 R3-S3 — generated `ProjectionMergeCache`. Writes
         // `ProjectionCache.generated.swift` or `ProjectionCache.kt` (per
         // `--platform`) from the same registry as `typed-decoders`;
         // implements the D3-3 merge algorithm.
         "projection-cache" => cli::run_gen_projection_cache(args, &h),
-        // ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference
+        // ADR-0070 Lane A (#1671) — generated per-key (row-keyed) reference
         // cache for keyed projections (`refs.profile` / `refs.event`). Writes
         // `KeyedRefCache.generated.swift` or `KeyedRefCache.kt` (per
         // `--platform`) from `KEYED_PROJECTIONS`; decodes `RefRowDeltaBatch`.
@@ -44,7 +44,7 @@ fn run() -> Result<(), String> {
         // for `@nmp/runtime-web`, from the same neutral manifest the Swift
         // typed decoders consume via `projection_contract::contract_for`.
         "projection-contract" => cli_read_side::run_gen_projection_contract(args, &h),
-        // ADR-0064 §3 (#1783) / #2411 — generated typed action-builders.
+        // ADR-0071 §3 (#1783) / #2411 — generated typed action-builders.
         // Writes native/web builders from `ACTION_BUILDERS` or from an app-local
         // static `--registry` contract; emits the host-facing typed write
         // builders that construct `DispatchEnvelope` bytes for the byte doorway.
@@ -56,7 +56,7 @@ fn run() -> Result<(), String> {
         // #1939 — generated compact Markdown view of ACTION_CONTRACT for PR
         // review. Prints to stdout unless `--out <path>` is provided.
         "action-contract-report" => cli_action_contract::run_gen_action_contract_report(args, &h),
-        // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
+        // ADR-0070 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
         // Rust const for `nmp-core`. Writes
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
         // from the SAME projection registry as `typed-decoders`; no stdin.
@@ -76,7 +76,7 @@ fn run() -> Result<(), String> {
         // entry. Writes one `<name>_producer_consts.generated.rs` per producer
         // under `--repo-root` (default `.`); no stdin.
         "producer-consts" => cli_builtin::run_gen_producer_consts(args, &h),
-        // NOTE (ADR-0046): `gen modules` was deleted. Composition is explicit
+        // NOTE (ADR-0069): `gen modules` was deleted. Composition is explicit
         // app Rust over owner crates, not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{h}")),
     }

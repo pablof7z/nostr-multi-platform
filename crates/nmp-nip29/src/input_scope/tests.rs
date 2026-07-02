@@ -189,7 +189,7 @@ fn register_input_scopes_installs_exactly_one_recognizer() {
     crate::input_scope::register_input_scopes(&registry);
     assert_eq!(registry.len(), 1);
 
-    // Duplicate call must yield (ADR-0049 — first wins).
+    // Duplicate call must yield (ADR-0069 — first wins).
     crate::input_scope::register_input_scopes(&registry);
     assert_eq!(registry.len(), 1, "duplicate registration must yield");
 }

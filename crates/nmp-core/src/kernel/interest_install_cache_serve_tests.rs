@@ -1,9 +1,9 @@
-//! ADR-0045 single choke-point — interest-install cache-serve regression tests.
+//! ADR-0070 single choke-point — interest-install cache-serve regression tests.
 //!
 //! Root cause (Fable debugging pass, 2026-06-13): interest installs registered
 //! entries in the subscription registry and enqueued a recompile trigger, but
 //! **never** enqueued the
-//! ADR-0045 E1 cache-serve. Events already in the persistent store were
+//! ADR-0070 E1 cache-serve. Events already in the persistent store were
 //! therefore invisible to kind-parsers installed for those interests on any
 //! session after the one that originally fetched them.
 //!
@@ -13,7 +13,7 @@
 //!
 //! This fix funnels all interest-install paths through
 //! [`crate::kernel::Kernel::register_interest`] (single front-door), which
-//! enqueues the ADR-0045 E1 store-cache serve for every newly-installed
+//! enqueues the ADR-0070 E1 store-cache serve for every newly-installed
 //! interest.
 //!
 //! # Test inventory

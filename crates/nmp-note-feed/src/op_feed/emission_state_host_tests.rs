@@ -1,4 +1,4 @@
-//! Host-coherence tests for [`FeedEmissionState`] - ADR-0055 Rung 6 S1.
+//! Host-coherence tests for [`FeedEmissionState`] - ADR-0070 Rung 6 S1.
 //!
 //! Group C simulates host cache reconstruction across emit/omit/identity-reset
 //! sequences. The reconstructed host feed must always match the full payload.

@@ -1,4 +1,4 @@
-//! Pull-cursor registry — ADR-0058 §10, step 3a.
+//! Pull-cursor registry — ADR-0072 §10, step 3a.
 //! Non-durable registry of pull cursors.  Single writer: the actor thread via
 //! `OpenPullCursor` / `AdvancePullCursor` / `UnregisterPullCursor` dispatch arms.
 //! Shared behind `Arc<RwLock<…>>` so the FFI `pull_page` read path can snapshot
@@ -252,7 +252,7 @@ impl PullCursorRegistry {
         self.by_id.values().map(|r| (r.cursor_id, r.after_seq))
     }
 
-    /// Build the `Protected`-cursor log-retention claim set (ADR-0058 §6,
+    /// Build the `Protected`-cursor log-retention claim set (ADR-0072 §6,
     /// step-4). `GapAllowed` cursors publish nothing; each `Protected` cursor
     /// publishes `(after_seq, max_lag_entries)`. The kernel forwards this to
     /// `EventStore::replace_log_retention_claims` after every registry mutation
@@ -307,7 +307,7 @@ impl Kernel {
     }
 
     /// Rebuild the `Protected`-cursor retention claims from the registry and
-    /// publish them to the store (ADR-0058 §6, step-4).
+    /// publish them to the store (ADR-0072 §6, step-4).
     ///
     /// The kernel is the single writer of the claim set: this is called after
     /// EVERY register / advance / unregister so the store's append-time log trim
@@ -361,7 +361,7 @@ impl Kernel {
             );
         }
         self.update_pull_wake(cursor_id, after_seq);
-        // ADR-0058 §6 step-4: republish the protected-cursor retention claims.
+        // ADR-0072 §6 step-4: republish the protected-cursor retention claims.
         self.publish_retention_claims();
     }
 
@@ -381,7 +381,7 @@ impl Kernel {
             row.after_seq
         };
         self.update_pull_wake(cursor_id, new_after);
-        // ADR-0058 §6 step-4: an advanced protected cursor moves its claim's
+        // ADR-0072 §6 step-4: an advanced protected cursor moves its claim's
         // after_seq forward — republish so the log floor can follow it.
         self.publish_retention_claims();
     }
@@ -400,7 +400,7 @@ impl Kernel {
                 .remove(&cursor_id);
         }
         self.store_wakeups.pull.remove(&cursor_id);
-        // ADR-0058 §6 step-4: a withdrawn protected cursor drops its claim.
+        // ADR-0072 §6 step-4: a withdrawn protected cursor drops its claim.
         self.publish_retention_claims();
     }
 

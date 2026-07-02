@@ -1,4 +1,4 @@
-//! Smoke tests for the strengthened `no_raw_tap` rule (ADR-0058 §8 step 5).
+//! Smoke tests for the strengthened `no_raw_tap` rule (ADR-0072 §8 step 5).
 //!
 //! Covers:
 //! - The #1552-deleted native push C-ABI sink (`pos_native_sink.rs` fixture

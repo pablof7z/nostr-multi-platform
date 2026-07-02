@@ -10,7 +10,7 @@
 use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
-/// M2 (ADR-0042) — build the `(SubIdentity, LogicalInterest)` pair for an
+/// M2 (ADR-0076) — build the `(SubIdentity, LogicalInterest)` pair for an
 /// `OpenInterest` / `CloseInterest` command from the raw FFI arguments.
 ///
 /// Shared by both arms so an open and its matching close land on the SAME

@@ -4,7 +4,7 @@ namespace nmp.kernel;
 // projection (Tier-1 closure path — registered via `SnapshotRegistry::register`
 // AND `SnapshotRegistry::register_typed` in `crates/nmp-core/src/actor/mod.rs`).
 //
-// ADR-0048 D6: generalises the former `bunker_connection_state` projection
+// ADR-0072 D6: generalises the former `bunker_connection_state` projection
 // (V-14 step b, #963 / #1098 — file identifier "KBCS") into a unified
 // remote-signer health surface covering BOTH NIP-46 bunker sessions and NIP-55
 // external-signer (Amber) sessions. The rename is a hard break (no-compat-alias
@@ -56,7 +56,7 @@ table SignerState {
   // `state == "ready"` — the signer is operational.
   is_ready:bool;
   // `state == "awaiting_approval"` — a NIP-55 Intent round-trip is in flight;
-  // hosts render "Waiting for Amber…" inline (ADR-0048 D6).
+  // hosts render "Waiting for Amber…" inline (ADR-0072 D6).
   is_awaiting_approval:bool;
   // `state == "reconnecting"` — transient NIP-46 relay flap, auto-reconnect in
   // progress. Hosts show a reconnecting indicator on this signal.
@@ -67,7 +67,7 @@ table SignerState {
   // `state == "failed"` — permanent error (rejected / mismatch / timeout),
   // session bricked. Hosts prompt re-auth on this signal.
   is_failed:bool;
-  // ADR-0032 / aim.md §2 #4 (#1493 P9 — labels-to-shells, mirrors #1568): the
+  // ADR-0072 / aim.md §2 #4 (#1493 P9 — labels-to-shells, mirrors #1568): the
   // pre-computed English `status_label` and semantic `status_tone` strings were
   // removed from this wire. Shells derive both from the raw `state` token (and
   // the `is_*` flags) themselves — Rust emits raw tokens, the iOS/Android shells

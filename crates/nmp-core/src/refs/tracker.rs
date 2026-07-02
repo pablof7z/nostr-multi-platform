@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A — producer-side row-delta tracker + the Lane B interface.
+//! ADR-0070 Lane A — producer-side row-delta tracker + the Lane B interface.
 //!
 //! [`RefRowDeltaTracker`] is the kernel-side producer: it remembers the per-key
 //! rev it last emitted to a host and, given a [`RefRowRevSource`] (Lane B's
@@ -14,7 +14,7 @@
 //! surface Lane A needs:
 //!
 //! - `ref_row_rev(ns, key)` — the per-key monotonic rev (the counter Lane B
-//!   bumps when a key's resolved value changes; ADR-0063 §"per-key reactivity").
+//!   bumps when a key's resolved value changes; ADR-0070 §"per-key reactivity").
 //! - `ref_row_keys(ns)` — the live key set, for baseline reconstruction and for
 //!   detecting keys that went absent (→ explicit `Cleared`).
 //! - `ref_row_payload(ns, key)` — the namespace's typed resolved bytes for a
@@ -31,7 +31,7 @@ use std::collections::{BTreeMap, HashMap};
 
 /// Lane B's per-key rev source. See the module doc-comment for the contract.
 ///
-/// ## Per-key rev is monotonic THROUGH release (rev-safe clears, ADR-0063
+/// ## Per-key rev is monotonic THROUGH release (rev-safe clears, ADR-0070
 /// invariant #4 / BLOCKING-4 coordination contract with Lane B)
 ///
 /// `ref_row_rev` is monotonic per key and bumps on EVERY transition — including
@@ -56,10 +56,10 @@ pub trait RefRowRevSource {
 }
 
 /// Kernel-side producer: tracks the per-key rev last emitted to one host and
-/// builds incremental / baseline batches under the ADR-0063 invariants.
+/// builds incremental / baseline batches under the ADR-0070 invariants.
 ///
 /// One tracker instance corresponds to one host's incremental-apply contract
-/// (per-attach, ADR-0055 HA-2). A `reset` (session/epoch re-baseline) clears the
+/// (per-attach, ADR-0070 HA-2). A `reset` (session/epoch re-baseline) clears the
 /// last-emitted map so the next build is a full baseline.
 #[derive(Debug, Default)]
 pub struct RefRowDeltaTracker {
@@ -78,7 +78,7 @@ impl RefRowDeltaTracker {
 
     /// Clear ALL last-emitted state (every namespace). Called on a session /
     /// epoch re-baseline so the next [`Self::build_baseline`] re-seeds the host
-    /// from scratch (ADR-0063 invariant #3 / ADR-0055 D4).
+    /// from scratch (ADR-0070 invariant #3 / ADR-0070 D4).
     pub fn reset(&mut self) {
         self.last_emitted.clear();
     }
@@ -86,7 +86,7 @@ impl RefRowDeltaTracker {
     /// Clear the last-emitted state for ONE namespace so the next
     /// [`Self::build_baseline`] for it re-seeds the host from scratch, leaving
     /// other namespaces' state intact. Used when a single `refs.*` key is newly
-    /// permitted (ADR-0053 additive declaration) and must re-baseline alone
+    /// permitted (ADR-0070 additive declaration) and must re-baseline alone
     /// without disturbing a sibling namespace that stayed permitted.
     pub fn reset_namespace(&mut self, namespace: &str) {
         self.last_emitted.remove(namespace);

@@ -42,7 +42,7 @@ impl GalleryBridge {
             .expect("snapshot receiver available immediately after LiveKernel::new");
 
         thread::spawn(move || {
-            // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror lives
+            // ADR-0070 (#1671): the stateful `refs.profile` row-delta mirror lives
             // in the reader thread, merged across frames so per-key deltas
             // accumulate. It is the sole app-side profile store (D4); each frame
             // materialises its current set into the snapshot.
@@ -73,7 +73,7 @@ impl GalleryBridge {
         self.sink.resolve_event_ref(uri, consumer_id);
     }
 
-    /// Resolve a visible profile reference (ADR-0063 #1671 — `resolve_ref` at
+    /// Resolve a visible profile reference (ADR-0070 #1671 — `resolve_ref` at
     /// `profile.ref` / `CacheOk`). Idempotent per `(pubkey, consumer_id)` pair.
     /// Call on every poll tick so the resolution sticks once a relay connects
     /// (the kernel silently drops requests issued before any relay is ready).

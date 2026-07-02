@@ -6,7 +6,7 @@
 //! generic `SignEventForAccount` sign port, and the generic action-result
 //! terminals (D0 — no Blossom noun, no HTTP crate in the kernel).
 //!
-//! # Flow (ADR-0043 "Internal flow")
+//! # Flow (ADR-0071 "Internal flow")
 //!
 //! ```text
 //! run(ctx)                                          [actor thread]

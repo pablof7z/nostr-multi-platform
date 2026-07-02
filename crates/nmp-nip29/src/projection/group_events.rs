@@ -21,7 +21,7 @@
 //! - **`ObservedProjectionSink`** — the *ingest* side. `on_kernel_event` fires
 //!   once per accepted event on the actor thread; a projection accumulates the
 //!   facts it cares about into its own interior-mutable state.
-//! - **`register_typed_snapshot_projection`** — the *output* side (ADR-0037).
+//! - **`register_typed_snapshot_projection`** — the *output* side (ADR-0072).
 //!   A host registers a no-argument closure that runs on every snapshot tick
 //!   and returns a typed FlatBuffers sidecar (`TypedProjectionData`) under a
 //!   host-chosen key, or `None` when there is no changed row to emit.

@@ -10,7 +10,7 @@
 //!    NMP side and commit them atomically with the event write.
 //!
 //! These are the only contracts NMP's `LmdbEventStore` relies on
-//! (`docs/decisions/0011-lmdb-env-sharing.md`).
+//! (`docs/decisions/0072-runtime-capability-and-shell-boundary.md`).
 
 use heed::types::Bytes;
 use nmp_nostr_lmdb::{Lmdb, SaveEventStatus};
@@ -80,7 +80,7 @@ fn nmp_side_subdb_commits_atomically_with_event_write() {
     let lmdb = Lmdb::with_env(env.clone()).expect("with_env");
 
     // NMP opens its own sub-db on the same env. This is the load-bearing
-    // claim of ADR-0011: NMP's secondary indexes share a transaction with
+    // claim of ADR-0072: NMP's secondary indexes share a transaction with
     // event writes.
     let nmp_sidecar = {
         let mut txn = env.write_txn().expect("env write_txn");

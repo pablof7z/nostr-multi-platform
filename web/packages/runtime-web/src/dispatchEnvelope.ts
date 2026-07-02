@@ -1,6 +1,6 @@
 import * as flatbuffers from "flatbuffers";
 
-// ADR-0064 / S2 (#1750) — the open write-command byte transport.
+// ADR-0071 / S2 (#1750) — the open write-command byte transport.
 //
 // A write command crosses the wasm boundary as the raw bytes of a finished
 // `DispatchEnvelope` FlatBuffers root over the ONE `dispatch_bytes` doorway —

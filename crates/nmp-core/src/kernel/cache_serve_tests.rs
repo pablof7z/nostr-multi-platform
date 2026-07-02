@@ -1,6 +1,6 @@
-//! ADR-0045 E1 — store-cache serve acceptance tests.
+//! ADR-0070 E1 — store-cache serve acceptance tests.
 //!
-//! These tests verify the ADR-0045 E1 invariants:
+//! These tests verify the ADR-0070 E1 invariants:
 //!
 //! 1. **Universal acceptance** — on second launch (in-memory caches cleared,
 //!    store warm), generic author interests drive cache-serve and
@@ -156,7 +156,7 @@ pub(super) fn drain_cache_serves(kernel: &mut Kernel, max_steps: usize) -> usize
 
 // ─── 1. Universal acceptance ─────────────────────────────────────────────────
 
-/// D1 / ADR-0045 E1 core acceptance:
+/// D1 / ADR-0070 E1 core acceptance:
 ///
 /// 1. Seed events into the store via the live ingest path.
 /// 2. Simulate a cold second launch by clearing in-memory caches.
@@ -398,7 +398,7 @@ fn e1_identity_change_clears_interest_serve_state() {
     );
 }
 
-/// ADR-0057 oracle — `pre_kind3_buffer` deletion does NOT lose later timeline
+/// ADR-0070 oracle — `pre_kind3_buffer` deletion does NOT lose later timeline
 /// visibility. The buffer existed to "park" a not-yet-followed author's
 /// follow-feed events so a later kind:3 could replay them. With admission ≠
 /// persistence, those events are ALREADY persisted in the store on arrival
@@ -409,7 +409,7 @@ fn e1_identity_change_clears_interest_serve_state() {
 /// persisted but absent from the timeline VIEW), then the user follows that
 /// author; the follow's cache-serve must surface the prior events.
 #[test]
-fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
+fn follow_added_later_surfaces_prior_events_from_store() {
     use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -456,7 +456,7 @@ fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
     kernel.timeline_authors.insert(stranger.clone());
     open_author_interest(
         &mut kernel,
-        "adr0057-later-follow",
+        "follow-later-follow",
         [stranger.clone()],
         [1u32],
     );
@@ -466,7 +466,7 @@ fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
     for id in &ids {
         assert!(
             kernel.events.contains_key(id.as_str()),
-            "ADR-0057: a follow added later must surface the author's PRIOR \
+            "ADR-0070: a follow added later must surface the author's PRIOR \
              events from the store (pre_kind3_buffer deletion regression guard); \
              missing {id}"
         );

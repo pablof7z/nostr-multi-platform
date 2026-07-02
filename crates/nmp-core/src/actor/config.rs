@@ -46,7 +46,7 @@ pub struct ActorRuntimeSlots {
     pub routing_trace: RoutingTraceSlot,
     pub active_account: ActiveAccountSlot,
     pub event_store: EventStoreSlot,
-    /// ADR-0058 step 3b — publish-back of the kernel's pull-cursor registry.
+    /// ADR-0072 step 3b — publish-back of the kernel's pull-cursor registry.
     pub pull_cursor_registry: PullCursorRegistryHandleSlot,
     pub external_event_sink_dispatcher: crate::substrate::ExternalEventSinkDispatcherSlot,
 }

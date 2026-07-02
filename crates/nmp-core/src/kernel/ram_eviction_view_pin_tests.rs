@@ -1,6 +1,6 @@
 //! #1088 / PR #1096 review — open-interest pin invariant tests.
 //!
-//! V-112 (ADR-0042) deleted the legacy `AuthorViewState`/`ThreadViewState`
+//! V-112 (ADR-0076) deleted the legacy `AuthorViewState`/`ThreadViewState`
 //! stack; open views are now per-app FlatFeeds backed by the generic
 //! `open_interest` seam.  `open_interest` registers a refcounted
 //! `LogicalInterest` in the planner registry and writes NOTHING to
@@ -75,7 +75,7 @@ fn inject_tagged_note(
 /// even though `open_interest` writes nothing to `event_claims`.
 ///
 /// The thread feed is composed exactly the way an app-side thread FlatFeed
-/// composes its hydration (ADR-0042): one `ids` interest for the root +
+/// composes its hydration (ADR-0076): one `ids` interest for the root +
 /// focused (+ hydrated-ancestor) notes, one `#e` interest for the replies.
 ///
 /// The thread events are deliberately the OLDEST entries (lowest

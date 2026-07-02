@@ -133,7 +133,7 @@ impl SubscriptionLifecycle {
                     // - Non-Tailing + since=None → leave None (backfill/oneshot,
                     //   full history requested; exempt from T129).
                     // - since=Some(t) → raise floor to max(t, watermark+1).
-                    // K3 Stage D2 (ADR-0056 §3.D2): the floor is per-`(filter_hash,
+                    // K3 Stage D2 (ADR-0072 §3.D2): the floor is per-`(filter_hash,
                     // relay)`. This reconnect-replay path already has the target
                     // `relay_url` in scope (the method arg), so thread it into the
                     // resolver exactly as `apply_watermark_rewrite` does — both

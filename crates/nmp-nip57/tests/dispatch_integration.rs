@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the nip57 typed FlatBuffers payload doorway
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 //!
 //! These tests prove the fail-closed `schema_version` gate in
 //! `ActionRegistry::start_bytes` rejects bad payloads BEFORE `start()` runs,
@@ -12,7 +12,7 @@
 
 // ---- S9 gap tests: bad-version trip for nmp.nip57.zap ----------------------
 
-/// ADR-0064 / S9 (#1747) — `nmp.nip57.zap` with a bad `schema_version` MUST
+/// ADR-0071 / S9 (#1747) — `nmp.nip57.zap` with a bad `schema_version` MUST
 /// be rejected BEFORE `start()` runs, proving the fail-closed gate covers the
 /// zap namespace at the registry level.
 #[test]
@@ -41,7 +41,7 @@ fn start_bytes_rejects_wrong_schema_version_for_zap() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — A valid `nmp.nip57.zap` FlatBuffers payload with
+/// ADR-0071 / S9 (#1747) — A valid `nmp.nip57.zap` FlatBuffers payload with
 /// a legal `recipient_pubkey` and `amount_msats > 0` must be accepted by the
 /// registry's `start_bytes` path, proving the full typed-decode → start() chain
 /// works end-to-end.
@@ -103,7 +103,7 @@ fn build_bad_version_zap_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
-// ---- ADR-0064 §3 (#1783 / M14-1 PR2 #2145): generated `zap` builder round-trip
+// ---- ADR-0071 §3 (#1783 / M14-1 PR2 #2145): generated `zap` builder round-trip
 //
 // The Swift/Kotlin/TS `zap` action-builder
 // (`crates/nmp-codegen/src/action_builders/registry/table.rs`) hand-rolls the

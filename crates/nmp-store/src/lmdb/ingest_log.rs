@@ -1,4 +1,4 @@
-//! LMDB ingest-log helpers (ADR-0058 §4).
+//! LMDB ingest-log helpers (ADR-0072 §4).
 //!
 //! Two sub-dbs:
 //!   `nmp-ingest-log`:  seq(8 BE) → JSON(LogEntryPersist)
@@ -314,7 +314,7 @@ fn decode_entry(v: &[u8]) -> Result<LogEntryPersist, StoreError> {
 
 /// Trim the ingest log inside the caller's write txn, advancing `gc_floor` to
 /// the normal retention floor capped by any still-eligible `Protected`-cursor
-/// claim (ADR-0058 §6, step-4).
+/// claim (ADR-0072 §6, step-4).
 ///
 /// BLOCKING 4: append-time trim means the log is ALWAYS bounded immediately
 /// after each append — no separate GC pass required. The `gc_floor` advance is

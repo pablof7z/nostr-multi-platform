@@ -4,7 +4,7 @@
 //! Extracted from `dispatch/mod.rs` to keep it under the 500-LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
 //!
-//! ADR-0065 — the `dispatch` function below matches the `LifecycleCommand`
+//! ADR-0071 — the `dispatch` function below matches the `LifecycleCommand`
 //! sub-enum and routes each verb to its existing handler.
 
 use std::sync::Arc;
@@ -49,7 +49,7 @@ pub(super) fn start(
         }
     }
     ctx.kernel.start();
-    // ADR-0040 §3: restore_active_session stays synchronous (cold-start
+    // ADR-0072 §3: restore_active_session stays synchronous (cold-start
     // read chain; see session_persistence.rs module doc). The tail
     // writes (persist_current_active_session) are enqueued off-actor.
     let mut outbound = session_persistence::restore_active_session(
@@ -181,7 +181,7 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     if let Ok(mut guard) = ctx.event_store_slot.lock() {
         *guard = Some(ctx.kernel.event_store_handle());
     }
-    // ADR-0058 step 3b — re-publish the rebuilt kernel's pull-cursor
+    // ADR-0072 step 3b — re-publish the rebuilt kernel's pull-cursor
     // registry handle (the `Reset` above minted a fresh registry) so the
     // FFI `pull_page` path reads the live kernel's cursors, not the
     // discarded kernel's. Same publish-back-on-`Reset` contract as the
@@ -209,7 +209,7 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     Some(Vec::new())
 }
 
-/// ADR-0065 — `LifecycleCommand` family dispatch. Matches the sub-enum and
+/// ADR-0071 — `LifecycleCommand` family dispatch. Matches the sub-enum and
 /// routes each verb to its existing handler. `Configure` / `LifecycleEvent` /
 /// `MarkChangedSinceEmit` are small enough to inline.
 pub(super) fn dispatch(

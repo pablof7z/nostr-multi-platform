@@ -1,5 +1,5 @@
 //! NIP-59 unwrap: the kind:1059 → seal → rumor decode path, split into **pure
-//! parse halves** so ADR-0050 Stage 4 can route the two NIP-44 decrypts through
+//! parse halves** so ADR-0072 Stage 4 can route the two NIP-44 decrypts through
 //! the actor's signer port (a NIP-46 bunker decrypts the wrap/seal out of
 //! process; the DM inbox no longer holds raw `Keys`).
 //!
@@ -133,7 +133,7 @@ pub fn parse_rumor(seal: &Event, rumor_plaintext: &str) -> Result<UnwrappedGift,
 /// around two LOCAL `nostr::nips::nip44::decrypt` calls.
 ///
 /// This is the local-keys path (Marmot, the NIP-17 inbox before Stage 4, and
-/// this crate's tests). ADR-0050 Stage 4 will route the inbox's two decrypts
+/// this crate's tests). ADR-0072 Stage 4 will route the inbox's two decrypts
 /// through `Nip44DecryptForAccount` so a NIP-46 bunker can unwrap without the
 /// inbox ever holding raw `Keys`; it reuses the same three pure halves.
 ///

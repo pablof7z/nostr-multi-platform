@@ -1,6 +1,6 @@
 //! Initial gallery references — what every page needs at frame zero.
 //!
-//! Live-only (ADR-0034 / M16): there is no fixture mode, no hardcoded
+//! Live-only (ADR-0072 / M16): there is no fixture mode, no hardcoded
 //! embed envelopes, no `load_images: bool` knob that toggles static payloads. The
 //! gallery boots the kernel and carries real Nostr references; profile and
 //! event fields arrive through relay-backed kernel snapshot projections.
@@ -108,7 +108,7 @@ pub struct MediaProtocol {
 /// into bespoke state, the app holds one `LiveProfileMap`, calls
 /// `update_from_typed` on every snapshot tick, and `resolve(pubkey)` at
 /// render time. The map fills itself from the materialised `refs.profile`
-/// set (ADR-0063 #1671 — the resolve_ref output, merged in the snapshot
+/// set (ADR-0070 #1671 — the resolve_ref output, merged in the snapshot
 /// thread's `RefProfileStore`). There is no app-side three-source merge, no
 /// field-by-field copying, and no invented profile label.
 #[derive(Default)]
@@ -123,7 +123,7 @@ impl LiveProfileMap {
 
     /// Ingest a typed kernel snapshot, REPLACING the resolved-profile map.
     ///
-    /// Reads the materialised `refs.profile` set (ADR-0063 #1671 — the
+    /// Reads the materialised `refs.profile` set (ADR-0070 #1671 — the
     /// resolve_ref output, merged once in the snapshot thread's
     /// `RefProfileStore` with the kernel's precedence rules). The app no longer
     /// re-implements any three-source merge — it copies the finished
@@ -318,7 +318,7 @@ mod live_profile_map_tests {
         assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
     }
 
-    /// ADR-0063 (#1671) — a `refs.profile` CLEAR/release drops the row.
+    /// ADR-0070 (#1671) — a `refs.profile` CLEAR/release drops the row.
     /// `update_from_typed` REPLACES the map from the snapshot's full
     /// `RefProfileStore` set each frame; once the kernel releases a profile (so
     /// it no longer materialises in the set), the next snapshot omits it and the

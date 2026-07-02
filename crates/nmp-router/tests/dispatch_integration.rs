@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the relay-list typed FlatBuffers payload
-//! doorway (ADR-0064 / #1756).
+//! doorway (ADR-0071 / #1756).
 //!
 //! These exercise the same path the byte transport (`DispatchEnvelope`) drives
 //! in production: `ActionRegistry::start_bytes` decodes the typed payload,

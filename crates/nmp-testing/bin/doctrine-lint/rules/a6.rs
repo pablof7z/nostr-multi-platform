@@ -132,7 +132,7 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
                  (escape hatch #2 eliminated); KernelSnapshot has no generic projections map"
                     .to_string(),
                 "register a typed FlatBuffers sidecar via register_typed_snapshot_projection \
-                 (ADR-0037)"
+                 (ADR-0072)"
                     .to_string(),
             ));
             start += rel + bt.token.len();

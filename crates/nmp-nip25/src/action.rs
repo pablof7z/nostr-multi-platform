@@ -56,7 +56,7 @@ impl ActionModule for ReactModule {
         );
     type Action = ReactAction;
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<ReactAction as ActionPayload>::decode(bytes))
@@ -90,7 +90,7 @@ impl ActionModule for UnreactModule {
         );
     type Action = UnreactAction;
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<UnreactAction as ActionPayload>::decode(bytes))
@@ -159,7 +159,7 @@ impl ProtocolCommand for UnreactReactionCommand {
 /// trait so explicit app/runtime roots can compose descriptors without
 /// ad-hoc action-registration call sites (criterion 6).
 ///
-/// Both modules are registered as **yielding defaults** (ADR-0049 Part 1): an
+/// Both modules are registered as **yielding defaults** (ADR-0069 Part 1): an
 /// app that pre-registers its own reaction handler pre-empts these regardless of
 /// call order.
 pub struct Nip25Descriptor;

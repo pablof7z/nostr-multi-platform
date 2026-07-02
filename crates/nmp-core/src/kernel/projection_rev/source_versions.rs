@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — typed source-version counter struct.
+//! ADR-0070 Rung 1 — typed source-version counter struct.
 //!
 //! `SourceVersions` holds one named `u64` counter per distinct source domain.
 //! Counters are bumped at the SINGLE write chokepoint for that domain (D4
@@ -40,7 +40,7 @@ use crate::kernel::refs::RefNamespace;
 pub(crate) struct SourceVersions {
     // ── identity cluster ──────────────────────────────────────────────────────
     /// Bumped by the ingest chokepoint when an accepted kind:0 supersedes the
-    /// cached profile (ADR-0057 PR 2: the registered `nmp_nip01::Kind0Parser`
+    /// cached profile (ADR-0070 PR 2: the registered `nmp_nip01::Kind0Parser`
     /// writes the capability-owned `ProfileCache` inside `verify_and_persist`;
     /// the chokepoint detects the before/after cache transition and bumps this).
     /// Also bumped when RAM eviction removes a cached profile.
@@ -69,7 +69,7 @@ pub(crate) struct SourceVersions {
     ///    chokepoint in `ingest/`.
     pub(crate) claimed_event_content_ver: u64,
 
-    /// Bumped when `open_views` changes. Currently always-empty (V-112/ADR-0042
+    /// Bumped when `open_views` changes. Currently always-empty (V-112/ADR-0076
     /// deleted author_view/thread_view). Still declared so a future view-open
     /// driving the profile resolve path (`refs.profile`) triggers a rev bump.
     pub(crate) open_views_ver: u64,
@@ -129,11 +129,11 @@ pub(crate) struct SourceVersions {
     /// crosses its deadline.
     pub(crate) ttl_expiry_ver: u64,
 
-    // ── ADR-0063 (#1671 Lane B): per-KEY ref-row revisions ────────────────────
+    // ── ADR-0070 (#1671 Lane B): per-KEY ref-row revisions ────────────────────
     /// Per-KEY revision for `refs.profile` rows (keyed by raw hex pubkey). The
-    /// whole-projection `profile_claims_ver` scalar above stays the ADR-0055
+    /// whole-projection `profile_claims_ver` scalar above stays the ADR-0070
     /// manifest source until Lane A migrates it; THIS map is the row-grain source
-    /// of truth ADR-0063 D6a needs (only the changed pubkey's row crosses FFI).
+    /// of truth ADR-0070 D6a needs (only the changed pubkey's row crosses FFI).
     /// Bumped at three sites: resolve (`resolve_profile_ref`), release
     /// (`release_profile_ref`), and the kind:0 ingest chokepoint
     /// (`project_accepted_event`, gated on a live claim). Monotonic; reset only
@@ -150,7 +150,7 @@ pub(crate) struct SourceVersions {
     /// emitter produces carries the monotonic value) and then **immediately
     /// removes the entry in the same call** — there is no retained-rev / pending
     /// state, so the map is always bounded to currently-claimed keys (D8). An
-    /// explicit `Cleared` resets the host cache entry (ADR-0055 §D1), so a later
+    /// explicit `Cleared` resets the host cache entry (ADR-0070 §D1), so a later
     /// re-resolve starts a fresh row lifetime at rev 1 — monotonicity only has to
     /// hold while a row is live between `Changed` and `Cleared`.
     pub(crate) profile_row_revs: HashMap<String, u64>,
@@ -161,7 +161,7 @@ pub(crate) struct SourceVersions {
     /// bounded-cleanup lifecycle as `profile_row_revs`.
     pub(crate) event_row_revs: HashMap<String, u64>,
 
-    // ── ADR-0063 (#1671 integration glue): whole-projection ref-row stamps ─────
+    // ── ADR-0070 (#1671 integration glue): whole-projection ref-row stamps ─────
     /// Monotonic whole-projection stamp for `refs.profile`. Co-bumped inside
     /// every per-KEY profile-row mutation chokepoint ([`Self::bump_profile_row`]
     /// / [`Self::clear_profile_row`]) so the derived `refs.profile` projection rev
@@ -267,7 +267,7 @@ impl SourceVersions {
         self.ttl_expiry_ver = self.ttl_expiry_ver.saturating_add(1);
     }
 
-    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.profile` row.
+    /// ADR-0070 (#1671 Lane B) — bump the per-KEY rev for one `refs.profile` row.
     ///
     /// Callers MUST gate this on an actual row mutation (a real claim, a real
     /// refcount change, a shape-widen / liveness-upgrade, or a live-claimed
@@ -277,25 +277,25 @@ impl SourceVersions {
     pub(crate) fn bump_profile_row(&mut self, key: &str) {
         let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
-        // ADR-0063 integration glue: co-bump the whole-projection stamp so the
+        // ADR-0070 integration glue: co-bump the whole-projection stamp so the
         // derived `refs.profile` manifest rev advances on any row mutation
         // (intrinsic — no separate call site to forget).
         self.ref_profile_rows_ver = self.ref_profile_rows_ver.saturating_add(1);
     }
 
-    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
+    /// ADR-0070 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
     /// Same gating contract as [`Self::bump_profile_row`].
     pub(crate) fn bump_event_row(&mut self, key: &str) {
         let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
         *rev = rev.saturating_add(1);
-        // ADR-0063 integration glue: co-bump the whole-projection stamp.
+        // ADR-0070 integration glue: co-bump the whole-projection stamp.
         self.ref_event_rows_ver = self.ref_event_rows_ver.saturating_add(1);
     }
 
-    /// ADR-0063 (#1671 Lane B) — final-`Cleared` teardown of one ref row's per-key
+    /// ADR-0070 (#1671 Lane B) — final-`Cleared` teardown of one ref row's per-key
     /// rev (BLOCKING 2). Called from the last-release / terminal-miss teardown
     /// AFTER the consumer state is gone. It bumps the rev to its final post-clear
-    /// value (the value an ADR-0055 `Cleared` row carries) and **immediately
+    /// value (the value an ADR-0070 `Cleared` row carries) and **immediately
     /// removes the entry in the same call** — there is no retained-rev or pending
     /// state, so the map never accumulates released keys (D8: memory scales with
     /// active views, not history). Returns the final rev so a row-delta emitter
@@ -305,7 +305,7 @@ impl SourceVersions {
     /// Ordering (documented per BLOCKING 2): `bump → (emit Cleared with final
     /// rev) → remove`, all in the same tick. With no in-branch emitter the middle
     /// step is elided and the rev is dropped immediately after the bump. An
-    /// explicit `Cleared` resets the host cache entry (ADR-0055 §D1), so a later
+    /// explicit `Cleared` resets the host cache entry (ADR-0070 §D1), so a later
     /// re-resolve legitimately starts a fresh row at rev 1.
     ///
     /// No-op (returns 0) when the key has no rev entry — a never-claimed key never
@@ -331,7 +331,7 @@ impl SourceVersions {
         final_rev
     }
 
-    /// ADR-0063 (#1671 Lane B) — read the per-KEY rev for `(namespace, key)`.
+    /// ADR-0070 (#1671 Lane B) — read the per-KEY rev for `(namespace, key)`.
     /// Returns 0 for an unseen key (a row that has never resolved).
     pub(crate) fn ref_row_rev(&self, namespace: RefNamespace, key: &str) -> u64 {
         match namespace {

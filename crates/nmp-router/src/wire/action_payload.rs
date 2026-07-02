@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codec for the router-owned relay-list action
-//! payload (ADR-0064 / #1756): `nmp.nip65.publish_relay_list`
+//! payload (ADR-0071 / #1756): `nmp.nip65.publish_relay_list`
 //! ([`PublishRelayListInput`]).
 //!
 //! These are the WRITE-direction typed payloads carried as the OPAQUE

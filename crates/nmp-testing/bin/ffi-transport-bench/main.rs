@@ -278,7 +278,7 @@ fn main() {
         ],
         notes: vec![
             format!(
-                "Workload: ADR-0055 omit-unchanged regime. \
+                "Workload: ADR-0070 omit-unchanged regime. \
                  SMALL {SMALL_MIN_BYTES}-{SMALL_MAX_BYTES} B (80%), \
                  MEDIUM {MEDIUM_MIN_BYTES}-{MEDIUM_MAX_BYTES} B (15%), \
                  LARGE {LARGE_MIN_BYTES}-{LARGE_MAX_BYTES} B (5%). \

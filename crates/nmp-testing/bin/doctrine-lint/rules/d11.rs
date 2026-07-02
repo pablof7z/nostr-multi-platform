@@ -5,7 +5,7 @@
 //! `nmp_app_publish_unsigned_event` are gone. Every user / app-authored
 //! publish-engine event now goes through the single
 //! `nmp_app_dispatch_action(app, "nmp.publish", ...)` door (Theme A — see
-//! `crates/nmp-core/src/substrate/action.rs` module docs). ADR-0064 extends
+//! `crates/nmp-core/src/substrate/action.rs` module docs). ADR-0071 extends
 //! this to a typed byte-transport doorway; D11 guards both.
 //!
 //! D11 prevents that doorway from being bypassed. Adding a new bespoke
@@ -59,7 +59,7 @@ pub const ID: &str = "D11";
 /// token emitted in the diagnostic message (for stable test assertions
 /// and readable output independent of the sub-enum nesting depth).
 ///
-/// After the ADR-0065 sub-enum collapse the on-disk tokens are
+/// After the ADR-0071 sub-enum collapse the on-disk tokens are
 /// `ActorCommand::Publish(PublishCommand::SignedEvent {` and
 /// `ActorCommand::Publish(PublishCommand::UnsignedEvent` / `UnsignedEventToRelays`
 /// — the old flat variants are gone. The display names are kept stable so

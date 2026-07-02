@@ -7,7 +7,7 @@
 //! `correlation_id`, each value an ARRAY of stage rows
 //! `{stage, reason?, at_ms, detail?}`. This module adds a **typed FlatBuffers**
 //! encoding of the same shape, carried in the `typed_projections` sidecar
-//! (ADR-0037) ALONGSIDE — never replacing — the generic `Value` projection.
+//! (ADR-0072) ALONGSIDE — never replacing — the generic `Value` projection.
 //!
 //! ## Why this codec parses a `serde_json::Value` (deviation from #1031)
 //!

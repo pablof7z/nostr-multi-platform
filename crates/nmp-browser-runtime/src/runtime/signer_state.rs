@@ -14,7 +14,7 @@
 //! [`encode_signer_state`]) while a signer is active. But unlike the native
 //! path, the browser frame is consumed through the Rust-owned
 //! `ProjectionMergeCache`, which RETAINS any projection key omitted from a
-//! frame (omitted == unchanged, ADR-0055 Rung 3). A closure that simply
+//! frame (omitted == unchanged, ADR-0070 Rung 3). A closure that simply
 //! returned `None` on clear would therefore leave a STALE signer-state sidecar
 //! in the merged frame forever, because `signer_state` is NOT one of the
 //! kernel's `CONDITIONAL_PRESENCE_KEYS` (so `rung3_omit` never synthesizes a

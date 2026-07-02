@@ -1,4 +1,4 @@
-//! `ActionPayload` codec for the `nmp.nip29.set_parent` action (ADR-0064 / S9
+//! `ActionPayload` codec for the `nmp.nip29.set_parent` action (ADR-0071 / S9
 //! #1747) — adopt/detach a NIP-29 subgroup (nips PR #2319).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};

@@ -2,7 +2,7 @@
 
 use serde::Serialize;
 
-/// Relay-information document, projected for the diagnostics surface (ADR-0051).
+/// Relay-information document, projected for the diagnostics surface (ADR-0072).
 ///
 /// A field-for-field surface of the substrate-generic
 /// [`crate::substrate::RelayInfoDoc`]. Carried on the relay row so shells

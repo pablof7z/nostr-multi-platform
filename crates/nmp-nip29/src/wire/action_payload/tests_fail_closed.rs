@@ -1,4 +1,4 @@
-//! Fail-closed codec tests for the nip29 typed action payloads (ADR-0064 / S9
+//! Fail-closed codec tests for the nip29 typed action payloads (ADR-0071 / S9
 //! #1747): malformed input and the before-`start()` `schema_version` tripwire.
 //! Every assertion is the NEGATIVE — a reject, never a silent decode.
 

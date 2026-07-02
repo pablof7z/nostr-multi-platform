@@ -1,6 +1,6 @@
 # Write Intents, Composable Drafts, and Route Provenance
 
-> Doctrine anchors: ADR-0064 (unified write boundary), ADR-0071 (publish intents + route
+> Doctrine anchors: ADR-0071 (unified write boundary), ADR-0071 (publish intents + route
 > provenance), D3 (automatic routing), D6 (errors as state), D7 (capabilities report, kernel
 > decides), D10 (private fail-closed). See also `docs/builder-guide/12-publish-and-ledger.md`.
 
@@ -34,7 +34,7 @@ basis of a non-null `correlation_id` is a D6 violation.
 The `correlation_id` is the durable operation identity from dispatch through every engine
 stage (`Accepted → Planning → InFlight → Published / Failed / Cancelled`). It must never be
 re-bound to or replaced by the Nostr event id; the event id is output data, not operation
-identity (ADR-0064 drift gate).
+identity (ADR-0071 drift gate).
 
 ## Four-Stage Actor Pipeline
 
@@ -44,7 +44,7 @@ identity (ADR-0064 drift gate).
 2. finalize protocol envelope
    (NIP-29 h-tag, NIP-17 private envelope, client identity tag, NIP-22 reply shape)
         ↓
-3. sign through the selected signer capability (ADR-0050 port)
+3. sign through the selected signer capability (ADR-0072 port)
         ↓
 4. route via OutboxResolver or named Explicit set → publish engine
 ```
@@ -139,5 +139,5 @@ timer to drain publishes. Retry classification (`classify_ack`) is the engine's,
 | Native stores pending publishes (SwiftData, Room, …) | D4 — second writer |
 | Native decides retry or returns `isTransient` | D7 — `classify_ack` is engine-owned |
 | Draft builder calls signer or dispatches directly | ADR-0071 — construction ≠ publish |
-| `correlation_id` re-bound to event id at terminal state | ADR-0064 — identity must not switch |
+| `correlation_id` re-bound to event id at terminal state | ADR-0071 — identity must not switch |
 | Private/DM publish with `Auto` routing | D10 — must be `VerifiedPrivateInbox`, fail-closed |

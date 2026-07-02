@@ -6,7 +6,7 @@
 //! `"relay_diagnostics"`: the serialisation of `relay_diagnostics_snapshot()` (a
 //! `RelayDiagnosticsSnapshot` — the pre-rolled diagnostics-screen view). This
 //! module adds a **typed FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection.
 //!
 //! ## Capture-once ownership (the #1031 struct->Model path)
@@ -113,14 +113,14 @@ pub struct RelayRow {
     pub wire_subs: Vec<WireSubRow>,
     /// Raw discovery kind numbers (deduplicated, sorted). Shells format for display.
     pub discovery_kinds: Vec<u64>,
-    /// ADR-0051 — the relay's NIP-11 information document; `None` until fetched.
+    /// ADR-0072 — the relay's NIP-11 information document; `None` until fetched.
     pub info: Option<InfoRow>,
     /// Routing provenance reasons (SPLIT A, pre-block). Empty before the first
     /// compile or when no attribution is available.
     pub reasons: Vec<ConnectionReasonRow>,
 }
 
-/// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInfo` (ADR-0051).
+/// A field-for-field mirror of one SERIALISED `RelayDiagnosticsInfo` (ADR-0072).
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct InfoRow {
     pub name: Option<String>,

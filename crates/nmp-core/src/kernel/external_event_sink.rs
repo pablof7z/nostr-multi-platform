@@ -9,7 +9,7 @@
 //!   signed events off the actor thread.
 //!
 //! D0 — the kernel never names a NIP / protocol; this is a generic
-//! verbatim-signed-event seam. ADR-0009.
+//! verbatim-signed-event seam. ADR-0072.
 
 use super::Kernel;
 use crate::substrate::ExternalEventSinkDispatcher;

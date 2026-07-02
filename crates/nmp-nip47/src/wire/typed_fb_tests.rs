@@ -84,7 +84,7 @@ fn schema_constants_match_the_fbs() {
     assert_eq!(SCHEMA_VERSION, 1);
 }
 
-// Raw-data doctrine (aim.md §2 / ADR-0032): the wire carries the raw `status`
+// Raw-data doctrine (aim.md §2 / ADR-0072): the wire carries the raw `status`
 // token verbatim — shells map it to a label/tone themselves. The deleted
 // `status_label` / `status_tone` / `balance_sats_display` precompute fields are
 // gone (wallet_status sweep). This proves the raw token survives the round-trip

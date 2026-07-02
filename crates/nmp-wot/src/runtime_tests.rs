@@ -1,5 +1,5 @@
 //! Tests for [`super`]'s WOT bootstrap runtime: interest emission, account
-//! switching, and the typed-snapshot sidecar (Wave A, ADR-0037).
+//! switching, and the typed-snapshot sidecar (Wave A, ADR-0072).
 
 use super::*;
 use crate::interest::{
@@ -11,7 +11,7 @@ use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nmp_planner::InterestLifecycle;
 use nostr::Keys;
 
-/// ADR-0050 §D3a — the runtime now sends through a `CommandSender` over an
+/// ADR-0072 §D3a — the runtime now sends through a `CommandSender` over an
 /// `ActorMail` inbox. Build the pair and unwrap commands for the assertions.
 fn wot_channel() -> (
     nmp_core::CommandSender,

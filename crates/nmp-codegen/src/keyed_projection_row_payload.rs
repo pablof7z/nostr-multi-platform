@@ -1,11 +1,11 @@
-//! ADR-0063 (#1671) — the KEYED reference projection registry
+//! ADR-0070 (#1671) — the KEYED reference projection registry
 //! (`KeyedProjectionEntry` + `KEYED_PROJECTIONS`) and its Lane-C typed
 //! ROW-PAYLOAD descriptors (`RefRowPayload` / `KotlinRefRowPayload`), split out
 //! of `swift_projections_registry.rs` to keep that file under the 500-LOC cap.
 //! Re-exported through `swift_projections_registry` so the keyed-cache
 //! generators' import paths are unchanged.
 
-/// ADR-0063 Lane C (#1671) — the typed row-payload descriptor for one keyed
+/// ADR-0070 Lane C (#1671) — the typed row-payload descriptor for one keyed
 /// namespace. Identifies the `flatc` reader struct + `file_identifier` the host
 /// decodes each `Changed` row payload into, the domain type the typed accessor
 /// returns, and the hand-written `TypedProjectionGlue` entry that maps the
@@ -37,7 +37,7 @@ pub struct RefRowPayload {
     ///
     /// This mirrors the [`crate::swift_typed_decoders`] precedent: a generated
     /// typed accessor references the reader class BY NAME, so it can only be
-    /// emitted once that class ships. ADR-0063 Lane G (#1671) generated and
+    /// emitted once that class ships. ADR-0070 Lane G (#1671) generated and
     /// checked in the KPRF `nmp.kernel.ProfileSnapshot` + KCEV
     /// `nmp.kernel.ClaimedEventsSnapshot` Kotlin readers (the schemas already
     /// declare `namespace nmp.kernel`, so `ci/regenerate-flatbuffers.sh` emits
@@ -85,7 +85,7 @@ pub struct KotlinRefRowPayload {
     pub glue: &'static str,
 }
 
-/// ADR-0063 Lane A (#1671) — one KEYED (row-grain) reference projection.
+/// ADR-0070 Lane A (#1671) — one KEYED (row-grain) reference projection.
 ///
 /// Keyed projections (`refs.profile` / `refs.event`) differ from the whole-value
 /// `SnapshotProjectionEntry` above: their `TypedPayload.payload` is a
@@ -112,7 +112,7 @@ pub struct KeyedProjectionEntry {
     /// to the wire producer.
     pub file_identifier: &'static str,
 
-    /// ADR-0063 Lane C (#1671) — the TYPED ROW-PAYLOAD shape carried inside each
+    /// ADR-0070 Lane C (#1671) — the TYPED ROW-PAYLOAD shape carried inside each
     /// `Changed` row, which turns the host accessor into a concrete domain type
     /// (`profile(pubkey) -> ProfileCard?`) instead of Lane A's raw `Data?`, and
     /// is what the decode-before-commit seam (invariant #2) validates against. It
@@ -121,7 +121,7 @@ pub struct KeyedProjectionEntry {
     pub row_payload: RefRowPayload,
 }
 
-/// The keyed reference projections (ADR-0063 / #1671). Ship `profile` + `event`
+/// The keyed reference projections (ADR-0070 / #1671). Ship `profile` + `event`
 /// only (issue #1671 scope limit — no speculative namespaces).
 pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
     KeyedProjectionEntry {
@@ -139,7 +139,7 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
             swift_reader_type: "nmp_kernel_ProfileSnapshot",
             swift_domain_type: "ProfileCard",
             swift_glue: "profile",
-            // ADR-0063 Lane G (#1671): the `nmp.kernel.ProfileSnapshot` (KPRF)
+            // ADR-0070 Lane G (#1671): the `nmp.kernel.ProfileSnapshot` (KPRF)
             // Kotlin reader is now checked into the Android target, so the Kotlin
             // accessor is TYPED — mirroring the Swift typed path exactly. The glue
             // (`KeyedRefDecoders.refRowProfile`) maps the reader → domain card.
@@ -177,7 +177,7 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
             swift_reader_type: "nmp_kernel_ClaimedEventsSnapshot",
             swift_domain_type: "ClaimedEventDto",
             swift_glue: "refRowEvent",
-            // ADR-0063 Lane G (#1671): the `nmp.kernel.ClaimedEventsSnapshot`
+            // ADR-0070 Lane G (#1671): the `nmp.kernel.ClaimedEventsSnapshot`
             // (KCEV) Kotlin reader is now checked into the Android target. The
             // typed accessor unwraps the single-entry KCEV buffer to one
             // `ClaimedEventDto` via the `KeyedRefDecoders.refRowEvent` glue, which

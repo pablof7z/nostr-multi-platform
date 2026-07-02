@@ -1,4 +1,4 @@
-//! ADR-0052 §D3 — per-app signer-port accessors on [`NmpApp`].
+//! ADR-0072 §D3 — per-app signer-port accessors on [`NmpApp`].
 //!
 //! Split out of `lib.rs` (file-size discipline) as a cohesive `impl NmpApp`
 //! block. These methods own the per-app bunker / NIP-55 **hook-slot** install
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use super::NmpApp;
 
 impl NmpApp {
-    /// ADR-0052 §D3 — install the per-app bunker-URI hook (the runtime's
+    /// ADR-0072 §D3 — install the per-app bunker-URI hook (the runtime's
     /// `start_bunker_connect` / `restore_session` dispatch). Called by
     /// `nmp_signer_broker_init`. Replaces the deleted `register_bunker_hook`
     /// process-global write.
@@ -26,7 +26,7 @@ impl NmpApp {
         nmp_core::install_bunker_hook(&self.composition.bunker_hook, hook);
     }
 
-    /// ADR-0052 §D3 — install the per-app NIP-55 external-signer restore hook.
+    /// ADR-0072 §D3 — install the per-app NIP-55 external-signer restore hook.
     /// Called by `nmp_external_signer_init`. Replaces the deleted
     /// `register_external_signer_hook` process-global write.
     // Live only under `external-signer` (production) or `test`/`test-support`
@@ -37,7 +37,7 @@ impl NmpApp {
         nmp_core::install_external_signer_hook(&self.capability_ports.external_signer_hook, hook);
     }
 
-    /// ADR-0052 §D3 — test-support: invoke this app's bunker connect hook
+    /// ADR-0072 §D3 — test-support: invoke this app's bunker connect hook
     /// through its per-app slot (the rung 5.3 isolation oracle). Mirrors the
     /// actor's `start_bunker_handshake` read without the wire.
     #[cfg(any(test, feature = "test-support"))]
@@ -48,7 +48,7 @@ impl NmpApp {
         )
     }
 
-    /// ADR-0052 §D3 — test-support: invoke this app's NIP-55 restore hook
+    /// ADR-0072 §D3 — test-support: invoke this app's NIP-55 restore hook
     /// through its per-app slot (the rung 5.3 isolation oracle).
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn invoke_external_signer_restore_hook_for_test(&self, payload_json: &str) -> bool {
@@ -58,7 +58,7 @@ impl NmpApp {
         )
     }
 
-    /// ADR-0052 §D3 — per-app NIP-55 driver handle accessor (replacing
+    /// ADR-0072 §D3 — per-app NIP-55 driver handle accessor (replacing
     /// `GLOBAL_DRIVER`). Idempotent first-writer-wins, mirroring the broker.
     #[cfg(feature = "external-signer")]
     pub(crate) fn external_signer_driver_get_or_init(
@@ -77,7 +77,7 @@ impl NmpApp {
         driver
     }
 
-    /// ADR-0052 §D3 — read the per-app NIP-55 driver handle (signin / deliver
+    /// ADR-0072 §D3 — read the per-app NIP-55 driver handle (signin / deliver
     /// symbols). `None` before `nmp_external_signer_init`.
     #[cfg(feature = "external-signer")]
     pub(crate) fn external_signer_driver(

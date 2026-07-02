@@ -7,7 +7,7 @@
 //! `nmp-store` `EventStore` impl) call. No schema, no insert/query logic lives
 //! here; this PR delivers only the engine bridge (#1007 PR-2).
 //!
-//! ## Engine: opfs-sahpool, async-at-open then synchronous (ADR-0054 §1)
+//! ## Engine: opfs-sahpool, async-at-open then synchronous (ADR-0072 §1)
 //!
 //! The backend is the official sqlite.org WASM build over the OPFS
 //! SyncAccessHandle *pool* VFS. The pool is opened **async exactly once**
@@ -54,7 +54,7 @@ fn js_err(value: JsValue) -> String {
 /// `!Send + !Sync` (it holds a `JsValue` engine handle). Soundness of the
 /// single scoped `unsafe impl Send + Sync` on [`crate::OpfsSqliteStore`] rests
 /// on this handle being owned and observed by exactly one Web Worker actor
-/// (ADR-0054 §3); the `target_feature = "atomics"` `compile_error!` guard in the
+/// (ADR-0072 §3); the `target_feature = "atomics"` `compile_error!` guard in the
 /// crate root makes that invariant load-bearing.
 pub struct SqliteConn {
     db: JsValue,

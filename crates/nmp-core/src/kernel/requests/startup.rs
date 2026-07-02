@@ -166,7 +166,7 @@ impl Kernel {
     /// (not `ensure_sub`) so an account switch replaces the prior account's
     /// author in the slot rather than leaking it (V-04).
     ///
-    /// ADR-0045 R3 — store-first is universal: this interest is served from the
+    /// ADR-0070 R3 — store-first is universal: this interest is served from the
     /// local store on open (the store-serve half) AND refined by its wire REQ
     /// (the network half). The two halves run together. `is_indexer_discovery`
     /// drives only the wire half's cold-start author-unknown fallback (landing
@@ -222,7 +222,7 @@ impl Kernel {
     /// Uses Replace so an account switch swaps the author in-place
     /// rather than leaving the prior account's REQ live.
     ///
-    /// ADR-0045 R3 — store-first is universal: cache-served from the local store
+    /// ADR-0070 R3 — store-first is universal: cache-served from the local store
     /// on open (same store-serve half as every consumer interest) AND tailed
     /// over the wire for live republications. Serving the active account's own
     /// stored kind:0/3/10002/… immediately is what hydrates the profile, the

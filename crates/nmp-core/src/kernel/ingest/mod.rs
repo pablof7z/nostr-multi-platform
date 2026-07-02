@@ -1,6 +1,6 @@
 //! Relay-frame parsing and the single accepted-event ingest chokepoint.
 //!
-//! ADR-0057 — `handle_message` → `handle_text` → `handle_event` does the
+//! ADR-0070 — `handle_message` → `handle_text` → `handle_event` does the
 //! relay-only bookkeeping (relay counters, transport provenance, wire-sub
 //! diagnostics, claim-expansion match) then hands the parsed event to the ONE
 //! kind-agnostic, source-agnostic chokepoint [`Kernel::ingest_accepted_event`].
@@ -17,7 +17,7 @@
 //!   [`crate::substrate::EventIngestDispatcher`] dispatch AND the app-facing
 //!   `ObservedProjectionSink` notify on the canonical accepted outcome
 //!   (`Inserted | Replaced | Ephemeral`) — so an ephemeral reaches both the
-//!   parsers and the app observers (ADR-0057 §1 latent-bug fix), and a
+//!   parsers and the app observers (ADR-0070 §1 latent-bug fix), and a
 //!   `Duplicate` (incl. the relay echo of a local publish) is projection-silent
 //!   (D4 single-fire / read-your-writes). `project_accepted_event` is the ONE
 //!   post-store fan-out, called by both the live chokepoint
@@ -38,16 +38,16 @@
 //!
 //! Local publishes enter the chokepoint at `publish_engine.rs` with
 //! `local://publish` provenance ([`IngestSource::LocalPublish`]); cache-replay
-//! keeps its ADR-0045 path (`cache_serve/continuation.rs::feed_served_event`).
+//! keeps its ADR-0070 path (`cache_serve/continuation.rs::feed_served_event`).
 //!
-//! ADR-0057 PR 3 is the full D0 finish-line: the kernel ingest path now names
+//! ADR-0070 PR 3 is the full D0 finish-line: the kernel ingest path now names
 //! ZERO NIP kind literals. kind:0 (profiles) moved in PR 2, kind:3 (contacts)
 //! moved here, and feed acquisition flows through generic interests rather
 //! than a hard-coded follow-feed branch.
 
 mod accepted;
 mod auth_handlers;
-mod claimed_event_stamp; // ADR-0055 Rung 1 (F1) claimed-event stamp — sibling for size baseline
+mod claimed_event_stamp; // ADR-0070 Rung 1 (F1) claimed-event stamp — sibling for size baseline
 mod closed;
 mod contacts;
 // EOSE frame handling (incl. K3 Stage D1 coverage write), split for the LOC cap.
@@ -64,16 +64,16 @@ mod timeline_order;
 #[cfg(test)]
 use super::Kernel;
 
-/// ADR-0057 — provenance discriminator for the single accepted-event
+/// ADR-0070 — provenance discriminator for the single accepted-event
 /// chokepoint ([`Kernel::ingest_accepted_event`]).
 ///
 /// The chokepoint is source-agnostic for persistence + delivery, but each
-/// source carries a distinct provenance encoding that ADR-0057 preserves
+/// source carries a distinct provenance encoding that ADR-0070 preserves
 /// verbatim (it does NOT introduce the typed `Provenance` enum — that is left
-/// to the ADR-0045 amendment that names `Provenance::LocalStore`). `Relay`
+/// to the ADR-0070 amendment that names `Provenance::LocalStore`). `Relay`
 /// additionally carries the wire `sub_id` so the timeline projection's
 /// read-time relevance predicate can consult oneshot / firehose / open-interest
-/// sub schemes. Cache-replay keeps its own ADR-0045 path
+/// sub schemes. Cache-replay keeps its own ADR-0070 path
 /// (`feed_served_event`) and does not flow through this enum.
 pub(in crate::kernel) enum IngestSource<'a> {
     /// A relay-delivered event. Provenance = the delivering relay URL; the

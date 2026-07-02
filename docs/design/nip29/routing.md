@@ -15,7 +15,7 @@ The metadata events (39000–39003) are an even sharper case: they are signed by
 
 A naive implementation would have `nmp-nip29`'s projections/read models construct their own raw REQs and write paths, bypassing M2 entirely. That fails three doctrines:
 
-1. **D1 best-effort rendering with placeholders** — the diagnostics lane (ADR-0007) wouldn't see the wire activity because it didn't go through the compiler.
+1. **D1 best-effort rendering with placeholders** — the diagnostics lane (ADR-0072) wouldn't see the wire activity because it didn't go through the compiler.
 2. **Subscription dedup + merge + auto-close** — M2's wire-frame compiler dedups overlapping interests across modules; a bypass would issue parallel REQs for the same group, wasting relay budget and confusing the actor's mailbox bookkeeping.
 3. **The framework-magic contract** — the user shouldn't have to wonder whether their per-group chat REQ got deduped against another tab also viewing that group. The compiler is the single source of truth.
 

@@ -62,7 +62,7 @@ does. Mix of core + podcast capabilities:
 |--:|---|---|---|
 | 1 | `KeyringCapability` | "stored", "here are the bytes for `account_id`", "not found" | which account is active, whether to re-encrypt, NIP-49 envelope shape, what to do on a miss |
 | 2 | `PushCapability` | "registered", "here is the APNs token", "registration failed" | whether to register at all, when to re-register, which relays the token is announced to |
-| 3 | `ExternalSignerCapability` | "user approved, signature = …", "user cancelled", "request timed out" | which event to sign, retry-after-cancel policy, account-mismatch rejection (ADR-0015) |
+| 3 | `ExternalSignerCapability` | "user approved, signature = …", "user cancelled", "request timed out" | which event to sign, retry-after-cancel policy, account-mismatch rejection (ADR-0072) |
 | 4 | `NetworkMonitorCapability` | "wifi", "cellular", "offline" — the raw link state | whether to pause sync, drain the publish queue, or hold REQs (D7: native does **not** decide to reconnect) |
 | 5 | `BlobPickerCapability` | "user picked file at handle/URI, mime = …", "user dismissed" | upload target, Blossom server selection, chunking, retry on upload failure |
 | 6 | `AudioPlayback` (future media app) | `StateChanged(Playing/Paused/Error)`, `Tick { current_s }`, `Ended` | which media item to load, resume position, rate, and skip policy; bridge obeys `Seek` |

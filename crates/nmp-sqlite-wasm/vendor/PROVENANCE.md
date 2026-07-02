@@ -2,7 +2,7 @@
 
 This directory vendors a pre-compiled, public-domain SQLite-WASM build from
 sqlite.org. It backs `nmp-sqlite-wasm`'s OPFS-SQLite engine (issue #1007,
-ADR-0054 §1). Because the artifact lives **outside the Cargo dependency graph**,
+ADR-0072 §1). Because the artifact lives **outside the Cargo dependency graph**,
 it is also outside the only automated supply-chain control (`cargo-deny` /
 `cargo-audit`). This file plus the CI re-verify gate
 (`ci/verify-sqlite-wasm-artifact.sh`) are the **substitute control**.

@@ -23,7 +23,7 @@
 //! The protocol command signs the kind:9734 through the unified
 //! [`ActorCommand::SignEventForAccount`] port via
 //! [`nmp_core::substrate::ProtocolCommandContext::sign_event_for_account`]
-//! (ADR-0043 Decision 2). The actor's dispatch arm resolves BOTH signer kinds
+//! (ADR-0071 Decision 2). The actor's dispatch arm resolves BOTH signer kinds
 //! behind the port — a local nsec signs inline (`SignerOp::Ready`); a NIP-46
 //! bunker parks (`SignerOp::Pending`) and the idle-loop drain resolves it —
 //! then invokes the command's continuation with the resolved `SignedEvent`. The
@@ -113,7 +113,7 @@ pub struct ZapInput {
 /// signing (D7 — kernel owns key access) and the off-thread LNURL-pay
 /// HTTP round-trip (D8 — no blocking on the actor thread).
 ///
-/// ADR-0052 rung 5.2: under the `native` feature the module owns an OPTIONAL
+/// ADR-0072 rung 5.2: under the `native` feature the module owns an OPTIONAL
 /// per-app [`PaymentPort`] so the zap → pay_invoice auto-chain pays through
 /// THIS app's wallet (captured at composition time), not a process-global. The
 /// port is the substrate seam (`nmp_core::substrate::PaymentPort`); NIP-57 no
@@ -126,7 +126,7 @@ pub struct ZapInput {
 /// "no wallet connected" action failure. A wallet-capable composition root
 /// replaces the `None` default with a `Some(port)` value via
 /// [`crate::register_zap_with_payment_port`] (the app-path override of the
-/// yielding default — ADR-0049).
+/// yielding default — ADR-0069).
 ///
 /// The port is `Option<…>` (not arity-split constructors) so
 /// `register_actions(app)` keeps a STABLE arity across the `native` feature —
@@ -177,7 +177,7 @@ impl ActionModule for ZapAction {
         );
     type Action = ZapInput;
 
-    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<ZapInput as ActionPayload>::decode(bytes))

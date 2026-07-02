@@ -245,7 +245,7 @@ fn set_relay_info_surfaces_on_diagnostics_row() {
         .expect("connected URL must appear");
     assert!(row_before.info.is_none(), "info absent before fetch");
 
-    // ADR-0051 — fold a fetched document onto the URL (the actor's
+    // ADR-0072 — fold a fetched document onto the URL (the actor's
     // `SetRelayInfo` dispatch arm does exactly this).
     let doc = RelayInfoDoc {
         url: url.to_string(),

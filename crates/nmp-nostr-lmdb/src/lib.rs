@@ -34,7 +34,7 @@
 //! Instead, D10 is enforced by the env-injection caller (NMP's
 //! `LmdbEventStore`): it must write the provenance row to its own
 //! sub-db *inside the same `RwTxn`* that calls `save_event_with_txn`,
-//! so the event and its provenance commit atomically (ADR-0011/0012).
+//! so the event and its provenance commit atomically (ADR-0072/0012).
 //! Any NMP-side caller that drives the `save_event_with_txn` / `store`
 //! seam without also writing provenance in that txn violates D10. Keep
 //! that pairing in the calling crate, never here.

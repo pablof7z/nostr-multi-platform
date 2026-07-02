@@ -67,7 +67,7 @@ pub use capabilities::{
 pub struct ProtocolCommandContextParts<'a> {
     /// Re-enter the actor loop. Called from [`ProtocolCommandContext::send`].
     pub send: &'a dyn Fn(ActorCommand),
-    /// Owned sender clone for handing to a spawned worker (ADR-0050 §D3a).
+    /// Owned sender clone for handing to a spawned worker (ADR-0072 §D3a).
     pub command_sender: crate::actor::CommandSender,
     pub clock: &'a dyn KernelClock,
     pub signers: &'a dyn LocalSignerAccess,
@@ -75,11 +75,11 @@ pub struct ProtocolCommandContextParts<'a> {
     pub errors: &'a dyn ErrorSurface,
     pub stages: &'a dyn ActionStageTracker,
     pub recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 host-op handler; noop singleton for all other commands.
+    /// ADR-0072 §D4 host-op handler; noop singleton for all other commands.
     pub host_op_handler: &'a dyn HostOpHandlerAccess,
-    /// ADR-0052 §D5 narrow wallet-mutation surface (NIP-47 only).
+    /// ADR-0072 §D5 narrow wallet-mutation surface (NIP-47 only).
     pub wallet_kernel: &'a dyn WalletKernelAccess,
-    /// ADR-0052 §D5 zap-only cached-profile read (NIP-57 only).
+    /// ADR-0072 §D5 zap-only cached-profile read (NIP-57 only).
     pub zap_profiles: &'a dyn ZapProfileLookup,
 }
 
@@ -107,12 +107,12 @@ pub struct ProtocolCommandContext<'a> {
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 — per-app host-op handler accessor.
+    /// ADR-0072 §D4 — per-app host-op handler accessor.
     host_op_handler: &'a dyn HostOpHandlerAccess,
-    /// ADR-0052 §D5 — narrow wallet kernel-mutation surface (replaced the
+    /// ADR-0072 §D5 — narrow wallet kernel-mutation surface (replaced the
     /// deleted `kernel: Option<&mut Kernel>` escape hatch).
     wallet_kernel: &'a dyn WalletKernelAccess,
-    /// ADR-0052 §D5 — zap-only cached-profile read (replaced the generic
+    /// ADR-0072 §D5 — zap-only cached-profile read (replaced the generic
     /// `lnurl_for_pubkey`).
     zap_profiles: &'a dyn ZapProfileLookup,
     /// V-38: outbound-frame sink. The wallet runtime returns
@@ -130,7 +130,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// the resulting context's lifetime is the dispatch arm's stack frame.
     ///
     /// V-38: `outbound` starts as `None`; attach it via
-    /// [`with_outbound`](Self::with_outbound) from the dispatch arm. ADR-0052
+    /// [`with_outbound`](Self::with_outbound) from the dispatch arm. ADR-0072
     /// §D5: the kernel handle is gone — wallet/zap commands reach their narrow
     /// kernel surface through the `wallet_kernel` / `zap_profiles` capabilities.
     pub fn new(parts: ProtocolCommandContextParts<'a>) -> Self {

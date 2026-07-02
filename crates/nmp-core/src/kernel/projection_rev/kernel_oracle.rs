@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 (F3) — `impl Kernel` block for the biconditional oracle.
+//! ADR-0070 Rung 1 (F3) — `impl Kernel` block for the biconditional oracle.
 //!
 //! Lives in a sibling file (not `kernel/mod.rs`) so the already-at-baseline
 //! `kernel/mod.rs` is not grown past its file-size baseline (AGENTS.md). The
@@ -32,7 +32,7 @@ impl Kernel {
             oracle::check_oracle(&self.projection_oracle.prev_fingerprints, &manifest, typed);
         assert!(
             violations.is_empty(),
-            "ADR-0055 projection-rev oracle violation(s): {violations:?} — a projection's \
+            "ADR-0070 projection-rev oracle violation(s): {violations:?} — a projection's \
              cache unit changed but its rev did not advance (missed stamp = silent stale UI). \
              Add the missing source-version bump at the mutation's write chokepoint."
         );

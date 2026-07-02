@@ -42,10 +42,10 @@ pub use pending::{
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
 /// Register the NIP-57 zap action module as a yielding default, with NO payment
-/// port wired (ADR-0049 Part 1: an app may pre-empt it regardless of call
+/// port wired (ADR-0069 Part 1: an app may pre-empt it regardless of call
 /// order).
 ///
-/// ADR-0052 rung 5.2: the arity is STABLE across the `native` feature (cargo
+/// ADR-0072 rung 5.2: the arity is STABLE across the `native` feature (cargo
 /// feature unification flips `native` on globally for any consumer that
 /// enables it; a feature-dependent arity would break this call site). The zap
 /// auto-chain reaches the wallet through the per-app `PaymentPort` the
@@ -57,10 +57,10 @@ pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
 }
 
 /// Register the NIP-57 zap action module bound to a per-app [`PaymentPort`],
-/// via the **app path** (overriding any prior yielding default — ADR-0049: an
+/// via the **app path** (overriding any prior yielding default — ADR-0069: an
 /// app replacing a default is legal and order-independent).
 ///
-/// ADR-0052 rung 5.2: the composition root injects a payment port backed by the
+/// ADR-0072 rung 5.2: the composition root injects a payment port backed by the
 /// SAME wallet it wires into the rest of the app (e.g.
 /// `nmp_nip47::wallet_payment_port(handle)`), so the zap → LNURL-pay →
 /// pay-invoice auto-chain pays through THIS app's wallet (no process-global).

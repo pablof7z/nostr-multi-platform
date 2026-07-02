@@ -1,4 +1,4 @@
-//! Non-blocking NIP-44 cipher helpers for the ADR-0050 §D1 cipher port
+//! Non-blocking NIP-44 cipher helpers for the ADR-0072 §D1 cipher port
 //! (`Nip44EncryptForAccount` / `Nip44DecryptForAccount`).
 //!
 //! The cipher siblings of `identity::sign_active_nonblocking` /
@@ -23,7 +23,7 @@ use nostr::PublicKey;
 use super::identity::IdentityRuntime;
 
 /// Non-blocking NIP-44 encrypt with the active (`signer_pubkey == None`) or a
-/// named account (ADR-0050 §D1).
+/// named account (ADR-0072 §D1).
 pub(crate) fn nip44_encrypt_nonblocking(
     identity: &IdentityRuntime,
     signer_pubkey: Option<&str>,
@@ -50,7 +50,7 @@ pub(crate) fn nip44_encrypt_nonblocking(
 }
 
 /// Non-blocking NIP-44 decrypt — the inbound twin of
-/// [`nip44_encrypt_nonblocking`] (ADR-0050 §D1).
+/// [`nip44_encrypt_nonblocking`] (ADR-0072 §D1).
 pub(crate) fn nip44_decrypt_nonblocking(
     identity: &IdentityRuntime,
     signer_pubkey: Option<&str>,

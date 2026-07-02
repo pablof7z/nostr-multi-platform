@@ -4,7 +4,7 @@
 //! registry, relay worker, session machine, signer) fan into this single
 //! queue. At each tick boundary, `drain_coalesced` returns all queued
 //! triggers; the lifecycle then runs at most one compile pass regardless
-//! of cardinality (D8 budget per ADR-0002).
+//! of cardinality (D8 budget per ADR-0070).
 //!
 //! Coalescing semantics (recompilation.md §4.3):
 //!

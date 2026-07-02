@@ -5,7 +5,7 @@
 //! decrypted DMs never leak into the new account's UI (GitHub issue #1138 —
 //! cross-account privacy leak in `DmInboxProjection::snapshot()`).
 //!
-//! ADR-0050 §D6: the controller now detects changes from the pubkey-only
+//! ADR-0072 §D6: the controller now detects changes from the pubkey-only
 //! `ActiveAccountSlot` (not a `Keys` slot), and the projection decrypts through
 //! the signer port. The tests therefore drive the active-pubkey slot for the
 //! switch and drain the emitted `Nip44DecryptForAccount` commands with a local

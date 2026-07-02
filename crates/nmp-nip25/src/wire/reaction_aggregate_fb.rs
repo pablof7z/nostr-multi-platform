@@ -3,13 +3,13 @@
 //!
 //! The canonical FFI shape is the serde JSON of `ReactionAggregateSnapshot`
 //! (`ReactionAggregateProjection::snapshot_json`). This module adds a **typed
-//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
+//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0072)
 //! carried alongside the generic `Value` projection under the same
 //! `"nmp.nip25.reactions"` key. The serde shape stays authoritative; this is the
 //! typed payload an `N25A`-aware host decodes with generated accessors instead
 //! of JSON reflection.
 //!
-//! Raw data only (ADR-0032): the emoji `token` is the verbatim reaction content
+//! Raw data only (ADR-0072): the emoji `token` is the verbatim reaction content
 //! and `reactors` are raw hex pubkeys. No `display::` forwarder runs on the
 //! encode path.
 //!

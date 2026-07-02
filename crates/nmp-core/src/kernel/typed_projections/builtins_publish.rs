@@ -63,7 +63,7 @@ impl super::super::Kernel {
             schema_version: PUBLISH_QUEUE_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(PUBLISH_QUEUE_FILE_IDENTIFIER).into_owned(),
             payload: encode_publish_queue(&publish_queue),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -103,7 +103,7 @@ impl super::super::Kernel {
             schema_version: PUBLISH_OUTBOX_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(PUBLISH_OUTBOX_FILE_IDENTIFIER).into_owned(),
             payload: encode_publish_outbox(&publish_outbox),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -124,7 +124,7 @@ impl super::super::Kernel {
             schema_version: OUTBOX_SUMMARY_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(OUTBOX_SUMMARY_FILE_IDENTIFIER).into_owned(),
             payload: encode_outbox_summary(&outbox_summary),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 

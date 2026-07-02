@@ -7,7 +7,7 @@
 //!
 //! The scoped delivery path is shared with production: `ingest/timeline.rs` makes
 //! the same `notify_event_observers(&kernel_event)` call after each
-//! `EventStore::insert` returning `Inserted | Replaced`. See ADR-0009 (D0 —
+//! `EventStore::insert` returning `Inserted | Replaced`. See ADR-0072 (D0 —
 //! kernel emits, per-app crates compose) for the architectural rationale.
 
 use super::*;

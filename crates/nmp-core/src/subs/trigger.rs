@@ -33,7 +33,7 @@ pub struct SignerId(pub String);
 /// re-exported here so every existing `crate::subs::RelayAuthState` call
 /// site (and the `subs::mod` re-export consumed by the kernel) is
 /// unchanged. M8-subs branches on `ChallengeReceived` / `Authenticating`
-/// (paused) and `Authenticated` (flush); `Failed` is fail-closed (ADR-0019).
+/// (paused) and `Authenticated` (flush); `Failed` is fail-closed (ADR-0072).
 pub use nmp_nip42_types::RelayAuthState;
 
 // ─── InvalidateReason (A6) ──────────────────────────────────────────────────

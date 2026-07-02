@@ -55,7 +55,7 @@ pub(super) fn apply_watermark_rewrite(
     watermark_fn: &(dyn Fn(&InterestShape, &str) -> Option<u64> + Send + Sync),
     interests: &[LogicalInterest],
 ) {
-    // K3 Stage D2 (ADR-0056 §3.D2): the floor is computed per-`(filter_hash,
+    // K3 Stage D2 (ADR-0072 §3.D2): the floor is computed per-`(filter_hash,
     // relay)`, not per-shape. The relay is the `per_relay` map key, in scope
     // here, so we thread `relay_plan.relay_url` into the resolver. The
     // presence-derived resolver ignores the relay (presence is relay-agnostic),

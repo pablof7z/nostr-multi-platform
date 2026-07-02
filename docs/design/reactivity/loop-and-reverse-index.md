@@ -6,7 +6,7 @@
 
 > **Audience:** Framework contributors (not app developers). App developers see only the public surface in `product-spec.md` §6.4, §6.6, §7.6.
 
-> **Status:** rev 1 — composite-key reverse indexing, per-view delta budget, working-set memory, and allocation discipline are owned by ADR-0001..0004.
+> **Status:** rev 1 — composite-key reverse indexing, per-view delta budget, working-set memory, and allocation discipline are owned by ADR-0070..0004.
 
 > **Prerequisites:** `product-spec.md` §6.2 (host state), §6.4 (typed update frames), §6.6 (subscriptions/views), §7.2 (planner), §7.6 (views), Appendix A1 (FFI architecture).
 
@@ -78,7 +78,7 @@ All three live on the single actor thread. No locks, no atomics; just sequential
 
 When an event arrives, the actor needs to know which views care about it. Naive answer: run every view's filter against every event. That's O(views × inserts), unworkable at firehose scale.
 
-### 3.2 The decision: composite-keyed reverse index (ADR-0001)
+### 3.2 The decision: composite-keyed reverse index (ADR-0070)
 
 The store maintains a reverse index keyed primarily by **composite** event
 attributes, not by independent axes. Independent-axis buckets exist only for

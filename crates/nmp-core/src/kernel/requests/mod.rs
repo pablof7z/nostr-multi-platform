@@ -9,10 +9,10 @@
 
 mod auth_gate;
 mod event;
-// ADR-0063 (#1671 Lane B): the Live/Tailing addressable-event slot + event-claim
+// ADR-0070 (#1671 Lane B): the Live/Tailing addressable-event slot + event-claim
 // lookup/parking helpers, split out to keep `event.rs` under the 500-LOC ceiling.
 mod event_live;
-// ADR-0063 (#1671 Lane D): the canonical raw event-key parser (lowercase-hex id
+// ADR-0070 (#1671 Lane D): the canonical raw event-key parser (lowercase-hex id
 // or `kind:pubkey:d` coordinate), split into its own module so `event.rs` stays
 // under the 500-LOC ceiling.
 mod event_key;
@@ -21,7 +21,7 @@ mod relay_lifecycle;
 mod startup;
 
 pub use profile::ProfileLiveness;
-// ADR-0063 (#1671 Lane D): the canonical cold-start-parked event target.
+// ADR-0070 (#1671 Lane D): the canonical cold-start-parked event target.
 // `parse_event_key` is only consumed by cfg(test) code (refs_tests_key.rs);
 // gate the re-export so a non-test build emits no unused-import warning.
 #[cfg(test)]
@@ -73,7 +73,7 @@ impl Kernel {
         }
         // Check time-gated timeline open (contacts_deadline may have elapsed).
         requests.extend(self.maybe_open_timeline_at(now));
-        // V-68 / V-112 (ADR-0042): author_view.request_pending / author_requests(),
+        // V-68 / V-112 (ADR-0076): author_view.request_pending / author_requests(),
         // thread_view.request_pending / prepare_thread_requests(), and
         // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
         // M2 migration: profile (kind:0) claims are registry interests now
@@ -92,7 +92,7 @@ impl Kernel {
         requests
     }
 
-    // V-112 (ADR-0042): `close_subscriptions_with_prefixes` deleted — its only
+    // V-112 (ADR-0076): `close_subscriptions_with_prefixes` deleted — its only
     // callers were the retired close_author / close_thread view-close paths.
     // T133 wire-sub eviction on view close is carried by the planner CLOSE
     // diff (`drain_lifecycle_tick`) behind the generic close_interest seam,

@@ -19,7 +19,7 @@ import org.nmp.gallery.registry.NostrLoginBlock
  *
  * This is the Android peer of the SwiftUI `AuthComponentPages.swift` in
  * `apps/nmp-gallery/ios`. It demonstrates the `login-block` registry
- * component (ADR-0048 Stage 2 — NIP-55 Amber sign-in) wired to the REAL
+ * component (ADR-0072 Stage 2 — NIP-55 Amber sign-in) wired to the REAL
  * kernel flow: a tap dispatches `NmpApp.signinNip55`, Rust builds the
  * `get_public_key` capability request, the activity-registered
  * `ExternalSignerCapabilityBridge` fires the Intent, and the resulting
@@ -48,12 +48,12 @@ private fun LoginBlockPage(model: GalleryModel) {
                 "and surfaces each as a one-tap sign-in option. Falls back to manual " +
                 "key entry when no signers are installed. Tapping a signer card runs " +
                 "the real NIP-55 get_public_key flow through the kernel capability " +
-                "bridge (ADR-0048).",
+                "bridge (ADR-0072).",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(16.dp))
-        // Live showcase: the REAL ADR-0048 flow. The tap reports user intent
+        // Live showcase: the REAL ADR-0072 flow. The tap reports user intent
         // to Rust (D7); Rust builds the request; the activity-registered
         // ExternalSignerCapabilityBridge executes it; signer_state renders
         // the round-trip inline. This is the surface the Stage-4 emulator

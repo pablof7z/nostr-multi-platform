@@ -75,7 +75,7 @@ pub fn run_gen_typed_decoders(args: Vec<String>, help: &str) -> Result<(), Strin
 /// `nmp gen projection-cache --platform swift|kotlin --out <path> [--check]`.
 ///
 /// Generates the NMP-owned rev-aware projection cache implementing the
-/// ADR-0055 D3-3 merge algorithm. Driven by the same registry as
+/// ADR-0070 D3-3 merge algorithm. Driven by the same registry as
 /// `typed-decoders`; takes no schema stdin.
 ///
 /// `--platform swift` (default): generates `ProjectionCache.generated.swift`.
@@ -192,7 +192,7 @@ pub fn run_gen_projection_cache(args: Vec<String>, help: &str) -> Result<(), Str
 
 /// `nmp gen keyed-ref-cache --platform swift|kotlin --out <path> [--check]`.
 ///
-/// ADR-0063 Lane A (#1671) — generates the per-key (row-keyed) reference cache
+/// ADR-0070 Lane A (#1671) — generates the per-key (row-keyed) reference cache
 /// (`KeyedRefCache`) for keyed projections (`refs.profile` / `refs.event`).
 /// Driven by `KEYED_PROJECTIONS`; takes no schema stdin. Mirrors
 /// `gen projection-cache`: `--out` required, `--check` diffs on disk.

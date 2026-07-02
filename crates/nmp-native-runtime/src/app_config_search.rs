@@ -15,7 +15,7 @@ impl NmpApp {
     ///
     /// MUST be called before `nmp_app_start` so the registry is compiled +
     /// installed into the kernel store at construction. A duplicate scope id
-    /// **yields** (ADR-0049): the first registration keeps the scope; a later
+    /// **yields** (ADR-0069): the first registration keeps the scope; a later
     /// one for the same id is recorded as `YieldedToExisting` in the
     /// `"search_scope"` composition-ledger seam and is NOT installed.
     pub fn register_search_scope(
@@ -31,7 +31,7 @@ impl NmpApp {
             return status;
         }
         let disposition = self.composition.search_scope_registry.register(provider);
-        // ADR-0049 Part 2 — record the install/yield decision in the
+        // ADR-0069 Part 2 — record the install/yield decision in the
         // "search_scope" ledger seam.
         let ledger_disposition = match disposition {
             nmp_core::substrate::SearchScopeDisposition::Installed => {

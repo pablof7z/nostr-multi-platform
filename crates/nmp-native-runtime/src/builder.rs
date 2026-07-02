@@ -34,7 +34,7 @@
 //! ```
 //!
 //! Three compile-time gates: (1) a storage decision (`Unstarted → StorageSet`),
-//! (2) an ADR-0053 projection-consumption decision
+//! (2) an ADR-0070 projection-consumption decision
 //! (`StorageSet → ProjectionsDeclared`), and (3) a #1493 initial-relay decision
 //! (`ProjectionsDeclared → RelaysDeclared`). Forgetting any is a compile error,
 //! so a host can never silently ship the full Tier-2 built-in firehose
@@ -50,7 +50,7 @@
 //!
 //! let app: *mut NmpApp = NmpAppBuilder::new()
 //!     .in_memory()                                  // required: choose storage
-//!     .declare_consumed_projections(["profile"])    // required: declare ADR-0053 set
+//!     .declare_consumed_projections(["profile"])    // required: declare ADR-0070 set
 //!     .with_relays([("wss://your.relay", "both")])  // required: declare relays (#1493)
 //!     .start(RunConfig::default());                 // consume builder → started handle
 //!
@@ -74,7 +74,7 @@ use std::marker::PhantomData;
 
 use crate::{new_app, NmpApp};
 
-mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
+mod app_host_impl; // ADR-0070: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
 #[cfg(feature = "marmot")]
 mod marmot;
 mod transitions;
@@ -92,14 +92,14 @@ pub struct Unstarted;
 ///
 /// Either `.storage_path(p)` (LMDB-backed) or `.in_memory()` (explicit
 /// ephemeral opt-in) was called. `start()` is NOT yet available — a
-/// projection-consumption decision must be made first (ADR-0053 DEBT 2):
+/// projection-consumption decision must be made first (ADR-0070 DEBT 2):
 /// call `.declare_consumed_projections(keys)` to narrow to a set, or
 /// `.consume_all_builtin_projections()` to explicitly opt into the full
 /// Tier-2 firehose.
 pub struct StorageSet;
 
 /// Builder state: the host has made an explicit projection-consumption
-/// decision (ADR-0053 DEBT 2).
+/// decision (ADR-0070 DEBT 2).
 ///
 /// Reached from `StorageSet` via either `.declare_consumed_projections(keys)`
 /// (narrowing) or `.consume_all_builtin_projections()` (explicit "I want
@@ -161,7 +161,7 @@ impl Default for RunConfig {
 ///    substrate, coverage hook, …) run **before** `start()`.
 /// 2. A storage decision (`.storage_path` or `.in_memory()`) is made before
 ///    `start()` — the one slot whose omission causes silent data loss.
-/// 3. An ADR-0053 projection-consumption decision
+/// 3. An ADR-0070 projection-consumption decision
 ///    (`.declare_consumed_projections(keys)` or
 ///    `.consume_all_builtin_projections()`) is made before `start()` — so the
 ///    full Tier-2 built-in firehose can never be shipped silently.
@@ -196,7 +196,7 @@ impl Default for RunConfig {
 ///
 /// The following code does **not** compile because `start()` only exists on
 /// `NmpAppBuilder<ProjectionsDeclared>`, not on `NmpAppBuilder<StorageSet>` —
-/// ADR-0053 DEBT 2's compile-time enforcement that the host cannot silently
+/// ADR-0070 DEBT 2's compile-time enforcement that the host cannot silently
 /// ship the full Tier-2 built-in firehose:
 ///
 /// ```compile_fail

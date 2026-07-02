@@ -10,7 +10,7 @@ same Rust seams, and how modules compose through an explicit app root.
 ## Annotated walkthrough: `microblog-core`
 
 `crates/microblog-core/src/lib.rs` (worked out in
-[19a](19a-walkthrough-microblog.md)) is ADR-0009 in practice: an app module
+[19a](19a-walkthrough-microblog.md)) is ADR-0072 in practice: an app module
 exercising the public app seams **with app nouns that stay out of
 `nmp-core`**. It is the canonical template — read it before writing any module.
 
@@ -262,7 +262,7 @@ actions, runtime helpers, WOT bootstrap, and typed protocol outputs. The
 production app root chooses those installers explicitly and keeps app-specific
 policy in the app crate.
 
-Registration order matters for last-writer-wins slots, but ADR-0049 made
+Registration order matters for last-writer-wins slots, but ADR-0069 made
 reusable installers *yield* to app registrations. App-over-app namespace
 collisions remain a bug and are recorded in the composition ledger exposed by
 the diagnostics binding (composition-report domain; routing trace remains a
@@ -296,7 +296,7 @@ separate diagnostic domain).
 - **Annotated `microblog-core` walkthrough** (above) — a low-level seam proof:
   ActionModule + internal observed delivery + typed output.
 - **`nmp-nip29` sidebar** (above) — how the same seams scale to a real
-  protocol with zero kernel nouns; plus the ADR-0046 composition pattern.
+  protocol with zero kernel nouns; plus the ADR-0069 composition pattern.
 
 See also: [02 — Mental model](02-mental-model.md) ·
 [05a — Substrate traits: signatures + decision tree](05a-substrate-traits.md) ·

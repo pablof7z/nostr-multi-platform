@@ -4,7 +4,7 @@
 //! Nostr event. The variant drives native widget dispatch; the payload is the
 //! complete typed data the widget renders — it never re-parses the raw event.
 //!
-//! All fields follow ADR-0032 (raw protocol data only): pubkeys as 64-char
+//! All fields follow ADR-0072 (raw protocol data only): pubkeys as 64-char
 //! lowercase hex, timestamps as Unix u64 seconds, no pre-computed strings.
 //!
 //! Display separation (#2514): every non-`Profile` projection carries ONLY the

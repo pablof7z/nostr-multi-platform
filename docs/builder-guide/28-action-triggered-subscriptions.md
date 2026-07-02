@@ -220,7 +220,7 @@ admission decision a feed has already made. Two narrow, mechanics-only hooks on
   other positive row. Wire it with `PullFeedController::new_with_replacement`, or
   drive it externally by key with `FeedRegistry::replace(key, source_id)`.
 
-Reset/replace are **not** a substitute for open/close (ADR-0042). Releasing an
+Reset/replace are **not** a substitute for open/close (ADR-0076). Releasing an
 interest and ensuring a new one is the right move when the *interest itself*
 changes (different kinds/authors/relays). Reset is for when the interest is
 unchanged but the *admission perspective* shifted, so the same interest must be
@@ -364,7 +364,7 @@ The shell reads `typed_projections["myapp.discover_results"]` off the pushed
 `SnapshotFrame` in its `apply()` callback. No polling. Edge-triggered by the
 actor's `changed_since_emit` flag whenever an event lands. See
 [06 — Reactivity contract](06-reactivity-contract.md) and
-[ADR-0039](../decisions/0039-push-projection-seam-canonical.md).
+[ADR-0070](../decisions/0070-typed-read-sessions.md).
 
 ## Registration order
 

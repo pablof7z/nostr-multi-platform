@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.blossom",
     crate_name: "nmp-blossom",
-    summary: "Blossom (BUD-02) blob uploads as an NMP protocol crate - kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0043).",
+    summary: "Blossom (BUD-02) blob uploads as an NMP protocol crate - kind:24242 auth builder + BlossomUploadCommand (ProtocolCommand) streaming PUT, signing via the generic backend-transparent SignEventForAccount port (ADR-0071).",
     claims: [
         {
             claim_type: "artifact",

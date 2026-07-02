@@ -1,4 +1,4 @@
-//! K3 Stage D3 (ADR-0056 §3.D3) — eviction⇄ledger coherence, kernel layer.
+//! K3 Stage D3 (ADR-0072 §3.D3) — eviction⇄ledger coherence, kernel layer.
 //!
 //! Two legs:
 //!

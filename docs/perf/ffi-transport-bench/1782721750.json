@@ -102,7 +102,7 @@
     "REAL (EXECUTED): C-lane indirect Arc<dyn Fn> call + ptr/len dispatch + mandatory one shell-copy (Vec::to_vec) per frame. UniFFI Rust-side cost: RustBuffer allocation, FfiConverter Lower::lower serialization (4-byte i32 prefix + per-byte write via uniffi_core 0.29.5), and indirect vtable dispatch through Box<dyn UpdateFrameSink>. Synthetic foreign-copy component (145 ns at weighted mean 3737 B, 40 ns/KB conservative estimate) multiplied by 3x surcharge in verdict."
   ],
   "notes": [
-    "Workload: ADR-0055 omit-unchanged regime. SMALL 256-2048 B (80%), MEDIUM 2048-8192 B (15%), LARGE 16384-65536 B (5%). 100k deliveries per bucket per lane after 10k warmup discarded. Cadence grounded in code: steady 4 Hz (DEFAULT_EMIT_HZ), burst to 12 Hz (clamp ceiling).",
+    "Workload: ADR-0070 omit-unchanged regime. SMALL 256-2048 B (80%), MEDIUM 2048-8192 B (15%), LARGE 16384-65536 B (5%). 100k deliveries per bucket per lane after 10k warmup discarded. Cadence grounded in code: steady 4 Hz (DEFAULT_EMIT_HZ), burst to 12 Hz (clamp ceiling).",
     "Empty-harness baseline (timer+index, no transport) subtracted from every per-frame measurement. SMALL baseline ~0 ns, MEDIUM ~0 ns, LARGE ~1 ns.",
     "Platform: macOS (Darwin 25.5.0), single-threaded, no tokio. CPU affinity unpinned (macOS does not expose CPU pinning in userspace); compensated by high iteration count + percentiles.",
     "Pre-registered decision rule (encoded before measurement): COLLAPSE iff surcharged weighted-p99 delta < 833333 ns (5% of 16.67ms) AND UniFFI SMALL batch-mean p99 < 250000 ns; KEEP iff delta >= 2500000 ns (15%); ESCALATE otherwise. No COLLAPSE permitted from synthetic evidence inside or above the ESCALATE band."

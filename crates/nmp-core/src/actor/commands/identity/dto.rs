@@ -124,7 +124,7 @@ pub fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
 /// Generalised remote-signer health projection — the app noun projected onto
 /// the snapshot under `projections["signer_state"]`.
 ///
-/// **ADR-0048 D6**: replaces the NIP-46-only `bunker_connection_state` with a
+/// **ADR-0072 D6**: replaces the NIP-46-only `bunker_connection_state` with a
 /// single canonical "remote signer health" surface keyed by `signer_kind`.
 /// Hosts render one status row regardless of whether the active signer is NIP-46
 /// or NIP-55 (Amber). `signer_kind` drives the label; `state` drives the badge
@@ -205,7 +205,7 @@ impl SignerStateDto {
     }
 }
 
-/// Shared signer-state slot (ADR-0048 D6 generalisation of the former
+/// Shared signer-state slot (ADR-0072 D6 generalisation of the former
 /// bunker-connection-state slot).
 ///
 /// `None` (the default) means no remote signer session is active (the

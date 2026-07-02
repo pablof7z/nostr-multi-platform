@@ -16,7 +16,7 @@ normal seams genuinely cannot serve your use case.
 
 This is **not** an escape hatch in the negative sense — it is the **preferred
 way** to extend the kernel. An `ActionModule` provides:
-- A typed action handler dispatched through the ADR-0064 byte doorway.
+- A typed action handler dispatched through the ADR-0071 byte doorway.
 - Optional typed projection state for view delivery.
 - An optional `LogicalInterest` set for subscription routing.
 
@@ -74,7 +74,7 @@ slot silently replaces the first. Use namespaced slot names (e.g.
 **When appropriate:** Whenever you need to derive in-process state from
 inbound events — decrypt gift-wraps, build projections, accumulate per-kind
 views. This is the **preferred in-process consumption path**; an external store
-mirror that needs verbatim signed frames uses the pull cursor (ADR-0058) —
+mirror that needs verbatim signed frames uses the pull cursor (ADR-0072) —
 see `docs/architecture/external-consumers.md`.
 
 **What it bypasses:**
@@ -100,13 +100,13 @@ gift-wraps, build projections, accumulate per-kind views)?
 
 Need verbatim signed frames in an external store/relay-bridge mirror
 (e.g. an out-of-tree nostrdb mirror)?
-  → pull cursor (ADR-0058): GlobalLog cursor in Protected { max_lag_entries }
+  → pull cursor (ADR-0072): GlobalLog cursor in Protected { max_lag_entries }
     mode → nmp.pull.wake → NmpApp::mirror_pull_page → apply page → persist
     after_seq → AdvancePullCursor.
     See docs/architecture/external-consumers.md for the full contract.
 
 Need custom state in every snapshot?
-  → typed sidecar via register_typed_snapshot_projection (ADR-0037)
+  → typed sidecar via register_typed_snapshot_projection (ADR-0072)
 
 Need to handle typed write input or publish Nostr events?
   → ActionModule (#1)

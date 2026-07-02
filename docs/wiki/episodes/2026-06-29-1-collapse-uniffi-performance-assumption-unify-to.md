@@ -39,7 +39,7 @@ Adopt pure UniFFI architecture with zero internal exceptions. Move dispatch-core
 - All 4 byte-lane 'exception' candidates migrate cleanly through UniFFI (no hidden paths).
 - Eliminates 3 symbols via UniFFI object/Vec<u8> lifetime management.
 - Dispatch logic unified in nmp-native-runtime; C-ABI and UniFFI consume same implementation.
-- Architecture doctrine simplified from two-surface to single-surface (ADR-0030 updated).
+- Architecture doctrine simplified from two-surface to single-surface (legacy decision 0030 updated).
 - Enables systematic wholesale adoption via 8 disjoint slices (56 symbols); pattern-copying mechanically replicable.
 - Removes architectural complexity of parallel code paths.
 

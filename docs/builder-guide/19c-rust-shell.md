@@ -55,7 +55,7 @@ fn main() {
     nostr_feed_core::register_microblog_read_session(&mut builder, Arc::clone(&store));
 
     // Commit storage, projection, and relay decisions, then start the kernel.
-    // Omitting any gate is a COMPILE ERROR (V-94 / ADR-0053 / #1493).
+    // Omitting any gate is a COMPILE ERROR (V-94 / ADR-0070 / #1493).
     let app = builder
         .in_memory()
         .declare_consumed_projections([FEED_SNAPSHOT_KEY])

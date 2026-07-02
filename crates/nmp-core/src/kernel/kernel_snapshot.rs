@@ -11,7 +11,7 @@ use super::{Instant, Serialize};
 
 /// Diagnostic ingest event counter.
 ///
-/// M2 (ADR-0042): the production `open_firehose_tag` hashtag-feed verb was
+/// M2 (ADR-0076): the production `open_firehose_tag` hashtag-feed verb was
 /// deleted in favour of the generic `open_interest` C-ABI. The `interest` /
 /// `seq` subscription-tracking fields went with it. What remains is the
 /// `events` counter, kept because the `diag-firehose-` **test ingest seam**
@@ -30,7 +30,7 @@ pub(super) struct DiagnosticFirehoseState {
 
 // ── Kernel sub-state groupings (phase 2 god-struct decomposition) ─────────────
 //
-// V-112 (ADR-0042): `AuthorViewState` / `ThreadViewState` deleted.
+// V-112 (ADR-0076): `AuthorViewState` / `ThreadViewState` deleted.
 // These continue the mechanical grouping started by `DiagnosticFirehoseState`:
 // cohesive Kernel field clusters collapsed into named locatable units.
 // Pure data — no behaviour of their own.
@@ -121,11 +121,11 @@ pub(crate) struct Metrics {
 /// Full snapshot of kernel state encoded into the host update frame each tick.
 /// Named `KernelSnapshot` (not `KernelUpdate`) to avoid ambiguity with the
 /// public `crate::app::KernelUpdate` lifecycle-event enum.
-// ADR-0044 — widened from `pub(super)` to `pub(crate)` so the transport layer
+// ADR-0072 — widened from `pub(super)` to `pub(crate)` so the transport layer
 // (`crate::update_envelope`) can populate the typed Tier-3 `SnapshotFrame`
 // fields directly from this struct instead of re-walking the generic JSON
 // `payload`. Doctrinally fine: these are framework-owned envelope types, and
-// ADR-0044 §2 explicitly endorses the transport schema coupling to them.
+// ADR-0072 §2 explicitly endorses the transport schema coupling to them.
 #[derive(Clone, Debug, Serialize)]
 pub(crate) struct KernelSnapshot {
     pub(super) rev: u64,
@@ -148,7 +148,7 @@ pub(crate) struct KernelSnapshot {
     pub(super) running: bool,
     // D0: the views cluster (`profile`) is kernel-owned domain state surfaced
     // through the host-extensible `projections` map under the `"profile"` key.
-    // V-112 (ADR-0042): `author_view` and `thread_view` deleted.
+    // V-112 (ADR-0076): `author_view` and `thread_view` deleted.
     // #1610: the JSON-era `"timeline"`, `"inserted"`, `"updated"`, `"removed"`
     // projection slots were removed from the codegen registry and from the Swift
     // shell surface; typed feeds ship through app-owned session keys.

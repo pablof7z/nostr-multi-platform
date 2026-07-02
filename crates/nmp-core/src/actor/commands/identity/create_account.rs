@@ -86,7 +86,7 @@ pub(crate) fn create_account(
             content: kind0_content,
             created_at: kernel.now_secs(),
         };
-        // V-54 (closed, non-bug) / ADR-0040 site-3 correction: `create_account`
+        // V-54 (closed, non-bug) / ADR-0072 site-3 correction: `create_account`
         // activates a fresh LOCAL key before this sign, so `sign_active_nonblocking`
         // takes the synchronous Ready branch — no remote round-trip, no actor
         // stall (D8). Enforce that invariant so a future edit can't silently

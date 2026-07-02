@@ -196,7 +196,7 @@ fn build_op_scope_session(
     app.register_feed(key.to_string(), controller.clone());
 
     // ── 3b. Typed NNFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
-    //         PAIRED under the session key (ADR-0063 D7, #1671 Lane H, #1740) ────
+    //         PAIRED under the session key (ADR-0070 D7, #1671 Lane H, #1740) ────
     //
     // Emits the NNFS typed projection so an `NNFS`-aware host renders the
     // session's window from the typed payload (generic `Value` fallback for
@@ -212,7 +212,7 @@ fn build_op_scope_session(
     // without the provider, so migrating a Chirp feed onto `open_feed` cannot
     // regress avatars. The same per-tick window materialization feeds both lanes,
     // so authors-resolved == window-emitted even if a concurrent `load_older`
-    // widens the window mid-tick (no 1-frame blank gap; ADR-0038). Teardown via
+    // widens the window mid-tick (no 1-frame blank gap; ADR-0076). Teardown via
     // `remove_projection` / `unregister_feed` (same key) covers both lanes.
     let engine_for_typed = Arc::clone(&engine);
     let typed_key = key.to_string();

@@ -64,7 +64,7 @@ pub(super) fn handle_kind5_insert(
             relay_kind_remove_id(st, &target_hex);
             fts_index_remove(st, &target_hex);
             access_remove(st, &target_hex);
-            // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted target.
+            // ADR-0072 §3: emit Deleted(Nip09) for each self-deleted target.
             ingest_log::emit_deleted(
                 st,
                 kind5_id_bytes,
@@ -154,7 +154,7 @@ pub(super) fn handle_kind5_insert(
                     .raw
                     .id_bytes()
                     .expect("stored event has valid hex id");
-                // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted a-tag target.
+                // ADR-0072 §3: emit Deleted(Nip09) for each self-deleted a-tag target.
                 ingest_log::emit_deleted(
                     st,
                     kind5_id_bytes,
@@ -179,7 +179,7 @@ pub(super) fn handle_kind5_insert(
     }
 
     // Store the kind:5 event itself.
-    // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+    // ADR-0072 §3: clone raw event for ingest log before the Arc::new move.
     let raw_for_log = event.clone();
     st.events.insert(
         kind5_id_hex.clone(),
@@ -196,7 +196,7 @@ pub(super) fn handle_kind5_insert(
     };
     relay_index_add(st, source, &kind5_id_hex);
     relay_kind_add(st, source, 5, &kind5_id_hex);
-    // ADR-0058 §3: emit Inserted log entry for the kind:5 event itself.
+    // ADR-0072 §3: emit Inserted log entry for the kind:5 event itself.
     ingest_log::emit_inserted(st, kind5_id_bytes, raw_for_log, source, received_at_ms);
     InsertOutcome::Inserted {
         id: kind5_id_bytes,

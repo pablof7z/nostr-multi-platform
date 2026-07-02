@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — Kotlin typed action-builder emitter.
+//! ADR-0071 §3 (#1783) — Kotlin typed action-builder emitter.
 //!
 //! Renders `ActionBuilders.kt`: a `GeneratedActionBuilders` object whose
 //! functions are the app-facing typed write builders
@@ -46,14 +46,14 @@ const BUILTIN_HEADER: &str = "\
 // (`ACTION_BUILDERS`). The CI gate (`.github/workflows/codegen-drift.yml`) fails
 // any PR whose generated Kotlin differs from a fresh run.
 //
-// ADR-0064 §3 — typed write builders. Each function below encodes the per-crate
+// ADR-0071 §3 — typed write builders. Each function below encodes the per-crate
 // FlatBuffers payload for one open-registry `action_namespace` and stamps it,
 // the namespace, and the envelope schema_version into a `DispatchEnvelope`,
 // returning the finished bytes for the native byte doorway
 // `nmp_app_dispatch_action_bytes` (#1752). App code NEVER spells a namespace
 // string or hand-assembles FlatBuffers — that lives only here, in generated
 // code. The host supplies the `correlationId` (the operation identity end to
-// end, ADR-0064 §4) and owns the JNI call.
+// end, ADR-0071 §4) and owns the JNI call.
 // ─────────────────────────────────────────────────────────────────────────────
 
 package org.nmp.android

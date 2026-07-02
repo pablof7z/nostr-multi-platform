@@ -12,7 +12,7 @@ use super::*;
 #[test]
 fn registry_size_is_locked() {
     // 25 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
-    // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR),
+    // in ADR-0070 Lane H (#1671): `claimed_profiles` (KCPR),
     // `resolved_profiles` (KRPR), and the host-visible `claimed_events`
     // whole-map projection. KCEV remains only as the refs.event row codec.
     // Profile/event data is now served via refs.profile / refs.event NRRD
@@ -98,7 +98,7 @@ fn all_dotted_keys_are_present() {
     );
 }
 
-/// Drift/overlap guard (ADR-0063 codegen-time partition): a projection key must
+/// Drift/overlap guard (ADR-0070 codegen-time partition): a projection key must
 /// live in EXACTLY ONE of the two registries — the whole-value
 /// `SNAPSHOT_PROJECTIONS` or the keyed `KEYED_PROJECTIONS`. A key in BOTH would
 /// drive contradictory generators (a JSON `SnapshotProjections` field AND a

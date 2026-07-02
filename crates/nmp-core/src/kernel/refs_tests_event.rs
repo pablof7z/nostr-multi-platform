@@ -1,10 +1,10 @@
-//! ADR-0063 (#1671 Lane B/D) — event-resolver unit tests for the kernel-owned
+//! ADR-0070 (#1671 Lane B/D) — event-resolver unit tests for the kernel-owned
 //! `RefResolver` primitive: the event Live tailing path, per-consumer owner
 //! lifecycle, CacheOk/Live dedup to one slot per key, the event-ingest per-key
 //! rev bump, and event shape-narrowing.
 //!
 //! These tests drive the `resolve_ref` Event seam with RAW event keys
-//! (ADR-0063 / FFI contract: a lowercase-64-hex id or a `kind:pubkey:d`
+//! (ADR-0070 / FFI contract: a lowercase-64-hex id or a `kind:pubkey:d`
 //! coordinate) — NOT `nostr:` URIs. Raw-key PARSE coverage (well-formed +
 //! malformed fail-closed) lives in `refs_tests_key.rs`; profile-resolver +
 //! shared lifecycle/dedup/rev tests live in `refs_tests_profile.rs`.
@@ -19,7 +19,7 @@ fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-/// The canonical raw `kind:pubkey:d` coordinate key (ADR-0063 / FFI contract).
+/// The canonical raw `kind:pubkey:d` coordinate key (ADR-0070 / FFI contract).
 /// The `resolve_ref` Event seam takes this, NOT a `nostr:` URI.
 fn coord_key(kind: u32, author: &str, d_tag: &str) -> String {
     format!("{kind}:{author}:{d_tag}")
@@ -50,7 +50,7 @@ fn signed_addressable(keys: &::nostr::Keys, kind: u32, d_tag: &str, ts: u64) -> 
     }
 }
 
-/// ADR-0063 (#1671 Lane B) — count active registry interests addressing the
+/// ADR-0070 (#1671 Lane B) — count active registry interests addressing the
 /// addressable coordinate `(kind, author, d_tag)`. Both the `CacheOk`
 /// one-shot and the `Live` tailing slot carry this same addressable filter,
 /// so this counts how many distinct interests / wire REQs exist for one event
@@ -157,7 +157,7 @@ fn event_live_addressable_registers_and_releases_tailing_slot() {
     let d_tag = "live-doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    // Raw `kind:pubkey:d` coordinate key (ADR-0070 Event key, not a URI).
     let uri = coord_key(kind, &author, d_tag);
 
     kernel.resolve_ref(
@@ -232,7 +232,7 @@ fn event_live_plus_live_tears_down_exactly_on_last_release() {
     let d_tag = "doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    // Raw `kind:pubkey:d` coordinate key (ADR-0070 Event key, not a URI).
     let uri = coord_key(kind, &author, d_tag);
 
     for c in ["c1", "c2"] {
@@ -295,7 +295,7 @@ fn event_live_released_before_cacheok_consumer_no_leak() {
     let d_tag = "doc";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    // Raw `kind:pubkey:d` coordinate key (ADR-0070 Event key, not a URI).
     let uri = coord_key(kind, &author, d_tag);
 
     // Live first (tailing slot), then CacheOk dedups onto the same key.
@@ -357,7 +357,7 @@ fn event_cacheok_then_live_dedups_to_one_slot() {
     let author = hex64("a47c");
     let d_tag = "doc";
     let kind = 30023u32;
-    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    // Raw `kind:pubkey:d` coordinate key (ADR-0070 Event key, not a URI).
     let uri = coord_key(kind, &author, d_tag);
 
     // Cold CacheOk naddr claim registers ONE OneshotApi interest.
@@ -401,7 +401,7 @@ fn event_live_then_cacheok_dedups_to_one_slot() {
     let author = hex64("a47d");
     let d_tag = "doc";
     let kind = 30023u32;
-    // Raw `kind:pubkey:d` coordinate key (ADR-0063 Event key, not a URI).
+    // Raw `kind:pubkey:d` coordinate key (ADR-0070 Event key, not a URI).
     let uri = coord_key(kind, &author, d_tag);
 
     kernel.resolve_ref(
@@ -443,7 +443,7 @@ fn event_live_then_cacheok_dedups_to_one_slot() {
 fn event_shape_narrows_when_widest_consumer_releases() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let id = hex64("e57a");
-    // Raw 64-hex event-id key (ADR-0063 Event key, not a URI).
+    // Raw 64-hex event-id key (ADR-0070 Event key, not a URI).
     let uri = id.clone();
 
     kernel.resolve_ref(

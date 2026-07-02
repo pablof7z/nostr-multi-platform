@@ -1,6 +1,6 @@
 //! Crate-level integration: register `UploadAction` on a real FFI app, sign in
 //! a local nsec, and dispatch `nmp.blossom.upload` through the typed byte
-//! doorway `nmp_app_dispatch_action_bytes` (ADR-0064 / Cut-B, #1756).
+//! doorway `nmp_app_dispatch_action_bytes` (ADR-0071 / Cut-B, #1756).
 //!
 //! This proves the action seam end-to-end up to the `Protocol(BlossomUploadCommand)`
 //! emission (the dispatch is accepted and the host-supplied `correlation_id` is

@@ -1,6 +1,6 @@
 //! KCEV FlatBuffers wire codec for `refs.event` row payloads.
 //!
-//! `claimed_events` used to be a whole-map Tier-2 built-in projection. ADR-0063
+//! `claimed_events` used to be a whole-map Tier-2 built-in projection. ADR-0070
 //! migrated host-visible event refs to the row-delta `refs.event` projection,
 //! but kept this binary row payload shape: each `refs.event` row carries a
 //! single-entry [`ClaimedEventsModel`] so existing generated KCEV readers can be

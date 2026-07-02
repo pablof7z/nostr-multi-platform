@@ -1,7 +1,7 @@
 # Relay roles — Indexer + AppRelay design
 
 > **Status:** Design draft. No code yet.
-> **ADR:** `docs/decisions/0021-relay-roles-indexer-and-app-relay.md`.
+> **ADR:** `docs/decisions/0072-runtime-capability-and-shell-boundary.md`.
 > **Date:** 2026-05-18.
 > **Research:** Cross-library research at
 > `docs/research/ndk/` and `docs/research/applesauce/` directories.
@@ -15,7 +15,7 @@
 
 NMP already has a worker-level `RelayRole` enum
 (`crates/nmp-core/src/relay.rs:57`) with variants
-`Content / Indexer / Wallet`. **This is NOT what ADR-0021's
+`Content / Indexer / Wallet`. **This is NOT what ADR-0072's
 `RoutingSource::Indexer` and `RoutingSource::AppRelay` propose.** The
 two operate at different abstraction levels:
 
@@ -24,7 +24,7 @@ two operate at different abstraction levels:
 | `RelayRole` | Worker / transport | Connection-pool bucketing, relay-health rows, NIP-42 driver state, `wire_subs` diagnostic surface. | *"Not a routing source (T105). The actual wire target is the resolved `OutboundMessage::relay_url`. `RelayRole` only buckets relay-health rows…"* (`relay.rs:49`) |
 | `OutboundMessage::relay_url` | Worker / transport | The actual wire target (routing authority since T105). | *"Resolved wire target. The transport dials this URL."* (`relay.rs:118`) |
 | `RoutingSource` | Planner | **Why** a given relay was selected for a given filter/event. Diagnostic lane decoration. | `planner/plan.rs::RoutingSource` |
-| `RelayPlan::role_tags` | Planner output | Set of `RoutingSource`s explaining each per-relay plan row. | ADR-0012 + ADR-0020 + this ADR. |
+| `RelayPlan::role_tags` | Planner output | Set of `RoutingSource`s explaining each per-relay plan row. | ADR-0071 + ADR-0071 + this ADR. |
 
 The existing `BOOTSTRAP_DISCOVERY_RELAYS` constant
 (`relay.rs:27`) hardcodes
@@ -72,7 +72,7 @@ KernelConfig {
     default_indexer_relays: vec!["wss://nos.lol".into()],     // was lane-2 bootstrap
     default_app_relays:     vec!["wss://relay.damus.io".into()], // was lane-1 bootstrap
     // (Indexer recommended default still aligns with NIP-51 PR #1985's
-    //  `wss://purplepag.es/` — see ADR-0021 decision (5). Operators
+    //  `wss://purplepag.es/` — see ADR-0072 decision (5). Operators
     //  override at construction.)
     // ...
 }
@@ -112,7 +112,7 @@ sole source of truth.
 
 ## 3. Type surface
 
-### 3.1 `RoutingSource` final shape (post-ADR-0020 + ADR-0021)
+### 3.1 `RoutingSource` final shape (post-ADR-0071 + ADR-0072)
 
 ```rust
 // nmp-core::planner::plan
@@ -128,7 +128,7 @@ pub enum RoutingSource {
     /// Lane 4 — user-configured (active-account read/write, debug).
     /// `Indexer` is REMOVED from this enum and promoted to lane 6.
     UserConfigured(UserConfiguredCategory),
-    /// Lane 5 — NIP-51 class routing (ADR-0020).
+    /// Lane 5 — NIP-51 class routing (ADR-0071).
     ClassRouted { class: EventClass, via: ClassRoutingPath },
     /// Lane 6 — operator-configured indexer relays.
     /// ALWAYS-ON for kind:0, kind:3, kind:10000–19999. R+W symmetric.
@@ -162,7 +162,7 @@ pub enum ClassRoutingPath {
 // nmp-core::routing::indexer
 
 /// Kinds whose every read/write plan unions the indexer set.
-/// Per ADR-0021 §Decision (3): broader than NIP-51 PR #1985's literal
+/// Per ADR-0072 §Decision (3): broader than NIP-51 PR #1985's literal
 /// "kinds 0 and 10002" — applies the same kind:10086 event shape to
 /// the wider universal-data range.
 pub const INDEXER_KINDS_RANGE: std::ops::RangeInclusive<u32> = 10000..=19999;
@@ -176,7 +176,7 @@ pub fn is_indexer_kind(kind: u32) -> bool {
 
 ### 3.3 Extended `OutboxResolver`
 
-Layered onto ADR-0020's already-extended trait:
+Layered onto ADR-0071's already-extended trait:
 
 ```rust
 pub trait OutboxResolver: Send + Sync {
@@ -184,7 +184,7 @@ pub trait OutboxResolver: Send + Sync {
     fn write_relays(&self, author: &Pubkey) -> Vec<RelayUrl>;
     fn read_relays(&self, author: &Pubkey) -> Vec<RelayUrl>;
 
-    // ─── from ADR-0020 ───
+    // ─── from ADR-0071 ───
     fn class_relays_personal(&self, class: &EventClass) -> Option<Vec<RelayUrl>>;
     fn class_relays_for_author(
         &self,
@@ -233,7 +233,7 @@ pub struct KernelConfig {
     /// for cold-start reliability (e.g., the app's preferred host).
     pub default_app_relays: Vec<RelayUrl>,
 
-    /// (ADR-0020) Per-class fallback when user has no NIP-51 list of
+    /// (ADR-0071) Per-class fallback when user has no NIP-51 list of
     /// the corresponding class. Conceptually adjacent to AppRelay but
     /// scoped to class-routed events specifically.
     pub default_relay_lists: DefaultRelayLists,
@@ -286,13 +286,13 @@ the read; `set_*_local_override` are the writes.
 Two new cases land in `nmp-core::planner::compiler::partition`:
 
 ```
-existing order (ADR-0020):
+existing order (ADR-0071):
   case_a_authors
   case_b_addresses
   case_c_p_tags
   case_d_no_author
   case_e_relay_pinned        (NIP-29)
-  case_g_class_routed        (ADR-0020 — NIP-51 specialized)
+  case_g_class_routed        (ADR-0071 — NIP-51 specialized)
 
 new (this ADR):
   case_h_indexer             (always-on for INDEXER_KINDS)
@@ -312,7 +312,7 @@ for each LogicalInterest I in the compile set:
 
 This runs **after** `case_g_class_routed` so that class-routed
 plans (e.g., a kind:10007 search REQ that already went to the user's
-search relays per ADR-0020) also union the indexer set. Indexer is
+search relays per ADR-0071) also union the indexer set. Indexer is
 purely additive — never substitutes for or filters out other lanes.
 
 Publish-side symmetry: the publish engine applies the same gate.
@@ -332,12 +332,12 @@ for each per-author lane L in the compiled plan (from case_a_authors):
     L.mark_substituted()  // this author has no Nip65 lane now
 ```
 
-Granularity: per ADR-0021 decision (6), the substitution happens
+Granularity: per ADR-0072 decision (6), the substitution happens
 per-author within an interest. For `authors=[a, b, c]` where `a` has
 NIP-65 but `b`/`c` don't, `a`'s lane stays on outbox; `b` and `c`
 get AppRelay lanes carrying author-pinned filters.
 
-Lifetime: per ADR-0021 decision (7), AppRelay lanes persist for the
+Lifetime: per ADR-0072 decision (7), AppRelay lanes persist for the
 whole session. When `b` later publishes kind:10002, the next
 recompilation observes `has_mailbox(b) == true`, `case_i_app_relay`
 skips `b`, and `b` graduates to outbox routing on the next plan
@@ -374,7 +374,7 @@ tags. The wiring:
 1. Register `10086` with the `nmp-nip51` decoder
    (`crates/nmp-nip51/src/kinds.rs::ALL_KINDS`).
 2. Subscribe to kind:10086 for the active account as part of the
-   boot sequence, alongside kind:10002 (NIP-65) and the ADR-0020 lists
+   boot sequence, alongside kind:10002 (NIP-65) and the ADR-0071 lists
    (10006/10007/10013/10050/10102).
 3. Project decoded `relay` tags into the resolver's indexer state:
    ```rust
@@ -385,7 +385,7 @@ tags. The wiring:
    }
    impl IndexerFacts {
        pub fn active_set(&self) -> Vec<RelayUrl> {
-           // Client override wins entirely when present (per ADR-0021
+           // Client override wins entirely when present (per ADR-0072
            // §Decision (5)+(8) discussion of subtraction).
            // Otherwise union operator default with kind:10086.
            if let Some(override_) = &self.user_client_override {
@@ -425,7 +425,7 @@ Seven routing lanes:
 2. Hint (event-tag relay hints)
 3. Provenance (prior-event relay observation)
 4. UserConfigured (AccountRead / AccountWrite / Debug)
-5. ClassRouted (ADR-0020 — NIP-51 specialized)
+5. ClassRouted (ADR-0071 — NIP-51 specialized)
 6. **Indexer (this ADR — always-on for INDEXER_KINDS)**
 7. **AppRelay (this ADR — per-author NIP-65-miss fallback)**
 
@@ -433,7 +433,7 @@ Plus the subtractive global filter:
 
 - **Blocked** (kind:10006) — applied post-planning, removes relays.
 
-The diagnostic-doc update lands in P3 of the joint ADR-0020 + ADR-0021
+The diagnostic-doc update lands in P3 of the joint ADR-0071 + ADR-0072
 rollout (single PR introducing both new lanes simultaneously).
 
 ### Operator-visible source enumeration
@@ -449,7 +449,7 @@ The diagnostic pane shows: URL | roles | source. For example:
 | `wss://relay.damus.io` | Nip65(Outbox), Nip65(Inbox) | UserPublished(kind:10002) |
 | `wss://signer-suggested.example/` | — (none active) | SignerSuggested |
 
-The last row demonstrates per ADR-0021 §Decision (10): the signer
+The last row demonstrates per ADR-0072 §Decision (10): the signer
 *suggested* a relay; the kernel records it but never auto-merges.
 The user can promote it via settings (changes `Source` to
 `ClientSettings`).
@@ -487,7 +487,7 @@ pub fn group_pubkeys_by_relay(
 pub type OutboxMap = std::collections::HashMap<RelayUrl, Vec<Pubkey>>;
 ```
 
-These don't change ADR-0021's semantic decisions — they're
+These don't change ADR-0072's semantic decisions — they're
 implementation primitives the planner uses inside `case_a_authors`
 and the new `case_i_app_relay`. Direct algorithmic port from
 applesauce; we benchmark NMP's behavior against applesauce's
@@ -495,18 +495,18 @@ test suite during P4.
 
 ## 8. Migration / rollout plan
 
-This ADR's phases interleave with ADR-0020's. The combined sequence:
+This ADR's phases interleave with ADR-0071's. The combined sequence:
 
 | Phase | Deliverable                                                                                              | Gate                          |
 |-------|----------------------------------------------------------------------------------------------------------|-------------------------------|
-| P1    | `EventClass` + `from_kind` + `RoutingFamily` (ADR-0020 §3.1).                                            | Existing tests still pass.    |
-| P2    | `InterestShape::{search, class_hint}` + Rule 10 + ADR-0020 partition `case_g_class_routed`.              | Determinism gate green.       |
+| P1    | `EventClass` + `from_kind` + `RoutingFamily` (ADR-0071 §3.1).                                            | Existing tests still pass.    |
+| P2    | `InterestShape::{search, class_hint}` + Rule 10 + ADR-0071 partition `case_g_class_routed`.              | Determinism gate green.       |
 | **P2.5** | **`RoutingSource::Indexer` + `::AppRelay` promoted; `UserConfiguredCategory::Indexer` removed; `is_indexer_kind` const.** | **Variant migration green.** |
-| P3    | NIP-51 routing facts substrate slice (ADR-0020 + kind:10086 from this ADR) + extended resolver trait.    | Five-→seven-lane diagnostic asserts. |
+| P3    | NIP-51 routing facts substrate slice (ADR-0071 + kind:10086 from this ADR) + extended resolver trait.    | Five-→seven-lane diagnostic asserts. |
 | **P3.5** | **`case_h_indexer` + `case_i_app_relay` partition cases; `has_mailbox` resolver method; symmetric R+W indexer in `PublishEngine`.** | **Lazy 10102 + per-author AppRelay lifecycle tests green.** |
-| P4    | `SearchQuery` FFI + cache scan + relay fanout (ADR-0020 §3.5).                                           | Integration tests green.      |
+| P4    | `SearchQuery` FFI + cache scan + relay fanout (ADR-0071 §3.5).                                           | Integration tests green.      |
 | **P4.5** | **`RelaySettings` FFI surface (this ADR §3.5) + `enumerate_active_relays`.**                            | **Chirp's settings UI consumes it.** |
-| P5    | `PublishTarget::Auto` upgrade + blocked-relay filter + fail-loud (ADR-0020).                             | M11.5 exit gate.              |
+| P5    | `PublishTarget::Auto` upgrade + blocked-relay filter + fail-loud (ADR-0071).                             | M11.5 exit gate.              |
 
 P2.5 and P3.5 are this ADR's hinges. P4.5 lights up the user-facing
 settings surface.
@@ -584,7 +584,7 @@ they author).
 - **Anti-#175 invariant.** For every compiled plan, every
   `RelayPlan` has `!role_tags.is_empty()` — assertion at compile end.
 - **Diagnostic seven-lane fixture.** One example per lane plus the
-  blocked-relay subtraction; cross-references ADR-0020's five-lane
+  blocked-relay subtraction; cross-references ADR-0071's five-lane
   fixture and extends it.
 - **Indexer load test.** Session with active subscriptions on
   10 kinds in `INDEXER_KINDS` and a 3-entry indexer set: assert

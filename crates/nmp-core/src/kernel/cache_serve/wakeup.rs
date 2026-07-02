@@ -8,7 +8,7 @@
 //! private items, an outside module may not).
 //!
 //! The wake **arm** (`note_store_mutation`), the `StoreWakeups` owner, and the
-//! pull wake arm all live in `kernel::store_wakeup` (ADR-0058 §10). The set
+//! pull wake arm all live in `kernel::store_wakeup` (ADR-0072 §10). The set
 //! drained here is `store_wakeups.cache_serve` — the same `BTreeSet<u64>` of
 //! already-served interest completion keys the #1520 mechanism always used.
 

@@ -164,7 +164,7 @@ impl Kernel {
 
     /// Feed one store-served event into the projection-dispatch path — the
     /// same seam relay-delivered events use after `Inserted | Replaced`
-    /// (ADR-0045 §2, step 3).
+    /// (ADR-0070 §2, step 3).
     ///
     /// For shapes where at least one registered `IngestParser` is interested in
     /// the served kind (`needs_ingest_parser_dispatch = true`, set at enqueue
@@ -206,7 +206,7 @@ impl Kernel {
         self.events.insert(ev.id.clone(), cached);
         self.cached_estimated_store_bytes.set(None);
 
-        // ADR-0057 — the SINGLE shared post-store projection fan-out. The
+        // ADR-0070 — the SINGLE shared post-store projection fan-out. The
         // cache-serve replay path runs EXACTLY the same
         // `Kernel::project_accepted_event` the live ingest chokepoint
         // (`ingest_accepted_event`) runs, so the two cannot diverge:
@@ -220,7 +220,7 @@ impl Kernel {
         //   - the app-observer notify is D9-clamped (a future-dated event served
         //     from the store on restart cannot pin to the top of the feed).
         //
-        // ADR-0045 invariant: cache-serve does NOT call `store.insert` (the event
+        // ADR-0070 invariant: cache-serve does NOT call `store.insert` (the event
         // is already on disk — this path read it from the store); only the
         // POST-store projection fan-out is shared. The `VerifiedEvent` is
         // reconstructed from the already-verified raw fields (trust boundary: the

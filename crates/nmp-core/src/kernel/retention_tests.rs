@@ -44,8 +44,8 @@
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
 //! | `resolve_ref`                | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
-//! | (was: `open_author`)         | deleted — V-112 (ADR-0042)         | —          | —                                          |
-//! | (was: `close_author`)        | deleted — V-112 (ADR-0042)         | —          | —                                          |
+//! | (was: `open_author`)         | deleted — V-112 (ADR-0076)         | —          | —                                          |
+//! | (was: `close_author`)        | deleted — V-112 (ADR-0076)         | —          | —                                          |
 //! | `release_profile`            | `profile_claims[pk]` (remove)      | bounded    | shrinking only                              |
 //! | `open_firehose_tag`          | `diagnostic_firehose: Option`      | bounded    | O(1) — single-slot refcounted              |
 //! | `Kernel::log`                | `logs: VecDeque`                   | bounded    | hard cap 80 (`status.rs:314`)               |
@@ -58,7 +58,7 @@
 //! pubkeys × ≤256 consumers) fits inside the bound. The claim cap surfaces on
 //! `Metrics` (`update.rs`) for diagnostic visibility; its unit tests in
 //! [`profile_claim_cap_tests`] pin the drop-newest semantics for the pathological
-//! cases. The FFI command lane is separately bounded by ADR-0029 and exposes
+//! cases. The FFI command lane is separately bounded by ADR-0072 and exposes
 //! its shed-load counter on the shared `CommandSender` / test-support FFI
 //! stats path.
 //!

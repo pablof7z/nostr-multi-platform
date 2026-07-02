@@ -285,7 +285,7 @@ fn restores_nip46_from_persisted_remote_payload() {
     let calls_clone = Arc::clone(&calls);
 
     let (mut identity, mut kernel) = fresh();
-    // ADR-0052 §D3 — install the recording hook into THIS runtime's per-app
+    // ADR-0072 §D3 — install the recording hook into THIS runtime's per-app
     // slot (no process-global). Restore reads it at invocation time, so
     // install order relative to `fresh()` is irrelevant beyond pre-restore.
     identity.install_bunker_hook_for_test(Arc::new(move |request| {
@@ -316,7 +316,7 @@ fn restores_nip46_from_persisted_remote_payload() {
 /// hook exactly once via `ExternalSignerHookRequest::Restore`. This is the
 /// symmetric counterpart of `restores_nip46_from_persisted_remote_payload`
 /// (NIP-46 routes through the bunker hook; NIP-55 through the external-signer
-/// hook). ADR-0052 §D3 — the hook is a per-app slot read at restore invocation
+/// hook). ADR-0072 §D3 — the hook is a per-app slot read at restore invocation
 /// time, so the suspected init-order bug (restore before install) does not
 /// exist: install-before-restore is the only ordering this test relies on.
 #[test]
@@ -328,7 +328,7 @@ fn restores_nip55_from_persisted_remote_payload() {
     let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
 
     let identity_id = "701eb015134aed0cb6582a86b9527f2db0241ca36a64bfd63ddbde59002c7c05";
-    // Opaque-to-nmp-core NIP-55 payload (ADR-0048 D4 — pubkey-only): the
+    // Opaque-to-nmp-core NIP-55 payload (ADR-0072 D4 — pubkey-only): the
     // kernel persists and replays it verbatim, never parsing the body.
     let payload_json = format!(
         r#"{{"kind":"nip55","body":{{"user_pubkey_hex":"{}","signer_package":"com.greenart7c3.nostrsigner","granted_permissions":["sign_event","get_public_key"]}}}}"#,
@@ -344,7 +344,7 @@ fn restores_nip55_from_persisted_remote_payload() {
     let calls_clone = Arc::clone(&calls);
 
     let (mut identity, mut kernel) = fresh();
-    // ADR-0052 §D3 — install the recording hook into THIS runtime's per-app
+    // ADR-0072 §D3 — install the recording hook into THIS runtime's per-app
     // slot (no process-global).
     identity.install_external_signer_hook_for_test(Arc::new(move |request| {
         calls_clone.lock().unwrap().push(request);
@@ -386,7 +386,7 @@ fn restore_nip55_without_hook_surfaces_unavailable_and_toast() {
     enqueue_persist_active_pointer(&work_tx, identity_id, "nip55");
     drain_worker_results(&cmd_rx, 3);
 
-    // ADR-0052 §D3 — the external-signer hook is now a PER-APP slot. A fresh
+    // ADR-0072 §D3 — the external-signer hook is now a PER-APP slot. A fresh
     // `IdentityRuntime` starts with an EMPTY slot, so this test exercises the
     // *no hook* (D6 degradation) branch deterministically — no process-global
     // to clear, no execution-order dependence (the old global needed a

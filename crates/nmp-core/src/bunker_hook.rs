@@ -7,10 +7,10 @@
 //! URI, but it does not name `nmp-signers`, `nmp-nip46-runtime`, or any
 //! NIP-46 type.
 //!
-//! ## Per-app slot — no process-global (ADR-0052 §D3)
+//! ## Per-app slot — no process-global (ADR-0072 §D3)
 //!
 //! The hook lives in an `Arc<Mutex<Option<BunkerHookFn>>>` slot created in
-//! `nmp_app_new` and dropped in `nmp_app_free`, mirroring the ADR-0051
+//! `nmp_app_new` and dropped in `nmp_app_free`, mirroring the ADR-0072
 //! relay-connected hook slot. Two `NmpApp`s in one process therefore have two
 //! independent hooks, and a freed-then-recreated app re-installs cleanly (the
 //! Android process-reuse failure mode the old `OnceLock` global dead-ended on).

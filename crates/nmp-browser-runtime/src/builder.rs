@@ -1,23 +1,23 @@
 //! `BrowserAppBuilder<S>` — typestate composition root for NMP on browser
 //! runtimes (issue #2046 / PR-B of the browser-runtime epic #2045).
 //!
-//! # Typestate ladder (ADR-0053 / ADR-0067, mirrors native `NmpAppBuilder`)
+//! # Typestate ladder (ADR-0070 / ADR-0072, mirrors native `NmpAppBuilder`)
 //!
 //! ```text
 //! BrowserAppBuilder<Unstarted>          ← constructed by BrowserAppBuilder::new()
 //!   │  .inject_store(store)  ─┐  explicit storage choice (no silent default)
 //!   │  .in_memory()          ─┤
 //!   ▼                          ▼
-//! BrowserAppBuilder<StorageSet>         ← EventStore decided (ADR-0054 §5)
-//!   │  .declare_projections(...)         ─┐ explicit ADR-0053 projection decision
+//! BrowserAppBuilder<StorageSet>         ← EventStore decided (ADR-0072 §5)
+//!   │  .declare_projections(...)         ─┐ explicit ADR-0070 projection decision
 //!   │  .consume_all_builtin_projections()─┤
 //!   ▼                                      ▼
-//! BrowserAppBuilder<ProjectionsDeclared> ← ADR-0053 consumed-projection gate
+//! BrowserAppBuilder<ProjectionsDeclared> ← ADR-0070 consumed-projection gate
 //!   │  .set_relays(relays)         ─┐ explicit #1493 relay decision (non-empty)
 //!   │  .without_initial_relays()   ─┤
 //!   ▼                                ▼
 //! BrowserAppBuilder<RelaysDeclared>     ← relay decision made
-//!   │  .decide_providers(config)         ADR-0067 explicit no-providers-yet gate
+//!   │  .decide_providers(config)         ADR-0072 explicit no-providers-yet gate
 //!   ▼
 //! BrowserAppBuilder<ProvidersDecided>   ← capability/signer decision recorded
 //!   │  .start()                         → explicit browser composition + runtime
@@ -27,7 +27,7 @@
 //!
 //! Each transition has TWO twins so the decision is always explicit and
 //! greppable (never a silent default), mirroring native `NmpAppBuilder`:
-//! storage (`inject_store` / `in_memory`), ADR-0053 projections
+//! storage (`inject_store` / `in_memory`), ADR-0070 projections
 //! (`declare_projections` / `consume_all_builtin_projections`), and #1493
 //! relays (`set_relays` / `without_initial_relays`). Every `AppHost` /
 //! `ActionRegistrar` setter is usable in ALL states (they accumulate into
@@ -70,11 +70,11 @@ pub(crate) use composition::install_browser_production_composition;
 pub struct Unstarted;
 
 /// Stage 1: storage explicitly chosen (`inject_store` or `in_memory`,
-/// ADR-0054 §5 seam). A projection-consumption decision is still required.
+/// ADR-0072 §5 seam). A projection-consumption decision is still required.
 #[non_exhaustive]
 pub struct StorageSet;
 
-/// Stage 2: an explicit ADR-0053 projection decision was made
+/// Stage 2: an explicit ADR-0070 projection decision was made
 /// (`declare_projections` narrowing, or `consume_all_builtin_projections`).
 #[non_exhaustive]
 pub struct ProjectionsDeclared;
@@ -84,7 +84,7 @@ pub struct ProjectionsDeclared;
 #[non_exhaustive]
 pub struct RelaysDeclared;
 
-/// Stage 4: the ADR-0067 capability/signer-provider decision was recorded
+/// Stage 4: the ADR-0072 capability/signer-provider decision was recorded
 /// (`decide_providers`). `start()` is only available in this state.
 #[non_exhaustive]
 pub struct ProvidersDecided;
@@ -165,7 +165,7 @@ impl BrowserAppBuilder<Unstarted> {
         }
     }
 
-    /// Inject the platform's `EventStore` (ADR-0054 §5 seam).
+    /// Inject the platform's `EventStore` (ADR-0072 §5 seam).
     ///
     /// The store is swapped into the `KernelReducer` at this gate so
     /// subsequent `AppHost` registrar calls can resolve against the real store
@@ -212,7 +212,7 @@ impl Default for BrowserAppBuilder<Unstarted> {
 
 impl BrowserAppBuilder<StorageSet> {
     /// Declare the set of Tier-2 built-in projection keys this host consumes
-    /// (ADR-0053 narrowing gate), and advance to `ProjectionsDeclared`.
+    /// (ADR-0070 narrowing gate), and advance to `ProjectionsDeclared`.
     ///
     /// This is the **narrowing** path: the kernel serializes only the declared
     /// built-ins (plus Tier-1 host/protocol projections, which self-gate by
@@ -223,7 +223,7 @@ impl BrowserAppBuilder<StorageSet> {
     ///
     /// Panics immediately if `keys` is empty — BEFORE advancing the typestate or
     /// touching the reducer. An empty narrowing declares nothing (it would leave
-    /// `DeclaredProjections::Undeclared`, the silent ADR-0053 footgun), so it is
+    /// `DeclaredProjections::Undeclared`, the silent ADR-0070 footgun), so it is
     /// rejected loudly rather than accepted. To receive every built-in, call
     /// [`Self::consume_all_builtin_projections`] explicitly instead.
     pub fn declare_projections<I, K>(self, keys: I) -> BrowserAppBuilder<ProjectionsDeclared>
@@ -236,7 +236,7 @@ impl BrowserAppBuilder<StorageSet> {
             !keys_vec.is_empty(),
             "declare_projections called with an empty set — use \
              .consume_all_builtin_projections() to opt into the full Tier-2 firehose \
-             explicitly (#2072: an empty narrowing is the ADR-0053 footgun)"
+             explicitly (#2072: an empty narrowing is the ADR-0070 footgun)"
         );
         {
             let Ok(g) = self.inner.lock() else {
@@ -319,7 +319,7 @@ impl BrowserAppBuilder<ProjectionsDeclared> {
 }
 
 impl BrowserAppBuilder<RelaysDeclared> {
-    /// Record the explicit capability/signer-provider decision (ADR-0067 gate),
+    /// Record the explicit capability/signer-provider decision (ADR-0072 gate),
     /// and advance to `ProvidersDecided` (unlocking `start()`).
     ///
     /// This gate makes the provider decision a **required, explicit step** before
@@ -358,20 +358,20 @@ impl BrowserAppBuilder<ProvidersDecided> {
             Err(poisoned) => poisoned.into_inner(),
         };
 
-        // #2072 — loud ADR-0053 gate: after composition, declared
+        // #2072 — loud ADR-0070 gate: after composition, declared
         // projections MUST be in `All` or `Narrow` state, not `Undeclared`.
         // Fires as a panic in debug/test builds; degrades to a warn in release.
         debug_assert!(
             !inner.reducer.declared_projections_is_undeclared(),
             "BrowserAppBuilder::start(): projection-consumption intent was never \
              declared. Call .declare_projections([...]) or \
-             .consume_all_builtin_projections() before start() (ADR-0053 gate, #2072)."
+             .consume_all_builtin_projections() before start() (ADR-0070 gate, #2072)."
         );
         #[cfg(not(debug_assertions))]
         if inner.reducer.declared_projections_is_undeclared() {
             tracing::warn!(
                 "BrowserAppBuilder::start(): projection intent undeclared — \
-                 ADR-0053 footgun; call declare_projections or \
+                 ADR-0070 footgun; call declare_projections or \
                  consume_all_builtin_projections before start() (#2072)"
             );
         }
@@ -432,7 +432,7 @@ impl<S> BrowserAppBuilder<S> {
     /// Record a degraded durable-store open reason (#1007 PR-8).
     ///
     /// The browser opens the OPFS-SQLite store asynchronously *before* `start()`
-    /// (ADR-0054 §1). When that open fails (Safari < 17.4 / OPFS-SAH
+    /// (ADR-0072 §1). When that open fails (Safari < 17.4 / OPFS-SAH
     /// unavailable, private browsing, quota denied, handle loss, second-tab
     /// pool-lock contention) the host falls back to an in-memory store and
     /// threads the **stable reason** here. At `start()` it is applied to the
@@ -454,7 +454,7 @@ impl<S> BrowserAppBuilder<S> {
 
 // ── BrowserRunConfig ──────────────────────────────────────────────────────────
 
-/// Runtime configuration provided at the `decide_providers` gate (ADR-0067).
+/// Runtime configuration provided at the `decide_providers` gate (ADR-0072).
 ///
 /// Carried into `BrowserRuntime` to supply platform-specific parameters the
 /// signer / capability layer needs at start time. The capability/signer-provider

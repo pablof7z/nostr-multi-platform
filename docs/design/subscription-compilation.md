@@ -2,7 +2,7 @@
 
 > **Status:** Durable design reference.
 > **Date:** 2026-05-18.
-> **Companion docs:** `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); ADR-0042 (generic interests + typed feed sessions); `docs/product-spec/subsystems.md` §7.2–§7.3; `docs/product-spec/doctrine.md` §D0 (current v1 extension seams).
+> **Companion docs:** `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0072 (diagnostic lanes); ADR-0076 (generic interests + typed feed sessions); `docs/product-spec/subsystems.md` §7.2–§7.3; `docs/product-spec/doctrine.md` §D0 (current v1 extension seams).
 > **Scope:** Subscription compilation turns logical interests into per-relay
 > plans driven by NIP-65 mailboxes and makes outbox routing a first-class
 > planner subsystem. Implementation status belongs in source, tests, and

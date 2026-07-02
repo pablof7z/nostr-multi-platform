@@ -31,7 +31,7 @@ reference waiving it.
 
 **D1 — best-effort rendering**
 
-- [ ] Every new view-payload display field is non-`Option` (or `Placeholder<T>`, ADR-0017).
+- [ ] Every new view-payload display field is non-`Option` (or `Placeholder<T>`, ADR-0070).
 - [ ] No `if has_x { render } else { spinner }` / `if missing { hide }` gate introduced.
 - [ ] Late-arriving authoritative data updates the payload in place (no flicker / no re-fetch gate).
 
@@ -179,7 +179,7 @@ it is an **ADR**. If a change seems to require violating a doctrine, stop and
 write `docs/decisions/00NN-*.md` stating the doctrine, the tension, the chosen
 resolution, and the new invariant that replaces the broken one (see
 GitHub Issues or the owning doc for logging unresolved
-drift). `relay_pin` (third routing lane, ADR-0012) is the worked example of a
+drift). `relay_pin` (third routing lane, ADR-0071) is the worked example of a
 kernel-substrate change that survived D0 *because* it added a generic
 mechanism, not an app noun. No ADR → no waiver → the box stays unchecked.
 

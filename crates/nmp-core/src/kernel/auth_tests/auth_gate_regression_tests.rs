@@ -35,8 +35,8 @@ fn nip42_kernel_auth_without_signer_holds_in_challenge_received() {
 // the relay_mgmt.rs choke-point change, this test would fail — the claim REQs
 // would bypass the AUTH gate.
 //
-// V-112 (ADR-0042): original test used `kernel.open_author()` (deleted).
-// ADR-0063 Lane H: migrated from `kernel.claim_profile()` to `kernel.resolve_ref()`.
+// V-112 (ADR-0076): original test used `kernel.open_author()` (deleted).
+// ADR-0070 Lane H: migrated from `kernel.claim_profile()` to `kernel.resolve_ref()`.
 // ───────────────────────────────────────────────────────────────────────────
 
 #[test]

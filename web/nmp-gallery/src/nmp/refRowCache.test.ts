@@ -1,4 +1,4 @@
-// ADR-0063 Lane A — vitest for the TypeScript `RefRowCache` merge engine.
+// ADR-0070 Lane A — vitest for the TypeScript `RefRowCache` merge engine.
 //
 // Asserts the correctness-critical invariants that MUST match the Rust reference
 // (crates/nmp-core/src/refs/cache.rs) and the generated Swift/Kotlin caches:
@@ -66,7 +66,7 @@ function decode(bytes: Uint8Array | undefined): string | undefined {
   return bytes ? new TextDecoder().decode(bytes) : undefined;
 }
 
-describe("RefRowCache merge (ADR-0063)", () => {
+describe("RefRowCache merge (ADR-0070)", () => {
   it("a baseline seeds rows; a Changed delta updates one key", () => {
     const cache = new RefRowCache();
     cache.applySidecar(encodeBatch(NS, true, [changed("a", 1), changed("b", 1)]), 1n, 1n, decodeOk);

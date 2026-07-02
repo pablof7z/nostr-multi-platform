@@ -21,9 +21,9 @@ const GALLERY_COMPOSITION_PROVIDER: &str = "nmp_app_gallery::install_gallery_com
 
 pub use composition::{install_gallery_composition, register_gallery_embed_projection_adapters};
 pub use facade::{
-    GalleryApp, GalleryCapabilitySink, GalleryDispatchOutcome, GalleryEventRef,
-    GalleryEventShape, GalleryProfileShape, GalleryRefLiveness, GalleryRefNamespace,
-    GalleryRefShape, GalleryResolveMetadata, GalleryUpdateSink,
+    GalleryApp, GalleryCapabilitySink, GalleryDispatchOutcome, GalleryEventRef, GalleryEventShape,
+    GalleryProfileShape, GalleryRefLiveness, GalleryRefNamespace, GalleryRefShape,
+    GalleryResolveMetadata, GalleryUpdateSink,
 };
 
 #[must_use]

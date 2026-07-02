@@ -27,7 +27,7 @@ pub(crate) struct WireSub {
     pub(super) last_event_at: Option<Instant>,
     pub(super) eose_at: Option<Instant>,
     pub(super) close_reason: Option<String>,
-    /// K3 Stage D1 (ADR-0056 §3) — the `since` floor (unix-seconds) on the REQ
+    /// K3 Stage D1 (ADR-0072 §3) — the `since` floor (unix-seconds) on the REQ
     /// filter this sub was opened with, or `None` if the REQ was un-floored. The
     /// EOSE handler reads it to record coverage honestly: an un-floored REQ
     /// (`None`/`Some(0)`) proves `[0, now]` and advances the ledger; a floored

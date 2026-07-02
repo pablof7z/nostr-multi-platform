@@ -5,7 +5,7 @@
 > This document is the single source of truth for the browser worker protocol.
 > `nmp-browser-runtime` owns the wasm-bindgen Worker export, worker composition,
 > platform adaptation, signer registration, storage registration, the typed
-> app builder (ADR-0067), and the serializable browser Worker protocol types.
+> app builder (ADR-0072), and the serializable browser Worker protocol types.
 > `crates/nmp-wasm` was deleted in #2202 — `nmp-browser-runtime::wasm` is the
 > sole browser ABI glue.
 
@@ -43,8 +43,8 @@ The `NmpWasmRuntime` class exposes three channels:
    See §4.
 
 App-level **writes** ride the binary write channel as a typed
-`DispatchEnvelope` (ADR-0064 §1; §3 below). There is no Promise write
-entrypoint and no wasm-only write enum. Signing is the ADR-0050 capability round-trip
+`DispatchEnvelope` (ADR-0071 §1; §3 below). There is no Promise write
+entrypoint and no wasm-only write enum. Signing is the ADR-0072 capability round-trip
 (`begin_sign` → `sign_request` → `deliver_signer_response`), driven by pure
 message re-entry; local-key sessions install a Rust signer provider and still
 avoid host-side policy or polling (D7/D8).
@@ -63,15 +63,15 @@ Source: `crates/nmp-browser-runtime/src/wasm/protocol.rs`.
 | `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | **Host convention:** send before `Start`. The runtime enforces no ordering — `Start` without a prior `Hello` succeeds (`runtime.rs:185-223`). Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
 | `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>`, `relay_bootstrap: Vec<{url, role}>`, `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). Relay/bootstrap input is explicit host policy; the framework has no app-default fallback. |
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
-| `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, optional `event_author: String`, `correlation_id: String` | ADR-0063 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints and nevent author metadata decoded by the app from NIP-19/NIP-21 TLVs. |
-| `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
+| `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, optional `event_author: String`, `correlation_id: String` | ADR-0070 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints and nevent author metadata decoded by the app from NIP-19/NIP-21 TLVs. |
+| `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0070 structured reference release. |
 | `"feed_open_json"` | `FeedOpenJson(FeedOpenJson)` | `params_json: String`, `correlation_id: String` | ADR-0076 feed-session opening control. `params_json` is canonical `FeedParams` JSON; Rust parses it and opens the session through the standard NMP feed compiler. TypeScript does not compile feeds or own source reconciliation. Success returns `feed_opened`. |
 | `"feed_load_older"` | `FeedLoadOlder(FeedHandleRequest)` | `handle: FeedHandle`, `correlation_id: String` | Pages an open feed session by the opaque handle returned from `feed_opened`. Returns `feed_load_status` with Rust-owned `changed` + `reason` so hosts do not infer exhausted/budget/source state from absence of rows. |
 | `"feed_close"` | `FeedClose(FeedHandleRequest)` | `handle: FeedHandle`, `correlation_id: String` | Closes an open feed session by opaque handle and tears down its registered projection/acquisition resources. Unknown/stale handles are idempotent no-ops. |
-| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the same Rust dispatch path reached by native UniFFI action dispatch. There is no wasm-only write vocabulary. |
+| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0071 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the same Rust dispatch path reached by native UniFFI action dispatch. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
 | `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `correlation_id: String`, optional `pubkey_hex: String`, optional `secret_key_bech32: String`, optional `bunker_uri: String`, optional `identity_relays: Vec<{url, read, write}>` | Set the active identity. `kind = "nip07"` uses `pubkey_hex` from `await window.nostr.getPublicKey()` and signs through `begin_sign`/`deliver_signer_response`. `kind = "local_key"` requires `secret_key_bech32`; Rust decodes the `nsec`, derives the pubkey, installs a `LocalKeySigner`, and redacts request debug. `kind = "nip46"` requires `bunker_uri`; Rust owns the NIP-46 bunker handshake, installs the signer after `get_public_key`, and redacts the URI. `identity_relays` forwards raw identity relay permissions; Rust canonicalizes and merges them before active-account bootstrap. |
-| `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
+| `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0072 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
 | `"deliver_signer_response"` | `DeliverSignerResponse(DeliverSignerResponse)` | `correlation_id: String`, `signed_json?: String`, `error?: String` | The broker delivers the signer response (success or rejection). Drives the parked op exactly once from this message handler — no polling (D8). Account-pinned. |
 
 ### Structured reference controls
@@ -169,7 +169,7 @@ object shape.
 
 ### The typed write doorway — `DispatchBytes`
 
-App-level writes cross as raw `DispatchEnvelope` bytes (ADR-0064 §1). The host
+App-level writes cross as raw `DispatchEnvelope` bytes (ADR-0071 §1). The host
 builds the envelope through generated/typed builders
 (`web/packages/runtime-web/src/dispatchEnvelope.ts` → `encodeDispatchEnvelope`;
 see the rebuilt web app's `action_namespace` lowering). The `action_namespace`
@@ -222,7 +222,7 @@ promise:
 This same matrix is the NIP support model referenced by the Chirp Web product
 spec and builder-guide signer docs.
 
-### Signing - the ADR-0050 capability round-trip
+### Signing - the ADR-0072 capability round-trip
 
 Signing is a message-driven capability round-trip:
 
@@ -348,7 +348,7 @@ legacy native symbols as app-facing API.
 
 - **Web end-to-end publish completion.** The typed `DispatchBytes` doorway and
   `WasmOutboxResolver` are live. Unsigned writes still depend on the browser
-  host's ADR-0050 sign round-trip and a follow-up publish of the signed event,
+  host's ADR-0072 sign round-trip and a follow-up publish of the signed event,
   plus user-visible per-relay verdicts.
 - **OPFS-SQLite browser store (shipping under #1007).** The durable backend and
   the async-open-before-`Start` injection seam are live: the worker `await`s

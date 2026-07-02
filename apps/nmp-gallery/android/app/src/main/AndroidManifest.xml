@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-        ADR-0048 Stage 2: NIP-55 signer detection via PackageManager.
+        ADR-0072 Stage 2: NIP-55 signer detection via PackageManager.
 
         Android 11+ (API 30+) package visibility: the app can only query for
         packages whose intent schemes are listed here. Without this block,

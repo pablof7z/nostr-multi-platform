@@ -1,4 +1,4 @@
-//! ADR-0058 §3 mirror pull-page core — runtime-side encoding and pull logic.
+//! ADR-0072 §3 mirror pull-page core — runtime-side encoding and pull logic.
 //!
 //! Lives here (not in `nmp-uniffi`) so the UniFFI surface
 //! (`nmp_uniffi::mirror::NmpApp::mirror_pull_page`) and any internal tests can
@@ -248,7 +248,7 @@ impl NmpApp {
     /// store unavailable, pull failure) encode as `variant=ERROR | u32 code`
     /// — never a panic (D6).
     ///
-    /// ## Lock order (ADR-0058 §3)
+    /// ## Lock order (ADR-0072 §3)
     ///
     /// 1. Read-lock registry → clone registration → release.
     /// 2. Lock event-store slot → clone Arc → release.

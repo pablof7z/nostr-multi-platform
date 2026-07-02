@@ -46,7 +46,7 @@ pub use observed::{
 };
 pub use projection::{IncrementalApplyError, SnapshotProjectionRegistrar};
 
-/// Register ingest parsers (ADR-0057 / rule A5) — kind-keyed and range-keyed,
+/// Register ingest parsers (ADR-0070 / rule A5) — kind-keyed and range-keyed,
 /// with slot-keyed lifecycle replace/unregister.
 pub trait IngestParserRegistrar {
     fn register_ingest_parser(&self, kind: u32, parser: Arc<dyn IngestParser>);
@@ -160,7 +160,7 @@ pub trait RelayTextInterceptorRegistrar {
 /// Install a [`RelayConnectedHook`] so a protocol crate reacts when a relay
 /// connects.
 pub trait RelayConnectedHookRegistrar {
-    /// ADR-0051 — install a [`RelayConnectedHook`] so a protocol crate (today
+    /// ADR-0072 — install a [`RelayConnectedHook`] so a protocol crate (today
     /// `nmp-nip11`) reacts when a relay connects (e.g. fetch its NIP-11
     /// information document). Additive: multiple crates may react to the same
     /// connect.
@@ -175,9 +175,9 @@ pub trait CoverageHookRegistrar {
 /// Install the kernel-owned enrichment readers (kind:0 profiles, kind:10002
 /// mailbox hints) — the composition root passes the SAME `Arc` it backs the
 /// matching [`IngestParser`] with, so reader and writer see one source of truth
-/// (ADR-0057). The kernel never names the wire format (D0).
+/// (ADR-0070). The kernel never names the wire format (D0).
 pub trait KernelReaderRegistrar {
-    /// ADR-0057 PR 2 — install the kind:0 profile cache as the kernel's
+    /// ADR-0070 PR 2 — install the kind:0 profile cache as the kernel's
     /// `Arc<dyn ProfileLookup>` (reader). The composition root passes the SAME
     /// `Arc` it backs the kind:0 [`IngestParser`] (`nmp_nip01::Kind0Parser`,
     /// the writer) with, so the kernel's enrichment / claim-TTL / zap-LNURL /

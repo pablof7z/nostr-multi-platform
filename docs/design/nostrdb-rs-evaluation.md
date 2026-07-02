@@ -3,17 +3,17 @@
 > **Status:** Accepted (decision)
 > **Date:** 2026-05-18
 > **Resolves:** the deferred question in `docs/design/nostrdb-notedeck-lessons.md` §2.5 / §5
-> **Relates to:** ADR-0011 (LMDB env sharing), doctrine D4 + D8
-> **Decision:** **Reject `nostrdb-rs`; keep the hand-rolled `crates/nmp-core/src/store/lmdb.rs` path (targeting `nostr-lmdb` per ADR-0011).**
+> **Relates to:** ADR-0072 (LMDB env sharing), doctrine D4 + D8
+> **Decision:** **Reject `nostrdb-rs`; keep the hand-rolled `crates/nmp-core/src/store/lmdb.rs` path (targeting `nostr-lmdb` per ADR-0072).**
 
 ## 0. Scope clarification (read first)
 
 Two different projects are easy to conflate:
 
 - **`nostrdb-rs`** — Damus's Rust binding to the C `nostrdb` (strfry-derived, LMDB-backed). *This doc's subject.*
-- **`nostr-lmdb`** — the rust-nostr workspace crate. *ADR-0011's subject; what the hand-rolled `LmdbEventStore` already targets.*
+- **`nostr-lmdb`** — the rust-nostr workspace crate. *ADR-0072's subject; what the hand-rolled `LmdbEventStore` already targets.*
 
-`nostrdb-notedeck-lessons.md` §2.5 gave a *preliminary* lean toward `nostrdb-rs` and explicitly said "revisit at the start of M3." This document is that revisit and records the decision. Rejecting `nostrdb-rs` does not contradict ADR-0011 — ADR-0011 (env-sharing with `nostr-lmdb`) stands unchanged.
+`nostrdb-notedeck-lessons.md` §2.5 gave a *preliminary* lean toward `nostrdb-rs` and explicitly said "revisit at the start of M3." This document is that revisit and records the decision. Rejecting `nostrdb-rs` does not contradict ADR-0072 — ADR-0072 (env-sharing with `nostr-lmdb`) stands unchanged.
 
 ## 1. `nostrdb-rs` actual API + storage model (evidence)
 
@@ -38,9 +38,9 @@ NMP's `EventStore::insert` (`store/mem/insert.rs`) is a single ordered policy pi
 | NIP-40 expiry-on-arrival rejection (`ExpiredOnArrival`) | No pre-ingest hook returning a reject reason; would have to be a filter wrapper above the store. |
 | Provenance max-merge (per-id source set, `sources_after`) | nostrdb has no provenance concept; would live entirely in an NMP sidecar **with no shared transaction**. |
 | Claim-based GC (`register_view_cover`/`claim`/`release`/`gc_step`) | nostrdb owns its own LRU/retention; no claim API. NMP's working-set pinning cannot be expressed. |
-| Single typed `InsertOutcome` for the actor + ADR-0007 diagnostics | Structurally impossible: ingest is `Result<()>` fire-and-forget. |
+| Single typed `InsertOutcome` for the actor + ADR-0072 diagnostics | Structurally impossible: ingest is `Result<()>` fire-and-forget. |
 
-**Conclusion:** every NMP insert invariant would have to be re-implemented *above* `nostrdb-rs`, querying after the fact to infer what happened — with **no atomicity** between nostrdb's write and NMP's sidecars such as provenance, tombstones, and coverage. This is strictly worse than the hand-rolled path and reintroduces the partial-write bug class ADR-0011 exists to prevent.
+**Conclusion:** every NMP insert invariant would have to be re-implemented *above* `nostrdb-rs`, querying after the fact to infer what happened — with **no atomicity** between nostrdb's write and NMP's sidecars such as provenance, tombstones, and coverage. This is strictly worse than the hand-rolled path and reintroduces the partial-write bug class ADR-0072 exists to prevent.
 
 ## 3. D4 analysis (single writer per fact)
 
@@ -60,9 +60,9 @@ cannot be driven from NMP's own insert pipeline (which nostrdb does not expose
 — see §2/§3). The reverse-index-naming-interested-views requirement is entirely
 NMP's and has no expression in nostrdb's subscription model.
 
-## 5. ADR-0011 compatibility (env ownership)
+## 5. ADR-0072 compatibility (env ownership)
 
-**Violated outright.** ADR-0011's accepted decision is *"NMP owns the `lmdb::Environment` and injects it into [the store crate]"* so that `insert()` commits event + provenance + coverage + tombstones in **one `RwTxn`**. `Ndb::new(db_dir, &Config)` creates the env internally with **no injection seam** (no `with_env`, no exposed txn-scoped write). The two-environment fallback in ADR-0011 §"Two-phase-write fallback" was rejected as the primary design due to write-amplification and recovery-window ambiguity — and it would be forced here.
+**Violated outright.** ADR-0072's accepted decision is *"NMP owns the `lmdb::Environment` and injects it into [the store crate]"* so that `insert()` commits event + provenance + coverage + tombstones in **one `RwTxn`**. `Ndb::new(db_dir, &Config)` creates the env internally with **no injection seam** (no `with_env`, no exposed txn-scoped write). The two-environment fallback in ADR-0072 §"Two-phase-write fallback" was rejected as the primary design due to write-amplification and recovery-window ambiguity — and it would be forced here.
 
 ## 5b. License checkpoint (blocks code-level borrowing)
 
@@ -74,29 +74,29 @@ There is an **unresolved licensing ambiguity** that independently blocks any cod
 These two facts are in tension and have **not** been reconciled with upstream. Until the discrepancy is resolved in writing:
 
 - **Code-level borrowing — copying, adapting, or vendoring source from `nostrdb` or `nostrdb-rs` into NMP — is blocked.** GPL-3.0-or-later is incompatible with NMP's licensing posture, and we cannot rely on the C-repo BSD notice to override the crate's published GPL metadata.
-- This checkpoint is **independent** of the D4/D8/ADR-0011 technical reasons below: even if the architecture fit were perfect, the unresolved license would still bar copying source. Adopting *concepts* (the design lessons in §7) is unaffected — only verbatim/derived source is gated.
+- This checkpoint is **independent** of the D4/D8/ADR-0072 technical reasons below: even if the architecture fit were perfect, the unresolved license would still bar copying source. Adopting *concepts* (the design lessons in §7) is unaffected — only verbatim/derived source is gated.
 
 Lifting this gate requires upstream clarification (relicense, dual-license clarification, or an explicit BSD statement on `nostrdb-rs`).
 
 ## 6. RECOMMENDATION
 
-**Reject `nostrdb-rs`. Keep the hand-rolled `LmdbEventStore` path targeting `nostr-lmdb` per ADR-0011.**
+**Reject `nostrdb-rs`. Keep the hand-rolled `LmdbEventStore` path targeting `nostr-lmdb` per ADR-0072.**
 
 Decisive reasons (any one is sufficient; all four hold):
 
-1. **D4:** nostrdb owns its own ingester+writer threads and fixed insert policy; `process_event` is fire-and-forget `Result<()>`. NMP cannot be the single writer per fact nor interpose its insert invariants (foreign pre-tombstones, provenance merge, claim-GC, NIP-40, kind:5 self-delete-only, `InsertOutcome`, ADR-0007 emit).
-2. **ADR-0011:** `Ndb::new` creates the LMDB env internally with no injection; single-commit atomicity across NMP's secondaries is impossible without the already-rejected two-env fallback.
+1. **D4:** nostrdb owns its own ingester+writer threads and fixed insert policy; `process_event` is fire-and-forget `Result<()>`. NMP cannot be the single writer per fact nor interpose its insert invariants (foreign pre-tombstones, provenance merge, claim-GC, NIP-40, kind:5 self-delete-only, `InsertOutcome`, ADR-0072 emit).
+2. **ADR-0072:** `Ndb::new` creates the LMDB env internally with no injection; single-commit atomicity across NMP's secondaries is impossible without the already-rejected two-env fallback.
 3. **D8:** NMP's composite reverse index — which on each insert names exactly the interested views to wake — is NMP-owned and inexpressible in nostrdb's flat filter-poll subscription model (`subscribe` + `poll_for_notes`). (Note: the visitor/allocation objection from the original draft is withdrawn — current `nostrdb-rs` exposes `fold` / `try_fold` early-stopping scans; it is no longer a rejection ground.)
 4. **License:** `nostrdb-rs` publishes `GPL-3.0-or-later` while the C repo appears BSD; the ambiguity is unresolved (§5b). Code-level borrowing is blocked until cleared — independent of the technical reasons above.
 
-Risk note: the "battle-tested code for free" upside is real but does not survive contact with D4/D8/ADR-0011 — the invariants we would have to rebuild *above* nostrdb are exactly the ones that carry the correctness load, and we would carry an FFI fork on top.
+Risk note: the "battle-tested code for free" upside is real but does not survive contact with D4/D8/ADR-0072 — the invariants we would have to rebuild *above* nostrdb are exactly the ones that carry the correctness load, and we would carry an FFI fork on top.
 
 ## 7. What to carry over conceptually (we keep the lessons, not the dep)
 
 The hand-rolled path should adopt these *as Rust design*, not as a dependency:
 
 - **Visitor query semantic** (lessons §2.3): the `EventStore` trait already returns lazy `Box<dyn EventIter>` (see `events.rs`); add a `query_visit(filter, FnMut(&StoredEvent) -> Continue|Stop)` variant as the default for view-internal scans so `recompute_full` stops at the view limit with zero buffer. This is the §2.3 win, kept on our terms.
-- **Separable mutable metadata table** (lessons §2.2): persist the `Projections` cache as an NMP sub-db keyed `(namespace, key)` under the *single ADR-0011 env*, in-place updated on insert. Removes the restart aggregate-recompute cliff.
+- **Separable mutable metadata table** (lessons §2.2): persist the `Projections` cache as an NMP sub-db keyed `(namespace, key)` under the *single ADR-0072 env*, in-place updated on insert. Removes the restart aggregate-recompute cliff.
 - **strfry-style packed note layout** (lessons §2.1): defer. A future optimization on the hand-rolled path *if* `bincode`-in-value read cost shows up in M3 benchmarks; not v1-blocking.
 - **Single-writer discipline:** keep NMP's existing model — all mutation through `EventStore::insert` behind the actor (already D4-correct in `mem/insert.rs`). nostrdb validates the *shape* of this design; we already have it.
 - (notedeck-side patterns — `SubKey`, `(owner,key,scope)`, compaction/leg split — are tracked separately in `nostrdb-notedeck-lessons.md` §4 and unaffected by this decision.)
@@ -109,7 +109,7 @@ The conceptual techniques carried over in §7 are tracked as concrete implementa
 |---|---|
 | #1515 | This decision refresh — corrects the stale visitor objection, states direct-adoption blockers concretely, adds the license checkpoint, cross-links follow-ups. |
 | #1516 | True streaming LMDB `query_visit` (§7 visitor semantic; lessons §2.3) — `query_visit(filter, FnMut(&StoredEvent) -> Continue|Stop)` as the default for view-internal scans. |
-| #1517 | Audit and tighten cache `StoreQuery` planning/index coverage — correctness for ADR-0045 offline/cache-serve coverage and intentional index paths. |
+| #1517 | Audit and tighten cache `StoreQuery` planning/index coverage — correctness for ADR-0070 offline/cache-serve coverage and intentional index paths. |
 | #1518 | Queryable relay provenance indexes without splitting store ownership — provenance derived from insert-owned sidecars, single-writer (§7 no split-ownership). |
 | #1519 | Persist insert-owned projection metadata sidecars (§7 separable metadata; lessons §2.2) — restart-safe cache projections without recomputing aggregates from scratch. |
 | #1520 | Event-driven store notification/replay wakeups — correct missed wakeups, no polling-based reactivity (§7 / lessons §2.4 subscription wakeup model). |
@@ -117,4 +117,4 @@ The conceptual techniques carried over in §7 are tracked as concrete implementa
 | #1522 | Capture cache adaptation baselines and fixtures before any performance-affecting PR (precondition for #1516 and others). |
 | #1524 | Final cache adaptation acceptance gates and regression thresholds. |
 
-M3 implementation proceeds against `nostr-lmdb` + ADR-0011 env-injection as already planned.
+M3 implementation proceeds against `nostr-lmdb` + ADR-0072 env-injection as already planned.

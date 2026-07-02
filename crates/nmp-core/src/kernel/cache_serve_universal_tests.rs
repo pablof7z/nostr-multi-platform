@@ -1,11 +1,11 @@
-//! ADR-0045 E2+E3 — **Universal acceptance test** (closes v1-blocker #1086).
+//! ADR-0070 E2+E3 — **Universal acceptance test** (closes v1-blocker #1086).
 //!
 //! Requirement (owner-decided, issue #1086): populate a store with feed events
 //! + a DM gift-wrap + a thread reply + a long-form article; fresh kernel, zero
 //! relay connectivity; open the standard interests; assert feed, DM (IngestParser),
 //! thread, and long-form projections ALL render from the store.
 //!
-//! This is the v1 exit criterion for ADR-0045 §8: one test that falsifies the
+//! This is the v1 exit criterion for ADR-0070 §8: one test that falsifies the
 //! complete seam. If any engineering increment (E1 feed, E2 DM, E3 thread /
 //! long-form) is broken, this test fails. See [`universal_acceptance_tests`].
 //!

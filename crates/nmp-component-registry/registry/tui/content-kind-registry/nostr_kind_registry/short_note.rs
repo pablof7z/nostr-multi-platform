@@ -8,8 +8,8 @@ use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget, Wrap};
 
-use super::super::kind_renderer::{author_byline, KindRenderer};
 use super::super::super::nostr_mention_chip::NostrMentionProfileHost;
+use super::super::kind_renderer::{author_byline, KindRenderer};
 use super::text_layout::{format_relative_time, text_height, tree_text};
 use super::NostrKindRegistry;
 

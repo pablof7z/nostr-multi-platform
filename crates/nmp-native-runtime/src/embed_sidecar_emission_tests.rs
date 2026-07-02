@@ -1,4 +1,4 @@
-//! ADR-0055 R6-S2 cardinal-trap tests for the `refs.event.envelopes` typed
+//! ADR-0070 R6-S2 cardinal-trap tests for the `refs.event.envelopes` typed
 //! projection emission gate.
 //!
 //! Tests prove the `TypedProjectionEmissionState` wrapping in

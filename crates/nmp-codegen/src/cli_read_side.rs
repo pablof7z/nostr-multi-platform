@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 /// `nmp gen keyed-ref-cache --platform swift|kotlin|ts --out <path> [--check]`.
 ///
-/// ADR-0063 Lane A (#1671) — generates the per-key (row-keyed) reference cache
+/// ADR-0070 Lane A (#1671) — generates the per-key (row-keyed) reference cache
 /// (`KeyedRefCache`) for keyed projections (`refs.profile` / `refs.event`).
 /// Driven by `KEYED_PROJECTIONS`; takes no schema stdin. Mirrors
 /// `gen projection-cache`: `--out` required, `--check` diffs on disk.

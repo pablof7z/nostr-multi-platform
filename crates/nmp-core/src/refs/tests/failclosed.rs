@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A — BLOCKING fail-closed regression tests.
+//! ADR-0070 Lane A — BLOCKING fail-closed regression tests.
 //!
 //! Each test PROVES one of the four BLOCKING correctness guards bites: it is
 //! written to FAIL on the pre-fix code and pass after the fix. They exercise the

@@ -1,7 +1,7 @@
-//! Admin actions for the ADR-0060 NIP-29 increment.
+//! Admin actions for the ADR-0070 NIP-29 increment.
 //!
 //! This module intentionally implements only the two admin actions accepted by
-//! ADR-0060: kind:9000 (`PutUser`) and kind:9009 (`CreateInvite`). Both are
+//! ADR-0070: kind:9000 (`PutUser`) and kind:9009 (`CreateInvite`). Both are
 //! structurally validated and host-pinned here. Relay-enforced admin authority
 //! remains reflected through relay-signed 39001/39002 snapshots.
 
@@ -146,7 +146,7 @@ impl ActionModule for PutUserAction {
         );
     type Action = PutUserInput;
 
-    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PutUserInput as ActionPayload>::decode(bytes))
@@ -179,7 +179,7 @@ impl ActionModule for CreateInviteAction {
         );
     type Action = CreateInviteInput;
 
-    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<CreateInviteInput as ActionPayload>::decode(bytes))

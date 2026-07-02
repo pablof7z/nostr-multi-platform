@@ -2,7 +2,7 @@
 //!
 //! The producer is the typed projection closure installed by
 //! [`crate::register_runtime`]. This module encodes the `typed_projections`
-//! sidecar payload for that runtime (ADR-0037).
+//! sidecar payload for that runtime (ADR-0072).
 //!
 //! [`DmRelayList`] is the single read model the runtime and this codec share.
 //! `active_pubkey: Option<String>` carries a `has_active_pubkey` flag + value so absent

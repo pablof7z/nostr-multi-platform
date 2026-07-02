@@ -1,4 +1,4 @@
-//! K3 Stage D1 — coverage-ledger read/write for the LMDB backend (ADR-0056 §3).
+//! K3 Stage D1 — coverage-ledger read/write for the LMDB backend (ADR-0072 §3).
 //!
 //! Split out of `store_impl.rs` so the heed-txn logic lives in one place and the
 //! trait impl stays a thin delegation. The `nmp-coverage` sub-db maps

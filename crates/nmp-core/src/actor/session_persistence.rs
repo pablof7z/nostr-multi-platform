@@ -4,7 +4,7 @@
 //! through the keyring capability to restore it on the next launch. Native code
 //! only executes the keychain request.
 //!
-//! ## ADR-0040 §3 — V-90 Site 2: write path moves off the actor thread
+//! ## ADR-0072 §3 — V-90 Site 2: write path moves off the actor thread
 //!
 //! The write functions (`persist_*`, `forget_*`) previously called
 //! `dispatch_capability` synchronously on the actor thread, blocking it for
@@ -22,7 +22,7 @@
 //! the next step as a sequential continuation. Converting it to fire-and-forget
 //! would require a multi-tick state machine the ADR never designed for this
 //! path. Cold-start runs at most once per process, is below the liveness
-//! threshold (ADR-0040: "hundreds of ms — short of the liveness threshold"),
+//! threshold (ADR-0072: "hundreds of ms — short of the liveness threshold"),
 //! and is not among the per-switch hitches GH #613 targets. The `Start` arm
 //! also calls `persist_current_active_session` after restore — that call now
 //! goes through the enqueue path, so the tail-write is also off-actor.
@@ -243,7 +243,7 @@ fn restore_remote_signer(
     };
     // Both restores route through opaque payloads + registered hooks (D0):
     // NIP-46 re-handshakes via the broker; NIP-55 reconstructs synchronously
-    // via the external-signer driver (ADR-0048 D4 — pubkey-only payload).
+    // via the external-signer driver (ADR-0072 D4 — pubkey-only payload).
     if kind == "nip55" {
         commands::restore_nip55_session(identity, kernel, &payload);
     } else {

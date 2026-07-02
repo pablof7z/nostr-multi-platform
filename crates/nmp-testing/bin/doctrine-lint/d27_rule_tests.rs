@@ -68,10 +68,10 @@ fn d27_positive_fixture_fires() {
             stdout
         );
     }
-    // The message must cite ADR-0032.
+    // The message must cite ADR-0072.
     assert!(
-        stdout.contains("ADR-0032"),
-        "d27 finding message must reference ADR-0032; stdout:\n{}",
+        stdout.contains("ADR-0072"),
+        "d27 finding message must reference ADR-0072; stdout:\n{}",
         stdout
     );
 }

@@ -31,7 +31,7 @@ use crate::app_struct::{
 use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
 
 pub fn new_app() -> NmpApp {
-    // ADR-0029 / ADR-0050 §D3a — one bounded waking inbox of `ActorMail`.
+    // ADR-0072 / ADR-0072 §D3a — one bounded waking inbox of `ActorMail`.
     // `command_tx` is the host `CommandSender` (stored on `NmpApp`); the actor
     // receives on `command_rx`. Sends use nonblocking shed-load when the lane
     // is full, so dispatch never blocks a native caller and memory is capped.
@@ -51,17 +51,17 @@ pub fn new_app() -> NmpApp {
     // V-38: relay-text interceptor slot (actor clone + `NmpApp` clone).
     let relay_text_interceptor = nmp_core::substrate::new_relay_text_interceptor_slot();
     let actor_relay_text_interceptor = Arc::clone(&relay_text_interceptor);
-    // ADR-0051: relay-connected hook slot (actor clone + `NmpApp` clone).
+    // ADR-0072: relay-connected hook slot (actor clone + `NmpApp` clone).
     let relay_connected_hook = nmp_core::substrate::new_relay_connected_hook_slot();
     let actor_relay_connected_hook = Arc::clone(&relay_connected_hook);
-    // ADR-0052 §D3: per-app signer hook slots.
+    // ADR-0072 §D3: per-app signer hook slots.
     let bunker_hook = nmp_core::new_bunker_hook_slot();
     let actor_bunker_hook = Arc::clone(&bunker_hook);
     let external_signer_hook = nmp_core::new_external_signer_hook_slot();
     let actor_external_signer_hook = Arc::clone(&external_signer_hook);
     // D0: bunker-handshake slot — handed to the actor for built-in projection.
     let actor_bunker_handshake = new_bunker_handshake_slot();
-    // ADR-0048 D6: unified remote-signer health slot.
+    // ADR-0072 D6: unified remote-signer health slot.
     let actor_signer_state = new_signer_state_slot();
     // Shared relay-edit rows handle.
     let configured_relays: nmp_core::AppRelaySlot = new_app_relay_slot();
@@ -95,7 +95,7 @@ pub fn new_app() -> NmpApp {
     // V-83 — event-store publish-back slot.
     let event_store_handle = new_event_store_slot();
     let actor_event_store = Arc::clone(&event_store_handle);
-    // ADR-0058 step 3b — pull-cursor registry publish-back slot.
+    // ADR-0072 step 3b — pull-cursor registry publish-back slot.
     let pull_cursor_registry = new_pull_cursor_registry_handle_slot();
     let actor_pull_cursor_registry = Arc::clone(&pull_cursor_registry);
     // Shared capability callback slot.
@@ -112,7 +112,7 @@ pub fn new_app() -> NmpApp {
     let actor_routing_substrate = Arc::clone(&routing_substrate);
     let actor_user_agent = Arc::clone(&user_agent);
     let actor_outbound_public_tags = Arc::clone(&outbound_public_tags);
-    // ADR-0049 Part 2 — the composition ledger.
+    // ADR-0069 Part 2 — the composition ledger.
     let composition_ledger: Arc<nmp_core::CompositionLedger> =
         Arc::new(nmp_core::CompositionLedger::new());
     // Spec §271 (2026-05-25) — substrate-publish-resolver factory slot.
@@ -162,7 +162,7 @@ pub fn new_app() -> NmpApp {
             nmp_core::substrate::empty_dm_inbox_relay_lookup(),
         ));
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
-    // ADR-0057 PR 2 — substrate `ProfileLookup` slot.
+    // ADR-0070 PR 2 — substrate `ProfileLookup` slot.
     let profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_profile_lookup()));
     let actor_profile_lookup = Arc::clone(&profile_lookup_slot);
@@ -317,7 +317,7 @@ pub fn new_app() -> NmpApp {
         action_registry: default_registry()
             .with_composition_ledger(Arc::clone(&composition_ledger)),
         composition_ledger,
-        // ADR-0049 Part 2 — not started until `nmp_app_start` sends Start.
+        // ADR-0069 Part 2 — not started until `nmp_app_start` sends Start.
         started: AtomicBool::new(false),
         snapshot_projections,
         feed_registry,

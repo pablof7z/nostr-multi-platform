@@ -1,4 +1,4 @@
-//! K3 coverage ledger (ADR-0056 §3) — the kernel's since-floor source.
+//! K3 coverage ledger (ADR-0072 §3) — the kernel's since-floor source.
 //!
 //! Split out of `kernel/mod.rs` (LOC cap) as a cohesive owner: the two
 //! completion entry points (EOSE for a plain REQ, NEG-DONE for a NIP-77
@@ -38,7 +38,7 @@ pub(super) fn build_watermark_fn(store: Arc<dyn EventStore>) -> WatermarkFn {
     })
 }
 
-/// K3 Stage D2 (ADR-0056 §3.D2) — the since-floor read-swap decision table, as
+/// K3 Stage D2 (ADR-0072 §3.D2) — the since-floor read-swap decision table, as
 /// a free function so the SINGLE definition is shared by both floor-read sites:
 ///
 /// 1. the installed [`crate::subs::WatermarkFn`] closure (`kernel/mod.rs`),
@@ -57,12 +57,12 @@ pub(super) fn build_watermark_fn(store: Arc<dyn EventStore>) -> WatermarkFn {
 ///   `since` to `covered_through + 1` (the `+1` is applied by the
 ///   floor-application sites `apply_watermark_rewrite` / `handle_reconnect`).
 /// - **Ledger has NO row** (un-synced `(filter_hash, relay)`) → `None` —
-///   **refuse to floor** (ADR-0056 §3.D2 item 2: "no completed-coverage row ⇒
+///   **refuse to floor** (ADR-0072 §3.D2 item 2: "no completed-coverage row ⇒
 ///   refuse to floor"). The REQ runs un-floored over the full `[0, ∞)` window.
 ///
 /// # Why no-row REFUSES the floor (rather than guessing from store presence)
 ///
-/// The whole premise of the ledger (ADR-0056 §1) is *"presence is not
+/// The whole premise of the ledger (ADR-0072 §1) is *"presence is not
 /// coverage."* The H1 headline is precisely the case where store presence is
 /// unsound: a single stray event by author A (a thread reply stored under an
 /// Etag shape) makes a presence floor for A's follow-feed shape `Some(stray_ts)`,
@@ -105,7 +105,7 @@ impl Kernel {
     ///
     /// Called from the NIP-77 runtime (`nmp-nip77::runtime`) when a negentropy
     /// reconciliation reaches its terminal `Done` outcome for `(sub_id, relay)`.
-    /// Per ADR-0056 Stage A the NEG reconciliation runs **un-floored** over the
+    /// Per ADR-0072 Stage A the NEG reconciliation runs **un-floored** over the
     /// full `[0, ∞)` window, so a completed reconciliation honestly covers
     /// `[0, now]` — the downward-closed ledger is advanced to `now`
     /// unconditionally (no floor to guard against, unlike the plain-REQ EOSE
@@ -135,7 +135,7 @@ impl Kernel {
     /// un-floored REQ (`since_floor` absent or `0`), which honestly proves
     /// `[0, now]`; a `since`-floored REQ proves only `[floor, now]`, so it
     /// records NO coverage rather than over-claim `[0, floor)` (the over-claim
-    /// ADR-0056 §1 says makes presence unsound).
+    /// ADR-0072 §1 says makes presence unsound).
     ///
     /// Also bumps the lifecycle's `watermark_generation` when coverage advances
     /// (un-floored planner sub) so the compile-input fingerprint in

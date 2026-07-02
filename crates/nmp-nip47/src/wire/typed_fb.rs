@@ -10,7 +10,7 @@
 //! Kotlin / TypeScript) can decode with generated accessors instead of JSON
 //! reflection. It is a sidecar codec: the serde shape stays authoritative; this
 //! is the typed payload carried in the `typed_projections` sidecar
-//! (ADR-0037, `crates/nmp-core/schema/nmp_update.fbs`).
+//! (ADR-0072, `crates/nmp-core/schema/nmp_update.fbs`).
 //!
 //! The schema (`crates/nmp-nip47/schema/wallet_status.fbs`) mirrors the Rust
 //! struct field-for-field. `Option<...>` fields carry a `has_*` presence flag

@@ -128,7 +128,7 @@ fn lifecycle_auth_gate_keys_on_delivering_url_on_failed() {
     // URL_B is failed → still considered paused (fail-closed).
     assert!(
         kernel.lifecycle.is_auth_paused_for_url(NON_BOOTSTRAP_URL),
-        "URL_B Failed → still paused (fail-closed per ADR-0019)"
+        "URL_B Failed → still paused (fail-closed per ADR-0072)"
     );
     // Bootstrap is untouched.
     assert!(

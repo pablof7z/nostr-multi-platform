@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the nip17 typed FlatBuffers payload doorway
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 //!
 //! These are NEGATIVE tests only: they prove the fail-closed `schema_version`
 //! gate in `ActionRegistry::start_bytes` rejects bad payloads BEFORE `start()`
@@ -28,7 +28,7 @@ fn registry_with_nip17() -> nmp_core::__ffi_internal::ActionRegistry {
     registry
 }
 
-/// ADR-0064 / S9 (#1747) — `nmp.nip17.send` with a bad `schema_version` MUST
+/// ADR-0071 / S9 (#1747) — `nmp.nip17.send` with a bad `schema_version` MUST
 /// be rejected BEFORE `start()` runs, proving the fail-closed gate covers the
 /// send namespace at the registry level.
 #[test]
@@ -54,7 +54,7 @@ fn start_bytes_rejects_wrong_schema_version_for_send() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — `nmp.nip17.publish_relay_list` with a bad
+/// ADR-0071 / S9 (#1747) — `nmp.nip17.publish_relay_list` with a bad
 /// `schema_version` MUST be rejected BEFORE `start()` runs.
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_publish_relay_list() {
@@ -254,7 +254,7 @@ fn build_bad_version_relay_list_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
-// ---- ADR-0064 §3 (#1783 / M14-1 PR2 #2145): generated `sendDm` builder round-trip
+// ---- ADR-0071 §3 (#1783 / M14-1 PR2 #2145): generated `sendDm` builder round-trip
 //
 // The Swift/Kotlin/TS `sendDm` action-builder
 // (`crates/nmp-codegen/src/action_builders/registry/table.rs`) hand-rolls the

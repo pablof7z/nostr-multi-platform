@@ -67,7 +67,7 @@ native = [
 test-support = ["nmp-store/test-support", "dep:nmp-nip65-types"]
 # Enable the LMDB-backed EventStore. Forwards to nmp-store's lmdb-backend
 # feature (which pulls in the NMP-local nostr-lmdb fork, heed, and
-# nostr-database). ADR-0011, ADR-0012. lmdb-backend implies native (LMDB
+# nostr-database). ADR-0072, ADR-0071. lmdb-backend implies native (LMDB
 # requires OS file I/O).
 lmdb-backend = ["nmp-store/lmdb-backend", "native"]
 # The `android-ffi` feature used to gate the FFI re-export surface that

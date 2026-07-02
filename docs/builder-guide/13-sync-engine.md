@@ -139,7 +139,7 @@ table so diagnostics line up with the sync target:
 | `bytes_saved_vs_req` | `(REQ-baseline − negentropy-bytes)` for the pair, **clamped ≥ 0** |
 
 `record_savings` clamps regressions to 0 (`metrics.rs:76-81`);
-`MetricsSnapshot` is plain `serde` so the ADR-0007 diagnostics bridge ships
+`MetricsSnapshot` is plain `serde` so the ADR-0072 diagnostics bridge ships
 it through `AppState.debug` without a per-counter FFI wrapper. The sync
 efficiency target is bytes-on-wire ≤ 5% of the equivalent REQ on a 10k-event
 backfill.

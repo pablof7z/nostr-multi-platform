@@ -1,6 +1,6 @@
 //! `MarmotAction` plus Marmot's internal typed [`ActionModule`] implementation.
 //! `nmp_marmot::install` registers this namespace with the runtime action
-//! dispatcher; that is the current and only Marmot write doorway. The ADR-0025
+//! dispatcher; that is the current and only Marmot write doorway. The ADR-0072
 //! bespoke native write doorway is retired.
 //!
 //! # Where this fits

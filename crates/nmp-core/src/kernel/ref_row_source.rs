@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 integration glue, codex "Artifact 1") — `impl RefRowRevSource
+//! ADR-0070 (#1671 integration glue, codex "Artifact 1") — `impl RefRowRevSource
 //! for Kernel`.
 //!
 //! This is the seam that wires Lane B's resolver state (per-key revs +
@@ -70,7 +70,7 @@ impl Kernel {
     fn ref_profile_row_payload(&self, key: &str) -> Option<Vec<u8>> {
         let shape = self.ref_demanded_profile_shape(key)?;
         // Not-resolvable-yet ⇒ `None` (absence on the carrier ⇒ Unchanged, never
-        // Cleared — ADR-0063 invariant #1). A claimed pubkey with no cached kind:0
+        // Cleared — ADR-0070 invariant #1). A claimed pubkey with no cached kind:0
         // is live but unresolved; `profile_card_for` would synthesize a
         // placeholder card, so gate on the real cache presence here.
         self.profile_for_pubkey(key)?;
@@ -90,7 +90,7 @@ impl Kernel {
             lud06: card.lud06,
             lnurl: card.lnurl,
         };
-        // ADR-0063 D5 shape narrowing: `Ref` is the feed-avatar subset
+        // ADR-0070 D5 shape narrowing: `Ref` is the feed-avatar subset
         // `{pubkey, display_name, picture_url}`; `Card` carries every field.
         // Narrowing drops the wide-only fields so a feed-avatar consumer's row
         // does not ship the full profile-screen payload.
@@ -164,7 +164,7 @@ impl RefRowRevSource for Kernel {
     }
 
     fn ref_row_keys(&self, namespace: &str) -> Vec<String> {
-        // CRITICAL (ADR-0063): enumerate the LIVE key set from the demanded-shape
+        // CRITICAL (ADR-0070): enumerate the LIVE key set from the demanded-shape
         // maps, NOT the per-key rev maps. The rev maps retain a key through its
         // final-`Clear` teardown; enumerating them would resurrect a released row
         // on the next baseline. A key is live iff a consumer currently demands a

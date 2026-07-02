@@ -66,7 +66,7 @@ use crate::SearchRelayListProjection;
 /// This function names `kind:10007` only as a numeric literal inside
 /// `nmp-nip51`. The term "search relays" enters `nmp-core` nowhere. The
 /// composition crate (here) is entitled to name NIP constants directly per
-/// ADR-0046.
+/// ADR-0069.
 ///
 /// Exposed as a named per-feature installer so app composition roots can wire
 /// search-relay support without pulling in any defaults bundle. Fallback relay

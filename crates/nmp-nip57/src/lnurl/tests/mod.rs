@@ -38,7 +38,7 @@ mod sign_zap_request;
 
 const RECIPIENT_HEX: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
-/// ADR-0050 §D3a — the LNURL worker now sends through a `CommandSender`, so the
+/// ADR-0072 §D3a — the LNURL worker now sends through a `CommandSender`, so the
 /// observation receiver carries `ActorMail`. Unwrap the command for the
 /// existing assertions.
 fn nmp_core_unwrap_mail(mail: nmp_core::ActorMail) -> ActorCommand {

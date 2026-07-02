@@ -148,7 +148,7 @@ fn publish_signed_event_does_not_reject_valid_event_for_nip_shape() {
 
 #[test]
 fn publish_signed_event_does_not_reject_valid_gift_wrap_for_nip_shape() {
-    // Opacity (ADR-0025): a kind:1059 gift-wrap is opaque ciphertext under a
+    // Opacity (ADR-0072): a kind:1059 gift-wrap is opaque ciphertext under a
     // well-formed signed envelope. The chokepoint validates the OUTER
     // envelope's sig/id-hash ONLY and must NOT inspect or reject the inner
     // semantics. A genuinely-signed kind:1059 with an EXPLICIT relay pin (so
@@ -175,7 +175,7 @@ fn publish_signed_event_does_not_reject_valid_gift_wrap_for_nip_shape() {
         !toast
             .as_deref()
             .map_or(false, |t| t.contains("signed event rejected")),
-        "a well-formed gift-wrap must NOT be rejected for NIP shape (ADR-0025 opacity); \
+        "a well-formed gift-wrap must NOT be rejected for NIP shape (ADR-0072 opacity); \
          got: {toast:?}"
     );
 }

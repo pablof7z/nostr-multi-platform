@@ -49,7 +49,7 @@ Redesign-spine blocking findings (2026 clean-break — see the deep-dive referen
 - Shell treats dispatch acceptance (`correlation_id` non-null) as terminal publish success.
 - `PublishTarget::Explicit` is used without a typed `PublishRouteClass`, or app/native code
   composes, signs, or routes outside the actor pipeline.
-- A new `pub extern "C"` appears in a framework crate (`crates/nmp-*`) without an ADR-0030
+- A new `pub extern "C"` appears in a framework crate (`crates/nmp-*`) without an ADR-0072
   exception; or a native UniFFI facade copies runtime-bridge policy instead of delegating to
   `nmp-uniffi-support` / `nmp-native-runtime`.
 - A render/display/app-noun/aggregation concern leaks into an L0–L4 crate: display fields

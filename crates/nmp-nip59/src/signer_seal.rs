@@ -1,15 +1,15 @@
 //! NIP-59 seal (kind:13) + gift-wrap (kind:1059) — **pure functions**.
 //!
-//! # ADR-0050 §D5 — the `SignerForSeal` execution model is gone
+//! # ADR-0072 §D5 — the `SignerForSeal` execution model is gone
 //!
-//! ADR-0026 once routed the seal step through a `SignerForSeal` trait so a
+//! ADR-0072 once routed the seal step through a `SignerForSeal` trait so a
 //! remote signer (NIP-46 bunker, NIP-07, hardware) could produce the kind:13
 //! NIP-44 ciphertext out of process. That design carried a per-invocation
 //! **driver thread** and two wall-clock timeout constants
 //! (`DRIVER_STEP_TIMEOUT`, `GIFT_WRAP_TOTAL_TIMEOUT`) inside this crate — a
 //! second, parallel waiting mechanism on top of the actor's own signer port.
 //!
-//! ADR-0050 §D5 deletes that whole execution model. The seal step is now a
+//! ADR-0072 §D5 deletes that whole execution model. The seal step is now a
 //! continuation chain through the actor's three-verb signer port
 //! (`Nip44EncryptForAccount` → `SignEventForAccount` → `PublishSignedEvent`,
 //! composed in `nmp-nip17::SendGiftWrappedDmCommand`). This crate keeps only the
@@ -119,7 +119,7 @@ pub fn wrap_signed_seal(receiver: &PublicKey, seal_event: &Event) -> Result<Even
 /// integration tests. Remote-signer DM sends do NOT use this function: they
 /// drive the seal step through the actor's `Nip44EncryptForAccount` /
 /// `SignEventForAccount` port and call the two pure halves on the actor thread
-/// (ADR-0050 §D5). There is no trait object, `Arc`, thread, or `SignerOp` here.
+/// (ADR-0072 §D5). There is no trait object, `Arc`, thread, or `SignerOp` here.
 ///
 /// - `sender` signs the kind:13 seal and provides the NIP-44 ECDH secret for the
 ///   seal content. The seal's pubkey is `sender.public_key()`.

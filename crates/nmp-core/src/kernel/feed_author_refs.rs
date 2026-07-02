@@ -1,4 +1,4 @@
-//! ADR-0063 D7 (#1671 Lane H) — feed-author auto-resolve + debug guardrail.
+//! ADR-0070 D7 (#1671 Lane H) — feed-author auto-resolve + debug guardrail.
 //!
 //! Closes the coverage hole: any author a feed RENDERS must resolve through the
 //! SAME `resolve_ref` path automatically, so a shell can't silently forget and
@@ -53,7 +53,7 @@ pub(crate) fn feed_author_consumer_id(feed_key: &str) -> String {
 
 impl Kernel {
     /// Reconcile every registered feed's CURRENT visible-author set against the
-    /// prior tick (ADR-0063 D7). Called once per snapshot tick from
+    /// prior tick (ADR-0070 D7). Called once per snapshot tick from
     /// [`Kernel::make_update`], BEFORE the typed projections are emitted, so the
     /// auto-resolve lands in the SAME frame the row appears (no blank-avatar
     /// gap).
@@ -136,7 +136,7 @@ impl Kernel {
         out
     }
 
-    /// Release EVERY auto-resolved ref a feed consumer holds (ADR-0063 D7) and
+    /// Release EVERY auto-resolved ref a feed consumer holds (ADR-0070 D7) and
     /// drop its tracking entry.
     ///
     /// The leak guard: a durable app-owned timeline feed consumer is
@@ -177,7 +177,7 @@ impl Kernel {
         self.release_all_feed_author_refs(&consumer_id)
     }
 
-    /// DEBUG GUARDRAIL (ADR-0063 D7, BLOCKING 2) — warn when an author a feed's
+    /// DEBUG GUARDRAIL (ADR-0070 D7, BLOCKING 2) — warn when an author a feed's
     /// typed producer ACTUALLY EMITTED onto the wire this tick has NO live
     /// resolver demand.
     ///
@@ -204,7 +204,7 @@ impl Kernel {
                 target: "nmp.refs.guardrail",
                 consumer = %consumer_id,
                 pubkey = %super::short_hex(&key),
-                "ADR-0063 D7 guardrail: feed EMITTED author onto the wire with NO \
+                "ADR-0070 D7 guardrail: feed EMITTED author onto the wire with NO \
                  live resolver demand — a sidecar crossed a pubkey that was never \
                  resolve_ref-d (missed provider, or a FeedAuthorRefs field the \
                  provider's author set didn't cover; NOT the normal empty-profile \
@@ -234,7 +234,7 @@ impl Kernel {
             .collect()
     }
 
-    /// DEBUG GUARDRAIL (ADR-0063 D7) — warn when a feed-author this kernel just
+    /// DEBUG GUARDRAIL (ADR-0070 D7) — warn when a feed-author this kernel just
     /// reconciled has NO live resolver demand.
     ///
     /// This fires when an EMITTED feed-row author has no resolver slot at all —
@@ -244,7 +244,7 @@ impl Kernel {
     /// because the profile CONTENT is still empty (a fresh `CacheOk` resolve that
     /// hasn't fetched yet) — that is the normal async gap, and the demand
     /// ([`Kernel::ref_demanded_profile_shape`]) is `Some` in that case. The
-    /// signal is "rendered author with zero demand," mirroring ADR-0053's
+    /// signal is "rendered author with zero demand," mirroring ADR-0070's
     /// `Undeclared` debug-assert discipline: loud in dev, absent in release.
     #[cfg(debug_assertions)]
     fn warn_unresolved_feed_authors(&self, live_consumers: &BTreeSet<String>) {
@@ -253,7 +253,7 @@ impl Kernel {
                 target: "nmp.refs.guardrail",
                 consumer = %consumer_id,
                 pubkey = %super::short_hex(&key),
-                "ADR-0063 D7 guardrail: feed renders author with NO live resolver \
+                "ADR-0070 D7 guardrail: feed renders author with NO live resolver \
                  demand — a surface emitted a pubkey without resolve_ref (NOT the \
                  normal empty-profile async gap)"
             );

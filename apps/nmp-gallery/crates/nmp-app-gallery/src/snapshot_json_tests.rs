@@ -38,7 +38,7 @@ fn empty_typed_snapshot_decodes_to_gallery_shape() {
 
 #[test]
 fn refs_profile_row_delta_surfaces_in_refs_profile_json() {
-    // ADR-0063 (#1671): a `refs.profile` baseline row carrying a fresh KPRF
+    // ADR-0070 (#1671): a `refs.profile` baseline row carrying a fresh KPRF
     // card must merge into the store and surface under the
     // `refs.profile` JSON key the native shells read.
     let pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -85,7 +85,7 @@ fn refs_profile_row_delta_surfaces_in_refs_profile_json() {
 
 #[test]
 fn refs_profile_clear_drops_row_from_refs_profile_json() {
-    // ADR-0063 (#1671): snapshot_json materialises the FULL current
+    // ADR-0070 (#1671): snapshot_json materialises the FULL current
     // RefProfileStore set each frame. A subsequent `refs.profile` CLEAR
     // (release-on-scroll-off) must DROP the row from the `refs.profile`
     // JSON map — the materialised set is the sole source of truth (D4),

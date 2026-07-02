@@ -417,7 +417,7 @@ impl<S> HostCapabilities for BrowserAppBuilder<S> {
 
 impl<S> BrowserAppBuilder<S> {
     /// Register one or more capability/signer providers, keyed by their
-    /// `Signer::pubkey()` (ADR-0067 §10a, single-door per account).
+    /// `Signer::pubkey()` (ADR-0072 §10a, single-door per account).
     ///
     /// Available in ALL builder states. Providers accumulate into the inner
     /// state and are moved into the `CapabilityProviderRegistry` at `start()`.

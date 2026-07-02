@@ -137,7 +137,7 @@ impl ActionModule for PublishGroupEventAction {
         );
     type Action = PublishGroupEventInput;
 
-    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PublishGroupEventInput as ActionPayload>::decode(bytes))

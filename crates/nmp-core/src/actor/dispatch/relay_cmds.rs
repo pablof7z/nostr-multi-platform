@@ -17,7 +17,7 @@ use crate::actor::RelayCommand;
 /// directly to `send_outbound` with the supplied role and URL. The sender
 /// (e.g. a `RelayConnectedHook`) already holds no kernel reference and cannot
 /// return `Vec<OutboundMessage>` directly; posting through this variant wakes
-/// the actor (ADR-0050 §D3a) and delivers the frame on the actor thread
+/// the actor (ADR-0072 §D3a) and delivers the frame on the actor thread
 /// without any new mutex or blocking call.
 pub(super) fn enqueue_outbound(
     role: RelayRole,

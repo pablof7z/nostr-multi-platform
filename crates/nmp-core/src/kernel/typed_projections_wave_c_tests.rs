@@ -1,7 +1,7 @@
 //! End-to-end proof for the Wave C identity cluster Tier-2 typed projection
 //! sidecars (`accounts` / `active_account` / `profile`) — the kernel-owned
 //! built-in counterpart to the host-registered Tier-1 typed projections
-//! (ADR-0037).
+//! (ADR-0072).
 //!
 //! Split out of `typed_projections_tests.rs` to keep both files under the
 //! AGENTS.md 500-LOC hard cap. The bar is identical: each built-in typed
@@ -9,8 +9,8 @@
 //! `make_update` actually emits — decoded back to its typed struct — IN ADDITION
 //! to its existing generic `Value` entry under the SAME key.
 //!
-//! V-112 (ADR-0042): `author_view` / `thread_view` deleted from typed sidecars.
-//! ADR-0063 Lane H: `mention_profiles` / `claimed_profiles` /
+//! V-112 (ADR-0076): `author_view` / `thread_view` deleted from typed sidecars.
+//! ADR-0070 Lane H: `mention_profiles` / `claimed_profiles` /
 //! `resolved_profiles` / `claimed_events` deleted from whole-map typed sidecars
 //! (replaced by refs.profile / refs.event NRRD row-delta sidecars).
 
@@ -125,11 +125,11 @@ fn identity_builtins_emit_typed_sidecars_alongside_json() {
     );
 }
 
-/// ADR-0063 refs carriers: `refs.profile` and `refs.event` land in the
+/// ADR-0070 refs carriers: `refs.profile` and `refs.event` land in the
 /// `typed_projections` sidecar of the emitted frame and decode as NRRD batches.
 /// They intentionally have no generic JSON `projections` entries.
 ///
-/// ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+/// ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
 /// claimed_events assertions removed — those whole-map projections are deleted.
 #[test]
 fn refs_builtins_emit_typed_row_delta_sidecars() {
@@ -159,7 +159,7 @@ fn refs_builtins_emit_typed_row_delta_sidecars() {
         "refs.* carriers are typed-sidecar only, not generic JSON projections"
     );
 
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles / claimed_events
+    // ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles / claimed_events
     // are no longer emitted by the kernel. Assert they are absent from the
     // typed sidecar AND from the JSON projections.
     let absent_keys = [
@@ -171,11 +171,11 @@ fn refs_builtins_emit_typed_row_delta_sidecars() {
     for key in &absent_keys {
         assert!(
             typed.iter().all(|t| &t.key != key),
-            "typed sidecar must NOT carry deleted projection `{key}` (ADR-0063 Lane H)"
+            "typed sidecar must NOT carry deleted projection `{key}` (ADR-0070 Lane H)"
         );
         assert!(
             projections.get(*key).is_none(),
-            "JSON projections must NOT carry deleted projection `{key}` (ADR-0063 Lane H)"
+            "JSON projections must NOT carry deleted projection `{key}` (ADR-0070 Lane H)"
         );
     }
 }

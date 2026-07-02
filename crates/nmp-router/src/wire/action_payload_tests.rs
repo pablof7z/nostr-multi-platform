@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the relay-list action typed payload
-//! codecs (ADR-0064 / #1756). Every fail-closed gate asserts the NEGATIVE.
+//! codecs (ADR-0071 / #1756). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
 use crate::publish_relay_list::{PublishRelayListInput, RelayListEntry, RelayMarker};

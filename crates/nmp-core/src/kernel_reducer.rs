@@ -176,7 +176,7 @@ impl KernelReducer {
     // D8 — no polling. Claims are reactive dispatch; the kernel registers
     // interest and the wasm `dispatch()` arm fans the outbound immediately.
 
-    // ADR-0063 Lane H: claim_profile / release_profile deleted.
+    // ADR-0070 Lane H: claim_profile / release_profile deleted.
     // Use resolve_profile_ref / release_profile_ref directly (or the
     // KernelReducer::resolve_ref / release_ref if a public surface is needed).
 

@@ -75,7 +75,7 @@ impl<'a> NostrContentView<'a> {
     }
 
     /// Optional host-side sink used to initiate an upstream fetch the first
-    /// time a `nostr:` event URI is encountered in a render pass (ADR-0034 /
+    /// time a `nostr:` event URI is encountered in a render pass (ADR-0072 /
     /// M16). Defaults to `None`, which preserves preview-only behaviour: no
     /// event refs are resolved and only pre-populated `embedded_events` resolve.
     pub fn event_ref_resolver(mut self, sink: Option<&'a dyn EventRefResolver>) -> Self {

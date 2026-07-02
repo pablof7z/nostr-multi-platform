@@ -75,7 +75,7 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     let _comment_runtime = nmp_nip22::register_runtime(app);
     nmp_nip23::register_longform_projection(app);
 
-    // 3. Register this app's own modules here. ADR-0052: `register_action`
+    // 3. Register this app's own modules here. ADR-0072: `register_action`
     //    takes the module VALUE, so a stateful module owns dependencies
     //    captured at composition time. The starter action is reached from
     //    generated host builders, through the DispatchEnvelope byte doorway.
@@ -105,7 +105,7 @@ pub fn starter_projection_keys() -> [&'static str; 5] {
     ]
 }
 
-/// Kernel built-in projection keys declared through ADR-0053 before `start()`.
+/// Kernel built-in projection keys declared through ADR-0070 before `start()`.
 ///
 /// Tier-1 projections such as [`HOME_TIMELINE_PROJECTION`] and
 /// [`EVENT_ENVELOPES_PROJECTION`] are runtime/protocol projections that
@@ -213,7 +213,7 @@ mod tests {
     #[test]
     fn action_rejects_empty_label() {
         let mut ctx = ActionContext::default();
-        // ADR-0052: `start` takes `&self`; call on the (unit) module value.
+        // ADR-0072: `start` takes `&self`; call on the (unit) module value.
         let result = EntryActionModule.start(
             &mut ctx,
             AddEntryAction {

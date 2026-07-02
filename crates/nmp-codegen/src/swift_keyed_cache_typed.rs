@@ -1,4 +1,4 @@
-//! ADR-0063 Lane C (#1671) — the TYPED row-payload rendering for the Swift
+//! ADR-0070 Lane C (#1671) — the TYPED row-payload rendering for the Swift
 //! `KeyedRefCache` generator. Split out of `swift_keyed_cache.rs` so neither
 //! source file exceeds the 500-LOC cap.
 //!
@@ -12,9 +12,9 @@
 
 use crate::swift_projections_registry::KeyedProjectionEntry;
 
-/// The `init` that wires the typed decode-before-commit seam (ADR-0063 Lane C).
+/// The `init` that wires the typed decode-before-commit seam (ADR-0070 Lane C).
 /// Kept minimal so the rest of the class stays static.
-pub(super) const STATIC_INIT: &str = r#"    /// ADR-0063 Lane C: wire the real typed decoder at construction so the
+pub(super) const STATIC_INIT: &str = r#"    /// ADR-0070 Lane C: wire the real typed decoder at construction so the
     /// decode-before-commit seam validates every `Changed` row against the
     /// namespace's concrete type (no caller setup required).
     init() {
@@ -36,12 +36,12 @@ fn typed_decode_fn_name(e: &KeyedProjectionEntry) -> String {
     format!("decode{capitalized}Row")
 }
 
-/// Render the per-key TYPED accessors (ADR-0063 Lane C, #1671 part-(b)). Each
+/// Render the per-key TYPED accessors (ADR-0070 Lane C, #1671 part-(b)). Each
 /// decodes the cached row-payload buffer through the namespace's typed reader
 /// into the concrete domain type — NOT the Lane-A raw `Data` passthrough.
 pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "    // MARK: - Per-key TYPED accessors (ADR-0063 Lane C, #1671)\n\
+        "    // MARK: - Per-key TYPED accessors (ADR-0070 Lane C, #1671)\n\
          \x20\x20\x20\x20//\n\
          \x20\x20\x20\x20// One TYPED accessor per keyed namespace — the #1671 part-(b) host\n\
          \x20\x20\x20\x20// per-key reactive read API. A view binds `model.profile(pubkey)` and\n\
@@ -66,7 +66,7 @@ pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
 }
 
 /// Render the per-namespace typed-decode helpers + the real, typed `rowDecoder`
-/// injection (ADR-0063 invariant #2: decode-before-commit). Each helper does a
+/// injection (ADR-0070 invariant #2: decode-before-commit). Each helper does a
 /// CHECKED root decode of the row payload buffer (verifying the row-payload
 /// `file_identifier`, NOT the `NRRD` batch id) and hands the reader to the
 /// hand-written `TypedProjectionGlue`. The `rowDecoder` returns `true` iff the
@@ -75,7 +75,7 @@ pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
 /// is now the TYPED domain type, not raw bytes.
 pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "    // MARK: - Typed row decode (ADR-0063 Lane C, #1671)\n\
+        "    // MARK: - Typed row decode (ADR-0070 Lane C, #1671)\n\
          \x20\x20\x20\x20//\n\
          \x20\x20\x20\x20// The real per-namespace typed decoders that replace Lane A's\n\
          \x20\x20\x20\x20// raw-bytes passthrough. Each does a CHECKED root decode of the row\n\
@@ -91,7 +91,7 @@ pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String 
         let rp = &e.row_payload;
         let fn_name = typed_decode_fn_name(e);
         s.push_str(&format!(
-            "    /// Decode one `{}` row payload buffer into `{}` (ADR-0063 Lane C).\n\
+            "    /// Decode one `{}` row payload buffer into `{}` (ADR-0070 Lane C).\n\
              \x20\x20\x20\x20private func {}(bytes: Data) -> {}? {{\n\
              \x20\x20\x20\x20\x20\x20\x20\x20guard !bytes.isEmpty else {{ return nil }}\n\
              \x20\x20\x20\x20\x20\x20\x20\x20var buffer = ByteBuffer(data: bytes)\n\
@@ -118,7 +118,7 @@ pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String 
     // The decode-before-commit injection: route each namespace to its typed
     // helper (invariant #2). Called once at construction (see init).
     s.push_str(
-        "    /// Wire the real typed decode-before-commit seam (ADR-0063 #2): a\n\
+        "    /// Wire the real typed decode-before-commit seam (ADR-0070 #2): a\n\
          \x20\x20\x20\x20/// `Changed` row commits ONLY if its payload decodes to the\n\
          \x20\x20\x20\x20/// namespace's concrete type. Called from `init` so the typed\n\
          \x20\x20\x20\x20/// contract holds without any caller wiring.\n\

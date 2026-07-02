@@ -1,139 +1,103 @@
 # ADR-0069: Explicit feature composition and app-owned product policy
 
-## Status
+## Decision
 
-Accepted for the architecture redesign direction; amended by the 2026-06-30
-defaults deletion.
+Production NMP app roots compose named owners directly. An app Rust composition
+root installs the substrate, selected reusable protocol features, app-owned
+product features, shell capability contracts, typed outputs, and the app/client
+identity used by outbound finalization and transport metadata.
 
-**Current disposition:** production apps install `nmp-substrate` plus explicit
-protocol/app feature installers. The old defaults bundle and any replacement
-preset or test-helper bundle are deleted from current guidance.
+Hidden default presets are not production architecture. A maintainer should be
+able to read the composition root and see which substrate pieces, protocol
+installers, app features, capability contracts, read helpers, write builders,
+and product policy knobs the app uses.
+
+Protocol crates expose named installers with explicit configuration and returned
+handles when the crate owns runtime or projection state. The uniform installer
+shape is:
+
+```rust
+pub struct Config {
+    // Explicit app policy knobs; empty when the crate has none.
+}
+
+pub struct Handles {
+    // Runtime or projection handles the app may retain; empty when none exist.
+}
+
+pub fn register(
+    app: &mut (impl RequiredNarrowRegistrarTraits),
+    config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError>;
+```
+
+Reusable protocol installers take only the narrow registrar traits they need.
+They do not take a broad app host trait to smuggle unrelated policy into the
+framework.
+
+App-specific nouns live in app Rust crates unless they are reusable Nostr
+mechanisms. A downstream need is evidence for a generic mechanism; it is not
+permission to add app policy or product defaults to shared NMP crates.
 
 ## Context
 
-Issue #2313 exposed that NMP's app-facing model had become too hard to read:
-production apps could receive an opaque bundle of protocol features, runtimes,
-projections, and policy. Issue #2316 showed that this is not just a naming
-problem. One feature's state is split across many independent mechanisms, so
-hiding more work behind a larger preset would only make the architecture less
-inspectable.
+NMP app setup used to hide protocol features, projection wiring, runtime pieces,
+and product policy behind broad bundles. That made it hard to inspect what an
+app actually did and encouraged app policy to leak into shared crates.
 
-The old defaults-era ADRs still preserve useful invariants: reusable substrate
-installation, composition observability, extension seams, and runtime builders.
-What they no longer own is the production app architecture. A real app root must
-show which substrate, protocol features, app features, capability needs, and
-policy owners it installs.
-
-## Decision
-
-Production NMP apps use explicit feature composition.
-
-An app Rust composition root installs:
-
-- substrate: actor, store, planner, signer ports, capability registry, and typed
-  update delivery;
-- reusable Nostr protocol features such as follows, lists, search, groups, DMs,
-  refs, routing, and publish helpers;
-- app-owned product features such as Highlighter capture, Podcast playback, or a
-  gallery showcase;
-- typed outputs/status the shell may render or cache mechanically;
-- capability contracts that describe raw OS/browser work the shell may execute;
-- one app/client identity used by outbound finalization and transport metadata.
-
-The composition root is the only place where an app chooses product policy. It
-is the answer to "what does this app do?" A maintainer should be able to read
-that root and see the installed protocol features, app features, read sessions,
-write builders, shell capabilities, and product defaults without reverse
-engineering a preset crate.
-
-Typical construction is:
-
-```text
-create NMP app builder
-  -> install substrate/runtime pieces
-  -> install selected reusable Nostr protocol features
-  -> install app-owned product features
-  -> install shell capability contracts
-  -> start actor/runtime
-```
-
-The exact Rust API can change. The invariant is that production apps compose
-named pieces explicitly, and app-specific nouns stay in app crates unless they
-are a reusable Nostr mechanism.
-
-The old defaults bundle does not survive as a reusable installer library, a
-test helper, or a compatibility shim. Shared substrate construction lives in
-`nmp-substrate`. Protocol crates expose named per-feature installers. App and
-runtime roots call those owners directly and must not hide seed follows,
-bootstrap relay brands, signer permission defaults, onboarding policy, app
-relay policy, or product defaults behind a preset.
-
-Hidden default presets are rejected as production app architecture.
-
-Stateful protocol crates follow the same rule. For example, Marmot MLS support
-is explicit composition:
-
-```rust
-let marmot_config = app.marmot_config(app_support_dir.join("marmot"));
-nmp_marmot::install(app, marmot_config)?;
-```
-
-The runtime may provide a narrow credential-slot wrapper for Marmot, but Marmot
-owns the raw-key read, its MDK store, action namespace, ingest parsers, identity
-rebinding, and projection teardown.
-
-App-specific behavior belongs in app Rust crates unless it is a reusable Nostr
-mechanism. A request from one downstream app is evidence, not permission to add
-app-named helpers or product policy to NMP crates.
+Explicit composition keeps the architecture readable: substrate construction is
+shared, protocol features stay reusable, app Rust owns product meaning, and
+native/web shells stay thin.
 
 ## Consequences
 
-Positive:
+The composition root is more visible than a magic preset, but that visibility is
+the point. Extra setup code is preferable to hidden relay brands, seed follows,
+signer permission defaults, onboarding policy, app relay policy, or product
+defaults.
 
-- Reading the composition root tells an app developer what is installed.
-- NMP crates can shrink toward reusable protocol/runtime mechanisms.
-- App policy does not leak into native shells or framework defaults.
-- Composition ledgers remain useful because they report an explicit root, not a
-  magic preset.
+Installer APIs may need small typed config and handle structs even when they are
+empty. This keeps future policy explicit without inventing a new preset layer.
 
-Negative/tradeoffs:
+## Boundaries
 
-- Existing templates, examples, builder-guide pages, and downstream roots that
-  teach hidden default presets as the production path must migrate to explicit
-  owner composition.
-- Some installer APIs may need to become more granular before the explicit root
-  is pleasant.
-- A production app may initially write more visible setup code, but that setup
-  replaces hidden behavior.
-- Existing downstream apps may need a transition pass where each `register_*`
-  call is classified as substrate, reusable protocol feature, app feature,
-  capability, or compatibility.
+Permitted:
 
-## Alternatives considered
+- substrate construction through `nmp-substrate`;
+- reusable protocol installers in protocol crates;
+- app-owned installers in app Rust crates;
+- explicit policy knobs in installer `Config` values;
+- returned runtime/projection handles in installer `Handles` values.
 
-| Option | Why rejected |
-|---|---|
-| Keep a hidden defaults bundle as the normal app root | It hides active protocol features and policy, preserving the #2313 confusion. |
-| Add a broad `dyn AppFeature` or global `AppHost` method pile first | It risks another abstraction layer without deleting old public surface. Existing builders, registrars, and installer functions must be tried first. |
-| Move common downstream product behavior into NMP crates | It violates the generic Nostr mechanism vs. app domain boundary. |
-| Make shells configure raw feature dictionaries | It moves protocol and product policy out of Rust. |
+Forbidden:
 
-## Fitness functions / enforcement
+- hidden production presets;
+- compatibility bundles that silently install product policy;
+- app-named helpers in shared crates when the concept is not a reusable Nostr
+  mechanism;
+- broad app host bounds in reusable protocol installers;
+- native or web shells choosing protocol policy to avoid Rust composition.
 
-- Production scaffold docs and tests reject hidden default presets and
-  `declare_consumed_projections` teaching paths.
-- `nmp-substrate` has no platform-runtime dependency and no leaf-app product
-  policy.
-- There are no compatibility presets; apps and runtimes compose the concrete
-  owners directly.
-- Downstream app roots keep app-specific policy in app Rust crates; native/web
-  shells render, execute capabilities, and hold only ephemeral presentation
-  state.
+## Enforcement
 
-## Linked work
+Reviewers check production roots, templates, and builder docs for explicit
+installer calls and app-owned policy. Doctrine gates reject reintroduced default
+bundle vocabulary and starter templates that teach hidden composition.
 
-- #2313: app-developer API complexity.
-- #2316: fragmented feature-state lifecycle.
-- #2320: ADR reset and stale source-of-truth cleanup.
-- Amends ADR-0009, ADR-0046, ADR-0049, ADR-0067, and ADR-0068 where they taught
-  defaults-era production composition.
+Protocol installer linting checks that scoped protocol crates expose one
+canonical `register` entry point and do not grow public split installers such as
+`register_actions`, `register_runtime`, or `register_*_scopes`.
+
+## Related
+
+- [ADR-0070](0070-typed-read-sessions.md) - typed read sessions.
+- [ADR-0071](0071-write-intents-and-route-provenance.md) - write ownership and
+  route provenance.
+- [ADR-0072](0072-runtime-capability-and-shell-boundary.md) - runtime and shell
+  ownership.
+- [docs/architecture/crate-boundaries.md](../architecture/crate-boundaries.md)
+  - crate ownership and layering.
+- [docs/builder-guide/20-new-protocol-module.md](../builder-guide/20-new-protocol-module.md)
+  - protocol module installer guidance.
+- #2724 - protocol installer uniformity.
+- #2746 - ADR current-only cleanup.

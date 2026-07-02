@@ -59,7 +59,7 @@ impl ActionModule for SendDmAction {
         );
     type Action = SendDmInput;
 
-    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<SendDmInput as ActionPayload>::decode(bytes))

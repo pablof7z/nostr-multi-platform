@@ -1,4 +1,4 @@
-//! ADR-0063 — the canonical raw event-key parser.
+//! ADR-0070 — the canonical raw event-key parser.
 //!
 //! The unified `resolve_ref` / `release_ref` seam (refs.rs) addresses an event
 //! by the **raw key** the FFI/JNI contract documents (resolve_ref.rs §"Key

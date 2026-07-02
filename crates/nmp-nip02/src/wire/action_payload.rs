@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codecs for the nip02 follow-list ACTIONS
-//! (ADR-0064 / S3 #1751): `nmp.follow` / `nmp.unfollow` ([`PubkeyAction`]) and
+//! (ADR-0071 / S3 #1751): `nmp.follow` / `nmp.unfollow` ([`PubkeyAction`]) and
 //! `nmp.follow_many` ([`FollowManyAction`]).
 //!
 //! These are the WRITE-direction typed payloads carried as the OPAQUE

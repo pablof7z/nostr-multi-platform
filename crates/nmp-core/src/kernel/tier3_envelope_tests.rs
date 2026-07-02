@@ -1,4 +1,4 @@
-//! ADR-0044 proof — the typed Tier-3 `SnapshotFrame` envelope fields are
+//! ADR-0072 proof — the typed Tier-3 `SnapshotFrame` envelope fields are
 //! populated by `make_update` and agree, field-for-field, with the source
 //! `KernelSnapshot` state.
 //!
@@ -42,7 +42,7 @@ fn with_snapshot_frame<R>(bytes: &[u8], f: impl FnOnce(fb::SnapshotFrame<'_>) ->
 /// `payload:Value` is no longer emitted on the wire). The optional diagnostic
 /// fields are absent in BOTH representations (absent = healthy).
 #[test]
-fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
+fn typed_tier3_envelope_agrees_with_json_on_healthy_kernel() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let (bytes, json) = kernel.make_update_frame_and_json_for_test(true);
 
@@ -175,7 +175,7 @@ fn adr0044_typed_envelope_agrees_with_json_on_healthy_kernel() {
 /// When `store_open_failure` is set, the typed field carries the exact same
 /// string the struct-serialized JSON does — the present case for an `Option<String>`.
 #[test]
-fn adr0044_typed_store_open_failure_agrees_with_json_when_present() {
+fn typed_tier3_store_open_failure_agrees_with_json_when_present() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let reason = "LMDB open failed: No such file or directory (os error 2)";
     kernel.set_store_open_failure_for_test(reason);
@@ -203,7 +203,7 @@ fn adr0044_typed_store_open_failure_agrees_with_json_when_present() {
 /// therefore untested) on a bare kernel. Covers `Option<String> close_reason` in
 /// the `None` state and the `u128 -> u64` `opened_at_ms` cast.
 #[test]
-fn adr0044_typed_wire_subscriptions_agree_with_json_when_populated() {
+fn typed_tier3_wire_subscriptions_agree_with_json_when_populated() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let frames = vec![crate::subs::WireFrame::Req {
         relay_url: "wss://relay.example".to_string(),

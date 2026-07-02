@@ -1,4 +1,4 @@
-//! `TestSupportCommand` — test-only actor verbs (ADR-0065).
+//! `TestSupportCommand` — test-only actor verbs (ADR-0071).
 //!
 //! Grouped under `ActorCommand::TestSupport(TestSupportCommand)`. Dispatch
 //! home: `actor/dispatch/cmd_interests.rs` (ingest/GC) +

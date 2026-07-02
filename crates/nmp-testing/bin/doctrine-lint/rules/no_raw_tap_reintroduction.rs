@@ -21,7 +21,7 @@
 //! cursor + `created_at` store-resync watermark.
 //!
 //! External per-event consumption (e.g. the `hl` nostrdb mirror) uses the pull
-//! cursor (ADR-0058 §8 step 5): register a `GlobalLog` cursor in
+//! cursor (ADR-0072 §8 step 5): register a `GlobalLog` cursor in
 //! `Protected { max_lag_entries }` mode → receive `nmp.pull.wake` →
 //! call UniFFI `NmpApp::mirror_pull_page` → apply the page → persist `after_seq` →
 //! `AdvancePullCursor`. See `docs/architecture/external-consumers.md`.
@@ -182,7 +182,7 @@ pub fn check(
                     "`{}` re-introduces a deleted external-event-delivery escape hatch \
                      (#1552 native push sink or raw event tap) — \
                      external per-event mirrors must use the pull cursor \
-                     (`NmpApp::mirror_pull_page` + `GlobalLog` cursor, ADR-0058); \
+                     (`NmpApp::mirror_pull_page` + `GlobalLog` cursor, ADR-0072); \
                      in-process relay forwarding uses `ExternalEventSinkPolicy`; \
                      kind-level parsing uses `register_ingest_parser`",
                     token
@@ -190,7 +190,7 @@ pub fn check(
                 "for an external store mirror: register a `GlobalLog` cursor in \
                  `Protected {{ max_lag_entries }}` mode, receive `nmp.pull.wake`, \
                  call `NmpApp::mirror_pull_page`, apply the page, persist `after_seq`, \
-                 then `AdvancePullCursor` (ADR-0058, docs/architecture/external-consumers.md); \
+                 then `AdvancePullCursor` (ADR-0072, docs/architecture/external-consumers.md); \
                  for in-process relay forwarding: `ExternalEventSinkPolicy`; \
                  for kind-level parsing: `register_ingest_parser`"
                     .to_string(),
@@ -211,7 +211,7 @@ pub fn check(
                  ingest tap) registered outside the `external_event_sink` \
                  module re-introduces the raw-event-tap CLASS"
                     .to_string(),
-                "for external mirrors use the pull cursor (ADR-0058); \
+                "for external mirrors use the pull cursor (ADR-0072); \
                  for in-process relay forwarding route through \
                  `ExternalEventSinkPolicy` / `ExternalEventSinkDispatcher` in \
                  `substrate/external_event_sink/`"
@@ -223,10 +223,10 @@ pub fn check(
                 "C-ABI event-sink register/ack outside the `external_event_sink` \
                  module re-introduces the #1552-deleted native push sink CLASS — \
                  the native push sink (register/ack/retain-until-ack) is permanently \
-                 replaced by the pull cursor (ADR-0058)"
+                 replaced by the pull cursor (ADR-0072)"
                     .to_string(),
                 "for external mirrors use UniFFI `NmpApp::mirror_pull_page` + `GlobalLog` cursor \
-                 in `Protected {{ max_lag_entries }}` mode (ADR-0058, \
+                 in `Protected {{ max_lag_entries }}` mode (ADR-0072, \
                  docs/architecture/external-consumers.md)"
                     .to_string(),
             ));

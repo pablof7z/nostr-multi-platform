@@ -3,7 +3,7 @@
 use crate::{NmpApp, NmpConfigStatus};
 
 impl NmpApp {
-    // ADR-0052 §D3 — per-app signer-port accessors live in the cohesive
+    // ADR-0072 §D3 — per-app signer-port accessors live in the cohesive
     // `signer_ports` sibling module (another `impl NmpApp` block).
 
     /// V-40 — register a [`nmp_core::substrate::IngestParser`] for `kind`
@@ -31,7 +31,7 @@ impl NmpApp {
             return status;
         }
         if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
-            // ADR-0049 Part 2 — record the parser registration. This is an
+            // ADR-0069 Part 2 — record the parser registration. This is an
             // additive seam (multiple parsers per kind coexist), so a pre-start
             // call is always `Installed`. Post-start calls return
             // `AlreadyStarted` above and record `DroppedLateWiring`.
@@ -141,7 +141,7 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0057 PR 2 — install the kernel's
+    /// ADR-0070 PR 2 — install the kernel's
     /// [`nmp_core::substrate::ProfileLookup`] handle. The per-app crate
     /// (today `explicit_composition` register_substrate) hands in a concrete
     /// `nmp_nip01::ProfileCache`; the same `Arc` is the writer side fed by the
@@ -330,7 +330,7 @@ impl NmpApp {
             return status;
         }
         if let Ok(mut slot) = self.composition.routing_substrate.lock() {
-            // ADR-0049 Part 2 — record the last-writer-wins decision.
+            // ADR-0069 Part 2 — record the last-writer-wins decision.
             self.record_slot_decision("routing_substrate", "routing_substrate", slot.is_some());
             *slot = Some(std::sync::Arc::new(factory));
             NmpConfigStatus::Ok

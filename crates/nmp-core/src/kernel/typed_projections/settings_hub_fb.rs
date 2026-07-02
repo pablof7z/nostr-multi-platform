@@ -5,7 +5,7 @@
 //! `snapshot_projections_with_publish_cluster` helper inserts under
 //! `"settings_hub"`: `{ "relay_count": configured_relays_snapshot().len() }`.
 //! This module adds a **typed FlatBuffers** encoding of the same shape, carried
-//! in the `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing —
+//! in the `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing —
 //! the generic `Value` projection.
 //!
 //! [`SettingsHubModel`] is built from the same `configured_relays_snapshot()`

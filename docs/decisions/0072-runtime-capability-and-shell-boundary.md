@@ -1,128 +1,94 @@
 # ADR-0072: Runtime, capability, and shell boundary
 
-## Status
-
-Accepted for the architecture redesign direction.
-
-**Supersession note (2026-06-30):** `the deleted defaults bundle` is deleted. Any reference
-below to it as reusable composition is historical context only; current runtime
-composition uses `nmp-substrate` plus explicit protocol/app installers.
-
-## Context
-
-NMP inherits RMP's core rule: Rust owns durable behavior and each platform
-renders native UI. ADR-0067 and ADR-0068 split browser/native ABI glue from
-runtime ownership. The redesign keeps that split, but tightens the product
-boundary so typed sessions, actions, publish status, and capability results do
-not leak into shell-owned policy or runtime-specific lifecycle recipes.
-
-Downstream audits showed the same failure mode across web, iOS, Android, TUI,
-widgets, AppIntents, CarPlay, Live Activities, workers, and server-ish helpers:
-when the shell owns protocol parsing, relay policy, signer state, publish
-completion, playback queue truth, or retry loops, the second platform has to
-reimplement product correctness.
-
 ## Decision
 
 Rust owns product state, protocol policy, relay routing, signing policy,
-privacy, persistence, retry/recoverability, time decisions, durable navigation
+privacy, persistence, retry and recovery, time decisions, durable navigation
 meaning, and cross-platform invariants.
 
-Native/web/desktop/TUI shells own exactly:
-
-- rendering and platform UX affordances;
-- execution of OS/browser capabilities;
-- ephemeral presentation state that cannot become product truth.
-
-For an app developer, this means Swift, Kotlin, TypeScript, or TUI code should
-mostly do three things:
-
-- start or attach to the Rust-owned app runtime;
-- open typed read sessions and dispatch typed actions;
-- render emitted state and answer capability requests.
-
-Anything a second platform would need to reimplement to stay correct belongs in
-Rust: read-source expansion, relay choice, signer choice, tag/envelope mutation,
-publish retry, cache truth, admission policy, privacy checks, product queue
-state, durable navigation meaning, and user-visible operation status.
+Native, web, desktop, TUI, widgets, extensions, and other platform shells own
+only rendering, platform UX affordances, execution of OS or browser
+capabilities, and ephemeral presentation state that cannot become product truth.
 
 Capability flow is:
 
 ```text
 Rust requests capability
-  -> shell executes raw OS/browser/API operation
-  -> shell reports raw success/failure/data
-  -> Rust decides state transition, retry, status, and user-visible meaning
+  -> shell executes the raw OS/browser/API operation
+  -> shell reports raw success, failure, or data
+  -> Rust decides durable state, retry, status, and user-visible meaning
 ```
 
-Runtime crates own runtime lifecycle and platform constraints.
-`nmp-native-runtime` owns native actor lifecycle and native builder state.
-`nmp-uniffi` is the public native binding surface for iOS, Android, and desktop
-hosts. Raw app-owned glue, where still present, is delivery-specific and must not
-be taught as reusable framework API.
-`nmp-browser-runtime` owns browser worker/runtime/wasm-bindgen ABI glue and
-browser capability brokerage. `explicit composition` remains reusable composition, not a
-runtime.
+Native hosts use UniFFI as the public binding surface. FlatBuffers bytes remain
+the hot action/update payload transport where NMP needs compact typed frames.
+Raw C/JNI framework APIs are not reusable native public architecture.
 
-Browser durable storage must initialize before product start when durable mode
-is required. Dedicated Worker/OPFS requirements are architectural constraints,
-not test details. Missing wasm, missing Worker, OPFS failure, Web Locks
-contention, or unsupported signer capability must produce typed degraded/failure
-state or fail the proof. Silent in-memory fallback cannot count as product
-runtime success.
+Browser hosts use the browser runtime and wasm-bindgen/Worker boundary owned by
+the browser runtime. Native runtime lifecycle belongs to the native runtime.
+Runtime crates own platform constraints; app Rust crates own product meaning.
 
-Headless and OS-owned surfaces use typed actions, short-lived headless
-invocation, capability results, or last Rust-emitted mirror frames first.
-App-lifetime typed sessions are allowed only after a selected proof shows
-resident state is required and uses the same lifecycle contract as visible
-screens. Widgets, AppIntents, CarPlay, remote commands, Live Activities, share
-extensions, and suspended-process resumes must not own parallel playback queues,
-signer state, relay policy, deep-link admission, or publish result models.
+The app-RPC/provider lane for LLM/STT/TTS-class calls is not a shell policy
+escape. Until a separate issue or doc defines a generic NMP-owned lane, apps
+expose app-owned UniFFI methods or typed capability contracts and Rust remains
+the owner of durable product meaning.
+
+## Context
+
+NMP spans Swift, Kotlin, TypeScript, TUI, browser, and desktop surfaces. If a
+second platform would need to reimplement a decision to stay correct, that
+decision belongs in Rust.
+
+The runtime boundary must let shells feel native without letting them own relay
+policy, signer state, publish completion, cache truth, protocol parsing,
+product queues, or retry loops.
 
 ## Consequences
 
-Positive:
+Platform features often need more typed action/result plumbing than a direct
+native shortcut. The payoff is one product behavior across platforms and
+replaceable capability bridges.
 
-- Product correctness has one owner across Swift, Kotlin, TypeScript, TUI, and
-  browser.
-- Capability bridges stay small and replaceable.
-- Browser/native runtime crates can enforce startup, storage, and capability
-  ordering without owning app policy.
-- Headless/OS flows cannot report fake success from dispatch acceptance.
+Browser and native runtime proofs must exercise real platform constraints when
+they are part of the claim, such as Worker/OPFS availability or native
+capability lifecycles.
 
-Negative/tradeoffs:
+## Boundaries
 
-- Some platform features require more typed action/result plumbing before they
-  are correct.
-- Browser proof requires real Worker/OPFS checks where durable storage is part of
-  the claim.
-- Native mirrors need explicit schema/cadence ownership instead of local caches.
+Permitted:
 
-## Alternatives considered
+- shell rendering and transient presentation state;
+- shell execution of raw capabilities;
+- UniFFI native bindings over app-owned Rust facades;
+- wasm-bindgen/browser runtime glue for browser hosts;
+- last-emitted Rust mirror frames for OS-owned surfaces.
 
-| Option | Why rejected |
-|---|---|
-| Let shells own small bits of protocol or publish policy for convenience | A second platform would have to reimplement them, violating the Rust-owned product boundary. |
-| Treat browser degraded mode as success | It changes persistence/runtime semantics while hiding the failure. |
-| Keep runtime ownership in ABI crates | It recreates the confusion ADR-0067 and ADR-0068 removed. |
-| Use polling or refresh timers for correctness | NMP doctrine requires event-driven or blocking primitives; polling hides missing lifecycle ownership. |
+Forbidden:
 
-## Fitness functions / enforcement
+- shell-owned protocol parsing for product state;
+- shell relay selection, signer selection, publish retry, or recovery policy;
+- raw C/JNI framework APIs as reusable public native surface;
+- polling or timer loops for correctness;
+- OS/headless surfaces reporting success from dispatch acceptance alone;
+- provider calls that bypass Rust-owned product state.
 
-- Native/web shells do not choose Nostr relays, parse protocol meaning for
-  product state, infer signer/publish success, or own retry/recoverability.
-- Capability tests assert raw-result reporting and Rust-owned policy decisions.
-- Browser runtime proof uses real Worker/OPFS storage where durable mode is
-  claimed.
-- OS/headless surfaces report typed Rust-owned pending/error/completion state,
-  not just accepted dispatch.
-- Polling/timer call sites are classified as presentation/capability sampling or
-  rejected.
+## Enforcement
 
-## Linked work
+Doctrine lint checks native/runtime boundaries, raw native ABI reintroduction,
+polling, raw capability policy, and shell-owned product logic. Clean-room docs
+gates route native developers to UniFFI and typed app facades, not raw binding
+symbols.
 
-- ADR-0067: browser runtime ownership split.
-- ADR-0068: native runtime ownership split.
-- ADR-0064: typed action/write boundary.
-- #2316: fragmented feature-state lifecycle.
-- #2320: source-of-truth cleanup.
+Capability tests assert raw-result reporting and Rust-owned state decisions.
+Runtime tests prove platform lifecycle and storage constraints where those
+constraints define product behavior.
+
+## Related
+
+- [ADR-0069](0069-explicit-feature-composition.md) - explicit composition.
+- [ADR-0070](0070-typed-read-sessions.md) - read-session boundary.
+- [ADR-0071](0071-write-intents-and-route-provenance.md) - write boundary.
+- [docs/ffi-surface.md](../ffi-surface.md) - binding and transport rules.
+- [docs/architecture/crate-boundaries.md](../architecture/crate-boundaries.md)
+  - crate and runtime ownership.
+- #2726 - app-RPC/provider transport lane decision.
+- #2746 - ADR current-only cleanup.

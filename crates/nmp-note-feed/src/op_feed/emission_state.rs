@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 6 — feed emission state (thin re-export wrapper).
+//! ADR-0070 Rung 6 — feed emission state (thin re-export wrapper).
 //!
 //! The generic omit mechanism ([`TypedProjectionEmissionState`] +
 //! [`FrameIdentity`]) was **generalised into `nmp-core`** in R6-S2 so that

@@ -1,6 +1,6 @@
 //! Typed FlatBuffers wire codecs for the NIP-29 snapshot projections.
 //!
-//! Each submodule is a sidecar codec (ADR-0037) for one projection: it encodes
+//! Each submodule is a sidecar codec (ADR-0072) for one projection: it encodes
 //! the projection's serde read model into a schema-versioned, language-neutral
 //! FlatBuffers buffer carried in the snapshot frame's `typed_projections`
 //! sidecar, alongside — never replacing — the existing generic `serde_json::Value`
@@ -12,7 +12,7 @@
 //! - [`group_roster_fb`] — `"nmp.nip29.group_roster"` (`NGRS`).
 //!
 //! Separately, [`action_payload`] holds the WRITE-direction typed action
-//! payload codecs (ADR-0064 / S9 #1747): the `ActionPayload` impls for every
+//! payload codecs (ADR-0071 / S9 #1747): the `ActionPayload` impls for every
 //! event-authoring NIP-29 `ActionModule` (`join` / `leave` / `publish_group_event`
 //! / `create_group` / `put_user` / `create_invite`). These are decoded by the
 //! registry adapter through each module's `decode_payload` override — the

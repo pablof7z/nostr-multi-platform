@@ -1,4 +1,4 @@
-//! Unit tests for the feed pull pager (ADR-0058 §8 step-6A).
+//! Unit tests for the feed pull pager (ADR-0072 §8 step-6A).
 //!
 //! All tests use stub `pull_fn`s — no real `Kernel`. They exercise the
 //! 6A-testable subset: late-old-event completeness, empty-advancing-page
@@ -101,7 +101,7 @@ fn display_sorted(events: &[KernelEvent]) -> Vec<String> {
 /// THE key correctness test: an event with a LOW `created_at` ingested LATE
 /// (so a HIGHER seq, behind the display cursor) is still drained, because pull
 /// completeness rides ingest seq, not `created_at`. A `created_at` cursor would
-/// silently skip it (ADR-0058 §1).
+/// silently skip it (ADR-0072 §1).
 #[test]
 fn test_late_old_event_not_skipped() {
     let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");
@@ -284,7 +284,7 @@ fn test_display_order_after_seq_drain() {
 }
 
 /// `Deleted` rows never become events (InterestShape pull is positive-only,
-/// ADR-0058 §10) but still advance the cursor.
+/// ADR-0072 §10) but still advance the cursor.
 #[test]
 fn test_deleted_rows_skipped_but_advance() {
     let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");

@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 — test-only `make_update_*` helper variants.
+//! ADR-0070 Rung 3 — test-only `make_update_*` helper variants.
 //!
 //! Extracted from `update.rs` to bring that file below the 500-LOC hard
 //! ceiling and buy headroom for the Rung-3 wiring. Zero-behavior refactor:
@@ -73,7 +73,7 @@ impl Kernel {
             refs_entries.retain(|entry| declared.permits(&entry.key));
         }
         typed.extend(refs_entries);
-        // ADR-0055 Rung 2: stamp rev/state/epoch identical to the production path.
+        // ADR-0070 Rung 2: stamp rev/state/epoch identical to the production path.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed);
         self.projection_rev_tracker
             .reconcile_diagnostics_fingerprint(diag_fp);
@@ -84,7 +84,7 @@ impl Kernel {
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
         let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
         let typed = rung3_omit::omit_unchanged(typed, &manifest, incremental_enabled);
-        // ADR-0055 Rung 3 (D3-6): pass the kernel-owned reusable builder,
+        // ADR-0070 Rung 3 (D3-6): pass the kernel-owned reusable builder,
         // matching the production path in `make_update`.
         let frame = encode_snapshot_with_envelope(
             &mut self.snapshot_builder,
@@ -145,7 +145,7 @@ impl Kernel {
             refs_entries.retain(|entry| declared.permits(&entry.key));
         }
         typed_merged.extend(refs_entries);
-        // ADR-0055 Rung 2: keep the projection-rev tracker in the same state as
+        // ADR-0070 Rung 2: keep the projection-rev tracker in the same state as
         // the production path so oracle-gated tests see consistent revs.
         let diag_fp = helpers::diagnostics_payload_fingerprint(&typed_merged);
         self.projection_rev_tracker
@@ -196,7 +196,7 @@ impl Kernel {
     }
 }
 
-/// ADR-0055 Rung 1 (F3) — expose the last-emitted projection state for the
+/// ADR-0070 Rung 1 (F3) — expose the last-emitted projection state for the
 /// test-support oracle (the omission-aware extension lives in `rung3_omit`
 /// tests that call this to verify omitted ⟺ cache-unit unchanged).
 #[cfg(any(test, feature = "test-support"))]

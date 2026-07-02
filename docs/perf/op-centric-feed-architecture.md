@@ -1,6 +1,6 @@
 # OP-Centric Feed Architecture
 
-> **Status:** Shipped. Design record for ADR-0035/ADR-0036/ADR-0037/ADR-0038.
+> **Status:** Shipped. Design record for ADR-0076/ADR-0076/ADR-0072/ADR-0076.
 > The shipped invariants are: `nmp-feed` provides bounded feed mechanics only;
 > protocol/app layers declare primary kinds and perspectives; protocol adapters
 > derive repost wrapper acquisition; app/runtime composition roots wire
@@ -158,8 +158,8 @@ pub enum TimelineBlock {
 | D11 | ✅ | No new bespoke C-ABI symbol. |
 | D14 | ✅ | App-owned OP-feed keys emit the shared typed NNFS projection schema. |
 
-**ADRs:** ADR-0035 (generic root-indexed feed engine), ADR-0036 (composition-root
-followset expansion). See also ADR-0037 and ADR-0038 for the shipped implementation.
+**ADRs:** ADR-0076 (generic root-indexed feed engine), ADR-0076 (composition-root
+followset expansion). See also ADR-0072 and ADR-0076 for the shipped implementation.
 
 ### G. Card-payload shape
 

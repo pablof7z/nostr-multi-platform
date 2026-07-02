@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, SignerError, SignerOp};
 
-use super::signer_fixtures_support::{capture_continuation, draft_unsigned, fresh_identity, test_keys, PendingRemoteSigner};
+use super::signer_fixtures_support::{
+    capture_continuation, draft_unsigned, fresh_identity, test_keys, PendingRemoteSigner,
+};
 use crate::actor::commands;
 use crate::actor::pending_sign::{resolve_parked_op, ParkedOpSink};
 use crate::actor::signer_port_test_harness::dispatch_one;
