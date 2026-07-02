@@ -177,7 +177,7 @@ pagination by handle.
 | declaration-only window policy | Executable `FeedWindowPolicy` | Initial/page/max visible rows, source pull budgets, and reset/regrow behavior must flow into the runtime engines. |
 | former `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
 | former `CustomPerspectiveId` reused for source/admission/order | `CustomSourceId`, `CustomAdmissionId`, `CustomOrderId` | Source, admission, and order are different contracts. |
-| `PointerTargets` as casual feed source | explicit target-hydration source or meta-timeline helper | Target hydration must never look like ordinary feed acquisition. |
+| former `PointerTargets` casual feed source | `PointerTargetHydration` / `source::pointer_target_hydration(...)` | Target hydration is explicitly named and cannot be mistaken for ordinary feed acquisition. |
 
 ## Boundaries
 

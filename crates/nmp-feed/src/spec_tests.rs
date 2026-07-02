@@ -81,8 +81,8 @@ fn source_helpers_build_closed_source_expressions() {
         }
     );
     assert_eq!(
-        source::pointer_targets(source::active_user().follows(), [7, 1111]),
-        FeedSourceExpr::PointerTargets {
+        source::pointer_target_hydration(source::active_user().follows(), [7, 1111]),
+        FeedSourceExpr::PointerTargetHydration {
             pointers: Box::new(FeedSourceExpr::ActiveUserFollows),
             pointer_kinds: vec![7, 1111],
         }

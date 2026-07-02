@@ -18,17 +18,17 @@ use super::trellis_resources::FeedSessionRouteProvenance;
 
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
 
-pub(super) fn resolve_pointer_targets(
+pub(super) fn resolve_pointer_target_hydration(
     app: &impl FeedSessionHost,
     pointers: &nmp_feed::FeedScope,
     pointer_kinds: &[u32],
     primary_kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
     if pointer_kinds.is_empty() {
-        return Err(not_supported("PointerTargets-no-pointer-kinds"));
+        return Err(not_supported("PointerTargetHydration-no-pointer-kinds"));
     }
     if primary_kinds.is_empty() {
-        return Err(not_supported("PointerTargets-no-primary-kinds"));
+        return Err(not_supported("PointerTargetHydration-no-primary-kinds"));
     }
 
     let pointer_kind_set: BTreeSet<u32> = pointer_kinds.iter().copied().collect();
@@ -45,7 +45,7 @@ pub(super) fn resolve_pointer_targets(
     let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         pointer_observer,
-        "nmp.feed.resolver.pointer_targets.pointer",
+        "nmp.feed.resolver.pointer_target_hydration.pointer",
         interest_scope_code(pointer_source.observer_scope),
         Arc::clone(&pointer_source.live_shapes),
         512,

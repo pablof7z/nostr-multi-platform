@@ -41,7 +41,7 @@ mod flat_replay;
 mod nip29_group_sources;
 mod nip51_sources;
 mod observed_source;
-mod pointer_targets;
+mod pointer_target_hydration;
 mod resolve;
 mod resolve_static;
 #[cfg(test)]
