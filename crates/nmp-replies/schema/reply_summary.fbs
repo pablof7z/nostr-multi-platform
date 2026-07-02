@@ -1,0 +1,33 @@
+namespace nmp.replies;
+
+// Typed FlatBuffers wire for the reply-summary read model
+// (`nmp_replies::ReplySummarySnapshot`), schema_id "nmp.replies.summary".
+//
+// The reply owner folds the reply events it is handed — NIP-10 kind:1 notes
+// (#e) and NIP-22 kind:1111 comments (#E/#e root/parent) — for ONE target and
+// exposes, for that target, the distinct accepted-reply count and the raw hex
+// ids of those replies. Which conventions apply to a target and which events
+// are TRUE replies (admission) is nmp-replies' job over nmp-nip01 / nmp-nip22;
+// the shell renders this typed output and never parses tags or counts events.
+//
+// Raw data only (aim.md §2): `target_id` and `reply_event_ids` are raw
+// identifiers; no `display::` forwarder runs on the encode path.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-replies/src/wire/generated \
+//         crates/nmp-replies/schema/reply_summary.fbs
+
+table ReplySummarySnapshot {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint32 = 1;
+  // The reply target: raw event id, addressable coordinate, or external URI.
+  target_id:string;
+  // Distinct accepted replies across every applicable convention.
+  count:uint64;
+  // Raw hex ids of the accepted reply events, ascending.
+  reply_event_ids:[string];
+}
+
+file_identifier "NRSM";
+root_type ReplySummarySnapshot;

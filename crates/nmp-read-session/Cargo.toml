@@ -1,0 +1,18 @@
+[package]
+name = "nmp-read-session"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Concept-neutral read-lifecycle engine: one open/replace/close registry, replay-before-live ordering, exact-demand withdrawal, reverse teardown, and typed-output tombstone behind every concept-owned active read."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-ownership = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

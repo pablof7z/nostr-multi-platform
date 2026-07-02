@@ -166,6 +166,19 @@ impl ReplyTarget {
         })
     }
 
+    /// The raw identifier this target's reply summary is keyed by: the event id
+    /// (note/comment/event), the addressable coordinate, or the external URI.
+    #[must_use]
+    pub fn summary_token(&self) -> String {
+        match self {
+            Self::Note(note) => note.event_id.clone(),
+            Self::Comment(comment) => comment.event_id.clone(),
+            Self::Event(event) => event.event_id.clone(),
+            Self::Address(address) => address.coordinate.clone(),
+            Self::External(external) => external.uri.clone(),
+        }
+    }
+
     pub(crate) fn is_nip10(&self) -> bool {
         matches!(self, Self::Note(_))
             || matches!(self, Self::Event(event) if event.kind == KIND_SHORT_TEXT_NOTE)
