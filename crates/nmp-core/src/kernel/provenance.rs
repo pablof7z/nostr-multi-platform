@@ -31,7 +31,7 @@
 
 use std::collections::HashMap;
 
-use crate::store::{EventStore, ProvenanceEntry, RelayUrl, StoreError};
+use crate::store::{EventStore, ProvenanceEntry, RelayUrl};
 
 /// Per-URL usefulness counters mirroring `RelayUsefulness` in the design
 /// doc §2 (lines 152–168). Widths are saturating `u64` — overflow is a
@@ -104,21 +104,6 @@ impl EventProvenance {
         self.counters.get(relay_url).copied()
     }
 
-    /// Iterator over `(url, counters)` for the snapshot projection. The
-    /// caller is `kernel::status::relay_diagnostics` (F4, future task).
-    #[allow(dead_code)] // exposed for F4 `relay_diagnostics()` projection
-    pub(in crate::kernel) fn iter(&self) -> impl Iterator<Item = (&RelayUrl, &RelayCounters)> {
-        self.counters.iter()
-    }
-
-    /// Drop the per-URL row when the transport pool retires a socket
-    /// (F3 evicts the URL-health row at ≥5 min idle; same sweep frees
-    /// this entry — design doc §3 working-set bound).
-    #[allow(dead_code)] // wired in F3 `relay_url_health` LRU eviction sweep
-    pub(in crate::kernel) fn forget_url(&mut self, relay_url: &str) {
-        self.counters.remove(relay_url);
-    }
-
     /// Number of URLs currently tracked. Diagnostic only.
     #[cfg(test)]
     pub(in crate::kernel) fn url_count(&self) -> usize {
@@ -141,27 +126,6 @@ impl EventProvenance {
         }
         self.counters.entry(relay_url.to_string()).or_default()
     }
-}
-
-/// First-source query — delegates to the store's `provenance_for` sidecar,
-/// which already maintains a bounded `ProvenanceEntry` list per id with
-/// `primary: bool` set on the entry with the smallest `first_seen_ms`
-/// (`store/mem/mod.rs::sort_provenance`). Returns the URL of the primary
-/// entry, or `None` if the id is not in the store (or has no provenance).
-///
-/// D8: no kernel-side index of event-id → URL. The store is the
-/// single source of truth (D4). This function is a thin read-side
-/// projection; cost is one `provenance_for` call (bounded by
-/// `MAX_PROVENANCE_ENTRIES`, currently small).
-#[allow(dead_code)] // F4 explorer projection consumes this; kept here as the
-                    // single seam between `EventProvenance` counters and the
-                    // store's per-id sidecar.
-pub(in crate::kernel) fn first_source_for(
-    store: &dyn EventStore,
-    event_id_bytes: &[u8; 32],
-) -> Result<Option<RelayUrl>, StoreError> {
-    let entries = store.provenance_for(event_id_bytes)?;
-    Ok(primary_url(&entries))
 }
 
 /// Read the bounded per-event relay provenance sidecar as raw relay URLs.
@@ -286,18 +250,6 @@ mod tests {
         p.record_first_source("evt-X", "wss://a.example");
         let a = p.counters_for("wss://a.example").expect("a counted");
         assert_eq!(a.novel, u64::MAX, "saturating_add holds at u64::MAX");
-    }
-
-    #[test]
-    fn forget_url_drops_the_row() {
-        let mut p = EventProvenance::new();
-        p.record_first_source("evt-1", "wss://a.example");
-        p.record_first_source("evt-2", "wss://b.example");
-        assert_eq!(p.url_count(), 2);
-        p.forget_url("wss://a.example");
-        assert_eq!(p.url_count(), 1);
-        assert!(p.counters_for("wss://a.example").is_none());
-        assert!(p.counters_for("wss://b.example").is_some());
     }
 
     #[test]

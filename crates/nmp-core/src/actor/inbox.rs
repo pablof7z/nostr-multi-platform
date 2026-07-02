@@ -229,18 +229,6 @@ impl MailScheduler {
         self.relay_backlog.len() >= RELAY_BACKLOG_CAP
     }
 
-    /// Number of relay events dropped on backlog overflow since construction.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(super) fn relay_backlog_drops(&self) -> u64 {
-        self.relay_backlog_drops
-    }
-
-    /// Current backlog occupancy. Test-only observability of the bound.
-    #[cfg(test)]
-    pub(super) fn relay_backlog_len(&self) -> usize {
-        self.relay_backlog.len()
-    }
-
     /// Drain the priority command lane. Replays a `first_command` (a command
     /// dequeued by the previous iteration's blocking `recv_timeout` and held
     /// for priority service) ahead of the channel, then non-blockingly drains

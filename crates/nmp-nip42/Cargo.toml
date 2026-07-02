@@ -8,12 +8,9 @@ description = "NIP-42 relay AUTH as an NMP protocol crate. Owns the kind:22242 b
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-nmp-core = { path = "../nmp-core" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }

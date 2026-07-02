@@ -18,7 +18,6 @@ native = ["dep:ureq"]
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
-serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Canonical pubkey validation/normalization for the `names[name]` value
 # (mirrors the nmp-nip57 LNURL fetcher's `nostr::PublicKey::from_hex`

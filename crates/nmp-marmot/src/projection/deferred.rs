@@ -293,31 +293,4 @@ impl InnerHandle<'_> {
 
         self.send_actor_command(cmd);
     }
-
-    /// Snapshot view: collect pending op descriptors as
-    /// `(correlation_id, op_tag, missing_count)`. The full snapshot uses the
-    /// richer `PendingOpRow` directly; this tuple form is consumed by tests.
-    #[must_use]
-    #[allow(dead_code)] // consumed by deferred-op tests; the snapshot path builds PendingOpRow itself.
-    pub(crate) fn pending_op_summaries(&self) -> Vec<(String, String, usize)> {
-        self.inner
-            .pending_ops
-            .iter()
-            .map(|op| {
-                let op_tag = op_tag_of(&op.action_json);
-                (op.correlation_id.clone(), op_tag, op.missing_pubkeys.len())
-            })
-            .collect()
-    }
-
-    /// Test-only: drain the captured `(verdict, correlation_id)` command
-    /// stream recorded by [`Self::push_actor_command`]. Lets a test assert the
-    /// EXACT terminal-verdict sequence (one per correlation_id) across
-    /// retry-success / expiry / expiry-then-late-KP flows without a live
-    /// `NmpApp` actor channel.
-    #[cfg(test)]
-    #[allow(dead_code)] // consumed by deferred-op tests in targeted configurations.
-    pub(crate) fn drain_captured_commands(&mut self) -> Vec<(&'static str, String)> {
-        std::mem::take(&mut self.inner.captured_commands)
-    }
 }

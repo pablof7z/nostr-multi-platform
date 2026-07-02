@@ -122,7 +122,7 @@ mod tests_retention;
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_fts;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use super::StoreError;
 
@@ -164,8 +164,6 @@ mod inner;
 /// Production LMDB-backed `EventStore`.
 #[derive(Clone)]
 pub struct LmdbEventStore {
-    #[allow(dead_code)] // path retained for diagnostics + future re-open.
-    path: PathBuf,
     #[cfg(feature = "lmdb-backend")]
     inner: std::sync::Arc<Inner>,
 }

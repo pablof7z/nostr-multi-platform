@@ -22,7 +22,7 @@ pub(super) fn domain_open(
         .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())));
     let data = Arc::clone(data);
     Ok(DomainHandle {
-        inner: DomainHandleInner::Mem { namespace, data },
+        inner: DomainHandleInner::Mem { data },
     })
 }
 

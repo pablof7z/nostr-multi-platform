@@ -45,9 +45,6 @@ pub(in crate::actor) struct RelayRuntime {
     /// discriminator). A URL is in this set iff its socket has reported
     /// `Opened` and has not since `Failed`/`Closed`.
     pub(super) connected_urls: HashSet<CanonicalRelayUrl>,
-    /// Strictly-monotonic per-actor generation stamp (belt-and-braces stale
-    /// event marker; the pool owns the real slot generation).
-    pub(super) next_relay_generation: u64,
 }
 
 impl RelayRuntime {
@@ -56,9 +53,6 @@ impl RelayRuntime {
             relay_controls: HashMap::new(),
             slot_to_url: HashMap::new(),
             connected_urls: HashSet::new(),
-            // First worker stamps 1 (matches the pre-refactor
-            // `next_relay_generation = 1` loop-local).
-            next_relay_generation: 1,
         }
     }
 

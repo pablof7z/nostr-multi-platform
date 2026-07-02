@@ -36,7 +36,7 @@ use nmp_content::{PointerSortMode, PointerSourceModel};
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{
-    HostCapabilities, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
+    KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
 };
 use nmp_core::{CommandSender, ObservedProjectionId, ObservedProjectionSink};
 use nmp_planner::InterestShape;
@@ -105,24 +105,6 @@ impl Drop for PointerSourceSession {
             teardown();
         }
     }
-}
-
-/// Open a pointer-source read model on `app`, the idiomatic composition-root
-/// entry point.
-///
-/// `app` supplies only the two seams this read model needs: the actor command
-/// sender (for the dependent target set) and the observed-projection registrar
-/// (for the pointer source and target delivery).
-#[must_use]
-pub fn register_pointer_source(
-    app: &(impl ObservedProjectionRegistrar + HostCapabilities),
-    params: PointerSourceParams,
-) -> PointerSourceSession {
-    open_pointer_source_internal(
-        app.actor_sender(),
-        app.observed_projection_registrar_handle(),
-        params,
-    )
 }
 
 /// Open a pointer-source read model against explicit kernel handles.

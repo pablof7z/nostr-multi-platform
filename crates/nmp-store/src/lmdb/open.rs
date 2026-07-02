@@ -156,7 +156,6 @@ pub(super) fn open_impl_with_limits(
     )?;
 
     Ok(LmdbEventStore {
-        path: path.to_path_buf(),
         inner: Arc::new(Inner {
             env,
             lmdb,

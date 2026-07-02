@@ -32,30 +32,9 @@ pub(super) fn make_event(
     }
 }
 
-/// A single NIP-65 `r` tag: `["r", url]` or `["r", url, marker]`.
-///
-/// Retained for the commented-out V-40 migration block below (the live
-/// equivalent now lives in `crates/nmp-router/src/ingest.rs`).
-#[allow(dead_code)]
-pub(super) fn r_tag(url: &str, marker: Option<&str>) -> Vec<String> {
-    match marker {
-        Some(m) => vec!["r".to_string(), url.to_string(), m.to_string()],
-        None => vec!["r".to_string(), url.to_string()],
-    }
-}
-
 /// A single kind:3 `p` tag: `["p", pubkey]`.
 pub(super) fn p_tag(pubkey: &str) -> Vec<String> {
     vec!["p".to_string(), pubkey.to_string()]
-}
-
-/// A single NIP-17 kind:10050 `relay` tag: `["relay", url]`.
-///
-/// Retained for the commented-out V-40 migration block below (the live
-/// equivalent now lives in `crates/nmp-nip17/src/kind10050_parser.rs`).
-#[allow(dead_code)]
-pub(super) fn relay_tag(url: &str) -> Vec<String> {
-    vec!["relay".to_string(), url.to_string()]
 }
 
 /// Build one real Schnorr-signed kind:1 event in the `NostrEvent` shape the

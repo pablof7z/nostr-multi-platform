@@ -228,8 +228,7 @@ pub use kernel::MonotonicSecondClock;
 pub mod relay_score {
     pub use super::kernel::relay_score::{
         ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS,
-        MAX_EXPANSION_CONCURRENCY, MAX_RELAYS_TRIED_PER_CLAIM, PER_CLAIM_TOTAL_BUDGET_MS,
-        PER_RELAY_REQ_TIMEOUT_MS, PHASE_1_BUDGET_MS, WARM_THRESHOLD,
+        WARM_THRESHOLD,
     };
 }
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the

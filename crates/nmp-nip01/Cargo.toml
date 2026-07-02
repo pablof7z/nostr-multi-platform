@@ -11,9 +11,6 @@ nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
-# Direct dep on nmp-planner for stable_hash64 / InterestShape — the
-# nmp_core::stable_hash/planner compat facades are deleted (#1608).
-nmp-planner = { path = "../nmp-planner", default-features = false }
 # Direct dep on nmp-store for VerifiedEvent / RawEvent / StoredEvent —
 # the nmp_core::store compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
@@ -24,5 +21,3 @@ tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-# NIP-19 entity codec (Layer 4), used by timeline_projection tests. Issue #2515.
-nmp-nostr-id = { path = "../nmp-nostr-id" }

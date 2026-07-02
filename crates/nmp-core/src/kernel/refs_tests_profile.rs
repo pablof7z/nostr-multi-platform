@@ -8,22 +8,10 @@ use super::refs::{
 };
 use super::refs::{EventNs, ProfileNs};
 use super::*;
-use nmp_nostr_id::{encode_nevent, NeventData};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
-}
-
-fn nevent_uri(event_id: &str) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: None,
-        kind: Some(1),
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
 }
 
 fn inject_kind0(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
