@@ -19,6 +19,7 @@ use std::sync::Arc;
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
+use nmp_planner::InterestShape;
 
 use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 
@@ -27,6 +28,59 @@ use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 /// emit and `None` to retain the last value (coalesced emission is host-owned,
 /// ADR-0070 revision ladder / ADR-0072).
 pub type ReadOutputEncoder = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync>;
+
+/// The declarative dependent-demand provider a concept may supply when the
+/// read's future demand depends on events the reducer has admitted.
+///
+/// The concept computes the current desired demand from its own read-model
+/// state (for example, "kind:5 deletes naming every currently admitted wrapper
+/// id"). The engine owns the lifecycle: compare, open/replay/live, close the
+/// old derived demand, and include the current derived demand in the session's
+/// close recipe.
+pub type ReadDependentDemandProvider = Arc<dyn Fn() -> Option<ReadDependentDemand> + Send + Sync>;
+
+/// One engine-owned derived observed demand.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReadDependentDemand {
+    /// The current shape to observe. Its `relay_pin` is preserved through the
+    /// observed-projection open path.
+    pub shape: InterestShape,
+    /// `0` = `ActiveAccount` (re-routed on account switch), `1` = `Global`.
+    pub scope: u32,
+    /// Maximum number of cached events to replay before activation.
+    pub replay_limit: usize,
+}
+
+/// Cloneable hooks the engine can retain after open to reconcile derived
+/// observed demands from an event callback. Runtime hosts implement this once;
+/// concept crates never see it.
+#[derive(Clone)]
+pub struct ReadInterestController {
+    open: Arc<dyn Fn(ObservedProjection) -> ObservedProjectionId + Send + Sync>,
+    close: Arc<dyn Fn(ObservedProjectionId) + Send + Sync>,
+}
+
+impl ReadInterestController {
+    #[must_use]
+    pub fn new(
+        open: impl Fn(ObservedProjection) -> ObservedProjectionId + Send + Sync + 'static,
+        close: impl Fn(ObservedProjectionId) + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            open: Arc::new(open),
+            close: Arc::new(close),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn open(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        (self.open)(decl)
+    }
+
+    pub(crate) fn close(&self, id: ObservedProjectionId) {
+        (self.close)(id);
+    }
+}
 
 /// One routed demand of a read: a compiled NIP-01 `REQ` filter plus its refcount
 /// owner + scope + optional relay pin. A read may carry several (e.g. a reply
@@ -59,6 +113,8 @@ pub struct ReadSpec {
     pub observer: Arc<dyn ObservedProjectionSink>,
     /// The typed-output encoder registered under `projection_key`.
     pub output_encoder: ReadOutputEncoder,
+    /// Optional engine-owned dependent demand stages. Empty for fixed reads.
+    pub dependent_demands: Vec<ReadDependentDemandProvider>,
 }
 
 /// The typed close handle a concept read returns. Pairs the opaque projection
@@ -108,4 +164,14 @@ pub trait ReadHost {
 
     /// Close the read session `id`, running its reverse teardown once.
     fn close_read_session(&self, id: &ReadSessionId) -> bool;
+
+    /// Optional cloneable controller for engine-owned derived observed demands.
+    ///
+    /// Hosts that support dependent demand return hooks equivalent to
+    /// [`Self::open_read_interest`] and its close teardown, but cloneable so the
+    /// engine can reconcile from read-model event callbacks after `open_read`
+    /// returns. Concepts never call these hooks directly.
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        None
+    }
 }

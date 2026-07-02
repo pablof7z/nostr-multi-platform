@@ -1,10 +1,10 @@
 //! `open_reactions` — the concept-owned reaction-count active read (#2758, #2508).
 //!
-//! This is the reaction owner's DOOR. It composes ONE routed demand (kind:7
-//! reactions + their kind:5 NIP-09 retractions, `#e`-tagging the target) with
-//! `nmp_nip25::ReactionAggregateProjection` — the SAME kind:7/kind:5 fold the
-//! NIP-29-group-scoped reaction read already drives — as the admission +
-//! reducer, then drives them through the ONE read-lifecycle engine
+//! This is the reaction owner's DOOR. It composes the primary kind:7
+//! `#e`-tagged target demand, plus engine-owned dependent kind:5 NIP-09
+//! retraction demand, with `nmp_nip25::ReactionAggregateProjection` — the SAME
+//! kind:7/kind:5 fold the NIP-29-group-scoped reaction read already drives — as
+//! the admission + reducer, then drives them through the ONE read-lifecycle engine
 //! (`nmp-read-session`). It contains NO registry, NO close map, NO replay
 //! implementation, and NO teardown recipe of its own — those are the
 //! engine's, reached only via [`open_read`] / [`close_read`]. If this file
@@ -25,18 +25,12 @@
 //! original reactor. That machinery is reused unchanged; nothing here
 //! reimplements retraction. Because NIP-09 names the *deleted event's own id*
 //! in its `e` tags (the kind:7 reaction's id, not the target's), and the
-//! reaction's id is only known once the reaction itself has been observed, a
-//! demand fixed at `open_reactions` time can only route a delete of an
-//! *already-known* reaction if the deleting client also happens to co-tag the
-//! target — the reducer's retraction logic is correct and independently
-//! tested, but full live-retraction of an arbitrary stranger's reaction needs
-//! a demand that can grow as new reaction ids are discovered, which the
-//! current [`nmp_read_session::ReadSpec`] (fixed at open time) does not
-//! support. That is a real boundary gap for #2777 (the same gap `nmp-reposts`
-//! documents), not something this crate should paper over with a private
-//! per-id re-subscription loop. The pre-engine `NmpApp::open_reactions` lane
-//! uses `ObservedProjectionReconciler` for that dynamic delete demand today;
-//! making it an engine-supplied stage is future engine work.
+//! reaction's id is only known once the reaction itself has been observed.
+//! Dynamic demand is therefore an engine-supplied stage: this crate
+//! declares the current kind:5 delete shape from the aggregate's surviving
+//! reaction ids, and `nmp-read-session` owns open/replay/live replacement and
+//! teardown. The concept still owns only admission/reduction/output; it has no
+//! private subscription loop.
 //! (The NIP-29 group lane does not have this gap because in-group deletes
 //! carry the `#h` envelope tag its filter matches.)
 //!
@@ -51,14 +45,19 @@
 //! snapshot (which carries a viewer-scoped `mine` list): the identity-free
 //! shape is the #2758 concept-read precedent (`nmp-reposts`).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use flatbuffers::FlatBufferBuilder;
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
-use nmp_nip25::ReactionAggregateProjection;
+use nmp_nip25::{ReactionAggregateProjection, KIND_REACTION_DELETE};
 use nmp_ownership::FrameworkProjectionKey;
-use nmp_read_session::{close_read, open_read, ReadDemand, ReadHost, ReadOutputEncoder, ReadSpec};
+use nmp_planner::InterestShape;
+use nmp_read_session::{
+    close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
+    ReadOutputEncoder, ReadSpec,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::read::reaction_filter_json;
@@ -155,6 +154,37 @@ fn reaction_summary_for(
     }
 }
 
+fn reaction_delete_demand(
+    projection: &ReactionAggregateProjection,
+    target_id: &str,
+) -> Option<ReadDependentDemand> {
+    let targets = projection.delete_targets_for(target_id);
+    if targets.is_empty() {
+        return None;
+    }
+    let mut tags = BTreeMap::new();
+    tags.insert(
+        "e".to_string(),
+        targets
+            .iter()
+            .map(|target| target.reaction_event_id.clone())
+            .collect(),
+    );
+    Some(ReadDependentDemand {
+        shape: InterestShape {
+            authors: targets
+                .iter()
+                .map(|target| target.author_pubkey.clone())
+                .collect::<BTreeSet<_>>(),
+            kinds: BTreeSet::from([KIND_REACTION_DELETE]),
+            tags,
+            ..Default::default()
+        },
+        scope: REACTION_READ_SCOPE_GLOBAL,
+        replay_limit: REACTION_REPLAY_LIMIT,
+    })
+}
+
 /// The typed close handle `open_reactions` returns. Wraps the engine's opaque
 /// handle so a reaction read can only be closed with [`close_reactions`] (not
 /// with a feed or replies handle), and exposes the projection key the shell
@@ -175,9 +205,10 @@ impl ReactionsReadHandle {
 /// Open a live reaction-count read for `target_event_id` on the
 /// read-lifecycle engine.
 ///
-/// Composes ONE routed demand (kind:7 + kind:5, `#e`-tagging the target) with
+/// Composes the primary kind:7 demand with
 /// `nmp_nip25::ReactionAggregateProjection` as the admission-applying reducer,
-/// then drives it through the engine. Returns a close handle;
+/// declares a dependent kind:5 delete demand from admitted reaction ids, then
+/// drives it through the engine. Returns a close handle;
 /// [`close_reactions`] withdraws the demand and tombstones the output.
 ///
 /// # Errors
@@ -193,8 +224,8 @@ pub fn open_reactions(
     let nonce = NEXT_REACTION_READ.fetch_add(1, Ordering::Relaxed);
     let key_string = format!("nmp.reactions.summary.{token}.{nonce}");
 
-    // Demand: one live `REQ` (kind:7 + kind:5, `#e`-tagged) folding into the
-    // NIP-25 aggregate reducer, which also owns retraction admission.
+    // Demand: one live primary kind:7 `REQ`, folding into the NIP-25 aggregate
+    // reducer, which also owns retraction admission.
     let demand = ReadDemand {
         filter_json: reaction_filter_json(&target),
         consumer_id: key_string.clone(),
@@ -207,6 +238,13 @@ pub fn open_reactions(
     // aggregate's viewer-scoped `mine` stays disabled; shells derive
     // viewer-relative facts from each group's raw `reactor_pubkeys`.
     let projection = Arc::new(ReactionAggregateProjection::new(None));
+    let dependent_demands: Vec<ReadDependentDemandProvider> = {
+        let projection = Arc::clone(&projection);
+        let target = token.clone();
+        vec![Arc::new(move || {
+            reaction_delete_demand(&projection, &target)
+        })]
+    };
 
     // Typed output: encode the reducer's per-target summary each tick.
     // Coalesced emission + tombstone-on-close are the engine/runtime's, not
@@ -240,6 +278,7 @@ pub fn open_reactions(
             demands: vec![demand],
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
+            dependent_demands,
         },
     );
     Ok(ReactionsReadHandle(handle))

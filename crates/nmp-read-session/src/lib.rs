@@ -47,11 +47,15 @@
 //! and browser parity is structural — a new host implements one seam, not one
 //! method per concept.
 
+mod dependent;
 mod engine;
 mod host;
 pub mod ownership;
 mod registry;
 
 pub use engine::{close_read, open_read, replay_shapes_for};
-pub use host::{ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadSpec};
+pub use host::{
+    ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHandle, ReadHost,
+    ReadInterestController, ReadOutputEncoder, ReadSpec,
+};
 pub use registry::{ReadSessionBuild, ReadSessionId, ReadSessionRegistry, TeardownAction};

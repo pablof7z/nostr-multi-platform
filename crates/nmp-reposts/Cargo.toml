@@ -16,6 +16,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-ownership = { workspace = true }
+nmp-planner = { path = "../nmp-planner" }
 nmp-read-session = { path = "../nmp-read-session" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

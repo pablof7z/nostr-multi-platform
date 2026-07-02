@@ -22,13 +22,13 @@ fn event(id: &str, author: &str, kind: u32, tags: Vec<Vec<&str>>) -> KernelEvent
 }
 
 #[test]
-fn filter_json_requests_repost_wrapper_and_delete_kinds_by_target_e_tag() {
+fn filter_json_requests_repost_wrapper_kinds_by_target_e_tag() {
     let target = "a".repeat(64);
     let plan = plan_for(&target);
     let value: Value = serde_json::from_str(&plan.filter_json()).unwrap();
     assert_eq!(
         value["kinds"],
-        serde_json::json!([KIND_REPOST, KIND_GENERIC_REPOST, KIND_DELETE])
+        serde_json::json!([KIND_REPOST, KIND_GENERIC_REPOST])
     );
     assert_eq!(value["#e"], serde_json::json!([target]));
 }

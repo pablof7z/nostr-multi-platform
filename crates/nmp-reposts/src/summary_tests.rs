@@ -8,11 +8,12 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
+use nmp_nip09::KIND_DELETION;
 use nmp_nip18::{KIND_GENERIC_REPOST, KIND_REPOST};
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
-    ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
-    TeardownAction,
+    ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    ReadSessionRegistry, TeardownAction,
 };
 
 use super::generated::nmp::reposts::root_as_repost_summary_snapshot;
@@ -42,7 +43,19 @@ fn event(id: &str, author: &str, kind: u32, tags: Vec<Vec<&str>>) -> KernelEvent
 }
 
 fn delete_event(id: &str, author: &str, deleted: &str) -> KernelEvent {
-    event(id, author, KIND_DELETE, vec![vec!["e", deleted]])
+    event(id, author, KIND_DELETION, vec![vec!["e", deleted]])
+}
+
+fn assert_delete_filter(filter: &str, deleted: &str, author: &str) {
+    assert!(filter.contains(r#""kinds":[5]"#), "kind:5 filter: {filter}");
+    assert!(
+        filter.contains(&format!(r##""#e":["{deleted}"]"##)),
+        "delete filter tags admitted wrapper id {deleted}: {filter}"
+    );
+    assert!(
+        filter.contains(&format!(r#""authors":["{author}"]"#)),
+        "delete filter scopes to the wrapper author {author}: {filter}"
+    );
 }
 
 fn target() -> RepostTarget {
@@ -56,7 +69,12 @@ fn reducer_counts_distinct_reposters_and_dedups_by_pubkey() {
     let plan = RepostReadPlan::new(&target());
     let reducer = RepostSummaryProjection::new(plan);
 
-    reducer.on_kernel_event(&event(REPOST_A, ALICE, KIND_REPOST, vec![vec!["e", TARGET]]));
+    reducer.on_kernel_event(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
     reducer.on_kernel_event(&event(
         REPOST_B,
         BOB,
@@ -100,7 +118,12 @@ fn same_author_delete_retracts_their_repost() {
     let plan = RepostReadPlan::new(&target());
     let reducer = RepostSummaryProjection::new(plan);
 
-    reducer.on_kernel_event(&event(REPOST_A, ALICE, KIND_REPOST, vec![vec!["e", TARGET]]));
+    reducer.on_kernel_event(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
     reducer.on_kernel_event(&event(
         REPOST_B,
         BOB,
@@ -121,7 +144,12 @@ fn foreign_delete_does_not_retract_a_repost() {
     let plan = RepostReadPlan::new(&target());
     let reducer = RepostSummaryProjection::new(plan);
 
-    reducer.on_kernel_event(&event(REPOST_A, ALICE, KIND_REPOST, vec![vec!["e", TARGET]]));
+    reducer.on_kernel_event(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
     // Bob cannot delete Alice's repost wrapper.
     reducer.on_kernel_event(&delete_event("d1", BOB, REPOST_A));
 
@@ -133,7 +161,12 @@ fn retracting_one_of_two_reposts_from_the_same_author_keeps_them_counted() {
     let plan = RepostReadPlan::new(&target());
     let reducer = RepostSummaryProjection::new(plan);
 
-    reducer.on_kernel_event(&event(REPOST_A, ALICE, KIND_REPOST, vec![vec!["e", TARGET]]));
+    reducer.on_kernel_event(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
     reducer.on_kernel_event(&event(
         "r-alice-2",
         ALICE,
@@ -172,12 +205,12 @@ fn typed_output_round_trips() {
 #[derive(Default)]
 struct FakeHost {
     registry: ReadSessionRegistry,
-    observer: Mutex<Option<Arc<dyn ObservedProjectionSink>>>,
+    observers: Arc<Mutex<Vec<Arc<dyn ObservedProjectionSink>>>>,
     encoder: Mutex<Option<ReadOutputEncoder>>,
     output_key: Arc<Mutex<Option<String>>>,
-    opened_filters: Mutex<Vec<String>>,
+    opened_filters: Arc<Mutex<Vec<String>>>,
     closed_interests: Arc<Mutex<Vec<u64>>>,
-    next_interest: AtomicU64,
+    next_interest: Arc<AtomicU64>,
 }
 
 impl FakeHost {
@@ -185,7 +218,17 @@ impl FakeHost {
         self.encoder.lock().unwrap().as_ref().and_then(|e| e())
     }
     fn feed(&self, event: &KernelEvent) {
-        if let Some(obs) = self.observer.lock().unwrap().as_ref() {
+        self.feed_observer(0, event);
+    }
+    fn feed_latest(&self, event: &KernelEvent) {
+        let Some(index) = self.observers.lock().unwrap().len().checked_sub(1) else {
+            return;
+        };
+        self.feed_observer(index, event);
+    }
+    fn feed_observer(&self, index: usize, event: &KernelEvent) {
+        let observer = self.observers.lock().unwrap().get(index).cloned();
+        if let Some(obs) = observer {
             obs.on_kernel_event(event);
         }
     }
@@ -197,7 +240,10 @@ impl ReadHost for FakeHost {
         *self.encoder.lock().unwrap() = Some(encoder);
     }
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
+        self.observers
+            .lock()
+            .unwrap()
+            .push(Arc::clone(&decl.observer));
         self.opened_filters.lock().unwrap().push(decl.filter_json);
         ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
     }
@@ -221,6 +267,21 @@ impl ReadHost for FakeHost {
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
     }
+    fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        let observers = Arc::clone(&self.observers);
+        let opened_filters = Arc::clone(&self.opened_filters);
+        let next_interest = Arc::clone(&self.next_interest);
+        let open = move |decl: ObservedProjection| {
+            observers.lock().unwrap().push(Arc::clone(&decl.observer));
+            opened_filters.lock().unwrap().push(decl.filter_json);
+            ObservedProjectionId(next_interest.fetch_add(1, Ordering::Relaxed) + 1)
+        };
+        let closed = Arc::clone(&self.closed_interests);
+        let close = move |id: ObservedProjectionId| {
+            closed.lock().unwrap().push(id.0);
+        };
+        Some(ReadInterestController::new(open, close))
+    }
 }
 
 #[test]
@@ -233,8 +294,16 @@ fn open_reposts_drives_the_engine_and_close_withdraws_everything() {
         "framework-owned per-read output key: {}",
         handle.projection_key()
     );
-    assert_eq!(host.opened_filters.lock().unwrap().len(), 1, "one demand opened");
-    assert_eq!(host.registry.live_count(), 1, "one live read in the shared registry");
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        1,
+        "one demand opened"
+    );
+    assert_eq!(
+        host.registry.live_count(),
+        1,
+        "one live read in the shared registry"
+    );
     assert_eq!(
         host.output_key.lock().unwrap().as_deref(),
         Some(handle.projection_key()),
@@ -242,7 +311,12 @@ fn open_reposts_drives_the_engine_and_close_withdraws_everything() {
     );
 
     // Live delivery folds into the typed output the shell will render.
-    host.feed(&event(REPOST_A, ALICE, KIND_REPOST, vec![vec!["e", TARGET]]));
+    host.feed(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
     let data = host.run_encoder().expect("output emits");
     let decoded = root_as_repost_summary_snapshot(&data.payload).unwrap();
     assert_eq!(decoded.count(), 1);
@@ -250,9 +324,56 @@ fn open_reposts_drives_the_engine_and_close_withdraws_everything() {
     // Close withdraws the demand and tombstones the output — reverse order,
     // once — and the engine no longer tracks the read (no leak).
     assert!(close_reposts(&host, handle));
-    assert_eq!(host.closed_interests.lock().unwrap().len(), 1, "the demand withdrawn");
-    assert!(host.output_key.lock().unwrap().is_none(), "output tombstoned");
+    assert_eq!(
+        host.closed_interests.lock().unwrap().len(),
+        2,
+        "primary and derived demands withdrawn"
+    );
+    assert!(
+        host.output_key.lock().unwrap().is_none(),
+        "output tombstoned"
+    );
     assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn derived_delete_demand_routes_repost_delete_discovered_after_open() {
+    let host = FakeHost::default();
+    let handle = open_reposts(&host, TARGET).unwrap();
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        1,
+        "open starts with the static repost-wrapper demand only"
+    );
+
+    host.feed(&event(
+        REPOST_A,
+        ALICE,
+        KIND_REPOST,
+        vec![vec!["e", TARGET]],
+    ));
+    let filters = host.opened_filters.lock().unwrap().clone();
+    assert_eq!(
+        filters.len(),
+        2,
+        "admitting the wrapper opens the engine-owned delete demand"
+    );
+    assert_delete_filter(filters.last().unwrap(), REPOST_A, ALICE);
+
+    host.feed_latest(&delete_event(
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        ALICE,
+        REPOST_A,
+    ));
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_repost_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(
+        decoded.count(),
+        0,
+        "delete delivered through the derived demand retracts the repost"
+    );
+
+    assert!(close_reposts(&host, handle));
 }
 
 #[test]
