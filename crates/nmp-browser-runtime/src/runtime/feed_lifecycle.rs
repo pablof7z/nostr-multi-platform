@@ -38,10 +38,36 @@ impl BrowserRuntimeHandle {
         Some(handle)
     }
 
+    /// Page a browser feed session opened by [`Self::open_feed`].
+    ///
+    /// The returned handle is the public lifecycle token. Browser runtime uses
+    /// the session registry to resolve the live projection key before touching
+    /// the internal controller registry, so a stale id or mismatched forged
+    /// handle is a silent no-op.
+    pub fn load_older_feed(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
+        let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
+            return false;
+        };
+        if projection_key != handle.projection_key {
+            return false;
+        }
+        let changed = self.feed_registry.load_older(projection_key.as_str());
+        if changed {
+            self.command_sender().mark_changed_since_emit();
+        }
+        changed
+    }
+
     /// Close a browser feed session opened by [`Self::open_feed`].
     ///
     /// Idempotent: an unknown or already-closed handle returns `false`.
     pub fn close_feed(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
+        let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
+            return false;
+        };
+        if projection_key != handle.projection_key {
+            return false;
+        }
         let Some(session) = self.feed_session_runtimes.remove(&handle.session_id) else {
             return false;
         };

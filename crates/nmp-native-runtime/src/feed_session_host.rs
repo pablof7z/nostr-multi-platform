@@ -51,7 +51,7 @@ impl FeedSessionHost for NmpApp {
     }
 
     fn load_older_feed(&self, key: &str) -> bool {
-        NmpApp::load_older_feed(self, key)
+        NmpApp::load_older_feed_by_key(self, key)
     }
 
     fn register_feed_window_source<S, F>(

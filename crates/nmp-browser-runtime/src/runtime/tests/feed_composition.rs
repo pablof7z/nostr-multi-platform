@@ -47,6 +47,23 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
 
     let feed_handle = open_test_feed(&mut handle);
     assert_eq!(handle.feed_sessions.live_count(), 1);
+    let forged_handle = nmp_feed::FeedHandle {
+        projection_key: nmp_feed::ProjectionKey::app_owned("test.browser.feed.other").unwrap(),
+        session_id: feed_handle.session_id.clone(),
+    };
+    assert!(
+        !handle.load_older_feed(&forged_handle),
+        "session id alone must not authorize paging"
+    );
+    assert!(
+        !handle.close_feed(&forged_handle),
+        "mismatched handle must not close the live session"
+    );
+    assert_eq!(
+        handle.feed_sessions.live_count(),
+        1,
+        "real session remains live after forged close attempt"
+    );
     assert!(
         handle
             .runtime

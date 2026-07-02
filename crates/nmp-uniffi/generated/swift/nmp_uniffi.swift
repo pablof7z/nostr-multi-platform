@@ -590,13 +590,14 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      *
      * Tears down the observer, projection, pull-controller, and interests
      * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live session was torn down; `false`
-     * when the `session_id` is unknown or already closed (idempotent — D6).
+     * the registry. Returns `true` when a live matching session was torn down;
+     * `false` when the handle is unknown, mismatched, or already closed
+     * (idempotent — D6).
      *
      * D8: the session's resources are released immediately; the registry entry
-     * is removed so a subsequent close of the same id is always a no-op.
+     * is removed so a subsequent close of the same handle is always a no-op.
      */
-    func closeFeedSession(sessionId: UInt64)  -> Bool
+    func closeFeedSession(handle: FeedSessionHandle)  -> Bool
 
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
@@ -690,13 +691,13 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * `key` is the projection key of the
-     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
-     * viewport cursor actually changed; `false` for an unknown key or when
-     * already at the oldest page (D6: always succeeds, never panics).
+     * Uses the full handle returned by `open_feed_json`; a raw projection key
+     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * the viewport cursor actually changed; `false` for an unknown, closed, or
+     * mismatched handle, or when already at the oldest page (D6: always
+     * succeeds, never panics).
      */
-    func loadOlderFeed(key: String)  -> Bool
+    func loadOlderFeed(handle: FeedSessionHandle)  -> Bool
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -1206,16 +1207,17 @@ open func clearActionResultObserver()  {try! rustCall() {
      *
      * Tears down the observer, projection, pull-controller, and interests
      * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live session was torn down; `false`
-     * when the `session_id` is unknown or already closed (idempotent — D6).
+     * the registry. Returns `true` when a live matching session was torn down;
+     * `false` when the handle is unknown, mismatched, or already closed
+     * (idempotent — D6).
      *
      * D8: the session's resources are released immediately; the registry entry
-     * is removed so a subsequent close of the same id is always a no-op.
+     * is removed so a subsequent close of the same handle is always a no-op.
      */
-open func closeFeedSession(sessionId: UInt64) -> Bool  {
+open func closeFeedSession(handle: FeedSessionHandle) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(self.uniffiClonePointer(),
-        FfiConverterUInt64.lower(sessionId),$0
+        FfiConverterTypeFeedSessionHandle_lower(handle),$0
     )
 })
 }
@@ -1351,16 +1353,16 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * `key` is the projection key of the
-     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
-     * viewport cursor actually changed; `false` for an unknown key or when
-     * already at the oldest page (D6: always succeeds, never panics).
+     * Uses the full handle returned by `open_feed_json`; a raw projection key
+     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * the viewport cursor actually changed; `false` for an unknown, closed, or
+     * mismatched handle, or when already at the oldest page (D6: always
+     * succeeds, never panics).
      */
-open func loadOlderFeed(key: String) -> Bool  {
+open func loadOlderFeed(handle: FeedSessionHandle) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
-        FfiConverterString.lower(key),$0
+        FfiConverterTypeFeedSessionHandle_lower(handle),$0
     )
 })
 }
@@ -2057,10 +2059,9 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
  * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
- * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
- * viewport paging commands.
- * `session_id` — the numeric session id; pass it to `close_feed_session` for
- * teardown.
+ * subscribes to for feed-frame updates.
+ * `session_id` — the numeric session id. The handle is only valid when this id
+ * still resolves to `projection_key`.
  */
 public struct FeedSessionHandle {
     public var projectionKey: String
@@ -4406,7 +4407,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 28028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 59539) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
@@ -4430,7 +4431,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 39842) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {

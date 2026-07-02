@@ -1,7 +1,7 @@
 //! Feed-management `impl NmpApp` methods — extracted from `lib.rs` to keep
 //! each file under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `register_feed`, `load_older_feed`, internal observed-interest
+//! Covers: `register_feed`, internal feed paging, internal observed-interest
 //! wiring, `close_interest_pinned`, `unregister_feed`, and the
 //! [`ObservedProjectionRegistrar`] impl.
 
@@ -29,7 +29,7 @@ impl NmpApp {
     }
 
     #[must_use]
-    pub fn load_older_feed(&self, key: &str) -> bool {
+    pub(crate) fn load_older_feed_by_key(&self, key: &str) -> bool {
         let changed = self.feed_registry.load_older(key);
         if changed {
             self.mark_changed_since_emit();
