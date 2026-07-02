@@ -13,7 +13,8 @@
 //! `MailboxCache` with a *different* shape (`get` → `MailboxSnapshot`,
 //! `dm_inbox_relays`, `snapshot_all`, `generation`, `request_probe`). The
 //! substrate trait defined here (**Layer 3**) is the **NIP-65-only** seam the
-//! router consults (`read_relays` / `write_relays` / `snapshot` / `upsert`).
+//! router consults (`read_relays` / `write_relays` / `snapshot` /
+//! `snapshot_all`). It is intentionally read-only at this boundary.
 //!
 //! The V-40 plan once framed collapsing these into one trait as a follow-up.
 //! That collapse is now **architecturally precluded**, and the divergence is

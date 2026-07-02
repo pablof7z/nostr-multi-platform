@@ -1,6 +1,6 @@
 //! `Kind10002Parser` — the [`IngestParser`] that delegates kind:10002 tag
-//! decoding to `nmp-nip65-types` and upserts the resolved [`ParsedRelayList`]
-//! into [`InMemoryMailboxCache`].
+//! decoding to `nmp-nip65-types` and applies the resolved [`ParsedRelayList`]
+//! to [`InMemoryMailboxCache`].
 //!
 //! NIP-65 tag shape:
 //! ```text
@@ -12,13 +12,13 @@
 //! are accepted (`ws://` / `https://` URLs in an `r` tag are
 //! misconfiguration and routing must not consume them). Duplicates within
 //! a single event are deduped lane-wise (an event with two
-//! `["r","wss://x"]` tags upserts a single entry).
+//! `["r","wss://x"]` tags records a single entry).
 //!
 //! ## Empty-list semantics
 //!
 //! A canonical kind:10002 carrying zero parseable `r` tags is the author's
 //! "I cleared my NIP-65 metadata" signal. The parser removes the entry from
-//! the cache rather than upserting an empty list, so subsequent
+//! the cache rather than recording an empty list, so subsequent
 //! [`MailboxCache::known`] lookups fail closed exactly as for an author who
 //! never published a kind:10002. The kernel's mailbox-change observer (in
 //! `kernel/ingest/mod.rs`) sees the cache transition Some→None and fires
@@ -51,7 +51,7 @@ impl Kind10002Parser {
     /// to [`IngestParser::parse`].
     ///
     /// Empty-list (the author cleared their NIP-65) removes the cache entry
-    /// rather than upserting an empty `ParsedRelayList`. The kernel's
+    /// rather than recording an empty `ParsedRelayList`. The kernel's
     /// mailbox-change observer (see `kernel/ingest/mod.rs`) detects the
     /// transition and fires the recompile trigger; the parser itself does
     /// not name the kernel-side lifecycle.

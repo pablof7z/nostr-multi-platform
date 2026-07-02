@@ -1,6 +1,6 @@
 //! `InMemoryMailboxCache` — the NIP-65 (kind:10002) cache. Single writer is
 //! [`crate::Kind10002Parser`]; readers are [`crate::GenericOutboxRouter`] and
-//! (post-step-3) the planner.
+//! kernel/planner mailbox adapters.
 //!
 //! # Lock-poisoning policy (D15)
 //!
@@ -18,9 +18,10 @@
 //!   empty `Vec` / `0`. The router's lane 1 then sees the cache as cold and
 //!   either falls back to lane 7 (AppRelay) or returns `Unroutable`, which
 //!   the kernel observes as a routing failure rather than a process crash.
-//! - Write paths (`upsert`, `remove`) silently drop the mutation on poison.
-//!   The next successful writer will overwrite; in the worst case the cache
-//!   stays stale until the next kind:10002 arrives and the parser retries.
+//! - Writer-only paths (`apply_kind10002_update`, `remove_kind10002_entry`)
+//!   silently drop the mutation on poison. The next successful writer will
+//!   overwrite; in the worst case the cache stays stale until the next
+//!   kind:10002 arrives and the parser retries.
 //!
 //! D15 (host-closure / substrate-panic discipline): every panicking surface
 //! the kernel's actor thread crosses must fail gracefully, not amplify into
