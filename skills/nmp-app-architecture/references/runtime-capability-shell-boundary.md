@@ -9,7 +9,7 @@
 | Crate | Role | Owns |
 |---|---|---|
 | `nmp-native-runtime` | Native platform runtime adapter | `NmpApp`, `NmpAppBuilder` typestate, actor thread, native session registries |
-| App-owned UniFFI facade | Public native binding surface | Generated Swift/Kotlin namespace over `nmp-native-runtime` plus `nmp-uniffi-support`; no policy, routing, or signing |
+| `nmp-uniffi` | Public native binding surface | UniFFI export of `nmp-native-runtime`; no policy, routing, or signing |
 | `nmp-browser-runtime` | Browser runtime adapter | Worker, OPFS init, `wasm-bindgen` ABI (`::wasm`) |
 | Owner-crate installers | Explicit composition surface | `AppHost` registration; NOT a runtime; no lifecycle handle |
 
@@ -43,11 +43,15 @@ pub struct CapabilityEnvelope { namespace, correlation_id, result_json }
 ```
 
 ### Registration
-The app-owned UniFFI path (`CapabilitySink::on_capability_request(String) -> String`
-delegating through `nmp-uniffi-support`) is preferred; a transitional C-ABI path
-(`CapabilityCallbackRegistration`, `crates/nmp-core/src/capability_socket.rs`) exists. Both
-route through one `CapabilityCallbackGate` with `in_flight + Condvar` quiescence: after
-`set_capability_callback` returns, the previous sink is neither registered nor mid-invocation.
+UniFFI is the sole native binding surface (M14 complete; the legacy `nmp-ffi` C-ABI crate and
+its function-pointer trampoline are deleted). `NmpApp::set_capability_callback` (`crates/nmp-uniffi/src/capability/capability.rs`)
+takes a `CapabilitySink::on_capability_request(String) -> String` callback-interface object
+(`crates/nmp-uniffi/src/capability/mod.rs`) and delegates to `nmp_uniffi_support::set_capability_callback`,
+which wraps it as an `Arc<dyn Fn(String) -> String + Send + Sync>` closure and installs it via
+`CapabilityCallbackGate::set_native_handler` (`crates/nmp-core/src/capability_socket.rs`) — a
+Rust-native closure/`Arc`-sink registration, not a C symbol. The gate's `in_flight + Condvar`
+quiescence guarantees that after `set_capability_callback` returns, the previous sink is neither
+registered nor mid-invocation.
 
 ### Execution (ADR-0072) — off-actor, serialized, FIFO
 The capability worker (`crates/nmp-core/src/actor/capability_worker.rs`) drains a FIFO queue
@@ -125,7 +129,7 @@ product success. Gate: `crates/nmp-browser-runtime-conformance/src/lib.rs`.
 | Concern | Owner |
 |---|---|
 | Actor thread lifecycle | `nmp-native-runtime` |
-| Native host binding | app-owned UniFFI facade |
+| Native host binding | `nmp-uniffi` |
 | Browser Worker + OPFS | `nmp-browser-runtime` |
 | Generic NMP composition | App root calling `nmp_substrate::install(...)` plus owner-crate installers |
 | OS capability execution | Native shell (capability bridge) |
