@@ -4,6 +4,8 @@
 //! local WebSocket relay. The relay records actual `REQ`/`CLOSE` frames and
 //! sends signed Nostr `EVENT`/`EOSE` frames back through the kernel ingest path.
 
+#[path = "common/mod.rs"]
+mod common;
 #[path = "reduced_source_relay_e2e/list_members.rs"]
 mod list_members;
 #[path = "reduced_source_relay_e2e/support.rs"]

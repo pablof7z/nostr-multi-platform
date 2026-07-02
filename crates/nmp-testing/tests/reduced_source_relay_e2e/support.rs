@@ -1,5 +1,3 @@
-mod relay;
-
 use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -13,7 +11,7 @@ use nmp_feed::{
 use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
 
-pub(crate) use relay::{has_author, has_kind, RecordingRelay};
+pub(crate) use crate::common::recording_relay::{has_author, has_kind, RecordingRelay};
 
 pub(crate) static SERIAL: Mutex<()> = Mutex::new(());
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
