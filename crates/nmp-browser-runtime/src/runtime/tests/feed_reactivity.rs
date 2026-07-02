@@ -295,7 +295,8 @@ fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHan
         projection: nmp_feed::ProjectionKey::app_owned(BROWSER_FEED_KEY).unwrap(),
     };
     handle
-        .open_feed(params)
+        .feeds()
+        .open(params)
         .expect("test-owned browser feed session opens")
 }
 
