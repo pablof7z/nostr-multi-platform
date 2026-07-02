@@ -44,6 +44,32 @@ nmp_ownership::declare_crate_ownership! {
                 "reply action FlatBuffers payload schema",
             ],
         },
+        {
+            claim_type: "projection",
+            id: "projection.nmp.replies.summary",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "nmp.replies.summary",
+                context: "",
+            },
+            owns: [
+                "reply-summary read-model projection key family (open_replies count read)",
+            ],
+        },
+        {
+            claim_type: "schema",
+            id: "schema.nmp.replies.summary",
+            exclusive: true,
+            scope: {
+                kind: "schema",
+                value: "nmp.replies.summary",
+                context: "",
+            },
+            owns: [
+                "reply-summary FlatBuffers snapshot schema",
+            ],
+        },
     ],
     notes: [
         {

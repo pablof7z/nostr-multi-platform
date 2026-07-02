@@ -41,6 +41,7 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-feed-session = { path = "../nmp-feed-session" }
+nmp-read-session = { path = "../nmp-read-session" }
 nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip05 = { path = "../nmp-nip05" }

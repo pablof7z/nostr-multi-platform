@@ -39,6 +39,7 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         | "nmp-content-fixtures"
         | "nmp-feed"
         | "nmp-feed-session"
+        | "nmp-read-session"
         | "nmp-threading"
         | "nmp-wot"
         | "nmp-marmot"

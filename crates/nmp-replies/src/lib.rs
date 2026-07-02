@@ -11,13 +11,19 @@ mod build;
 mod installer;
 pub mod ownership;
 mod read;
+mod summary;
 mod target;
 mod wire;
 
 pub use action::{ReplyAction, ReplyCommand, ReplyModule};
 pub use build::{Reply, ReplyBuildError, ReplyBuilder};
 pub use installer::{register, Config, Handles};
-pub use read::{ReplyProtocol, ReplyReadMode, ReplyReadPlan, ReplyReadPlanError};
+pub use read::{reply_read_plans, ReplyProtocol, ReplyReadMode, ReplyReadPlan, ReplyReadPlanError};
+pub use summary::{
+    close_replies, encode_reply_summary_snapshot, open_replies, RepliesReadHandle,
+    ReplySummaryProjection, ReplySummarySnapshot, REPLY_SUMMARY_FILE_IDENTIFIER,
+    REPLY_SUMMARY_SCHEMA_ID, REPLY_SUMMARY_SCHEMA_VERSION,
+};
 pub use target::{
     ReplyAddressTarget, ReplyEventTarget, ReplyExternalTarget, ReplyTarget, ReplyTargetError,
 };

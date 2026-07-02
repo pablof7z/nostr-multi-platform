@@ -69,6 +69,25 @@ impl ReplyReadPlan {
         })
     }
 
+    /// Build a NIP-22 kind:1111 reply read plan for `target`, regardless of the
+    /// target's own kind.
+    ///
+    /// `open_replies` composes this with the NIP-10 plan for kind:1 note
+    /// targets — a plain note can receive BOTH kind:1 NIP-10 replies (`#e`) and
+    /// kind:1111 NIP-22 comments (`#E`/`#e` root/parent) — and uses it alone for
+    /// comment/address/external targets. NIP-22 is the only convention that can
+    /// reply to a non-kind:1 target, so this forces the NIP-22 protocol rather
+    /// than letting the target kind auto-select it.
+    pub fn nip22_direct(target: ReplyTarget) -> Result<Self, ReplyReadPlanError> {
+        let dependencies = nip22_dependencies_for(&target, ReplyReadMode::Direct)?;
+        Ok(Self {
+            protocol: ReplyProtocol::Nip22,
+            mode: ReplyReadMode::Direct,
+            target,
+            dependencies,
+        })
+    }
+
     #[must_use]
     pub fn filter_json(&self) -> String {
         // BTreeMap serializes keys in sorted order regardless of serde_json's
@@ -176,6 +195,16 @@ fn dependencies_for(
         });
     }
 
+    nip22_dependencies_for(target, mode)
+}
+
+/// The NIP-22 kind:1111 demand for `target`: query by the root `#E`/`#A`/`#I`
+/// tag in thread mode, or the direct-parent query tag in direct mode. Admission
+/// (`accepts_nip22`) narrows the over-fetched thread to true direct replies.
+fn nip22_dependencies_for(
+    target: &ReplyTarget,
+    mode: ReplyReadMode,
+) -> Result<ViewDependencies, ReplyReadPlanError> {
     let anchor = nip22_anchor(target)?;
     let (tag, value) = match mode {
         ReplyReadMode::Direct => (anchor.query_tag, anchor.query_value),
@@ -186,6 +215,22 @@ fn dependencies_for(
         tag_refs: vec![(tag, value)],
         ..Default::default()
     })
+}
+
+/// The reply read plans that apply to `target`, one per applicable convention.
+///
+/// A kind:1 note (or kind:1 event) target yields the NIP-10 kind:1 plan AND the
+/// NIP-22 kind:1111 plan (both can reply to a note); comment/address/external
+/// targets yield the NIP-22 plan only. `open_replies` opens one live demand per
+/// plan and folds them into ONE reply-summary read model — apps never choose a
+/// kind number or tag name.
+pub fn reply_read_plans(target: &ReplyTarget) -> Result<Vec<ReplyReadPlan>, ReplyReadPlanError> {
+    let mut plans = Vec::new();
+    if target.is_nip10() {
+        plans.push(ReplyReadPlan::direct(target.clone())?);
+    }
+    plans.push(ReplyReadPlan::nip22_direct(target.clone())?);
+    Ok(plans)
 }
 
 struct Nip22Anchor {
@@ -234,7 +279,17 @@ fn nip22_anchor(target: &ReplyTarget) -> Result<Nip22Anchor, ReplyReadPlanError>
             query_tag: "I".to_string(),
             query_value: external.uri.clone(),
         }),
-        ReplyTarget::Note(_) => unreachable!("NIP-10 handled before nip22_anchor"),
+        // A plain kind:1 note is a valid NIP-22 root: a kind:1111 comment replies
+        // to it with `E`=note (root) and `e`=note (direct parent). Composed with
+        // the note's NIP-10 plan by `reply_read_plans`.
+        ReplyTarget::Note(note) => Ok(Nip22Anchor {
+            root_tag: "E".to_string(),
+            root_value: note.event_id.clone(),
+            direct_parent_tag: "e".to_string(),
+            direct_parent_value: note.event_id.clone(),
+            query_tag: "E".to_string(),
+            query_value: note.event_id.clone(),
+        }),
     }
 }
 

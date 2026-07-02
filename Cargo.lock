@@ -3899,6 +3899,7 @@ dependencies = [
  "nmp-core",
  "nmp-ownership",
  "nmp-planner",
+ "nmp-read-session",
  "nmp-store",
  "nmp-threading",
  "serde",
@@ -4020,6 +4021,7 @@ dependencies = [
  "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
+ "nmp-read-session",
  "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",
@@ -4478,6 +4480,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-read-session"
+version = "0.8.4"
+dependencies = [
+ "nmp-core",
+ "nmp-ownership",
+ "nmp-planner",
+]
+
+[[package]]
 name = "nmp-relay-url"
 version = "0.8.4"
 dependencies = [
@@ -4494,6 +4505,7 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip22",
  "nmp-ownership",
+ "nmp-read-session",
  "nmp-signer-iface",
  "nmp-store",
  "serde",

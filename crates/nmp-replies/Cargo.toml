@@ -16,6 +16,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-ownership = { workspace = true }
+nmp-read-session = { path = "../nmp-read-session" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nmp-store = { path = "../nmp-store" }
 serde = { workspace = true, features = ["derive"] }
