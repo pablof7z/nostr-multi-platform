@@ -43,6 +43,9 @@ fn display_includes_inner_message_for_every_variant() {
     assert!(SignerError::Rejected("MARKER-C".into())
         .to_string()
         .contains("MARKER-C"));
+    assert!(SignerError::Unavailable("MARKER-H".into())
+        .to_string()
+        .contains("MARKER-H"));
     assert!(SignerError::Mismatch("MARKER-D".into())
         .to_string()
         .contains("MARKER-D"));
@@ -52,6 +55,9 @@ fn display_includes_inner_message_for_every_variant() {
     assert!(SignerError::SignatureVerificationFailed("MARKER-F".into())
         .to_string()
         .contains("MARKER-F"));
+    assert!(SignerError::KindOutOfRange { kind: 70_000 }
+        .to_string()
+        .contains("70000"));
     assert!(SignerError::Backend("MARKER-G".into())
         .to_string()
         .contains("MARKER-G"));
