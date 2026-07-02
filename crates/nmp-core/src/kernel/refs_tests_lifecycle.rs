@@ -10,7 +10,7 @@
 
 use super::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {
@@ -113,16 +113,22 @@ fn per_key_rev_map_stays_bounded_under_resolve_release_churn() {
     );
 }
 
-/// BLOCKING 2 — after a full teardown emitted the explicit `Cleared` (which resets
-/// the host cache entry per ADR-0070 §D1), a re-resolve starts a FRESH row
-/// lifetime at rev 1. Monotonicity only has to hold WHILE a row is live between
-/// `Changed` and `Cleared`, so a reset-after-clear is sound (and required to keep
-/// the map bounded).
+/// BLOCKING 2 / issue #2766 — after a full teardown emitted the explicit
+/// `Cleared` (which resets the host cache entry per ADR-0070 §D1), the map entry
+/// is dropped (bounded — `ref_row_rev` reads back 0), but a re-resolve must NOT
+/// restart the key's rev from a from-zero counter: the contract is monotonic
+/// THROUGH release, so the re-resolve's rev must be strictly greater than the
+/// rev the key held immediately before teardown. Restarting at 1 would collide
+/// with a rev already emitted to a host, making the incremental-apply cache
+/// treat a genuinely new resolution as Unchanged (issue #2766).
 #[test]
-fn re_resolve_after_teardown_starts_a_fresh_row() {
+fn re_resolve_after_teardown_is_monotonic_across_release() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     let pk = hex64("ab12");
     profile_card(&mut kernel, &pk, "c", RefLiveness::CacheOk);
+    let rev_before_teardown = kernel.ref_row_rev(RefNamespace::Profile, &pk);
+    assert!(rev_before_teardown > 0, "the first resolve creates the row");
+
     kernel.release_ref(RefNamespace::Profile, &pk, "c"); // full teardown → row gone
     assert_eq!(
         kernel.ref_row_rev(RefNamespace::Profile, &pk),
@@ -130,12 +136,13 @@ fn re_resolve_after_teardown_starts_a_fresh_row() {
         "the teardown removed the rev entry (reads 0 — the row is gone)"
     );
 
-    // Re-resolve AFTER teardown: a brand-new row lifetime begins at rev 1.
+    // Re-resolve AFTER teardown: the new rev must beat every rev this key was
+    // ever assigned in its earlier live span — monotonic THROUGH release.
     profile_card(&mut kernel, &pk, "c2", RefLiveness::CacheOk);
-    assert_eq!(
-        kernel.ref_row_rev(RefNamespace::Profile, &pk),
-        1,
-        "a re-resolve after an explicit Cleared starts a fresh row at rev 1"
+    assert!(
+        kernel.ref_row_rev(RefNamespace::Profile, &pk) > rev_before_teardown,
+        "a re-resolve after an explicit Cleared must be strictly greater than the \
+         pre-teardown rev, not restart at 1 (issue #2766: monotonic through release)"
     );
 }
 
@@ -200,7 +207,10 @@ fn profile_live_release_downgrades_slot_while_cacheok_remains() {
     // Release the LAST Live owner; the CacheOk consumer still holds the key.
     kernel.release_ref(RefNamespace::Profile, &pk, "screen");
     assert!(
-        kernel.profile_claims.get(&pk).is_some_and(|c| c.contains("feed")),
+        kernel
+            .profile_claims
+            .get(&pk)
+            .is_some_and(|c| c.contains("feed")),
         "the CacheOk consumer still holds the refcount"
     );
     assert!(

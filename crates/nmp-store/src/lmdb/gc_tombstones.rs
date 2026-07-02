@@ -12,12 +12,11 @@
 
 use std::sync::Arc;
 
+use nmp_kinds::TOMBSTONE_MAX_AGE_SECS;
+
 use super::{tombstones, Inner};
 use crate::types::GcReport;
 use crate::StoreError;
-
-/// Mirrored from `mem/mod.rs:75`.
-const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 3600;
 
 /// Purge stale id-tombstones (Phase 3) and address-tombstones (Phase 3b).
 ///

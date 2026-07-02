@@ -32,3 +32,8 @@ android/.fastembed_cache/
 # perf-sanity harness — never commit real account secrets or captured corpora
 scripts/perf-sanity/accounts.json
 artifacts/real-events.jsonl
+
+# nmp-nip59-decrypt-only is an out-of-workspace sub-workspace (see root
+# Cargo.toml `exclude`); it produces its own Cargo.lock + target/ dir.
+/crates/nmp-nip59-decrypt-only/Cargo.lock
+/crates/nmp-nip59-decrypt-only/target/

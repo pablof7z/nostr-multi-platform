@@ -1,12 +1,16 @@
 //! `GenericOutboxRouter` — the single
 //! [`nmp_core::substrate::OutboxRouter`] impl
-//! (`docs/architecture/crate-boundaries.md` §3.2).
+//! (`docs/architecture/crate-boundaries.md` §4, "Router Ownership").
 //!
 //! Lanes implemented (spec §3.1):
 //!
 //! - **Lane 1 — NIP-65 mailbox.** `route_publish` consults
 //!   [`MailboxCache::write_relays`] for `evt.pubkey`; `route_subscription`
-//!   consults `read_relays` for each author in the interest shape.
+//!   consults `write_relays` for each author in the interest shape — you
+//!   fetch an author's notes from their WRITE/outbox relays (NIP-65), the
+//!   same lookup as publish, just keyed per-author. `read_relays` is not
+//!   consulted by any routing lane; lane 4's `active_read` set below is a
+//!   session-configured key set, not the NIP-65 mailbox read set.
 //! - **Lane 2 — Hint.** Relay-hint URLs lifted from `evt.tags`
 //!   (e/p/a/q tag position 2) on publish; lifted from `interest.hints`
 //!   carrying [`HintSource::EventTag`] on subscribe. Stacks on top of
@@ -135,3 +139,7 @@ mod tests_v52;
 #[cfg(test)]
 #[path = "router/tests_indexer_scope.rs"]
 mod tests_indexer_scope;
+
+#[cfg(test)]
+#[path = "router/tests_2764_nip65_write_lane.rs"]
+mod tests_2764_nip65_write_lane;

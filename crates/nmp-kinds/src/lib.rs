@@ -37,6 +37,13 @@
 //! event-shape, parser, builder, and routing logic still lives in the
 //! protocol crates; nothing about a constant being declared here implies
 //! the kernel knows how to read or write the corresponding event.
+//!
+//! The scope also covers small scalar constants shared across storage-layer
+//! crates that are themselves forbidden from depending on each other (e.g.
+//! `nmp-store` and `nmp-sqlite-wasm`, which cannot depend on one another
+//! without creating a Cargo cycle). `nmp-kinds` is the only Layer-0 crate
+//! both already depend on, so it hosts those single-sourced values too —
+//! see [`TOMBSTONE_MAX_AGE_SECS`].
 
 // ─── NIP-01 — basic event kinds ────────────────────────────────────────────
 
@@ -355,6 +362,14 @@ pub const PRIVATE_RELAY_PROVENANCE_KINDS: &[u32] =
 pub fn is_private_relay_provenance_kind(kind: u32) -> bool {
     PRIVATE_RELAY_PROVENANCE_KINDS.contains(&kind)
 }
+
+/// Retention window for GC'd tombstone rows (90 days), single-sourced here
+/// because the two storage engines that need it — `nmp-store` (mem + LMDB
+/// backends) and `nmp-sqlite-wasm` — cannot depend on each other (`nmp-store`
+/// has an optional reverse edge onto `nmp-sqlite-wasm` via its
+/// `opfs-sqlite-backend` feature, so the reverse dependency would be a Cargo
+/// cycle). `nmp-kinds` is the only Layer-0 crate both already depend on.
+pub const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 60 * 60;
 
 #[cfg(test)]
 mod tests;

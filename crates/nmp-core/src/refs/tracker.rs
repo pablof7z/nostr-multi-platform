@@ -32,21 +32,39 @@ use std::collections::{BTreeMap, HashMap};
 /// Lane B's per-key rev source. See the module doc-comment for the contract.
 ///
 /// ## Per-key rev is monotonic THROUGH release (rev-safe clears, ADR-0070
-/// invariant #4 / BLOCKING-4 coordination contract with Lane B)
+/// invariant #4 / BLOCKING-4 coordination contract with Lane B; reconciled for
+/// issue #2766)
 ///
-/// `ref_row_rev` is monotonic per key and bumps on EVERY transition — including
-/// the release that drops the key from the live set. So immediately after a
-/// release `ref_row_keys` no longer lists the key, but `ref_row_rev` still
-/// returns a rev STRICTLY GREATER than the rev at which the key was last live.
-/// The tracker stamps that release rev onto the explicit `Cleared` row, and the
-/// host applies a clear only when its rev is newer than the cached row — so a
-/// stale reordered clear can never delete a newer live row. A never-seen key is
-/// rev 0. Lane B's `RefResolver` MUST honour this (its per-key rev counter
-/// advances on release); the in-memory [`MapRowRevSource`] models it exactly.
+/// A key's rev is drawn from a per-namespace monotonic sequence that NEVER
+/// rewinds, including across a release/reclaim cycle: every rev a key is ever
+/// assigned while live is strictly greater than every rev it was assigned in
+/// any earlier live span for that same key. Concretely, `ref_row_rev` bumps on
+/// EVERY transition — including the release that drops the key from the live
+/// set — so immediately after a release `ref_row_keys` no longer lists the key,
+/// but `ref_row_rev` still returns a rev STRICTLY GREATER than the rev at which
+/// the key was last live. The tracker stamps that release rev onto the explicit
+/// `Cleared` row, and the host applies a clear only when its rev is newer than
+/// the cached row — so a stale reordered clear can never delete a newer live
+/// row.
+///
+/// A never-seen key is rev 0. For a RELEASED key, an implementation MAY either
+/// retain and return the final release rev (the [`MapRowRevSource`] test
+/// fixture: a tombstone map) OR drop the entry entirely and return 0 for it
+/// (the production `Kernel`: the per-key map stays bounded to live keys) — both
+/// are rev-safe because the tracker computes the `Cleared` row's stamp as
+/// `max(ref_row_rev(...), last_emitted_rev + 1)`, never trusting a bare 0 alone.
+/// What is NOT optional: once a key is reclaimed and mutated again, its NEW rev
+/// must be strictly greater than every rev ever previously emitted for it — a
+/// from-zero per-key counter that a released key's rev restarts from 1 VIOLATES
+/// this and is the exact defect issue #2766 fixed in `Kernel`/`SourceVersions`
+/// (which now allocates from a never-rewinding per-namespace sequence).
 pub trait RefRowRevSource {
     /// Per-key monotonic revision for `(namespace, key)`, advancing on every
-    /// transition INCLUDING release. 0 for a never-seen key; for a released key
-    /// it returns the (strictly greater than last-live) release rev.
+    /// transition INCLUDING release, and never re-using a rev already assigned
+    /// to that key in an earlier live span (monotonic THROUGH release/reclaim).
+    /// 0 for a never-seen key; for a released key it returns either the
+    /// (strictly greater than last-live) release rev, or 0 if the implementation
+    /// drops released entries (see trait doc — both are rev-safe).
     fn ref_row_rev(&self, namespace: &str, key: &str) -> u64;
     /// The currently-live key set for `namespace` (excludes released keys).
     fn ref_row_keys(&self, namespace: &str) -> Vec<String>;

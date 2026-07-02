@@ -2,7 +2,7 @@
 //!
 //! Folds an [`ActorCommand::LifecycleEvent`] into the kernel's phase state
 //! and, on a meaningful transition (per `LifecyclePhase::transition_from`'s
-//! debounce rules), invokes the registered [`LifecycleObserver`] so a
+//! debounce rules), invokes the registered native lifecycle observer so a
 //! consumer can fan the transition out to its own machinery (typically a
 //! shell-side sync-trigger engine on a foreground transition).
 //!
@@ -25,50 +25,26 @@
 use crate::kernel::{Kernel, LifecyclePhase, LifecycleTransition};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
-/// Lifecycle observer C-ABI shape. Mirrors the `capability_callback`
-/// pattern: `extern "C"` so it can be plugged in from Swift, and stores a
-/// caller-opaque context pointer for state. The phase is passed as a `u32`
-/// discriminant (0=Foreground, 1=Background) so the wire format is
-/// language-agnostic.
-pub type LifecycleObserverFn = extern "C" fn(*mut std::ffi::c_void, u32);
-
-/// Phase wire discriminants. Public for FFI consumers (the Swift bridge or
-/// integration tests via the test-support facade).
+/// Phase wire discriminants. Public for UniFFI consumers (or integration
+/// tests via the test-support facade) that need to interpret the phase code
+/// passed to the native observer.
 pub const LIFECYCLE_PHASE_FOREGROUND: u32 = 0;
 pub const LIFECYCLE_PHASE_BACKGROUND: u32 = 1;
 
-/// Registered native handler + caller context. `Copy` so it can be cloned
-/// out from under the mutex lock without holding it across the FFI call
-/// (avoids reentrancy if the consumer were to immediately re-register).
-#[derive(Clone, Copy)]
-pub struct LifecycleObserverRegistration {
-    /// Caller-opaque context pointer, as registered. `usize` storage
-    /// (rather than `*mut c_void`) is the same dodge `capability.rs` uses
-    /// for `Send` / `Sync` — raw pointers aren't either; the callsite
-    /// re-casts on invocation.
-    pub context: usize,
-    pub callback: LifecycleObserverFn,
-}
-
 /// Rust-native lifecycle observer used by the UniFFI surface. Receives the
-/// same phase code as the C-ABI callback path.
+/// phase wire discriminant for the transition.
 pub type NativeLifecycleObserver = Arc<dyn Fn(u32) + Send + Sync + 'static>;
 
-enum LifecycleObserver {
-    CFfi(LifecycleObserverRegistration),
-    Native(NativeLifecycleObserver),
-}
-
 struct LifecycleObserverGateInner {
-    observer: Option<LifecycleObserver>,
+    observer: Option<NativeLifecycleObserver>,
     in_flight: u32,
 }
 
 /// Quiescence-safe lifecycle observer slot.
 ///
 /// Set/replace/clear waits for any callback already copied from the slot to
-/// finish before returning. This lets C and UniFFI hosts release the previous
-/// callback context immediately after unregistering it.
+/// finish before returning. This lets UniFFI hosts release the previous
+/// callback state immediately after unregistering it.
 pub struct LifecycleObserverGate {
     inner: Mutex<LifecycleObserverGateInner>,
     drained: Condvar,
@@ -86,15 +62,9 @@ impl LifecycleObserverGate {
         }
     }
 
-    pub fn set_registration(&self, registration: Option<LifecycleObserverRegistration>) {
-        let mut guard = self.lock_inner();
-        guard.observer = registration.map(LifecycleObserver::CFfi);
-        drop(self.wait_drained(guard));
-    }
-
     pub fn set_native_observer(&self, observer: Option<NativeLifecycleObserver>) {
         let mut guard = self.lock_inner();
-        guard.observer = observer.map(LifecycleObserver::Native);
+        guard.observer = observer;
         drop(self.wait_drained(guard));
     }
 
@@ -104,16 +74,11 @@ impl LifecycleObserverGate {
         drop(self.wait_drained(guard));
     }
 
-    fn begin_invocation(&self) -> Option<(LifecycleObserverSnapshot, LifecycleInvocation<'_>)> {
+    fn begin_invocation(&self) -> Option<(NativeLifecycleObserver, LifecycleInvocation<'_>)> {
         let mut guard = self.lock_inner();
-        let snapshot = match guard.observer.as_ref()? {
-            LifecycleObserver::CFfi(registration) => LifecycleObserverSnapshot::CFfi(*registration),
-            LifecycleObserver::Native(observer) => {
-                LifecycleObserverSnapshot::Native(Arc::clone(observer))
-            }
-        };
+        let observer = Arc::clone(guard.observer.as_ref()?);
         guard.in_flight = guard.in_flight.saturating_add(1);
-        Some((snapshot, LifecycleInvocation { gate: self }))
+        Some((observer, LifecycleInvocation { gate: self }))
     }
 
     fn finish_invocation(&self) {
@@ -144,11 +109,6 @@ impl Default for LifecycleObserverGate {
     }
 }
 
-enum LifecycleObserverSnapshot {
-    CFfi(LifecycleObserverRegistration),
-    Native(NativeLifecycleObserver),
-}
-
 struct LifecycleInvocation<'a> {
     gate: &'a LifecycleObserverGate,
 }
@@ -159,7 +119,7 @@ impl Drop for LifecycleInvocation<'_> {
     }
 }
 
-/// Shared slot. The FFI/UniFFI surfaces hold one clone for registration; the
+/// Shared slot. The UniFFI surface holds one clone for registration; the
 /// actor thread holds another for invocation.
 pub type LifecycleObserverSlot = Arc<LifecycleObserverGate>;
 
@@ -178,39 +138,20 @@ pub(crate) fn handle_lifecycle_event(
     phase: LifecyclePhase,
 ) -> Option<LifecycleTransition> {
     let transition = kernel.set_lifecycle_phase(phase)?;
-    if let Some((snapshot, _invocation)) = observer.begin_invocation() {
+    if let Some((observer, _invocation)) = observer.begin_invocation() {
         let phase_code = match transition {
             LifecycleTransition::EnteredForeground => LIFECYCLE_PHASE_FOREGROUND,
             LifecycleTransition::EnteredBackground => LIFECYCLE_PHASE_BACKGROUND,
         };
-        match snapshot {
-            LifecycleObserverSnapshot::CFfi(registration) => {
-                // UB guard: the foreign callback may panic / raise; an unwind
-                // across the C ABI boundary is undefined behaviour.
-                let _ = crate::ffi_guard::guard_ffi_callback("lifecycle observer", || {
-                    (registration.callback)(
-                        registration.context as *mut std::ffi::c_void,
-                        phase_code,
-                    );
-                });
-            }
-            LifecycleObserverSnapshot::Native(observer) => {
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    observer(phase_code);
-                }));
-            }
-        }
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            observer(phase_code);
+        }));
     }
     Some(transition)
 }
 
 #[cfg(test)]
 mod tests {
-    //! Tests use static counters because `LifecycleObserverFn` is a plain
-    //! `extern "C" fn` (no captures). `SERIAL` linearises test cases so the
-    //! statics see one test's events at a time — same pattern as
-    //! `ffi/capability.rs` tests.
-
     use super::*;
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use std::sync::atomic::{AtomicU32, Ordering};
@@ -219,19 +160,14 @@ mod tests {
     static LAST_PHASE: AtomicU32 = AtomicU32::new(u32::MAX);
     static SERIAL: Mutex<()> = Mutex::new(());
 
-    extern "C" fn observer_shim(_ctx: *mut std::ffi::c_void, phase: u32) {
-        CALLS.fetch_add(1, Ordering::SeqCst);
-        LAST_PHASE.store(phase, Ordering::SeqCst);
-    }
-
     fn fixture() -> (Kernel, LifecycleObserverSlot) {
         CALLS.store(0, Ordering::SeqCst);
         LAST_PHASE.store(u32::MAX, Ordering::SeqCst);
         let slot = new_observer_slot();
-        slot.set_registration(Some(LifecycleObserverRegistration {
-            context: 0,
-            callback: observer_shim,
-        }));
+        slot.set_native_observer(Some(Arc::new(|phase: u32| {
+            CALLS.fetch_add(1, Ordering::SeqCst);
+            LAST_PHASE.store(phase, Ordering::SeqCst);
+        })));
         (Kernel::new(DEFAULT_VISIBLE_LIMIT), slot)
     }
 

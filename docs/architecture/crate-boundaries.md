@@ -128,12 +128,26 @@ instead of hard-coding parallel label fragments.
 
 ## 4. Router Ownership
 
-`nmp-router` is the single home for NIP-65 mailbox routing and generic relay
-selection. There is no standalone routing/action-owning `nmp-nip65` crate in
-this architecture. The dependency-light `nmp-nip65-types` crate owns only the
-canonical kind:10002 tag decoder so router and test fixtures cannot drift. The
-action namespace `nmp.nip65.publish_relay_list` remains byte-stable for callers,
-but its implementation belongs to `nmp-router`.
+`nmp-router` owns publish-side NIP-65 mailbox routing (`route_publish` /
+`Nip65OutboxResolver`) and the generic `GenericOutboxRouter` algorithm shared
+by both directions. There is no standalone routing/action-owning `nmp-nip65`
+crate in this architecture. The dependency-light `nmp-nip65-types` crate owns
+only the canonical kind:10002 tag decoder so router, planner, and test
+fixtures cannot drift. The action namespace `nmp.nip65.publish_relay_list`
+remains byte-stable for callers, but its implementation belongs to
+`nmp-router`.
+
+`GenericOutboxRouter::route_subscription` is the crate's generic reference
+implementation of subscription-side NIP-65 routing (lane 1: the author's
+`write_relays` / outbox set), but it is **not** the live REQ-dispatch
+authority in production. `nmp-planner`'s `SubscriptionCompiler` (§6) compiles
+the kernel's actual per-relay REQ plan, independently implementing the same
+Case-A outbox rule. Today `route_subscription`'s only production caller
+(`Kernel::route_subscription_relays`) discards its resolved URL set and uses
+the call solely to drive the routing-trace diagnostic
+(`RoutingTraceObserver::on_subscription`, surfaced to FFI via
+`nmp_core::projection_to_json`) — so treat it as a diagnostics/parity
+reference for the planner's live decision, not a second dispatch path.
 
 `nmp-router` owns:
 
@@ -174,6 +188,12 @@ publish path.
 
 The router never owns socket lifecycle. It returns relay decisions; the actor
 uses `nmp-network` to open and send.
+
+The kernel's live REQ relay set for a subscription comes from `nmp-planner`'s
+compiled per-relay plan (§6), not from a direct `route_subscription` call.
+`GenericOutboxRouter::route_subscription` resolves the same NIP-65
+write/outbox lane-1 set as the planner's Case A (`outbox_relays()`) for
+diagnostics and cross-implementation parity — see §4.
 
 ---
 

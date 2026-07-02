@@ -207,8 +207,7 @@ fn relay_reachable() -> bool {
 //
 // `extern "C"` callbacks cannot capture, so the update `Sender` is parked in a
 // process-global slot and a tick is forwarded on every kernel update frame.
-// Mirrors the proven pattern in
-// `crates/nmp-ffi/src/active_account_handle_tests.rs`.
+// Same pattern used by `crates/nmp-example-login-timeline/src/harness.rs`.
 
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
 

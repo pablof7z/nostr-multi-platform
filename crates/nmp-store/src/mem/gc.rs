@@ -21,12 +21,11 @@ use std::collections::HashSet;
 // on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
 use crate::time::Instant;
 
+use nmp_kinds::TOMBSTONE_MAX_AGE_SECS;
+
 use super::fts::fts_index_remove;
 use super::ingest_log;
-use super::{
-    access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore,
-    TOMBSTONE_MAX_AGE_SECS,
-};
+use super::{access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore};
 use crate::ingest_log::DeleteReason;
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;

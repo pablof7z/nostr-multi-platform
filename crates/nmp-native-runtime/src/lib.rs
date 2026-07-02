@@ -37,6 +37,7 @@ mod marmot;
 mod observed_feed_source;
 mod observed_projection_handle;
 mod passive_start;
+mod plain_reactions;
 mod prestart_config;
 mod relay_config;
 mod search;
@@ -86,6 +87,7 @@ pub use op_feed_session::{
     active_follows_op_feed_params, open_active_follows_op_feed,
     open_active_follows_op_feed_with_mute, ActiveFollowsOpFeedSession,
 };
+pub use plain_reactions::Nip25ReactionsHandle;
 pub use prestart_config::NmpConfigStatus;
 pub use search::{parse_search_request, Nip50SearchHandle, Nip50SearchSession};
 #[cfg(any(test, feature = "test-support"))]

@@ -176,10 +176,6 @@ pub use commands::{
     LifecycleObserverSlot, NativeLifecycleObserver,
 };
 pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_internal};
-// `LifecycleObserverRegistration` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::*` so the lifecycle C-ABI bridge can drive the slot.
-#[cfg(feature = "native")]
-pub use commands::LifecycleObserverRegistration;
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
@@ -207,7 +203,7 @@ pub use signer_source::SignerSource;
 // `pub use` is unused only in a build that consumes neither — wasm32-only
 // (`--no-default-features`) without test-support.
 #[cfg(any(test, feature = "test-support", feature = "native"))]
-pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+pub use commands::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // Re-export the scoped observed-projection types so reusable Rust crates can
 // implement sinks and hosts can register them through
 // `substrate::ObservedProjectionRegistrar`.

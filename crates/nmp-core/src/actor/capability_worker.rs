@@ -173,16 +173,13 @@ pub(crate) fn make_work_item(
 mod tests {
     use super::*;
     use crate::actor::{ActorMail, CommandSender};
-    use crate::capability_socket::{
-        new_capability_callback_slot, CapabilityCallbackRegistration, CapabilityCallbackSlot,
-    };
+    use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
     use crate::substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringIdentityWiring,
     };
     use std::collections::HashMap;
-    use std::ffi::{c_char, c_void, CStr, CString};
     use std::sync::mpsc::Receiver;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
     /// ADR-0072 §D3a — the worker now takes a [`CommandSender`] over an
@@ -202,18 +199,15 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Mock native handler (mirrors nmp-ffi/src/capability.rs tests)
+    // Mock native handler (registered via the Rust-native handler path)
     // ──────────────────────────────────────────────────────────────────────
 
     static STORE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
     static SERIAL: Mutex<()> = Mutex::new(());
 
-    extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *mut c_char {
+    fn mock_handler(request_json: String) -> String {
         use crate::substrate::{KeyringRequest, KeyringResult};
-        let request = unsafe { CStr::from_ptr(request_json) }
-            .to_str()
-            .unwrap_or("");
-        let parsed: serde_json::Value = serde_json::from_str(request).unwrap_or_default();
+        let parsed: serde_json::Value = serde_json::from_str(&request_json).unwrap_or_default();
         let correlation_id = parsed
             .get("correlation_id")
             .and_then(|v| v.as_str())
@@ -258,17 +252,12 @@ mod tests {
             correlation_id,
             result_json: serde_json::to_string(&result).unwrap(),
         };
-        CString::new(serde_json::to_string(&envelope).unwrap())
-            .unwrap()
-            .into_raw()
+        serde_json::to_string(&envelope).unwrap()
     }
 
     fn registered_slot() -> CapabilityCallbackSlot {
         let slot = new_capability_callback_slot();
-        slot.set_registration(Some(CapabilityCallbackRegistration {
-            context: 0,
-            callback: mock_handler,
-        }));
+        slot.set_native_handler(Some(Arc::new(mock_handler)));
         slot
     }
 
@@ -281,19 +270,14 @@ mod tests {
     /// asynchronously via `CapabilityResultReady`.
     #[test]
     fn worker_runs_callback_off_actor() {
-        extern "C" fn slow_handler(_ctx: *mut c_void, _req: *const c_char) -> *mut c_char {
+        fn slow_handler(_req: String) -> String {
             std::thread::sleep(Duration::from_millis(200));
             // Return a minimal valid CapabilityEnvelope JSON.
-            CString::new(r#"{"namespace":"n","correlation_id":"c","result_json":"{}"}"#)
-                .unwrap()
-                .into_raw()
+            r#"{"namespace":"n","correlation_id":"c","result_json":"{}"}"#.to_string()
         }
 
         let slot = new_capability_callback_slot();
-        slot.set_registration(Some(CapabilityCallbackRegistration {
-            context: 0,
-            callback: slow_handler,
-        }));
+        slot.set_native_handler(Some(Arc::new(slow_handler)));
         let (cmd_tx, cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
 

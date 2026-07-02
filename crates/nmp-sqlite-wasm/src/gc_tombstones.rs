@@ -8,14 +8,14 @@
 
 #![cfg(target_arch = "wasm32")]
 
+use nmp_kinds::TOMBSTONE_MAX_AGE_SECS;
+
 use crate::error::SqliteWasmError;
 use crate::meta;
 use crate::shim::SqliteConn;
 use crate::store_impl::{exec_write, with_txn, SqlVal};
 use crate::types::GcReport;
 
-/// Per-id / address tombstones older than this are purged. 90 days.
-const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 60 * 60;
 /// Phase 3 runs at most once per hour (mirror of LMDB V-117).
 const GC_TOMBSTONE_PURGE_INTERVAL_SECS: u64 = 3_600;
 /// `nmp_meta` key recording when Phase 3 last ran (throttle, D7-safe).
