@@ -39,10 +39,9 @@ fn not_supported(scope: &'static str) -> FeedOpenError {
 
 /// Validate the requested order compiles to an engine-honorable order.
 ///
-/// The session engine sorts roots newest-first (`NewestByFeedPosition`) ONLY.
-/// `OldestByFeedPosition` is not wired. `Custom(id)` resolves to the registered
-/// custom order definition, which is itself validated the same way — an
-/// unregistered id, or a registered order the engine cannot honor, fails
+/// The session engine sorts roots newest-first (`NewestByFeedPosition`).
+/// `Custom(id)` resolves to the registered custom order definition, which is
+/// itself validated the same way: unregistered ids and nested custom orders fail
 /// closed rather than silently mis-ordering (D6).
 pub(super) fn resolve_order(
     app: &impl FeedSessionHost,
@@ -50,7 +49,6 @@ pub(super) fn resolve_order(
 ) -> Result<(), FeedOpenError> {
     match order {
         FeedOrder::NewestByFeedPosition => Ok(()),
-        FeedOrder::OldestByFeedPosition => Err(not_supported("custom-order")),
         FeedOrder::Custom(id) => {
             let def = app
                 .custom_order(id)
@@ -59,9 +57,7 @@ pub(super) fn resolve_order(
             // that would be unbounded indirection with no concrete order.
             match def.order {
                 FeedOrder::NewestByFeedPosition => Ok(()),
-                FeedOrder::OldestByFeedPosition | FeedOrder::Custom(_) => {
-                    Err(not_supported("custom-order"))
-                }
+                FeedOrder::Custom(_) => Err(not_supported("custom-order")),
             }
         }
     }

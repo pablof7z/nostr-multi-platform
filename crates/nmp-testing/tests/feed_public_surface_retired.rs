@@ -365,6 +365,51 @@ fn raw_interest_c_abi_symbols_are_not_defined_or_reexported() {
 }
 
 #[test]
+fn unsupported_oldest_feed_order_is_not_public_surface() {
+    const RETIRED_ORDER_VARIANT: &str = "OldestByFeedPosition";
+
+    let root = repo_root();
+    let output = Command::new("git")
+        .args(["ls-files", "--", "crates", "docs", "web", "apps"])
+        .current_dir(&root)
+        .output()
+        .expect("git ls-files must succeed for public-surface scan");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    let mut violations = Vec::new();
+    for rel in stdout.lines() {
+        let path = root.join(rel);
+        if path.ends_with("tests/feed_public_surface_retired.rs") {
+            continue;
+        }
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            continue;
+        };
+        if !matches!(
+            ext,
+            "rs" | "md" | "swift" | "kt" | "kts" | "ts" | "tsx" | "js" | "json"
+        ) {
+            continue;
+        }
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        for (n, line) in text.lines().enumerate() {
+            if line.contains(RETIRED_ORDER_VARIANT) {
+                violations.push(format!("{rel}:{}: {}", n + 1, line.trim()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "unsupported feed order variant reappeared in the public surface; add a \
+         concrete engine implementation before publishing another order name:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn c_abi_feed_docs_do_not_advertise_retired_open_close_symbols() {
     // These docs are the C-ABI/iOS-shell references most likely to be copied by
     // host builders. They may describe internal Rust helpers, but must not
