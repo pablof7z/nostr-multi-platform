@@ -365,39 +365,62 @@ ref/dependent-interest lifecycles.
 
 ## 10. Binding Crates
 
-`nmp-native-runtime`, `nmp-uniffi`, and `nmp-browser-runtime` are the reusable
-framework delivery surfaces. Runtime adapter crates own platform runtime
-lifecycle and typed builders; binding crates own binding shape, byte conversion,
-panic guards, callbacks, lifecycle handle exposure, and platform-specific bridge
+`nmp-native-runtime` and `nmp-browser-runtime` are the reusable framework
+delivery surfaces. Runtime adapter crates own platform runtime lifecycle and
+typed builders; binding crates own binding shape, byte conversion, panic
+guards, callbacks, lifecycle handle exposure, and platform-specific bridge
 mechanics. (`nmp-wasm` was deleted in #2202 — it was a dead parallel browser
 runtime with zero live dependents; its protocol types are now owned by
-`nmp-browser-runtime`.) These crates do not own business policy, app defaults, or
-example-app namespaces unless they are explicitly app-owned delivery crates.
+`nmp-browser-runtime`. `nmp-uniffi` was deleted in #2763 — it was a reusable
+framework native binding crate with zero real consumers; every shipped
+native app built its own facade over `nmp-uniffi-support` instead.) These
+crates do not own business policy, app defaults, or example-app namespaces
+unless they are explicitly app-owned delivery crates.
 
-Native target split (#2205/#2209, amended by M14):
+Native target split (#2205/#2209, amended by M14, superseded for the binding
+surface by #2763):
 
 - `nmp-native-runtime` is the native platform runtime adapter. It owns the
   native `NmpApp`/handle type, actor-thread lifecycle, native runtime slots,
   session registries, native Rust APIs, and the native typestate builder
   (`NmpAppBuilder` / `RunConfig`). It composes `nmp-substrate` and protocol
   installers explicitly like a leaf app runtime.
-- `nmp-uniffi` is the reusable framework native binding surface for iOS,
-  Android, and desktop native hosts. It exposes the framework runtime object
-  model, typed records, callbacks, and FlatBuffers byte payload doorways through
-  generated bindings.
-- App-owned UniFFI facade crates may expose app-specific protocol verbs in the
-  app's generated namespace. They must delegate lifecycle, update-sink,
-  capability, dispatch, quiescence, and clamp mechanics to `nmp-native-runtime`
-  / `nmp-uniffi-support` instead of copying framework bridge policy or reviving
-  raw C/JNI symbols.
+- There is no stock, consumable native binding crate. The ONE native binding
+  pattern is an **app-owned UniFFI facade crate** composed over
+  `nmp-uniffi-support` (+ `nmp-native-runtime`). Every native app (iOS,
+  Android, desktop) links exactly one UniFFI cdylib; that facade crate calls
+  `uniffi::setup_scaffolding!()` once and exports the app's own typed
+  records, callback traits, and protocol verbs in the app's generated
+  namespace — a shared crate cannot own these because UniFFI resolves every
+  exported record/callback to its owning facade namespace, and per-app typed
+  projections/actions differ per app. A framework facade crate
+  (`nmp-uniffi`, deleted in #2763) was tried and had zero real consumers:
+  every shipped app (gallery, 29er, Chirp, podcast-player) built its own
+  facade instead.
+- App-owned UniFFI facade crates must delegate lifecycle, update-sink,
+  capability, dispatch, quiescence, and clamp mechanics to
+  `nmp-native-runtime` / `nmp-uniffi-support` instead of copying framework
+  bridge policy or reviving raw C/JNI symbols. `nmp-uniffi-support` also
+  supplies shared input guards (e.g. `is_hex_pubkey` for profile-ref
+  resolution) so per-facade validation cannot drift. The in-repo reference
+  facade is `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`); new
+  apps model their facade on it and on the `nmp init` scaffold template
+  (`crates/nmp-cli/templates/facade_lib.rs.tmpl`), both of which expose the
+  full seam set: lifecycle (start/stop/reset/shutdown), dispatch, capability,
+  ref-resolution (`resolve_profile_ref`/`resolve_event_embed_with_metadata`/
+  `release_*_ref`), and feed-session open/close.
 - App-owned delivery crates may keep local C/JNI glue for app-specific adapters
   such as Gallery, but that glue is not reusable framework API and must not
   revive deleted framework symbols.
+- `nmp-uniffi` is a permanently retired crate name (deleted #2763); it is
+  gated against resurrection by `crates/nmp-testing/bin/doctrine-lint/wasm_abi_gates.rs`
+  (same mechanism as the `nmp-wasm` retirement gate).
 
 `nmp-browser-runtime` is the browser composition-root delivery surface
 described in §10a. It owns the wasm-bindgen Worker export
 (`nmp-browser-runtime::wasm` is the sole browser ABI glue) and the serializable
-browser Worker protocol types.
+browser Worker protocol types. Browser stays wasm-bindgen inside
+`nmp-browser-runtime`; it is not part of the UniFFI facade pattern above.
 
 The pre-v1 binding surface is governed, not compatibility-frozen. Net-new
 framework native APIs target UniFFI, not raw exported C/JNI symbols. Renames and

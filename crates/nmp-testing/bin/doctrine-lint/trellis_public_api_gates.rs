@@ -13,7 +13,6 @@ const RUST_PUBLIC_SURFACE_ROOTS: &[&str] = &[
     "crates/nmp-feed/src",
     "crates/nmp-native-runtime/src",
     "crates/nmp-uniffi-support/src",
-    "crates/nmp-uniffi/src",
 ];
 
 const BUILDER_SURFACE_ROOTS: &[&str] = &[

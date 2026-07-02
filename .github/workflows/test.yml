@@ -197,12 +197,14 @@ jobs:
       # M14 native single-surface proof gate.
       #
       # The deleted `nmp-ffi --features external-signer` gate used to compile
-      # the raw C-ABI lane. Keep coverage on the surviving native owner
-      # instead: UniFFI exports the app-facing methods and nmp-native-runtime
-      # owns the feature-gated NIP-46/NIP-55 runtime hooks.
-      - name: cargo nextest (UniFFI/native feature gates)
+      # the raw C-ABI lane. The reusable `nmp-uniffi` framework facade that
+      # re-exported these feature gates was itself deleted (#2763 — zero real
+      # consumers; app-owned UniFFI facades are the sole binding surface).
+      # Coverage stays on the surviving native owner directly:
+      # nmp-native-runtime owns the feature-gated NIP-46/NIP-55 runtime hooks
+      # that every app-owned UniFFI facade (e.g. nmp-app-gallery) composes over.
+      - name: cargo nextest (native feature gates)
         run: |
-          cargo nextest run -p nmp-uniffi --features native --no-fail-fast
           cargo nextest run -p nmp-native-runtime --features signer-broker,external-signer --no-fail-fast
 
       # Gallery app-owned UniFFI facade check. Host-target compile only; Android

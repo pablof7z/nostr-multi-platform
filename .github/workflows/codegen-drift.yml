@@ -180,18 +180,3 @@ jobs:
 
       - name: Check TypeScript transport bindings are in sync with the schema
         run: bash ci/check-ts-flatc-drift.sh
-
-  # #2389 — UniFFI binding drift gate. The checked-in Swift and Kotlin bindings
-  # under crates/nmp-uniffi/generated/ must be byte-identical to a fresh
-  # uniffi-bindgen run. Regenerate locally with:
-  #   bash ci/check-uniffi-bindings-drift.sh --regen
-  uniffi-bindings-drift:
-    name: UniFFI binding drift (Swift + Kotlin vs Rust interface)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Check UniFFI bindings are in sync with the Rust interface
-        run: bash ci/check-uniffi-bindings-drift.sh

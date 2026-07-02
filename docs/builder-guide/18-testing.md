@@ -48,11 +48,12 @@ hot path: FlatBuffers update bytes crossing UniFFI as `Vec<u8>` through
 `UpdateSink::on_update`.
 
 The workflow runs automatically only for changes to the native byte-transport
-owner (`crates/nmp-uniffi`, `crates/nmp-native-runtime`), the transport schema
-surface (`crates/nmp-core/src/transport`), the benchmark, dependency manifests,
-or the owning workflow/docs. It does not run for broad crate churn or retired
-native cleanup artifacts; current native release evidence comes from UniFFI
-byte transport and app-shell tests.
+owner (`crates/nmp-native-runtime`, and app-owned UniFFI facade crates such as
+`apps/nmp-gallery/crates/nmp-app-gallery` — there is no stock binding crate,
+per #2763), the transport schema surface (`crates/nmp-core/src/transport`), the
+benchmark, dependency manifests, or the owning workflow/docs. It does not run
+for broad crate churn or retired native cleanup artifacts; current native
+release evidence comes from UniFFI byte transport and app-shell tests.
 
 The failure threshold is not a historical timing number. The bench's
 pre-registered rule fails unless the surcharged weighted-p99 UniFFI-vs-C delta
