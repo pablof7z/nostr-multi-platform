@@ -8,8 +8,8 @@
 //!
 //! `open_feed_json` and `close_feed_session` are NEW UniFFI-only surface: the
 //! C-ABI retired its public open/close feed symbols before M14; the Rust-native
-//! composition seam (`NmpApp::open_feed`) remains and is exposed here using
-//! `nmp_native_runtime::compile_feed_params` as the default compiler.
+//! composition seam (`NmpApp::open_feed`) remains and is exposed here without
+//! compiler selection at the UniFFI boundary.
 //!
 //! ## Handle lifecycle
 //!
@@ -20,12 +20,11 @@
 //! silent no-op (D6). The projection key is separate from the session id so the
 //! host can subscribe to NMPU updates before calling `close_feed_session`.
 //!
-//! ## Compiler choice
+//! ## Compiler boundary
 //!
-//! `open_feed_json` hard-wires `compile_feed_params` as the compiler. This is
-//! the native-runtime feed compiler, not an app-specific override. A future
-//! slice can expose a pluggable compiler seam if needed; for M14-C5 this is the
-//! only wired path.
+//! `open_feed_json` delegates to `nmp-uniffi-support`, which calls
+//! `NmpApp::open_feed`. The canonical native feed compiler stays below that
+//! runtime method; UniFFI callers cannot choose a compiler.
 //!
 //! ## Shared mechanic (#2516)
 //!
@@ -75,8 +74,9 @@ impl NmpApp {
 
     /// Open a new feed session from a JSON-encoded `FeedParams` declaration.
     ///
-    /// Parses and validates the declaration, then compiles and registers the
-    /// session using `compile_feed_params` (the composition-root default compiler).
+    /// Parses and validates the declaration, then opens the session through
+    /// `NmpApp::open_feed` using the canonical native compiler below the facade
+    /// boundary.
     /// Returns a [`FeedSessionHandle`] with the projection key and session id.
     ///
     /// D6: all failures are typed `NmpError` values — never panics.
@@ -86,8 +86,8 @@ impl NmpApp {
     /// * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
     ///   `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
     ///   a primary kind, or an empty primary-kinds list).
-    /// * `NmpError::FeedOpenFailed` — the compiler failed to register the
-    ///   session (e.g. an unsupported scope or poisoned registry).
+    /// * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+    ///   (e.g. an unsupported scope or poisoned registry).
     pub fn open_feed_json(&self, params_json: String) -> Result<FeedSessionHandle, NmpError> {
         support_open_feed_session(&self.inner, &params_json)
             .map(|opened| FeedSessionHandle {
@@ -185,7 +185,7 @@ mod tests {
     }
 
     /// `open_feed_json` with valid kind:1 (note) + ActiveUserFollows scope must
-    /// succeed before the runtime is started (the compiler registers interests
+    /// succeed before the runtime is started (the runtime registers interests
     /// that drain silently). The returned handle must have a non-empty projection
     /// key and a non-zero session id.
     #[test]

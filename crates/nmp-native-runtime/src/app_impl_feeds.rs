@@ -177,6 +177,7 @@ impl NmpApp {
     /// Captured into a feed-session teardown closure to revoke the session's
     /// observed-projection sink by id on `close_feed`. Same slot
     /// [`Self::open_observed_projection`] writes into (D4).
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn event_observers_handle(
         &self,

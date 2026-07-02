@@ -238,7 +238,7 @@ fn active_follows_reduced_source_over_real_relay() {
 
     let key = "real-relay.reduced-source.active-follows";
     let _handle = app_ref
-        .open_feed(&support::active_follows_params(key), &support::compiler)
+        .open_feed(&support::active_follows_params(key))
         .expect("active-follows feed opens");
 
     if !wait_feed_contains(&rx, app_ref, key, &note_id, APP_WAIT) {
@@ -359,7 +359,7 @@ fn try_nip65_reroute_pair(source_relay: &str, target_relay: &str) -> Result<(), 
 
     let key = "real-relay.reduced-source.nip65-reroute";
     let _handle = app_ref
-        .open_feed(&support::mute_source_params(key), &support::compiler)
+        .open_feed(&support::mute_source_params(key))
         .expect("active mute-list feed opens");
 
     let observed = wait_feed_contains(&rx, app_ref, key, &note_id, APP_WAIT);

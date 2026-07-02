@@ -1,6 +1,5 @@
 mod relay;
 
-use std::collections::BTreeSet;
 use std::ffi::c_void;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
@@ -11,7 +10,7 @@ use nmp_feed::{
     FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ListId,
     ProjectionKey,
 };
-use nmp_native_runtime::{FeedOpenError, NmpApp};
+use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
 
 pub(crate) use relay::{has_author, has_kind, RecordingRelay};
@@ -240,14 +239,6 @@ pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams
         window: FeedWindow { initial_limit: 80 },
         projection: ProjectionKey::app_owned(projection).unwrap(),
     }
-}
-
-pub(crate) fn compiler(
-    app: &NmpApp,
-    params: &FeedParams,
-    kinds: &BTreeSet<u32>,
-) -> Result<nmp_feed::FeedSessionBuild, FeedOpenError> {
-    nmp_native_runtime::compile_feed_params(app, params, kinds)
 }
 
 pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {

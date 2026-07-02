@@ -43,10 +43,10 @@ pub enum NmpError {
     /// started (M14-C2: maps from `NmpConfigStatus::AlreadyStarted`).
     AlreadyStarted,
     /// A feed session could not be opened: the scope is not wired by the
-    /// default compiler, the session registry is unavailable (poisoned lock),
-    /// or the compiler returned another typed failure. Distinct from
-    /// `InvalidInput` (which covers JSON parse / primary-kind validation errors
-    /// that fire BEFORE the compiler runs).
+    /// runtime, the session registry is unavailable (poisoned lock), or the
+    /// runtime returned another typed failure. Distinct from `InvalidInput`
+    /// (which covers JSON parse / primary-kind validation errors that fire
+    /// before runtime registration).
     FeedOpenFailed,
     /// An internal mutex was poisoned (another thread panicked while holding
     /// it). Maps from `NmpConfigStatus::Unavailable` and

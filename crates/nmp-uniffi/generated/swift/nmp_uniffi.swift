@@ -713,8 +713,9 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     /**
      * Open a new feed session from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then compiles and registers the
-     * session using `compile_feed_params` (the composition-root default compiler).
+     * Parses and validates the declaration, then opens the session through
+     * `NmpApp::open_feed` using the canonical native compiler below the facade
+     * boundary.
      * Returns a [`FeedSessionHandle`] with the projection key and session id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
@@ -724,8 +725,8 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
-     * session (e.g. an unsupported scope or poisoned registry).
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * (e.g. an unsupported scope or poisoned registry).
      */
     func openFeedJson(paramsJson: String) throws  -> FeedSessionHandle
 
@@ -1385,8 +1386,9 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
     /**
      * Open a new feed session from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then compiles and registers the
-     * session using `compile_feed_params` (the composition-root default compiler).
+     * Parses and validates the declaration, then opens the session through
+     * `NmpApp::open_feed` using the canonical native compiler below the facade
+     * boundary.
      * Returns a [`FeedSessionHandle`] with the projection key and session id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
@@ -1396,8 +1398,8 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the compiler failed to register the
-     * session (e.g. an unsupported scope or poisoned registry).
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * (e.g. an unsupported scope or poisoned registry).
      */
 open func openFeedJson(paramsJson: String)throws  -> FeedSessionHandle  {
     return try  FfiConverterTypeFeedSessionHandle_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
@@ -3064,10 +3066,10 @@ public enum NmpError: Swift.Error {
     case AlreadyStarted
     /**
      * A feed session could not be opened: the scope is not wired by the
-     * default compiler, the session registry is unavailable (poisoned lock),
-     * or the compiler returned another typed failure. Distinct from
-     * `InvalidInput` (which covers JSON parse / primary-kind validation errors
-     * that fire BEFORE the compiler runs).
+     * runtime, the session registry is unavailable (poisoned lock), or the
+     * runtime returned another typed failure. Distinct from `InvalidInput`
+     * (which covers JSON parse / primary-kind validation errors that fire
+     * before runtime registration).
      */
     case FeedOpenFailed
     /**
@@ -4434,7 +4436,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 29546) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 47635) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 12173) {

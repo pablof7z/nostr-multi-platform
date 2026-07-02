@@ -1,26 +1,22 @@
 //! `NmpApp::open_feed` / `close_feed` — the feed-session registry seam (#1740
 //! step 2).
 //!
-//! ONE [`NmpApp::open_feed`] call owns a feed's full lifecycle: it mints a
-//! session id + projection key, drives a caller-supplied [`FeedCompiler`] to
-//! perform the actual registration over the EXISTING feed mechanics
-//! (`open_active_follows_op_feed` etc.), records the resulting teardown recipe in
-//! the engine-agnostic [`nmp_feed::FeedSessionRegistry`], and returns a
-//! [`nmp_feed::FeedHandle`]. [`NmpApp::close_feed`] looks the session up by the
-//! handle's id and tears it ALL down — observer, projection, pull controller,
-//! interests — idempotently, using the HANDLE (never a re-derived filter).
+//! ONE [`NmpApp::open_feed`] call owns a feed's full lifecycle: it validates the
+//! declaration, runs the canonical NMP feed compiler, mints a session id +
+//! projection key, records the resulting teardown recipe in the engine-agnostic
+//! [`nmp_feed::FeedSessionRegistry`], and returns a [`nmp_feed::FeedHandle`].
+//! [`NmpApp::close_feed`] looks the session up by the handle's id and tears it
+//! ALL down — observer, projection, pull controller, interests — idempotently,
+//! using the HANDLE (never a re-derived filter).
 //!
-//! Why a compiler closure rather than matching on `FeedScope` here: the
-//! concrete wiring of a scope names the OP-feed engine / follow set / typed
-//! sidecar, which live in this runtime's reusable feed composition layer.
-//! Keeping the scope->registration compile out of the C ABI wrapper keeps
-//! `nmp-ffi` D0-clean (it names no NIP/feed-kind noun) and keeps a single
-//! source of truth for feed state: `open_feed` owns only the session
-//! bookkeeping, never a second feed engine (D4).
+//! Tests and internal composition seams may inject a [`FeedCompiler`] through
+//! [`NmpApp::open_feed_with_compiler`]. Normal app/native callers do not choose a
+//! compiler; they pass a [`FeedParams`] declaration and the runtime applies the
+//! canonical compiler below the app boundary.
 //!
 //! Doctrine map:
-//! - D0: `nmp-ffi` matches on no `FeedScope` variant; the compiler (in the
-//!   native runtime composition layer) owns scope semantics. `open_feed` is
+//! - D0: app/native callers match on no `FeedScope` variant and pass no compiler;
+//!   the native runtime composition layer owns scope semantics. `open_feed` is
 //!   scope-agnostic.
 //! - D4: teardown reuses the existing `unregister_feed`,
 //!   observed-projection close, and dependent-interest cleanup paths via the
@@ -32,11 +28,14 @@
 
 use crate::app_struct::IdentityChangeObserverSlot;
 use crate::NmpApp;
-use nmp_core::__ffi_internal::{
-    unregister_observer, ObservedProjectionSinkSlot, SnapshotProjectionSlot,
-};
+use nmp_core::__ffi_internal::SnapshotProjectionSlot;
+#[cfg(test)]
+use nmp_core::__ffi_internal::{unregister_observer, ObservedProjectionSinkSlot};
+#[cfg(test)]
 use nmp_core::actor::{ActorCommand, InterestsCommand};
-use nmp_core::{CommandSender, ObservedProjectionId};
+use nmp_core::CommandSender;
+#[cfg(test)]
+use nmp_core::ObservedProjectionId;
 use nmp_feed::{
     FeedHandle, FeedParams, FeedRegistrySlot, FeedSessionBuild, FeedSessionId, ProjectionKey,
     TeardownAction,
@@ -47,9 +46,9 @@ pub use nmp_feed_session::FeedOpenError;
 /// session emits under and the ordered teardown recipe that releases everything
 /// the compile registered over the existing mechanics.
 ///
-/// This is exactly [`nmp_feed::FeedSessionBuild`]; re-exported here under a
-/// task-local alias so call sites read as "what the compiler produced".
-pub type FeedCompileOutput = FeedSessionBuild;
+/// This is exactly [`nmp_feed::FeedSessionBuild`]; aliased here so crate-local
+/// call sites read as "what the compiler produced".
+pub(crate) type FeedCompileOutput = FeedSessionBuild;
 
 /// A scope→registration compiler. `open_feed` invokes it once, AFTER primary-kind
 /// validation, to perform the real registration over the existing feed mechanics
@@ -60,7 +59,7 @@ pub type FeedCompileOutput = FeedSessionBuild;
 /// MUST NOT itself touch the session registry. A scope it does not yet support
 /// returns [`FeedOpenError::ScopeNotSupportedYet`] WITHOUT registering anything
 /// (fail closed — no partial registration to leak).
-pub trait FeedCompiler {
+pub(crate) trait FeedCompiler {
     /// Compile + register the feed described by `params` against `app`, or fail
     /// closed with a typed error.
     ///
@@ -108,10 +107,12 @@ where
 /// teardown path (D4). A compiler assembles a `Vec<TeardownAction>` from these
 /// and returns it in its [`FeedCompileOutput`]; `close_feed` runs them.
 #[derive(Clone)]
-pub struct FeedTeardown {
+pub(crate) struct FeedTeardown {
     feeds: FeedRegistrySlot,
     projections: SnapshotProjectionSlot,
+    #[cfg(test)]
     observers: ObservedProjectionSinkSlot,
+    #[cfg(test)]
     observed_projection_sessions: Option<
         std::sync::Arc<
             std::sync::Mutex<
@@ -130,11 +131,13 @@ impl FeedTeardown {
     /// Build a teardown handle from an `NmpApp`'s registry slots (clones the
     /// `Arc`s + the cheap command sender — captures nothing borrowed).
     #[must_use]
-    pub fn for_app(app: &NmpApp) -> Self {
+    pub(crate) fn for_app(app: &NmpApp) -> Self {
         Self {
             feeds: app.feed_registry_handle(),
             projections: app.snapshot_projections_handle(),
+            #[cfg(test)]
             observers: app.event_observers_handle(),
+            #[cfg(test)]
             observed_projection_sessions: Some(app.observed_projection_sessions.clone()),
             identity_observers: Some(app.identity_change_observers.clone()),
             sender: app.command_sender(),
@@ -147,7 +150,8 @@ impl FeedTeardown {
     /// observe command-send order relative to the registry removals (#1740 step
     /// 2 teardown-order proof).
     #[must_use]
-    pub fn from_parts(
+    #[cfg(test)]
+    pub(crate) fn from_parts(
         feeds: FeedRegistrySlot,
         projections: SnapshotProjectionSlot,
         observers: ObservedProjectionSinkSlot,
@@ -166,7 +170,7 @@ impl FeedTeardown {
     /// A teardown step that drops the feed controller registered under `key`
     /// (reuses [`nmp_feed::FeedRegistry::unregister`]).
     #[must_use]
-    pub fn unregister_feed(&self, key: impl Into<String>) -> TeardownAction {
+    pub(crate) fn unregister_feed(&self, key: impl Into<String>) -> TeardownAction {
         let feeds = self.feeds.clone();
         let key = key.into();
         Box::new(move || {
@@ -187,7 +191,7 @@ impl FeedTeardown {
     /// provider here it would leak: the kernel's next in-tick reconcile would keep
     /// the consumer in the live set and never release the refs it auto-resolved.
     #[must_use]
-    pub fn remove_projection(&self, key: impl Into<String>) -> TeardownAction {
+    pub(crate) fn remove_projection(&self, key: impl Into<String>) -> TeardownAction {
         let projections = self.projections.clone();
         let key = key.into();
         Box::new(move || {
@@ -207,7 +211,8 @@ impl FeedTeardown {
     /// tests built via [`Self::from_parts`] have no session map, so they fall
     /// back to raw sink unregister.
     #[must_use]
-    pub fn revoke_observer(&self, id: ObservedProjectionId) -> TeardownAction {
+    #[cfg(test)]
+    pub(crate) fn revoke_observer(&self, id: ObservedProjectionId) -> TeardownAction {
         let observers = self.observers.clone();
         let sessions = self.observed_projection_sessions.clone();
         let sender = self.sender.clone();
@@ -236,7 +241,10 @@ impl FeedTeardown {
     /// Feed sessions are shorter-lived, so reduced-source reset hooks must be
     /// removed on close just like observed-projection sinks and acquisition sets.
     #[must_use]
-    pub fn revoke_identity_observer(&self, id: crate::IdentityChangeObserverId) -> TeardownAction {
+    pub(crate) fn revoke_identity_observer(
+        &self,
+        id: crate::IdentityChangeObserverId,
+    ) -> TeardownAction {
         let observers = self.identity_observers.clone();
         Box::new(move || {
             if let Some(observers) = observers.as_ref() {
@@ -249,41 +257,10 @@ impl FeedTeardown {
     /// tick reflects the removed registrations. Run last (so it fires after the
     /// removals). A closed inbox is a silent drop (D6).
     #[must_use]
-    pub fn mark_changed(&self) -> TeardownAction {
+    pub(crate) fn mark_changed(&self) -> TeardownAction {
         let sender = self.sender.clone();
         Box::new(move || {
             sender.mark_changed_since_emit();
-        })
-    }
-
-    /// #1740 step 3 — a teardown step that WITHDRAWS one session-scoped
-    /// acquisition interest opened via `ActorCommand::OpenInterest`.
-    ///
-    /// This is the close-side of a non-default scope's acquisition (the
-    /// perspective compiler's `ContactList` / `ListMembers` / `Wot` / `Tag` /
-    /// set-algebra arms register their internal interests with
-    /// `ActorCommand::Interests(InterestsCommand::OpenInterest { filter_json, consumer_id, scope })`, the
-    /// `consumer_id` being the session's projection key). Closing the same
-    /// triple detaches that owner; the kernel reconstructs the same registry
-    /// slot from the `InterestShape` hash, so the `(filter_json, consumer_id,
-    /// scope)` MUST match the open call. When the last owner of an interest
-    /// leaves, the kernel enqueues the CLOSE diff (D8 — bounded: the session's
-    /// interests are withdrawn on close).
-    ///
-    /// A closed inbox is a silent drop (D6); closing an interest that is not
-    /// open is a harmless no-op.
-    #[must_use]
-    pub fn close_interest(
-        &self,
-        filter_json: impl Into<String>,
-        consumer_id: impl Into<String>,
-        scope: u32,
-    ) -> TeardownAction {
-        let sender = self.sender.clone();
-        let filter_json = filter_json.into();
-        let consumer_id = consumer_id.into();
-        Box::new(move || {
-            sender.close_interest(filter_json, consumer_id, scope);
         })
     }
 }
@@ -292,19 +269,19 @@ impl NmpApp {
     /// #1740 step 2 — a [`FeedTeardown`] over this app's registry slots, for a
     /// feed-session compiler to build its teardown recipe from.
     #[must_use]
-    pub fn feed_teardown(&self) -> FeedTeardown {
+    pub(crate) fn feed_teardown(&self) -> FeedTeardown {
         FeedTeardown::for_app(self)
     }
 
     /// #1740 step 2 — open ONE feed session owning its full lifecycle.
     ///
     /// 1. Validate `params`' primary kinds at THIS seam (fail-closed on
-    ///    wrapper/delete/empty), deriving the acquisition kind set. Enforced for
-    ///    every compiler — an invalid declaration never reaches one. The
-    ///    validator (`validate_feed_params`) is the single canonical owner of
-    ///    that protocol knowledge; this seam names no wrapper/delete kind itself.
-    /// 2. Run `compiler` to register the feed over the EXISTING mechanics and
-    ///    produce its teardown recipe (or fail closed for an unsupported scope).
+    ///    wrapper/delete/empty), deriving the acquisition kind set. The validator
+    ///    (`validate_feed_params`) is the single canonical owner of that protocol
+    ///    knowledge; this seam names no wrapper/delete kind itself.
+    /// 2. Run the canonical NMP feed compiler to register the feed over the
+    ///    EXISTING mechanics and produce its teardown recipe (or fail closed for
+    ///    an unsupported scope).
     /// 3. Record the recipe in the session registry under a freshly minted id.
     /// 4. Return a [`FeedHandle`] pairing the projection key with the session id.
     ///
@@ -312,7 +289,18 @@ impl NmpApp {
     /// never re-derives a filter from the params (D4). On any failure nothing is
     /// left registered (the compiler fails closed before registering; a registry
     /// failure runs the just-produced teardown immediately).
-    pub fn open_feed(
+    pub fn open_feed(&self, params: &FeedParams) -> Result<FeedHandle, FeedOpenError> {
+        self.open_feed_with_compiler(params, &nmp_feed_session::compile_feed_params)
+    }
+
+    /// Internal/test/composition seam for callers that need to inject a compiler.
+    ///
+    /// Product and facade code should use [`Self::open_feed`], which applies the
+    /// canonical NMP compiler implicitly. Keeping this method separately named
+    /// prevents compiler selection from being taught as the normal app-facing feed
+    /// lifecycle.
+    #[doc(hidden)]
+    pub(crate) fn open_feed_with_compiler(
         &self,
         params: &FeedParams,
         compiler: &impl FeedCompiler,
