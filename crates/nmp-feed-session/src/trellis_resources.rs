@@ -1,6 +1,6 @@
 use std::hash::Hash;
 
-use nmp_feed::{FeedRender, ProjectionKey};
+use nmp_feed::{FeedShape, ProjectionKey};
 use nmp_planner::{stable_hash::stable_hash64, InterestLifecycle, InterestScope, InterestShape};
 
 const RESOURCE_NS: &str = "nmp.feed-session.resource.v1";
@@ -30,9 +30,9 @@ impl FeedSessionResourceKey {
     #[must_use]
     pub(crate) fn projection(attachment: &ProjectionAttachment) -> Self {
         Self::new(format!(
-            "{RESOURCE_NS}:projection:projection={}:render={}",
+            "{RESOURCE_NS}:projection:projection={}:shape={}",
             digest(("projection", attachment.projection.as_str())),
-            render_part(&attachment.render),
+            shape_part(&attachment.shape),
         ))
     }
 
@@ -256,13 +256,13 @@ pub(crate) enum InterestSetReason {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ProjectionAttachment {
     pub(crate) projection: ProjectionKey,
-    pub(crate) render: FeedRender,
+    pub(crate) shape: FeedShape,
 }
 
 impl ProjectionAttachment {
     #[must_use]
-    pub(crate) fn new(projection: ProjectionKey, render: FeedRender) -> Self {
-        Self { projection, render }
+    pub(crate) fn new(projection: ProjectionKey, shape: FeedShape) -> Self {
+        Self { projection, shape }
     }
 
     #[must_use]
@@ -354,9 +354,9 @@ fn lifecycle_part(value: &InterestLifecycle) -> &'static str {
     }
 }
 
-fn render_part(value: &FeedRender) -> &'static str {
+fn shape_part(value: &FeedShape) -> &'static str {
     match value {
-        FeedRender::OpCentric => "op-centric",
-        FeedRender::Flat => "flat",
+        FeedShape::RootIndexed => "root-indexed",
+        FeedShape::Flat => "flat",
     }
 }

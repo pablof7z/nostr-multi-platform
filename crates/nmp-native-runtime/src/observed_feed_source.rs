@@ -44,7 +44,7 @@ mod tests {
     use nmp_core::substrate::KernelEvent;
     use nmp_core::TypedProjectionData;
     use nmp_feed::{
-        FeedAdmission, FeedRanking, FeedRender, FeedScope, FeedWindow, ProjectionKey, TagTerm,
+        FeedAdmission, FeedRanking, FeedScope, FeedShape, FeedWindow, ProjectionKey, TagTerm,
     };
 
     #[derive(Default)]
@@ -57,7 +57,7 @@ mod tests {
     fn tag_params() -> FeedParams {
         FeedParams {
             primary_kinds: vec![1],
-            render: FeedRender::Flat,
+            shape: FeedShape::Flat,
             acquisition: FeedScope::Tag {
                 term: TagTerm("rust".to_string()),
             },

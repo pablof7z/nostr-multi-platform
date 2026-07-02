@@ -270,7 +270,7 @@ impl super::KernelReducer {
     /// registry mutex is held by `run_typed`, so it must capture the sink handle
     /// up front instead of re-locking the registry from inside the closure.
     #[must_use]
-    pub fn feed_render_source_handles(&self) -> Option<(Arc<AtomicU64>, EmittedFeedAuthorsSlot)> {
+    pub fn feed_window_source_handles(&self) -> Option<(Arc<AtomicU64>, EmittedFeedAuthorsSlot)> {
         self.snapshot_slot.lock().ok().map(|registry| {
             (
                 registry.frame_tick_rev_handle(),

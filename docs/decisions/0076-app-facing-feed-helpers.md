@@ -22,8 +22,8 @@ The feed implementation now has useful lower-level pieces: `FeedParams`,
 browser runtime feed opening, UniFFI support helpers that call the default
 compiler, and app-owned dynamic projection keys. Issue #1626 remains open
 because the normal app-facing shape is still too close to executor wiring:
-some current names such as `render`, `OpCentric`, `ChronologicalDesc`,
-`FeedWindow`, and `projection` hide important ownership distinctions.
+some current names such as `ChronologicalDesc`, `FeedWindow`, `projection`, and
+`CustomPerspectiveId` hide important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -166,8 +166,8 @@ pagination by handle.
 | crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
 | explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
 | former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
-| `render` | `shape` | NMP projects row/window shape; hosts render. |
-| `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
+| former `render` field | `shape` | NMP projects row/window shape; hosts render. |
+| former `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
 | `FeedRanking::ChronologicalDesc` | `FeedOrder::NewestByFeedPosition` or `NewestByEventCreatedAt` | Repost/source position and target event time are different contracts. |
 | `FeedWindow` with only `initial_limit` | `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
 | `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |

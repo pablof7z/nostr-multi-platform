@@ -4,8 +4,8 @@ use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
-    FeedSessionBuild, PullFeedController,
+    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
+    FeedShape, PullFeedController,
 };
 
 use super::{interest_scope_code, visible_flat_payload};
@@ -74,8 +74,8 @@ pub(super) fn build_flat_scope_session(
 
     let feed_for_typed = Arc::clone(&feed);
     let typed_key = key.to_string();
-    let source = nmp_feed::FeedRenderSource::new(move || feed_for_typed.snapshot_current_window());
-    app.register_feed_render_source(key.to_string(), source, move |snapshot| {
+    let source = nmp_feed::FeedWindowSource::new(move || feed_for_typed.snapshot_current_window());
+    app.register_feed_window_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
             schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
@@ -90,7 +90,7 @@ pub(super) fn build_flat_scope_session(
     });
     let sender = app.command_sender();
     let acquisition_adapter =
-        FeedSessionTrellisAdapter::new(key, FeedRender::Flat, interests.clone(), sender)?;
+        FeedSessionTrellisAdapter::new(key, FeedShape::Flat, interests.clone(), sender)?;
     let replayed_tail = app.load_older_feed(key);
     let replayed_ids = super::super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
     acquisition_adapter.rebaseline_output_if_changed(replayed_ids && !replayed_tail);

@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::{CommandSender, DependentInterestChild};
-use nmp_feed::{FeedRender, ProjectionKey, TeardownAction};
+use nmp_feed::{FeedShape, ProjectionKey, TeardownAction};
 #[cfg(test)]
 use trellis_core::ResourceCommand;
 use trellis_core::{
@@ -81,13 +81,13 @@ struct FeedSessionCloseOutcome {
 impl FeedSessionTrellisAdapter {
     pub(super) fn new(
         projection_key: &str,
-        render: FeedRender,
+        shape: FeedShape,
         fixed: Vec<AcquisitionInterest>,
         sender: CommandSender,
     ) -> Result<Self, FeedOpenError> {
         let projection = ProjectionKey::app_owned(projection_key)
             .map_err(|_| FeedOpenError::RegistryUnavailable)?;
-        let output_attachment = ProjectionAttachment::new(projection.clone(), render);
+        let output_attachment = ProjectionAttachment::new(projection.clone(), shape);
 
         let mut graph =
             Graph::<FeedSessionResourceCommand, FeedSessionOutput>::new_with_command_type();

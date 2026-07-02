@@ -1,4 +1,4 @@
-//! [`FeedRenderSource`] — the per-tick materialized window a feed's typed
+//! [`FeedWindowSource`] — the per-tick materialized window a feed's typed
 //! producer AND its author-resolve provider BOTH read (ADR-0063 D7, #1671 Lane H).
 //!
 //! ## Why this exists — the structural-pairing + no-gap fix
@@ -25,12 +25,12 @@
 //!   together, so a feed could register a typed sidecar and simply forget the
 //!   author provider (exactly what the dynamic author/thread feeds did).
 //!
-//! `FeedRenderSource` fixes both: it materializes the window EXACTLY ONCE per
+//! `FeedWindowSource` fixes both: it materializes the window EXACTLY ONCE per
 //! tick (keyed by a kernel-published monotone tick rev) and hands the SAME
 //! `Arc<S>` snapshot to both the provider and the typed producer. Because both
 //! read one materialization, they cannot disagree about the window — the
 //! `load_older` gap is structurally impossible. And because the registration
-//! helper builds BOTH closures from one `FeedRenderSource`, you cannot register a
+//! helper builds BOTH closures from one `FeedWindowSource`, you cannot register a
 //! sidecar without its provider.
 
 use std::sync::{Arc, Mutex};
@@ -48,7 +48,7 @@ use crate::root_indexed::FeedAuthorRefs;
 /// `S` is the concrete snapshot type (`RootFeedSnapshot<C, A>`); it must
 /// implement [`FeedAuthorRefs`] so the provider can extract the visible author
 /// keys from the SAME snapshot the typed producer encodes.
-pub struct FeedRenderSource<S> {
+pub struct FeedWindowSource<S> {
     /// The live window reader. Reads the engine's current viewport (honoring any
     /// `load_older` grow). Non-blocking (D8) — it only reads in-memory state.
     snapshot_fn: Arc<dyn Fn() -> S + Send + Sync + 'static>,
@@ -59,11 +59,11 @@ pub struct FeedRenderSource<S> {
     memo: Mutex<Option<(u64, Arc<S>)>>,
 }
 
-impl<S> FeedRenderSource<S>
+impl<S> FeedWindowSource<S>
 where
     S: FeedAuthorRefs + Send + Sync + 'static,
 {
-    /// Construct a render source over a live window reader.
+    /// Construct a window source over a live window reader.
     #[must_use]
     pub fn new(snapshot_fn: impl Fn() -> S + Send + Sync + 'static) -> Arc<Self> {
         Arc::new(Self {
@@ -151,7 +151,7 @@ mod tests {
         let calls_for_fn = Arc::clone(&calls);
         // The "live window" widens on every read (simulating a concurrent
         // `load_older` between the provider read and the typed-producer read).
-        let source = FeedRenderSource::new(move || {
+        let source = FeedWindowSource::new(move || {
             let n = calls_for_fn.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
                 snap(&["alice"])
@@ -189,7 +189,7 @@ mod tests {
     fn new_tick_rev_rematerializes() {
         let calls = Arc::new(AtomicUsize::new(0));
         let calls_for_fn = Arc::clone(&calls);
-        let source = FeedRenderSource::new(move || {
+        let source = FeedWindowSource::new(move || {
             let n = calls_for_fn.fetch_add(1, Ordering::SeqCst);
             if n == 0 {
                 snap(&["alice"])

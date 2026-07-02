@@ -13,7 +13,7 @@ use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::{CommandSender, KernelReducer, TypedProjectionData};
 use nmp_feed::{
     CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedHandle,
-    FeedParams, FeedRenderSource, FeedSessionRegistry, PullFn, TeardownAction,
+    FeedParams, FeedSessionRegistry, FeedWindowSource, PullFn, TeardownAction,
 };
 use nmp_feed_session::{FeedSessionHost, IdentityChangeObserverId};
 use nmp_store::{PullPage, ScanLogResult};
@@ -169,16 +169,16 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
         changed
     }
 
-    fn register_feed_render_source<S, F>(
+    fn register_feed_window_source<S, F>(
         &self,
         feed_key: String,
-        source: Arc<FeedRenderSource<S>>,
+        source: Arc<FeedWindowSource<S>>,
         encode: F,
     ) where
         S: FeedAuthorRefs + Send + Sync + 'static,
         F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static,
     {
-        register_feed_render_source(self.reducer, feed_key, source, encode);
+        register_feed_window_source(self.reducer, feed_key, source, encode);
     }
 
     fn custom_perspective(&self, _id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {
@@ -202,16 +202,16 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
     }
 }
 
-fn register_feed_render_source<S, F>(
+fn register_feed_window_source<S, F>(
     reducer: &KernelReducer,
     key: String,
-    source: Arc<FeedRenderSource<S>>,
+    source: Arc<FeedWindowSource<S>>,
     encode: F,
 ) where
     S: FeedAuthorRefs + Send + Sync + 'static,
     F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static,
 {
-    let Some((tick_rev, emitted_sink)) = reducer.feed_render_source_handles() else {
+    let Some((tick_rev, emitted_sink)) = reducer.feed_window_source_handles() else {
         return;
     };
 

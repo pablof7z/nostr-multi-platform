@@ -150,7 +150,7 @@ fn relay_event_frame(sub_id: &str, event_json: String) -> String {
 fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHandle {
     let params = nmp_feed::FeedParams {
         primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
-        render: nmp_feed::FeedRender::OpCentric,
+        shape: nmp_feed::FeedShape::RootIndexed,
         acquisition: nmp_feed::FeedScope::ActiveUserFollows,
         admission: nmp_feed::FeedAdmission::All,
         ranking: nmp_feed::FeedRanking::ChronologicalDesc,

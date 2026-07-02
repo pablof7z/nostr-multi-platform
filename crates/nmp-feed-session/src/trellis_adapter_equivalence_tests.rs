@@ -4,7 +4,7 @@ use std::sync::{
     Arc,
 };
 
-use nmp_feed::FeedRender;
+use nmp_feed::FeedShape;
 
 use crate::trellis_adapter::{
     FeedSessionOutputFrameKind, FeedSessionResourceTraceKind, FeedSessionTrellisAdapter,
@@ -20,7 +20,7 @@ fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {
     let (sender, rx) = command_receiver();
     let adapter = FeedSessionTrellisAdapter::new(
         "app.feed.equivalence",
-        FeedRender::OpCentric,
+        FeedShape::RootIndexed,
         Vec::new(),
         sender,
     )
@@ -145,14 +145,14 @@ fn local_source_change_does_not_replan_unrelated_session_adapter() {
     let (sender, rx) = command_receiver();
     let active_adapter = FeedSessionTrellisAdapter::new(
         "app.feed.active",
-        FeedRender::OpCentric,
+        FeedShape::RootIndexed,
         Vec::new(),
         sender.clone(),
     )
     .unwrap();
     let static_adapter = FeedSessionTrellisAdapter::new(
         "app.feed.static",
-        FeedRender::OpCentric,
+        FeedShape::RootIndexed,
         Vec::new(),
         sender,
     )
