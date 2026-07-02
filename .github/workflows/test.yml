@@ -197,7 +197,7 @@ jobs:
       # M14 native single-surface proof gate.
       #
       # The deleted `nmp-ffi --features external-signer` gate used to compile
-      # the raw C-ABI lane. The reusable `nmp-uniffi` framework facade that
+      # the raw C-ABI lane. The stock `nmp-uniffi` reference facade that
       # re-exported these feature gates was itself deleted (#2763 — zero real
       # consumers; app-owned UniFFI facades are the sole binding surface).
       # Coverage stays on the surviving native owner directly:

@@ -15,7 +15,7 @@ The v1 split is:
 |---|---|---|
 | `nmp-substrate` | Shared substrate floor: router/mailbox/profile/contacts cache-parser construction, publish resolver, coverage hook, NIP-77 interceptors, blocked-relay wiring, and native NIP-11 hook. | Protocol/product feature bundles, platform runtime handles, C ABI symbols, operator policy, app defaults. |
 | `nmp-native-runtime` | Native runtime handle, actor lifecycle, native typestate builder, runtime slots, pre-start configuration, and native Rust APIs. | C ABI conversion or app/product policy. |
-| `nmp-uniffi` | Public native binding surface over the native runtime: lifecycle object, callbacks/sinks, typed dispatch bytes, typed read-session helpers, diagnostics, and generated Swift/Kotlin bindings. | Runtime ownership, composition policy, protocol logic, hot snapshot payload format. |
+| App-owned UniFFI facade + `nmp-uniffi-support` | Public native binding surface over the native runtime: facade-local lifecycle object, callbacks/sinks, typed dispatch bytes, typed read-session helpers, diagnostics, generated Swift/Kotlin bindings, and shared Rust mechanics reused from `nmp-uniffi-support`. | Runtime ownership, composition policy, protocol logic, hot snapshot payload format, or a reusable framework-generated binding namespace. |
 | `nmp-browser-runtime` | Browser Worker runtime, wasm-bindgen export, wasm-bindgen ABI glue (`nmp-browser-runtime::wasm`), browser typestate builder, storage/signing/capability provider registration. | UI rendering, TypeScript crypto fallbacks, protocol policy. |
 | App-owned delivery glue | Local shell adapters such as Gallery-specific C/JNI helpers when a concrete app still needs them. | Reusable framework API, starter setup guidance, runtime ownership, protocol logic. |
 

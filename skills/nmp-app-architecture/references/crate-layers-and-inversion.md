@@ -15,7 +15,7 @@
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol / product modules | `nmp-nip01`, `nmp-replies`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content` |
 | 5 | App composition | `apps/<app>/…` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
-| 6 | Platform runtimes, bindings, deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-browser-runtime`, app-owned delivery crates |
+| 6 | Platform runtimes, bindings, deliverables | `nmp-native-runtime`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned UniFFI facades and delivery crates |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 ## Dependency Direction

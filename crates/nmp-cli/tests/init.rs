@@ -185,9 +185,8 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         facade_bindgen.contains("uniffi::uniffi_bindgen_main"),
         "scaffolded facade must carry its own uniffi-bindgen binary (no shared framework bindgen crate, #2763):\n{facade_bindgen}"
     );
-    let facade_cargo_toml =
-        std::fs::read_to_string(root.join("crates/demoapp-app/Cargo.toml"))
-            .expect("read scaffolded facade Cargo.toml");
+    let facade_cargo_toml = std::fs::read_to_string(root.join("crates/demoapp-app/Cargo.toml"))
+        .expect("read scaffolded facade Cargo.toml");
     assert!(
         facade_cargo_toml.contains("nmp-core")
             && facade_cargo_toml.contains("bindgen = [\"uniffi/cli\"]")

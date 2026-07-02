@@ -9,13 +9,13 @@ capability sockets, typed projection registration, and one write doorway. Relay
 routing, cache invalidation, subscription lifecycle, signing orchestration, and
 store admission stay inside Rust.
 
-Native app bindings target `crates/nmp-uniffi` over
-`crates/nmp-native-runtime::NmpAppBuilder`. Browser bindings target
-`nmp-browser-runtime` wasm-bindgen exports. Hot Rust-to-host updates are binary
-`nmp.transport.UpdateFrame` frames. The frame carries a `SnapshotEnvelope` plus
-typed projection payloads; production hosts decode typed frame data. Generated
-Swift/Kotlin/TypeScript helpers decode those typed frames, but they do not define
-a second runtime transport.
+Native app bindings target an app-owned UniFFI facade over
+`crates/nmp-native-runtime::NmpAppBuilder` plus `nmp-uniffi-support` mechanics.
+Browser bindings target `nmp-browser-runtime` wasm-bindgen exports. Hot
+Rust-to-host updates are binary `nmp.transport.UpdateFrame` frames. The frame
+carries a `SnapshotEnvelope` plus typed projection payloads; production hosts
+decode typed frame data. Generated Swift/Kotlin/TypeScript helpers decode those
+typed frames, but they do not define a second runtime transport.
 
 External interface policy: every public surface must earn its place before v1.
 binding methods, wasm wire tags, FlatBuffers fields, projection keys, action
@@ -26,12 +26,12 @@ slots, or old generated module paths solely to protect old callers.
 
 ### 6.1 App Handle And Lifecycle
 
-Native hosts construct one UniFFI `NmpApp`, configure update sinks,
-capabilities, storage, and projection declarations before start, then call the
-UniFFI lifecycle method. Swift and Kotlin hold normal generated object handles;
-Rust owns actor lifetime and teardown. All app data updates arrive through the
-UniFFI update sink as byte frames; the callee copies bytes before the callback
-returns.
+Native hosts construct one app-owned UniFFI facade object, configure update
+sinks, capabilities, storage, and projection declarations before start, then
+call the facade lifecycle method. Swift and Kotlin hold normal generated object
+handles; Rust owns actor lifetime and teardown. All app data updates arrive
+through the facade update sink as byte frames; the callee copies bytes before
+the callback returns.
 
 Start/configure behavior is governed by visible-limit and emit-Hz clamps plus
 Rust-owned policy. New public surfaces must not copy legacy transport parameters

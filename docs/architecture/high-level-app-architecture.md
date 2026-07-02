@@ -146,8 +146,9 @@ Runtime crates own platform lifecycle:
 
 - `nmp-native-runtime` owns native actor lifecycle and native builder state;
 - `nmp-browser-runtime` owns browser worker and wasm runtime constraints;
-- `nmp-uniffi` is the public native binding surface for Swift/Kotlin lifecycle,
-  callbacks, typed dispatch bytes, and native session helpers.
+- app-owned UniFFI facades expose Swift/Kotlin lifecycle, callbacks, typed
+  dispatch bytes, and native session helpers over `nmp-native-runtime` and
+  `nmp-uniffi-support`.
 
 Runtime crates do not own app product policy.
 

@@ -9,7 +9,7 @@
 
 | Target | Public ABI | Owner crate | Payload |
 |--------|-----------|-------------|---------|
-| iOS, Android, desktop native | UniFFI | `crates/nmp-uniffi` | FlatBuffers `Vec<u8>` frames |
+| iOS, Android, desktop native | UniFFI | app-owned facade over `nmp-native-runtime` + `nmp-uniffi-support` | FlatBuffers `Vec<u8>` frames |
 | Browser (wasm) | wasm-bindgen | `crates/nmp-browser-runtime::wasm` | FlatBuffers `Uint8Array` frames |
 
 These are separate binding families. Do not route browser guidance through UniFFI. Do not
@@ -18,10 +18,10 @@ use browser/wasm as a reason to retain legacy native C symbols.
 ## Native Stack (three layers)
 
 ```
-┌─ nmp-uniffi ────────────────────────────────────────────────────────────┐
-│ Public native generated surface. One uniffi::setup_scaffolding!().       │
-│ Exposes: NmpApp lifecycle, UpdateSink callback, dispatch_action(Vec<u8>),│
-│ identity/signer/relay/session/capability/publish controls, mirror pull.  │
+┌─ app-owned UniFFI facade ────────────────────────────────────────────────┐
+│ Public native generated surface. One uniffi::setup_scaffolding!() per    │
+│ app cdylib. Exposes facade-local lifecycle, callbacks, dispatch bytes,   │
+│ and only the native verbs that app actually needs.                       │
 ├─ nmp-uniffi-support ─────────────────────────────────────────────────────┤
 │ Shared Rust mechanics: panic containment, quiescence, dispatch, clamp.   │
 │ NO setup_scaffolding!(). Shared only through Rust-side function calls.    │
@@ -36,12 +36,13 @@ protocol/runtime installers from the crates that own those mechanisms. This comp
 platform runtime handle, no C ABI, and no lifecycle. See
 `composition-and-product-policy.md`.
 
-## UniFFI Is the Sole Public Native ABI
+## App-Owned UniFFI Is the Sole Public Native ABI
 
-`crates/nmp-uniffi` (one `uniffi::setup_scaffolding!()`) is the reusable framework native
-surface. A new `pub extern "C"` in any `crates/nmp-*` framework crate is an **ABI
-regression** and requires an ADR-0072 exception gate (measured hot-path failure + internal
-wrapper behind a UniFFI API + named owner + thresholds + delete trigger).
+NMP no longer ships a reusable generated framework facade crate. Each native app owns one
+UniFFI facade over `nmp-native-runtime` and `nmp-uniffi-support`. A new `pub extern "C"` in
+any `crates/nmp-*` framework crate is an **ABI regression** and requires an ADR-0072
+exception gate (measured hot-path failure + internal wrapper behind a UniFFI API + named
+owner + thresholds + delete trigger).
 
 ## FlatBuffers Ride Through UniFFI, Not Alongside It
 
@@ -93,8 +94,8 @@ uniffi-bindgen generate --library <app-cdylib> --language kotlin --out-dir <kotl
 
 ### Facade vs upstreaming
 A generic Nostr mechanism a second app could reuse unchanged belongs in a Layer-4 NMP crate
-and the reusable `nmp-uniffi` surface. A product-private verb stays in the app facade. Native
-shells in both cases only render state and execute raw capabilities.
+and reusable Rust runtime/support APIs. A product-private verb stays in the app facade.
+Native shells in both cases only render state and execute raw capabilities.
 
 ## `nmp-uniffi-support` Shares Mechanics, Not Types
 
@@ -108,7 +109,7 @@ Reuse — never copy into a facade — these helpers: `start_runtime`, `configur
 
 | Deleted artifact | Replacement |
 |------------------|-------------|
-| `crates/nmp-ffi` crate | `crates/nmp-uniffi` + `nmp-native-runtime` |
+| `crates/nmp-ffi` crate | app-owned UniFFI facade + `nmp-native-runtime` / `nmp-uniffi-support` |
 | Framework C-ABI symbols (`nmp_app_lifecycle_*`, `nmp_app_dispatch_action`, …) | UniFFI `NmpApp` methods |
 | `crates/nmp-wasm` | `crates/nmp-browser-runtime::wasm` |
 | Marmot C-ABI public framework surface | Internal; post-v1 direction tracked in #2232 |
@@ -142,7 +143,6 @@ Worker/OPFS init before product start — silent in-memory fallback is not produ
 
 | Change | Required gate |
 |--------|--------------|
-| Any change to `crates/nmp-uniffi/` interfaces | `bash ci/check-uniffi-bindings-drift.sh` |
 | App facade `setup_scaffolding!()` | `uniffi-bindgen generate --library` for Swift + Kotlin |
 | UniFFI byte transport performance | `ffi-transport-bench --standard --fail-on-gate` |
 | Doctrine-sensitive NMP change | `cargo test -p nmp-testing --test doctrine_lint_smoke` |
@@ -151,8 +151,8 @@ Worker/OPFS init before product start — silent in-memory fallback is not produ
 
 - `pub extern "C"` in `crates/nmp-*` is a framework ABI regression: file an ADR-0072 exception
   or remove it.
-- `uniffi::setup_scaffolding!()` appears exactly once per linked cdylib — in `nmp-uniffi` for
-  framework-only apps, or in the app facade crate for apps with app-specific verbs.
+- `uniffi::setup_scaffolding!()` appears exactly once per linked cdylib, in the app facade
+  crate that owns the generated native namespace.
 - `nmp-uniffi-support` shares Rust mechanics; it never exports UniFFI types directly.
 - Composition installers are Rust `AppHost` registrations; they are not native ABI or browser
   ABI.

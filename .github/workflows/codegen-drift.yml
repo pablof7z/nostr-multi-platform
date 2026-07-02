@@ -103,7 +103,7 @@ jobs:
       # #2487 / M14-D — after the reusable nmp-ffi framework ABI deletion, iOS
       # callers must not import deleted raw headers or call migrated framework C
       # symbols. App-scoped gallery bridge symbols are allowed; migrated
-      # framework APIs belong behind crates/nmp-uniffi generated bindings.
+      # framework APIs belong behind app-owned UniFFI generated bindings.
       - name: iOS clean-break self-test catches deleted nmp-ffi C callers
         run: bash ci/check-ios-uniffi-clean-break.sh --self-test
 

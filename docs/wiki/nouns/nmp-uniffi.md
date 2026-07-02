@@ -9,4 +9,6 @@ source_refs:
 
 # nmp-uniffi
 
-A new in-tree crate providing UniFFI 0.29 proc-macro bindings wrapping nmp-native-runtime. Exposes NmpApp (Arc-wrapped: start/configure/stop/reset/shutdown/dispatch_action/set_update_sink), UpdateSink callback interface, and DispatchOutcome record.
+Retired crate name. `crates/nmp-uniffi` was deleted in #2763 after the
+reference framework facade had zero real consumers. Native apps now own their
+own UniFFI facade crate over `nmp-native-runtime` and `nmp-uniffi-support`.

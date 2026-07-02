@@ -30,7 +30,6 @@ excluded_parts = (
     "/android/",
     "/desktop/",
     "/tui/",
-    "crates/nmp-uniffi/generated/",
     "crates/nmp-codegen/tests/fixtures/",
     "target/",
 )
@@ -94,7 +93,7 @@ fi
 
 if matches="$(scan_live_tree)"; then
     echo "ERROR: iOS caller still references deleted reusable nmp-ffi headers or C symbols." >&2
-    echo "Use crates/nmp-uniffi generated bindings for migrated framework APIs." >&2
+    echo "Use app-owned UniFFI generated bindings for migrated framework APIs." >&2
     echo >&2
     echo "$matches" >&2
     exit 1
