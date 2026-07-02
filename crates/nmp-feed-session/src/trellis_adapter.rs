@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::fmt;
+use std::sync::Arc;
 
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
+use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 use nmp_core::{CommandSender, DependentInterestChild};
 use nmp_feed::{FeedShape, ProjectionKey, TeardownAction};
 #[cfg(test)]
@@ -13,6 +15,7 @@ use trellis_core::{
 };
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
+use crate::trellis_owner_cell::ActorThreadCell;
 use crate::trellis_resources::{
     FeedSessionResourceCommand, FeedSessionResourceKey, FeedSessionScopeKey, ProjectionAttachment,
 };
@@ -31,7 +34,7 @@ type FeedSessionOutput = ProjectionAttachment;
 /// stay inside this module.
 #[derive(Clone)]
 pub(super) struct FeedSessionTrellisAdapter {
-    inner: Arc<Mutex<FeedSessionTrellisInner>>,
+    inner: Arc<ActorThreadCell<FeedSessionTrellisInner>>,
     sender: CommandSender,
     owner: SubOwnerKey,
 }
@@ -162,7 +165,7 @@ impl FeedSessionTrellisAdapter {
         let output_frames = output_frame_kinds(&_result.output_frames);
 
         Ok(Self {
-            inner: Arc::new(Mutex::new(FeedSessionTrellisInner {
+            inner: Arc::new(ActorThreadCell::new(FeedSessionTrellisInner {
                 graph,
                 scope,
                 demand_input,
@@ -180,14 +183,9 @@ impl FeedSessionTrellisAdapter {
     }
 
     pub(super) fn sync(&self, extra: &ExtraAcquisition, reason: &'static str) -> bool {
-        let mut inner = match self.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return false,
-        };
-        let Some(children) = inner.sync(extra) else {
+        let Some(children) = self.inner.with_mut("sync", |inner| inner.sync(extra)) else {
             return false;
         };
-        drop(inner);
         self.replace_children(children, reason);
         true
     }
@@ -196,29 +194,43 @@ impl FeedSessionTrellisAdapter {
         if !changed {
             return false;
         }
-        let mut inner = match self.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return false,
-        };
-        if !inner.rebaseline_output() {
+        if !self
+            .inner
+            .with_mut("rebaseline", FeedSessionTrellisInner::rebaseline_output)
+        {
             return false;
         }
-        drop(inner);
         self.sender.mark_changed_since_emit();
         true
+    }
+
+    pub(super) fn schedule_source_effect(
+        &self,
+        extra: ExtraAcquisition,
+        reason: &'static str,
+        rebaseline: bool,
+    ) {
+        let _ = self.sender.send(ActorCommand::Protocol(Box::new(
+            FeedSessionTrellisCommand {
+                adapter: self.clone(),
+                operation: FeedSessionTrellisOperation::SourceEffect {
+                    extra,
+                    reason,
+                    rebaseline,
+                },
+            },
+        )));
     }
 
     pub(super) fn close_action(&self, remove_projection: TeardownAction) -> TeardownAction {
         let adapter = self.clone();
         Box::new(move || {
-            let mut inner = match adapter.inner.lock() {
-                Ok(inner) => inner,
-                Err(_) => return,
-            };
-            let Some(outcome) = inner.close_scope() else {
+            let Some(outcome) = adapter
+                .inner
+                .with_mut("close", FeedSessionTrellisInner::close_scope)
+            else {
                 return;
             };
-            drop(inner);
             if outcome.output_cleared {
                 remove_projection();
             }
@@ -228,18 +240,16 @@ impl FeedSessionTrellisAdapter {
 
     #[cfg(test)]
     pub(super) fn output_frame_kinds_for_test(&self) -> Vec<FeedSessionOutputFrameKind> {
-        self.inner
-            .lock()
-            .map(|inner| inner.output_frames.clone())
-            .unwrap_or_default()
+        self.inner.with_ref("output-frame-test-read", |inner| {
+            inner.output_frames.clone()
+        })
     }
 
     #[cfg(test)]
     pub(super) fn resource_traces_for_test(&self) -> Vec<FeedSessionResourceTrace> {
-        self.inner
-            .lock()
-            .map(|inner| inner.resource_traces.clone())
-            .unwrap_or_default()
+        self.inner.with_ref("resource-trace-test-read", |inner| {
+            inner.resource_traces.clone()
+        })
     }
 
     fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
@@ -250,6 +260,54 @@ impl FeedSessionTrellisAdapter {
                 reason: reason.to_string(),
             },
         ));
+    }
+}
+
+struct FeedSessionTrellisCommand {
+    adapter: FeedSessionTrellisAdapter,
+    operation: FeedSessionTrellisOperation,
+}
+
+enum FeedSessionTrellisOperation {
+    SourceEffect {
+        extra: ExtraAcquisition,
+        reason: &'static str,
+        rebaseline: bool,
+    },
+}
+
+impl fmt::Debug for FeedSessionTrellisCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FeedSessionTrellisCommand")
+            .field("operation", &self.operation.label())
+            .finish()
+    }
+}
+
+impl FeedSessionTrellisOperation {
+    fn label(&self) -> &'static str {
+        match self {
+            FeedSessionTrellisOperation::SourceEffect { .. } => "source-effect",
+        }
+    }
+}
+
+impl ProtocolCommand for FeedSessionTrellisCommand {
+    fn run(
+        self: Box<Self>,
+        _ctx: &mut ProtocolCommandContext<'_>,
+    ) -> Result<(), ProtocolCommandError> {
+        match self.operation {
+            FeedSessionTrellisOperation::SourceEffect {
+                extra,
+                reason,
+                rebaseline,
+            } => {
+                self.adapter.sync(&extra, reason);
+                self.adapter.rebaseline_output_if_changed(rebaseline);
+            }
+        }
+        Ok(())
     }
 }
 

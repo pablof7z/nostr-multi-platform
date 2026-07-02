@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
     mpsc, Arc,
 };
+use std::thread;
 
 use nmp_core::actor::{ActorCommand, ActorMail, InterestsCommand, LifecycleCommand};
 use nmp_core::subs::SubOwnerKey;
@@ -196,6 +197,68 @@ fn adapter_output_lifecycle_frames_drive_rebaseline_and_clear() {
 
     assert!(!adapter.rebaseline_output_if_changed(true));
     assert_eq!(drain_mark_changed(&rx), 0);
+}
+
+#[test]
+fn adapter_rejects_off_actor_thread_callbacks() {
+    let (sender, _rx) = command_receiver();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
+
+    let callback_result = thread::spawn(move || {
+        adapter.sync(
+            &extra(vec![interest("wrong-thread")]),
+            "wrong-thread-callback",
+        );
+    })
+    .join();
+
+    let panic = callback_result.expect_err("off-thread adapter access must panic");
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .unwrap_or("");
+    assert!(
+        message.contains("outside its owner actor thread"),
+        "unexpected panic payload: {message}"
+    );
+}
+
+#[test]
+fn source_effect_callbacks_enqueue_actor_command_before_trellis_mutation() {
+    let (sender, rx) = command_receiver();
+    let adapter = FeedSessionTrellisAdapter::new(
+        "app.feed.synthetic",
+        FeedShape::RootIndexed,
+        Vec::new(),
+        sender,
+    )
+    .unwrap();
+
+    let callback_adapter = adapter.clone();
+    let callback_result = thread::spawn(move || {
+        callback_adapter.schedule_source_effect(
+            extra(vec![interest("alice")]),
+            "source-changed",
+            true,
+        );
+    })
+    .join();
+    callback_result.expect("source-effect callbacks only enqueue actor commands");
+
+    let mail = rx
+        .try_recv()
+        .expect("source-effect callback must enqueue a protocol command");
+    let ActorMail::Command(ActorCommand::Protocol(_)) = mail else {
+        panic!("unexpected actor mail");
+    };
+    assert!(rx.try_recv().is_err());
+    assert_eq!(
+        adapter.output_frame_kinds_for_test(),
+        vec![FeedSessionOutputFrameKind::Baseline]
+    );
 }
 
 fn remove_projection_action(count: Arc<AtomicUsize>) -> nmp_feed::TeardownAction {

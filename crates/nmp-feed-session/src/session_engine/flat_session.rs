@@ -117,10 +117,13 @@ pub(super) fn build_flat_scope_session(
         let sync_observer = engine_observer.clone();
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_observer.sync();
-            acquisition_adapter.sync(&extra, "feed-session-acquisition");
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
-            acquisition_adapter.rebaseline_output_if_changed(reset || replayed);
+            acquisition_adapter.schedule_source_effect(
+                Arc::clone(&extra),
+                "feed-session-acquisition",
+                reset || replayed,
+            );
         });
         hook(trigger);
     }
