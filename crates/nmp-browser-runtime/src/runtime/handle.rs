@@ -61,6 +61,7 @@ pub struct BrowserRuntimeHandle {
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
     pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
     pub(crate) feed_sessions: nmp_feed::FeedSessionRegistry,
+    pub(crate) custom_feed_policies: Arc<nmp_feed::CustomFeedPolicyRegistry>,
     pub(crate) feed_session_runtimes: HashMap<nmp_feed::FeedSessionId, OpenedBrowserFeedSession>,
     pub(crate) identity_observer_next_id: Arc<AtomicU64>,
 }
@@ -224,6 +225,7 @@ impl BrowserRuntimeHandle {
             notifications_sessions: HashMap::new(),
             feed_registry: nmp_feed::new_feed_registry_slot(),
             feed_sessions: nmp_feed::FeedSessionRegistry::default(),
+            custom_feed_policies: Arc::new(nmp_feed::CustomFeedPolicyRegistry::default()),
             feed_session_runtimes: HashMap::new(),
             identity_observer_next_id,
         };
