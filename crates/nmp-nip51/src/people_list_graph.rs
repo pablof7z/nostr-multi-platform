@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::reactive_source_graph::{ReactiveSourceGraph, SourceInputUpdate, SourceNodeId};
+use trellis_core::{DependencyList, DerivedNode, Graph, InputNode};
 
 const ACTIVE_ACCOUNT_NODE: &str = "nmp.nip51.people_list.active_account";
 const RAW_LISTS_NODE: &str = "nmp.nip51.people_list.raw_lists";
 const VISIBLE_LISTS_NODE: &str = "nmp.nip51.people_list.visible_lists";
-const VISIBLE_LISTS_EFFECT_NODE: &str = "nmp.nip51.people_list.visible_lists_effect";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct PeopleListGraphEntry {
@@ -27,60 +26,46 @@ pub(super) enum PeopleListGraphEffect {
 }
 
 pub(super) struct PeopleListGraph {
-    graph: ReactiveSourceGraph<PeopleListGraphEffect>,
-    active_account: SourceNodeId,
-    raw_lists: SourceNodeId,
-    visible_lists: SourceNodeId,
+    graph: Graph<(), ()>,
+    active_account: InputNode<Option<String>>,
+    raw_lists: InputNode<PeopleListGraphStore>,
+    visible_lists: DerivedNode<BTreeMap<String, BTreeSet<String>>>,
 }
 
 impl PeopleListGraph {
     pub(super) fn new(active_account: Option<String>) -> Self {
-        let active_account_node = SourceNodeId::from(ACTIVE_ACCOUNT_NODE);
-        let raw_lists_node = SourceNodeId::from(RAW_LISTS_NODE);
-        let visible_lists_node = SourceNodeId::from(VISIBLE_LISTS_NODE);
-        let effect_node = SourceNodeId::from(VISIBLE_LISTS_EFFECT_NODE);
+        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut tx = graph
+            .begin_transaction()
+            .expect("static people-list graph transaction opens");
 
-        let mut graph = ReactiveSourceGraph::new();
-        graph
-            .add_input(active_account_node.clone(), active_account)
+        let active_account_node = tx
+            .input::<Option<String>>(ACTIVE_ACCOUNT_NODE)
             .expect("static people-list active-account node registration");
-        graph
-            .add_input(raw_lists_node.clone(), PeopleListGraphStore::default())
+        let raw_lists_node = tx
+            .input::<PeopleListGraphStore>(RAW_LISTS_NODE)
             .expect("static people-list raw-lists node registration");
+        tx.set_input(active_account_node, active_account)
+            .expect("static people-list active-account seed");
+        tx.set_input(raw_lists_node, PeopleListGraphStore::default())
+            .expect("static people-list raw-lists seed");
 
-        graph
-            .add_derived::<BTreeMap<String, BTreeSet<String>>, _>(
-                visible_lists_node.clone(),
-                [active_account_node.clone(), raw_lists_node.clone()],
-                {
-                    let active_account_node = active_account_node.clone();
-                    let raw_lists_node = raw_lists_node.clone();
-                    move |read| {
-                        let active = read
-                            .get::<Option<String>>(&active_account_node)
-                            .and_then(Option::as_deref);
-                        let store = read
-                            .get::<PeopleListGraphStore>(&raw_lists_node)
-                            .cloned()
-                            .unwrap_or_default();
-                        visible_lists(active, &store)
-                    }
+        let visible_lists_node = tx
+            .derived::<BTreeMap<String, BTreeSet<String>>>(
+                VISIBLE_LISTS_NODE,
+                DependencyList::new([active_account_node.id(), raw_lists_node.id()])
+                    .expect("static people-list visible-list dependencies"),
+                move |read| {
+                    let active = read.input(active_account_node)?.as_deref();
+                    let store = read.input(raw_lists_node)?;
+                    Ok(visible_lists(active, store))
                 },
             )
             .expect("static people-list visible-lists node registration");
 
-        graph
-            .add_effect(effect_node, [visible_lists_node.clone()], {
-                let visible_lists_node = visible_lists_node.clone();
-                move |read| {
-                    let lists =
-                        read.get::<BTreeMap<String, BTreeSet<String>>>(&visible_lists_node)?;
-                    Some(PeopleListGraphEffect::PerspectiveChanged {
-                        lists: lists.clone(),
-                    })
-                }
-            })
-            .expect("static people-list source-effect node registration");
+        tx.commit()
+            .expect("static people-list graph initial transaction");
+        drop(tx);
 
         Self {
             graph,
@@ -92,7 +77,9 @@ impl PeopleListGraph {
 
     pub(super) fn current_visible_lists(&self) -> BTreeMap<String, BTreeSet<String>> {
         self.graph
-            .get::<BTreeMap<String, BTreeSet<String>>>(&self.visible_lists)
+            .derived_value(self.visible_lists)
+            .ok()
+            .flatten()
             .cloned()
             .unwrap_or_default()
     }
@@ -101,10 +88,7 @@ impl PeopleListGraph {
         &mut self,
         active_account: Option<String>,
     ) -> Vec<PeopleListGraphEffect> {
-        self.graph
-            .set_input(self.active_account.clone(), active_account)
-            .map(|turn| turn.into_effects())
-            .unwrap_or_default()
+        self.commit_inputs(Some(active_account), None)
     }
 
     pub(super) fn upsert_list(
@@ -116,7 +100,9 @@ impl PeopleListGraph {
     ) -> Vec<PeopleListGraphEffect> {
         let mut store = self
             .graph
-            .get::<PeopleListGraphStore>(&self.raw_lists)
+            .input_value(self.raw_lists)
+            .ok()
+            .flatten()
             .cloned()
             .unwrap_or_default();
 
@@ -141,10 +127,47 @@ impl PeopleListGraph {
             }
         }
 
-        self.graph
-            .apply_inputs([SourceInputUpdate::new(self.raw_lists.clone(), store)])
-            .map(|turn| turn.into_effects())
-            .unwrap_or_default()
+        self.commit_inputs(None, Some(store))
+    }
+
+    fn commit_inputs(
+        &mut self,
+        active_account: Option<Option<String>>,
+        raw_lists: Option<PeopleListGraphStore>,
+    ) -> Vec<PeopleListGraphEffect> {
+        let result = {
+            let mut tx = match self.graph.begin_transaction() {
+                Ok(tx) => tx,
+                Err(_) => return Vec::new(),
+            };
+            if let Some(active_account) = active_account {
+                if tx.set_input(self.active_account, active_account).is_err() {
+                    return Vec::new();
+                }
+            }
+            if let Some(raw_lists) = raw_lists {
+                if tx.set_input(self.raw_lists, raw_lists).is_err() {
+                    return Vec::new();
+                }
+            }
+            tx.commit()
+        };
+
+        let Ok(result) = result else {
+            return Vec::new();
+        };
+        debug_assert!(self.graph.assert_incremental_equals_full().is_ok());
+
+        if result
+            .changed_derived_nodes
+            .contains(&self.visible_lists.id())
+        {
+            vec![PeopleListGraphEffect::PerspectiveChanged {
+                lists: self.current_visible_lists(),
+            }]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -161,3 +184,7 @@ fn visible_lists(
         .map(|(list_id, entry)| (list_id.clone(), entry.members.clone()))
         .collect()
 }
+
+#[cfg(test)]
+#[path = "people_list_graph_tests.rs"]
+mod tests;

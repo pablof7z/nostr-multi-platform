@@ -4391,6 +4391,7 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+ "trellis-core",
 ]
 
 [[package]]

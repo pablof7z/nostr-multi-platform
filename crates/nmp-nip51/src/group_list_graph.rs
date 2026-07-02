@@ -1,13 +1,12 @@
 use std::collections::BTreeSet;
 
-use nmp_core::reactive_source_graph::{ReactiveSourceGraph, SourceInputUpdate, SourceNodeId};
+use trellis_core::{DependencyList, DerivedNode, Graph, InputNode};
 
 use crate::group_list::SimpleGroupRef;
 
 const ACTIVE_ACCOUNT_NODE: &str = "nmp.nip51.simple_groups.active_account";
 const RAW_LIST_NODE: &str = "nmp.nip51.simple_groups.raw_list";
 const VISIBLE_GROUPS_NODE: &str = "nmp.nip51.simple_groups.visible_groups";
-const VISIBLE_GROUPS_EFFECT_NODE: &str = "nmp.nip51.simple_groups.visible_groups_effect";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SimpleGroupListGraphStore {
@@ -22,59 +21,46 @@ pub(super) enum SimpleGroupListGraphEffect {
 }
 
 pub(super) struct SimpleGroupListGraph {
-    graph: ReactiveSourceGraph<SimpleGroupListGraphEffect>,
-    active_account: SourceNodeId,
-    raw_list: SourceNodeId,
-    visible_groups: SourceNodeId,
+    graph: Graph<(), ()>,
+    active_account: InputNode<Option<String>>,
+    raw_list: InputNode<SimpleGroupListGraphStore>,
+    visible_groups: DerivedNode<BTreeSet<SimpleGroupRef>>,
 }
 
 impl SimpleGroupListGraph {
     pub(super) fn new(active_account: Option<String>) -> Self {
-        let active_account_node = SourceNodeId::from(ACTIVE_ACCOUNT_NODE);
-        let raw_list_node = SourceNodeId::from(RAW_LIST_NODE);
-        let visible_groups_node = SourceNodeId::from(VISIBLE_GROUPS_NODE);
-        let effect_node = SourceNodeId::from(VISIBLE_GROUPS_EFFECT_NODE);
+        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut tx = graph
+            .begin_transaction()
+            .expect("static simple-groups graph transaction opens");
 
-        let mut graph = ReactiveSourceGraph::new();
-        graph
-            .add_input(active_account_node.clone(), active_account)
+        let active_account_node = tx
+            .input::<Option<String>>(ACTIVE_ACCOUNT_NODE)
             .expect("static simple-groups active-account node registration");
-        graph
-            .add_input(raw_list_node.clone(), SimpleGroupListGraphStore::default())
+        let raw_list_node = tx
+            .input::<SimpleGroupListGraphStore>(RAW_LIST_NODE)
             .expect("static simple-groups raw-list node registration");
+        tx.set_input(active_account_node, active_account)
+            .expect("static simple-groups active-account seed");
+        tx.set_input(raw_list_node, SimpleGroupListGraphStore::default())
+            .expect("static simple-groups raw-list seed");
 
-        graph
-            .add_derived::<BTreeSet<SimpleGroupRef>, _>(
-                visible_groups_node.clone(),
-                [active_account_node.clone(), raw_list_node.clone()],
-                {
-                    let active_account_node = active_account_node.clone();
-                    let raw_list_node = raw_list_node.clone();
-                    move |read| {
-                        let active = read
-                            .get::<Option<String>>(&active_account_node)
-                            .and_then(Option::as_deref);
-                        let store = read
-                            .get::<SimpleGroupListGraphStore>(&raw_list_node)
-                            .cloned()
-                            .unwrap_or_default();
-                        visible_groups(active, &store)
-                    }
+        let visible_groups_node = tx
+            .derived::<BTreeSet<SimpleGroupRef>>(
+                VISIBLE_GROUPS_NODE,
+                DependencyList::new([active_account_node.id(), raw_list_node.id()])
+                    .expect("static simple-groups visible-group dependencies"),
+                move |read| {
+                    let active = read.input(active_account_node)?.as_deref();
+                    let store = read.input(raw_list_node)?;
+                    Ok(visible_groups(active, store))
                 },
             )
             .expect("static simple-groups visible-groups node registration");
 
-        graph
-            .add_effect(effect_node, [visible_groups_node.clone()], {
-                let visible_groups_node = visible_groups_node.clone();
-                move |read| {
-                    let groups = read.get::<BTreeSet<SimpleGroupRef>>(&visible_groups_node)?;
-                    Some(SimpleGroupListGraphEffect::PerspectiveChanged {
-                        groups: groups.clone(),
-                    })
-                }
-            })
-            .expect("static simple-groups source-effect node registration");
+        tx.commit()
+            .expect("static simple-groups graph initial transaction");
+        drop(tx);
 
         Self {
             graph,
@@ -86,7 +72,9 @@ impl SimpleGroupListGraph {
 
     pub(super) fn current_visible_groups(&self) -> BTreeSet<SimpleGroupRef> {
         self.graph
-            .get::<BTreeSet<SimpleGroupRef>>(&self.visible_groups)
+            .derived_value(self.visible_groups)
+            .ok()
+            .flatten()
             .cloned()
             .unwrap_or_default()
     }
@@ -95,10 +83,7 @@ impl SimpleGroupListGraph {
         &mut self,
         active_account: Option<String>,
     ) -> Vec<SimpleGroupListGraphEffect> {
-        self.graph
-            .set_input(self.active_account.clone(), active_account)
-            .map(|turn| turn.into_effects())
-            .unwrap_or_default()
+        self.commit_inputs(Some(active_account), None)
     }
 
     pub(super) fn upsert_list(
@@ -109,7 +94,9 @@ impl SimpleGroupListGraph {
     ) -> Vec<SimpleGroupListGraphEffect> {
         let mut store = self
             .graph
-            .get::<SimpleGroupListGraphStore>(&self.raw_list)
+            .input_value(self.raw_list)
+            .ok()
+            .flatten()
             .cloned()
             .unwrap_or_default();
 
@@ -129,10 +116,47 @@ impl SimpleGroupListGraph {
         store.groups = groups;
         store.created_at = created_at;
 
-        self.graph
-            .apply_inputs([SourceInputUpdate::new(self.raw_list.clone(), store)])
-            .map(|turn| turn.into_effects())
-            .unwrap_or_default()
+        self.commit_inputs(None, Some(store))
+    }
+
+    fn commit_inputs(
+        &mut self,
+        active_account: Option<Option<String>>,
+        raw_list: Option<SimpleGroupListGraphStore>,
+    ) -> Vec<SimpleGroupListGraphEffect> {
+        let result = {
+            let mut tx = match self.graph.begin_transaction() {
+                Ok(tx) => tx,
+                Err(_) => return Vec::new(),
+            };
+            if let Some(active_account) = active_account {
+                if tx.set_input(self.active_account, active_account).is_err() {
+                    return Vec::new();
+                }
+            }
+            if let Some(raw_list) = raw_list {
+                if tx.set_input(self.raw_list, raw_list).is_err() {
+                    return Vec::new();
+                }
+            }
+            tx.commit()
+        };
+
+        let Ok(result) = result else {
+            return Vec::new();
+        };
+        debug_assert!(self.graph.assert_incremental_equals_full().is_ok());
+
+        if result
+            .changed_derived_nodes
+            .contains(&self.visible_groups.id())
+        {
+            vec![SimpleGroupListGraphEffect::PerspectiveChanged {
+                groups: self.current_visible_groups(),
+            }]
+        } else {
+            Vec::new()
+        }
     }
 }
 
@@ -145,3 +169,7 @@ fn visible_groups(
     }
     store.groups.clone()
 }
+
+#[cfg(test)]
+#[path = "group_list_graph_tests.rs"]
+mod tests;
