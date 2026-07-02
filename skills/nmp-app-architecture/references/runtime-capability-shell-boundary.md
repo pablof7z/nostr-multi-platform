@@ -9,7 +9,7 @@
 | Crate | Role | Owns |
 |---|---|---|
 | `nmp-native-runtime` | Native platform runtime adapter | `NmpApp`, `NmpAppBuilder` typestate, actor thread, native session registries |
-| `nmp-uniffi` | Public native binding surface | UniFFI export of `nmp-native-runtime`; no policy, routing, or signing |
+| App-owned UniFFI facades | Public native binding surface | Generated Swift/Kotlin namespaces over `nmp-native-runtime` plus `nmp-uniffi-support`; no policy, routing, or signing |
 | `nmp-browser-runtime` | Browser runtime adapter | Worker, OPFS init, `wasm-bindgen` ABI (`::wasm`) |
 | Owner-crate installers | Explicit composition surface | `AppHost` registration; NOT a runtime; no lifecycle handle |
 
@@ -131,7 +131,7 @@ product success. Gate: `crates/nmp-browser-runtime-conformance/src/lib.rs`.
 | Concern | Owner |
 |---|---|
 | Actor thread lifecycle | `nmp-native-runtime` |
-| Native host binding | `nmp-uniffi` |
+| Native host binding | App-owned UniFFI facades |
 | Browser Worker + OPFS | `nmp-browser-runtime` |
 | Generic NMP composition | App root calling `nmp_substrate::install(...)` plus owner-crate installers |
 | OS capability execution | Native shell (capability bridge) |
