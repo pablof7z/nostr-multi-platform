@@ -136,7 +136,7 @@ impl<T: SearchRelaySource + ?Sized> SearchRelaySource for &T {
 /// The result is de-duplicated preserving first-seen order. Blocked-relay
 /// subtraction is NOT applied here — it is the router's subtractive post-pass
 /// over every routed interest (`BlockedRelaySet`,
-/// `docs/architecture/crate-boundaries.md` §3.1), so a relay this function
+/// `docs/architecture/crate-boundaries.md` §5), so a relay this function
 /// returns that the user has blocked is dropped downstream by the same generic
 /// mechanism that protects every other interest.
 #[must_use]

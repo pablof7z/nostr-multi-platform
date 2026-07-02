@@ -62,7 +62,7 @@ pub enum ActorCommand {
     /// Open-seam command dispatched through the
     /// [`crate::substrate::ProtocolCommand`] trait. NIP crates use this
     /// instead of adding their own variant to `ActorCommand`
-    /// (`docs/architecture/crate-boundaries.md` §4.1, step 1.b).
+    /// (`docs/architecture/crate-boundaries.md` §3, trait seams; step 1.b).
     Protocol(Box<dyn crate::substrate::ProtocolCommand>),
     /// Generic FFI-boundary action (T95). Routed through the
     /// [`dispatch_kernel_action`] reducer; the resolved [`KernelUpdate`] is

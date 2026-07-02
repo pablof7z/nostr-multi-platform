@@ -137,7 +137,7 @@ fn pool_exposes_no_send_to_all_method() {
     // Pure compile-time assertion — if someone adds `Pool::send_all`,
     // this test does not break; the contract lives in the `Pool` impl
     // block and the spec at `docs/architecture/crate-boundaries.md`
-    // §3.8. The test is here as a discoverable failure point if
+    // §7. The test is here as a discoverable failure point if
     // someone audits the test list.
     //
     // We *do* call `send` to assert the only fan-out path: caller

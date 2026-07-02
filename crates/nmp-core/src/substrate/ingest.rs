@@ -1,6 +1,6 @@
 //! `IngestParser` — the read-path substrate seam.
 //!
-//! Defined by `docs/architecture/crate-boundaries.md` §4.2. Step 1 of the
+//! Defined by `docs/architecture/crate-boundaries.md` §3 (trait seams). Step 1 of the
 //! 12-step migration: pure additions, no kernel cut-over. NIP crates that
 //! own a kind-specific cache (NIP-65 `MailboxCache` for kind:10002, NIP-17
 //! `DmRelayCache` for kind:10050, etc.) register a parser through

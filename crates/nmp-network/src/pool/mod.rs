@@ -1,4 +1,4 @@
-//! Push-model [`Pool`] API — `docs/architecture/crate-boundaries.md` §3.8,
+//! Push-model [`Pool`] API — `docs/architecture/crate-boundaries.md` §7,
 //! step 8 phase B.
 //!
 //! ## What this is
@@ -59,8 +59,10 @@
 //!
 //! ## Why phase B ships as additive
 //!
-//! The crate-boundary spec §3.8 says **Pool is the only caller above
-//! `nmp-network`** once migration completes. But replacing the actor's
+//! This crate's design goal is that **Pool is the only caller above
+//! `nmp-network`** once migration completes (the crate-boundary spec §7
+//! owns the WS-I/O-only boundary this goal serves, but does not itself
+//! name "Pool is the only caller"). But replacing the actor's
 //! ~38 [`crate::relay_worker::RelayEvent`] / `RelayCommand` usages in
 //! one PR pushes well past the 1500-LOC / 50-callsite STOP boundary the
 //! agent task spec lays down. So phase B ships the `Pool` types +

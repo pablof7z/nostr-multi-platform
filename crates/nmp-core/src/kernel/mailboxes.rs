@@ -1,63 +1,43 @@
 //! Router-driven REQ-relay resolution + planner-side [`MailboxCache`] adapter.
 //!
-//! # V-50 / V-51 status
+//! # Current design
 //!
-//! Step 3 of `docs/architecture/crate-boundaries.md` cut the kernel over to
-//! `Arc<dyn OutboxRouter>` + `Arc<dyn MailboxCache>` for *storage* but left
-//! the kernel's REQ-construction sites reading the cache directly via
-//! `author_write_relays` / `recipient_read_relays` / `author_indexer_relays`.
-//! V-51 phase 5 (PR #462) added an observe-only `observe_subscription_through_router`
-//! shim that fired the router for the trace projection but dropped the
-//! routed set on the floor.
+//! The kernel never reads NIP-65 mailbox data directly for REQ construction
+//! or publish-relay resolution; every decision goes through the injected
+//! `outbox_router` (`Arc<dyn OutboxRouter>`, see `docs/architecture/crate-boundaries.md`
+//! §3 for the trait seam and §4 for the router's implementation ownership):
 //!
-//! **Debt A** (this commit) lifts the kernel's REQ-construction sites
-//! onto the router as the live decision authority:
-//!
-//! * The substrate seam for the cold-start bootstrap seed is
-//!   [`RoutingContext::session_keys::app_relays`] — the kernel populates it
-//!   with the appropriate bootstrap list at each call site, and the router's
-//!   existing lane 7 ([`crate::substrate::RoutingSource::AppRelay`] with
-//!   [`crate::substrate::AppRelayMode::Fallback`]) handles "no NIP-65 cached"
-//!   by falling back to that list. No new substrate field is required — the
-//!   router's lane-1 → lane-7 algorithm already expresses the kernel's
-//!   cold-start contract.
-//! * Per-call helpers below ([`Kernel::route_subscription_relays`] and
-//!   [`Kernel::partition_ids_via_router`]) construct the
-//!   [`RoutingContext`], invoke `route_subscription` through the kernel's
-//!   `outbox_router` slot, and return the routed URL set. The router's
-//!   trace observer fires automatically on the success path — the
-//!   `observe_subscription_through_router` half-step is gone.
-//! * The DM-inbox lookup ([`Kernel::recipient_dm_relays`]) stays — it reads
-//!   the injected [`DmInboxRelayLookup`] handle (V-40); the kernel does
-//!   not know the wire shape of a kind:10050 event and the router does not
+//! * [`Kernel::build_routing_context`] stack-allocates a [`RoutingContext`]
+//!   from the call site's `app_relays` (cold-start seed),
+//!   `indexer_relays` (operator-configured, feeds lane 6), and a
+//!   [`BlockedRelaySet`] snapshot ([`Kernel::snapshot_blocked_relays`]).
+//! * [`Kernel::route_subscription_relays`] builds a one-shot
+//!   [`LogicalInterest`] and calls `outbox_router.route_subscription`,
+//!   returning the resolved, sorted+deduped URL set. The router's lane 1
+//!   (NIP-65) resolves first; lane 7 (`AppRelayMode::Fallback`) fires from
+//!   the seeded `app_relays` when lane 1 has nothing cached — see
+//!   `docs/architecture/crate-boundaries.md` §5 for the full lane contract.
+//! * [`Kernel::recipient_publish_relays`] drives the same router through
+//!   `route_publish` with a synthetic [`UnsignedEvent`] so a downstream
+//!   publisher (e.g. NIP-57's LN provider) can resolve a recipient's
+//!   publish-side relay set without reading the cache directly.
+//! * [`Kernel::bootstrap_seed_urls`] resolves the [`BootstrapSeed`]
+//!   discriminant to the concrete cold-start URL list passed as
+//!   `app_relays`. `BootstrapSeed::Discovery` is currently the only
+//!   variant (indexer + content seeds combined); it is the lane-7 fallback
+//!   for both content-direction and discovery-direction REQs.
+//! * The DM-inbox lookup ([`Kernel::recipient_dm_relays`]) is the one
+//!   exception to "everything through the router": it reads the injected
+//!   [`DmInboxRelayLookup`] handle directly, because the kernel does not
+//!   know the wire shape of a kind:10050 event and the router does not
 //!   consult the DM-inbox cache. The gift-wrap publish path (`nmp-nip17`)
-//!   uses `PublishTarget::Explicit` with the kind:10050 relay set.
-//! * The [`KernelMailboxes`] adapter is unchanged — it bridges the
-//!   substrate [`SubstrateMailboxCache`] + [`DmInboxRelayLookup`] handles
-//!   to the planner's [`PlannerMailboxCache`] trait.
-//!
-//! # Discovery direction
-//!
-//! Profile-claim REQs (kind:0) and NIP-65 relay-list probes (kind:10002)
-//! are *discovery-direction* reads: the cold-start seed must be the
-//! indexer-only relay set (the shared content relay must never see those
-//! probes, per `kernel/mailboxes.rs::author_indexer_relays` historical
-//! semantics). The router does not yet implement lane 6 (Indexer
-//! eligibility — `Nip65WriteSetRouter` carries the TODO); until it does,
-//! the kernel selects the bootstrap seed per call site:
-//!
-//! * Content-direction (kind:1/6 timeline, hashtag firehose, thread
-//!   hydration): `app_relays = bootstrap_discovery_relays()`
-//!   (indexer + content seeds combined — same as
-//!   [`Kernel::bootstrap_discovery_relays`]).
-//! * Indexer-direction (kind:0 / kind:10002 / contacts probes):
-//!   `app_relays = bootstrap_urls_for_role(Indexer)` only.
-//!
-//! Selecting the right seed at the call site is a kernel-level concern
-//! (the kernel owns `configured_relays`); routing the seeded interest is a
-//! router concern (lane 7 fires when lane 1 returned nothing). The seam
-//! between them is the `app_relays` slot — exactly the shape the
-//! substrate trait already exposes.
+//!   uses `PublishTarget::Explicit` with the kind:10050 relay set instead
+//!   of routing through the outbox router.
+//! * The [`KernelMailboxes`] adapter bridges the substrate
+//!   [`SubstrateMailboxCache`] + [`DmInboxRelayLookup`] handles to the
+//!   planner's [`PlannerMailboxCache`] trait (see the adapter's own doc
+//!   comment below for why two distinct `MailboxCache` traits are
+//!   intentional, not a duplicate).
 
 use std::sync::Arc;
 
@@ -124,12 +104,11 @@ impl Kernel {
 /// Discriminator for the cold-start bootstrap seed passed into
 /// `app_relays` at the [`RoutingContext`] construction site.
 ///
-/// `Discovery` is the combined indexer + content seed (used for
-/// content-direction REQs: timeline kind:1/6, hashtag firehose, thread
-/// hydration). `IndexerOnly` is the indexer-lane seed (used for
-/// discovery-direction REQs: kind:0 profile claims, kind:10002 NIP-65
-/// probes). The router's lane 7 fires identically in both cases — only
-/// the cold-start URL set differs.
+/// `Discovery` is the combined indexer + content seed (used for both
+/// content-direction REQs — timeline kind:1/6, hashtag firehose, thread
+/// hydration — and discovery-direction REQs — kind:0 profile claims,
+/// kind:10002 NIP-65 probes). It is currently the only variant; the
+/// router's lane 7 fallback consumes it identically for every direction.
 #[derive(Clone, Copy)]
 pub(crate) enum BootstrapSeed {
     /// Indexer + content seeds combined (matches the historical
