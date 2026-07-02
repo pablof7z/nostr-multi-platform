@@ -77,5 +77,8 @@ jobs:
       - name: Run native doctrine smoke tests
         run: cargo test -p nmp-testing --test doctrine_native_smoke -- --nocapture
 
+      - name: Run layer inversion doctrine lint
+        run: cargo test -p nmp-testing --test layer_inversion_doctrine_lint -- --nocapture
+
       - name: Run rule unit tests
         run: cargo test -p nmp-testing --bin doctrine-lint
