@@ -5,7 +5,6 @@
 //! replacement, OP/flat session wiring, and teardown recipes come from
 //! `nmp-feed-session`.
 
-use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -125,36 +124,29 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
 
     fn feed_pull_fn(&self) -> PullFn {
         let slot = Arc::clone(&self.event_store_slot);
-        let max_entries =
-            NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
-        let max_scan = NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE.saturating_mul(8))
-            .unwrap_or(NonZeroUsize::MIN);
-        let limits = nmp_core::PullLimits {
-            max_entries,
-            max_scan_entries: max_scan,
-        };
-
-        Arc::new(move |scope: nmp_core::PullScope, after_seq: u64| {
-            let exhausted = || {
-                ScanLogResult::Page(PullPage {
-                    entries: Vec::new(),
-                    next_after_seq: after_seq,
-                    latest_seq: after_seq,
-                    has_more: false,
-                })
-            };
-            let store = {
-                let Ok(guard) = slot.lock() else {
-                    return exhausted();
+        Arc::new(
+            move |scope: nmp_core::PullScope, after_seq: u64, limits: nmp_core::PullLimits| {
+                let exhausted = || {
+                    ScanLogResult::Page(PullPage {
+                        entries: Vec::new(),
+                        next_after_seq: after_seq,
+                        latest_seq: after_seq,
+                        has_more: false,
+                    })
                 };
-                match guard.as_ref() {
-                    Some(store) => Arc::clone(store),
-                    None => return exhausted(),
-                }
-            };
-            nmp_core::pull_page_over(store.as_ref(), scope, after_seq, limits)
-                .unwrap_or_else(|_| exhausted())
-        })
+                let store = {
+                    let Ok(guard) = slot.lock() else {
+                        return exhausted();
+                    };
+                    match guard.as_ref() {
+                        Some(store) => Arc::clone(store),
+                        None => return exhausted(),
+                    }
+                };
+                nmp_core::pull_page_over(store.as_ref(), scope, after_seq, limits)
+                    .unwrap_or_else(|_| exhausted())
+            },
+        )
     }
 
     fn command_sender(&self) -> CommandSender {

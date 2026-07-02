@@ -168,7 +168,7 @@ pub(super) fn controller_with_pages(
     let pull: PullFn = {
         let queue = Arc::clone(&queue);
         let seen = Arc::clone(&seen_after);
-        Arc::new(move |_scope: PullScope, after_seq: u64| {
+        Arc::new(move |_scope: PullScope, after_seq: u64, _limits| {
             seen.lock().unwrap().push(after_seq);
             queue
                 .lock()

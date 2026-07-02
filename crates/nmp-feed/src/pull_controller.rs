@@ -31,7 +31,7 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::PullScope;
+use nmp_core::{PullLimits, PullScope};
 use nmp_planner::InterestShape;
 use nmp_store::ScanLogResult;
 
@@ -43,7 +43,7 @@ use crate::{FeedController, FeedWindowPolicy};
 /// plain Rust closure, never a new C-ABI symbol (ADR-0039 §6.1). On an
 /// unsupported shape or unavailable store it MUST return an empty, exhausted
 /// page so the drain terminates and the feed fails closed (no broad-scan).
-pub type PullFn = Arc<dyn Fn(PullScope, u64) -> ScanLogResult + Send + Sync>;
+pub type PullFn = Arc<dyn Fn(PullScope, u64, PullLimits) -> ScanLogResult + Send + Sync>;
 
 /// Apply one drained positive row through the feed's own ingest path (the same
 /// path the push fan-out uses — dedup + snapshot projection unchanged).
@@ -366,7 +366,7 @@ impl FeedController for PullFeedController {
                     return false;
                 };
                 let pull = &self.pull;
-                pager.drain(|after_seq| pull(scope.clone(), after_seq))
+                pager.drain(|after_seq, limits| pull(scope.clone(), after_seq, limits))
             };
             visited = visited.saturating_add(outcome.visited);
 

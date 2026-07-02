@@ -207,44 +207,37 @@ impl NmpApp {
     /// `PullFeedController`; the host never sees it.
     #[must_use]
     pub fn feed_pull_fn(&self) -> nmp_feed::PullFn {
-        use nmp_core::{pull_page_over, PullLimits};
+        use nmp_core::pull_page_over;
         use nmp_store::{PullPage, ScanLogResult};
-        use std::num::NonZeroUsize;
 
         let slot = Arc::clone(&self.read_handles.event_store_handle);
-        let max_entries =
-            NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
-        let max_scan = NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE.saturating_mul(8))
-            .unwrap_or(NonZeroUsize::MIN);
-        let limits = PullLimits {
-            max_entries,
-            max_scan_entries: max_scan,
-        };
 
-        Arc::new(move |scope: nmp_core::PullScope, after_seq: u64| {
-            // Fail-closed terminator: empty exhausted page stops the drain.
-            let exhausted = || {
-                ScanLogResult::Page(PullPage {
-                    entries: Vec::new(),
-                    next_after_seq: after_seq,
-                    latest_seq: after_seq,
-                    has_more: false,
-                })
-            };
-            let store = {
-                let Ok(guard) = slot.lock() else {
-                    return exhausted();
+        Arc::new(
+            move |scope: nmp_core::PullScope, after_seq: u64, limits: nmp_core::PullLimits| {
+                // Fail-closed terminator: empty exhausted page stops the drain.
+                let exhausted = || {
+                    ScanLogResult::Page(PullPage {
+                        entries: Vec::new(),
+                        next_after_seq: after_seq,
+                        latest_seq: after_seq,
+                        has_more: false,
+                    })
                 };
-                match guard.as_ref() {
-                    Some(s) => Arc::clone(s),
-                    None => return exhausted(),
+                let store = {
+                    let Ok(guard) = slot.lock() else {
+                        return exhausted();
+                    };
+                    match guard.as_ref() {
+                        Some(s) => Arc::clone(s),
+                        None => return exhausted(),
+                    }
+                }; // slot lock released before the store read
+                match pull_page_over(store.as_ref(), scope, after_seq, limits) {
+                    Ok(result) => result,
+                    Err(_) => exhausted(),
                 }
-            }; // slot lock released before the store read
-            match pull_page_over(store.as_ref(), scope, after_seq, limits) {
-                Ok(result) => result,
-                Err(_) => exhausted(),
-            }
-        })
+            },
+        )
     }
 }
 

@@ -34,9 +34,10 @@
 //! §6.1 preserved). 6B wires concrete feeds.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::PullScope;
+use nmp_core::{PullLimits, PullScope};
 use nmp_planner::InterestShape;
 use nmp_store::{LogOp, ScanLogResult, StoreLogEntry};
+use std::num::NonZeroUsize;
 
 /// Default number of *visible* events one `load_older` drain targets — one page.
 /// Matches the feed window page (`DEFAULT_FEED_WINDOW_LIMIT`).
@@ -265,13 +266,22 @@ impl FeedPullPager {
     /// `after_seq` advances **only after** a page is processed. On a gap the
     /// cursor is reset to `first_available_seq` and the loop stops — the caller
     /// must rebase its scoped state, never silently claim continuity.
-    pub fn drain(&mut self, mut pull_fn: impl FnMut(u64) -> ScanLogResult) -> DrainOutcome {
+    pub fn drain(
+        &mut self,
+        mut pull_fn: impl FnMut(u64, PullLimits) -> ScanLogResult,
+    ) -> DrainOutcome {
         let mut events: Vec<KernelEvent> = Vec::new();
         let mut replaced_ids: Vec<String> = Vec::new();
         let mut scanned: usize = 0;
 
         loop {
-            let page = match pull_fn(self.after_seq) {
+            let remaining_entries = self.page_size.saturating_sub(events.len()).max(1);
+            let remaining_scan = self.scan_budget.saturating_sub(scanned).max(1);
+            let limits = PullLimits {
+                max_entries: NonZeroUsize::new(remaining_entries).unwrap_or(NonZeroUsize::MIN),
+                max_scan_entries: NonZeroUsize::new(remaining_scan).unwrap_or(NonZeroUsize::MIN),
+            };
+            let page = match pull_fn(self.after_seq, limits) {
                 ScanLogResult::Gap(gap) => {
                     // Explicit rebase — scoped continuity is not provable.
                     self.after_seq = gap.first_available_seq;
