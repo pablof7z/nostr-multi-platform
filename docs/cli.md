@@ -127,6 +127,10 @@ app-module crates listed under `[modules].app` to git-rev pins at the new tag
 explicit through `nmp update component` so local app edits are not silently
 overwritten.
 
+`nmp upgrade` also prints the target release migration note URL. The release
+train requires `docs/migration-notes/<tag>.md` for every public `nmp-v*` tag, so
+consumers should read that note before expecting the re-pin to compile.
+
 ### `nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]`
 
 Copies an app-owned source component from the NMP component registry into an

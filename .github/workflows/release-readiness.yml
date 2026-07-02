@@ -11,9 +11,11 @@ on:
       - "Cargo.lock"
       - "release/**"
       - "ci/check-release-manifest.sh"
+      - "ci/check-release-migration-note.sh"
       - "ci/check-excluded-crate-standalone-builds.sh"
       - "ci/release-package-dry-run.sh"
       - ".github/workflows/release-readiness.yml"
+      - "docs/migration-notes/**"
       - ".github/workflows/browser-runtime-conformance.yml"
       - "crates/nmp-browser-runtime-conformance/**"
       - "apps/**/Cargo.toml"
@@ -67,6 +69,9 @@ jobs:
 
       - name: Check release manifest
         run: bash ci/check-release-manifest.sh
+
+      - name: Check release migration note
+        run: bash ci/check-release-migration-note.sh
 
       - name: Check workspace-excluded crates build standalone
         run: bash ci/check-excluded-crate-standalone-builds.sh

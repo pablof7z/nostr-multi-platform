@@ -19,6 +19,16 @@ if ! grep -q '^version_source = "workspace.package.version"$' "$MANIFEST"; then
   exit 1
 fi
 
+if ! grep -q '^migration_note_pattern = ' "$MANIFEST"; then
+  echo "release manifest must declare migration_note_pattern" >&2
+  exit 1
+fi
+
+if ! grep -q '  "bash ci/check-release-migration-note.sh",' "$MANIFEST"; then
+  echo "release manifest required_gates must include bash ci/check-release-migration-note.sh" >&2
+  exit 1
+fi
+
 extract_public_crates() {
   awk -F '"' '
     /^\[\[public_crates\]\]/ { in_public = 1; name = ""; path = ""; next }
