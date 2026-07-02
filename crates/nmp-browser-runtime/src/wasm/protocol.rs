@@ -309,6 +309,10 @@ pub(crate) enum WorkerEvent {
         handle: nmp_feed::FeedHandle,
         correlation_id: String,
     },
+    FeedLoadStatus {
+        status: nmp_feed::FeedLoadStatus,
+        correlation_id: String,
+    },
     CapabilityFailure {
         capability: String,
         correlation_id: String,

@@ -3,8 +3,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::FeedLoadStatus;
+
 pub trait FeedController: Send + Sync {
     fn load_older(&self) -> bool;
+
+    fn load_older_status(&self) -> FeedLoadStatus {
+        FeedLoadStatus::from_changed(self.load_older())
+    }
 
     /// Signal a perspective change. Controller implementations should coordinate
     /// visible reset and cursor rewind under the serialized host contract,
@@ -54,7 +60,19 @@ impl FeedRegistry {
 
     #[must_use]
     pub fn load_older(&self, key: &str) -> bool {
-        self.with_controller(key, |controller| controller.load_older())
+        self.load_older_status(key).changed
+    }
+
+    #[must_use]
+    pub fn load_older_status(&self, key: &str) -> FeedLoadStatus {
+        let controller = self
+            .feeds
+            .lock()
+            .ok()
+            .and_then(|feeds| feeds.get(key).cloned());
+        controller
+            .map(|controller| controller.load_older_status())
+            .unwrap_or_else(FeedLoadStatus::session_unavailable)
     }
 
     /// Reset the feed registered under `key` for a perspective change, returning
@@ -194,6 +212,14 @@ mod tests {
             !reg.replace("test.feed.missing", "id"),
             "absent key ⇒ replace is false"
         );
+    }
+
+    #[test]
+    fn load_older_status_reports_absent_key() {
+        let reg = FeedRegistry::default();
+        let status = reg.load_older_status("test.feed.missing");
+        assert!(!status.changed);
+        assert_eq!(status.reason, crate::FeedLoadStopReason::SessionUnavailable);
     }
 
     #[test]

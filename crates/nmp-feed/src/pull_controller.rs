@@ -36,7 +36,7 @@ use nmp_planner::InterestShape;
 use nmp_store::ScanLogResult;
 
 use crate::pager::{FeedInterestShape, FeedPullPager};
-use crate::{FeedController, FeedWindowPolicy};
+use crate::{FeedController, FeedLoadStatus, FeedLoadStopReason, FeedWindowPolicy};
 
 /// The in-process pull seam: `(scope, after_seq) -> page`. The composition root
 /// builds this over the kernel event store (`nmp_core::pull_page_over`); it is a
@@ -341,10 +341,14 @@ impl PullFeedController {
 
 impl FeedController for PullFeedController {
     fn load_older(&self) -> bool {
+        self.load_older_status().changed
+    }
+
+    fn load_older_status(&self) -> FeedLoadStatus {
         // Live, fail-closed interest. If the feed can no longer express a covered
         // shape (e.g. logout cleared the follow set), do nothing — never scan.
         let Some(scope) = self.provider.pull_scope() else {
-            return false;
+            return FeedLoadStatus::unchanged(FeedLoadStopReason::SourceUnavailable);
         };
 
         let mut accepted = 0usize;
@@ -352,22 +356,23 @@ impl FeedController for PullFeedController {
         let mut replaced = false;
         let (page_size, scan_budget) = {
             let Ok(pager) = self.pager.lock() else {
-                return false;
+                return FeedLoadStatus::session_unavailable();
             };
             (pager.page_size(), pager.scan_budget())
         };
 
-        loop {
+        let reason = loop {
             // Bounded seq-ordered drain. The pager owns the cursor and the
             // budget; it terminates on PageFilled / Exhausted / Gap /
             // ScanBudget — it never polls.
             let outcome = {
                 let Ok(mut pager) = self.pager.lock() else {
-                    return false;
+                    return FeedLoadStatus::session_unavailable();
                 };
                 let pull = &self.pull;
                 pager.drain(|after_seq, limits| pull(scope.clone(), after_seq, limits))
             };
+            let stop_reason = outcome.stop.into();
             visited = visited.saturating_add(outcome.visited);
 
             // Evict any superseded sources FIRST so the stale version never
@@ -390,15 +395,17 @@ impl FeedController for PullFeedController {
                 && accepted < page_size
                 && visited < scan_budget;
             if !should_continue {
-                break;
+                break stop_reason;
             }
-        }
+        };
 
         let progressed = accepted > 0 || replaced;
         if progressed {
             (self.advance)();
+            FeedLoadStatus::changed(reason)
+        } else {
+            FeedLoadStatus::unchanged(reason)
         }
-        progressed
     }
 
     fn replace_source(&self, source_id: &str) -> bool {

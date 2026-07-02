@@ -35,4 +35,4 @@ pub mod feed;
 pub mod search;
 pub mod uri;
 
-pub use feed::FeedSessionHandle;
+pub use feed::{FeedLoadStatus, FeedLoadStopReason, FeedSessionHandle};

@@ -8,7 +8,9 @@
 
 use std::fmt;
 
-use crate::{FeedHandle, FeedKey, FeedOpenError, FeedParams, FeedSpec, FeedSpecError, NmpApp};
+use crate::{
+    FeedHandle, FeedKey, FeedLoadStatus, FeedOpenError, FeedParams, FeedSpec, FeedSpecError, NmpApp,
+};
 
 /// Borrowed app-facing feed-session API.
 ///
@@ -49,6 +51,12 @@ impl<'a> FeedSessions<'a> {
     #[must_use]
     pub fn load_older(&self, handle: &FeedHandle) -> bool {
         self.app.load_older_feed(handle)
+    }
+
+    /// Page an open feed and return the Rust-owned stop reason.
+    #[must_use]
+    pub fn load_older_status(&self, handle: &FeedHandle) -> FeedLoadStatus {
+        self.app.load_older_feed_status(handle)
     }
 
     /// Close an open feed by its returned handle.

@@ -66,9 +66,9 @@ pub use feed_facade::{FeedSessions, FeedSpecOpenError};
 pub use feed_params::{
     decode_and_validate_feed_params, feed, source, validate_feed_params, CustomAdmissionDef,
     CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef, CustomSourceId,
-    FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder, FeedParams,
-    FeedParamsDecodeError, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec,
-    FeedSpecError, FeedWindowPolicy, ProjectionKey,
+    FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedLoadStatus, FeedLoadStopReason,
+    FeedOrder, FeedParams, FeedParamsDecodeError, FeedScope, FeedSessionId, FeedShape,
+    FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use group_feed::{

@@ -103,6 +103,12 @@ impl<'a> BrowserFeedSessions<'a> {
         self.handle.load_older_feed(handle)
     }
 
+    /// Page an open browser feed and return the Rust-owned stop reason.
+    #[must_use]
+    pub fn load_older_status(&mut self, handle: &nmp_feed::FeedHandle) -> nmp_feed::FeedLoadStatus {
+        self.handle.load_older_feed_status(handle)
+    }
+
     /// Close an open browser feed by its returned handle.
     #[must_use]
     pub fn close(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
@@ -229,17 +235,27 @@ impl BrowserRuntimeHandle {
     /// the internal controller registry, so a stale id or mismatched forged
     /// handle is a silent no-op.
     pub fn load_older_feed(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
+        self.load_older_feed_status(handle).changed
+    }
+
+    /// Page a browser feed session and return the typed load status.
+    pub fn load_older_feed_status(
+        &mut self,
+        handle: &nmp_feed::FeedHandle,
+    ) -> nmp_feed::FeedLoadStatus {
         let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
-            return false;
+            return nmp_feed::FeedLoadStatus::session_unavailable();
         };
         if projection_key != handle.projection_key {
-            return false;
+            return nmp_feed::FeedLoadStatus::session_unavailable();
         }
-        let changed = self.feed_registry.load_older(projection_key.as_str());
-        if changed {
+        let status = self
+            .feed_registry
+            .load_older_status(projection_key.as_str());
+        if status.changed {
             self.command_sender().mark_changed_since_emit();
         }
-        changed
+        status
     }
 
     /// Close a browser feed session opened by [`Self::open_feed`].

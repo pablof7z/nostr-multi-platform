@@ -14,8 +14,8 @@
 pub use nmp_feed::{
     feed, source, CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId,
     CustomSourceDef, CustomSourceId, FeedAdmission, FeedHandle, FeedItemProjection, FeedKey,
-    FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec,
-    FeedSpecError, FeedWindowPolicy, ProjectionKey,
+    FeedLoadStatus, FeedLoadStopReason, FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape,
+    FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
 
 use nmp_nip18::PrimaryKindError;

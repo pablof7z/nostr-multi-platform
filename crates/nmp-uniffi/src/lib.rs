@@ -50,7 +50,7 @@ pub use capability::{ActionResultObserver, CapabilitySink};
 
 // ── Feed viewport, URI routing, search sessions (C5) ─────────────────────────
 pub mod sessions;
-pub use sessions::FeedSessionHandle;
+pub use sessions::{FeedLoadStatus, FeedLoadStopReason, FeedSessionHandle};
 
 // ── Typed dispatch outcome ────────────────────────────────────────────────────
 

@@ -1,7 +1,7 @@
 use crate::{
     new_app, CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
-    CustomSourceId, FeedAdmission, FeedHandle, FeedKey, FeedOrder, FeedParams, FeedScope,
-    FeedShape, FeedSpecOpenError, FeedWindowPolicy, ProjectionKey,
+    CustomSourceId, FeedAdmission, FeedHandle, FeedKey, FeedLoadStopReason, FeedOrder, FeedParams,
+    FeedScope, FeedShape, FeedSpecOpenError, FeedWindowPolicy, ProjectionKey,
 };
 
 fn active_follows_params(key: &str) -> FeedParams {
@@ -87,6 +87,16 @@ fn feeds_facade_pages_and_closes_only_matching_handles() {
     assert!(
         !app.feeds().load_older(&forged),
         "mismatched handle must not page the live feed"
+    );
+    let forged_status = app.feeds().load_older_status(&forged);
+    assert!(!forged_status.changed);
+    assert_eq!(forged_status.reason, FeedLoadStopReason::SessionUnavailable);
+    let status = app.feeds().load_older_status(&handle);
+    assert!(!status.changed);
+    assert_eq!(
+        status.reason,
+        FeedLoadStopReason::SourceUnavailable,
+        "no active account means active-follows source fails closed"
     );
     assert!(
         !app.feeds().close(&forged),

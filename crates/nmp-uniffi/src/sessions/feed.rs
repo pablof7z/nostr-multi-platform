@@ -38,6 +38,7 @@
 use nmp_uniffi_support::{
     close_feed_session as support_close_feed_session,
     load_older_feed_session as support_load_older_feed_session,
+    load_older_feed_session_status as support_load_older_feed_session_status,
     open_feed_session as support_open_feed_session, FeedSessionError,
 };
 
@@ -56,6 +57,48 @@ use crate::NmpApp;
 pub struct FeedSessionHandle {
     pub projection_key: String,
     pub session_id: u64,
+}
+
+/// Mechanical reason a feed load stopped.
+#[derive(uniffi::Enum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedLoadStopReason {
+    WindowFilled,
+    SourceExhausted,
+    SourceScanBudgetReached,
+    SourceGap,
+    SourceUnavailable,
+    SessionUnavailable,
+}
+
+/// Result of a feed load command.
+#[derive(uniffi::Record, Debug, Clone, Copy)]
+pub struct FeedLoadStatus {
+    pub changed: bool,
+    pub reason: FeedLoadStopReason,
+}
+
+impl From<nmp_native_runtime::FeedLoadStopReason> for FeedLoadStopReason {
+    fn from(reason: nmp_native_runtime::FeedLoadStopReason) -> Self {
+        match reason {
+            nmp_native_runtime::FeedLoadStopReason::WindowFilled => Self::WindowFilled,
+            nmp_native_runtime::FeedLoadStopReason::SourceExhausted => Self::SourceExhausted,
+            nmp_native_runtime::FeedLoadStopReason::SourceScanBudgetReached => {
+                Self::SourceScanBudgetReached
+            }
+            nmp_native_runtime::FeedLoadStopReason::SourceGap => Self::SourceGap,
+            nmp_native_runtime::FeedLoadStopReason::SourceUnavailable => Self::SourceUnavailable,
+            nmp_native_runtime::FeedLoadStopReason::SessionUnavailable => Self::SessionUnavailable,
+        }
+    }
+}
+
+impl From<nmp_native_runtime::FeedLoadStatus> for FeedLoadStatus {
+    fn from(status: nmp_native_runtime::FeedLoadStatus) -> Self {
+        Self {
+            changed: status.changed,
+            reason: status.reason.into(),
+        }
+    }
 }
 
 fn opened_from_handle(handle: &FeedSessionHandle) -> nmp_uniffi_support::OpenedFeed {
@@ -78,6 +121,11 @@ impl NmpApp {
     /// succeeds, never panics).
     pub fn load_older_feed(&self, handle: FeedSessionHandle) -> bool {
         support_load_older_feed_session(&self.inner, &opened_from_handle(&handle))
+    }
+
+    /// Advance a feed's viewport and return the Rust-owned stop reason.
+    pub fn load_older_feed_status(&self, handle: FeedSessionHandle) -> FeedLoadStatus {
+        support_load_older_feed_session_status(&self.inner, &opened_from_handle(&handle)).into()
     }
 
     /// Open a new feed session from a JSON-encoded `FeedParams` declaration.
@@ -141,6 +189,18 @@ mod tests {
         };
         let result = app.load_older_feed(handle);
         assert!(!result, "unknown feed handle must return false");
+    }
+
+    #[test]
+    fn parity_load_older_feed_status_unknown_handle_is_typed() {
+        let app = crate::NmpApp::new();
+        let handle = FeedSessionHandle {
+            projection_key: "app.feed.nonexistent".to_string(),
+            session_id: 99_999,
+        };
+        let status = app.load_older_feed_status(handle);
+        assert!(!status.changed);
+        assert_eq!(status.reason, FeedLoadStopReason::SessionUnavailable);
     }
 
     /// An invalid projection key inside the handle must be a silent no-op (D6).
