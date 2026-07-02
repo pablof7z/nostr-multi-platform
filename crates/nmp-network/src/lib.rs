@@ -37,7 +37,7 @@
 //! ## Step 8 phase B — push-model [`pool::Pool`] API (shipped)
 //!
 //! Adds the [`pool`] module: `Pool` / `RelayHandle` / `PoolEvent` /
-//! `PoolConfig` / `PoolSnapshot` per spec §3.8. Implemented as a thin
+//! `PoolConfig` / `PoolSnapshot` per spec §7. Implemented as a thin
 //! wrapper around the existing `relay_worker::spawn_relay_worker`
 //! lifecycle (preserves the per-URL state machine, jittered
 //! exponential backoff, T120b keepalive FSM bit-for-bit). The
@@ -90,7 +90,7 @@
 //! `nmp-nip42-types::parse_auth_frame` parser.
 //!
 //! Out-of-scope for this crate (deliberate layering, per
-//! `docs/architecture/crate-boundaries.md` §3.8):
+//! `docs/architecture/crate-boundaries.md` §7):
 //!
 //! - **Build the kind:22242 reply event** — lives in
 //!   [`nmp_nip42::build_auth_event`]. `nmp-network` MUST NOT name

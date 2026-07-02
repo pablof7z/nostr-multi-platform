@@ -60,8 +60,8 @@ use super::routing::{Pubkey, RoutedRelaySet};
 // ─── RouteAttempt — per-lane observability record (V-75) ─────────────────────
 
 /// Identifies which routing lane ran during a `route_publish` or
-/// `route_subscription` call. Corresponds to the generic lanes in
-/// `docs/architecture/crate-boundaries.md` §3.1.
+/// `route_subscription` call. Corresponds to the generic routing contract in
+/// `docs/architecture/crate-boundaries.md` §5.
 ///
 /// `AppRelayFallback` is a dedicated variant to signal explicitly "Lane 7
 /// fired because all prior lanes produced empty sets" — the core V-75

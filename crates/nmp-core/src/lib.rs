@@ -138,7 +138,8 @@ pub use transport::dispatch_envelope;
 // `nmp.wallet.pay_invoice` `ActionModule` moved to `crates/nmp-nip47`. The
 // kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
 // `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
-// §3.7 for the crate responsibility statement.
+// §8 for the crate responsibility statement (`nmp-nip47` owns the NIP-47
+// NWC wallet runtime and the `PaymentPort` implementation).
 // Deterministic 64-bit hash helper — internal path for nmp-core.
 // External callers must depend on `nmp-planner` directly and use
 // `nmp_planner::stable_hash::stable_hash64` (#1608, compat facade deleted).

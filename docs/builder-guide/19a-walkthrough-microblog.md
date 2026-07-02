@@ -86,15 +86,11 @@ ios = true
 ```rust
 // crates/microblog-core/src/lib.rs
 // D0: microblog nouns live in this app module, never in nmp-core.
-use std::sync::{Arc, Mutex, OnceLock};
 use nmp_core::substrate::{AppHost, *};
 use serde::{Deserialize, Serialize};
 
 pub const ACTION_NAMESPACE: &str = "microblog.action";
-pub const FEED_SNAPSHOT_KEY: &str = "microblog.items";
-
-pub type FeedStore = Arc<Mutex<Vec<NoteRecord>>>;
-pub type Store = FeedStore;   // app-core convention name
+pub const FEED_KEY: &str = "microblog.timeline.home";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NoteRecord {
@@ -103,15 +99,14 @@ pub struct NoteRecord {
     pub content: String,
     pub created_at: u64,
 }
-
-// Plain projection — cheap read, no actor knowledge.
-pub fn project_feed(items: &[NoteRecord]) -> Option<TypedProjectionData> {
-    Some(encode_feed_projection(items))
-}
 ```
 
 `NoteRecord.author` is a raw hex pubkey. Formatting (shortened npub, display
-name, avatar) is the shell's job (D1 / aim.md §2 anti-patterns).
+name, avatar) is the shell's job (D1 / aim.md §2 anti-patterns). `NoteRecord`
+is the app-owned decoded shape for one feed row; the production feed path
+(below, `app.feeds().open_spec`) delivers rows through the standard
+`FeedParams`/`FeedItemProjection` contract — the app never hand-rolls a
+snapshot store or a projection closure to get notes onto the timeline.
 
 ## ActionModule — posting a note
 
@@ -163,42 +158,74 @@ impl ActionModule for NoteActionModule {
 > return carries a `correlation_id`; the host observes `action_stages[id]` for
 > `Publishing → Accepted/Failed`.
 
-## Typed read-session helper — building the feed
+## The feed — `app.feeds().open_spec`
 
-Production app code opens a typed read session, or a generated helper over one.
-The session owns acquisition, replay-before-live, scoped delivery, output, and
-teardown. Observed-delivery executor machinery sits behind that helper; do not
-expose it as the app API or copy it into shell code.
+The microblog timeline is a feed-shaped read: kind:1 notes over the active
+account's follows. That is exactly what the production app-facing feed helper
+covers (ADR-0076; [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)
+has the canonical `open_spec` example this walkthrough mirrors; [07 —
+Subscription planner](07-subscription-planner.md) covers the underlying
+session), so this walkthrough opens the feed directly instead of hand-rolling
+a store and a projection closure:
 
-This walkthrough keeps the live implementation shape honest by hiding the
-substrate wiring behind one private helper. When the generated typed-session API
-lands, only this helper changes.
-
-static FEED_STORE: OnceLock<FeedStore> = OnceLock::new();
-
-pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore) {
-    // Shape only, not a copy/paste API:
-    //
-    // 1. Declare the app-owned feed read session:
-    //      key: FEED_SNAPSHOT_KEY
-    //      demand: kind:1 notes
-    //      replay: bounded before live activation
-    //      output: encoded FeedProjection
-    //      close: release the owner and clear/tombstone output
-    //
-    // 2. Install the session executor. Today's implementation may use
-    //    observed delivery internally, but that wiring stays behind this helper
-    //    and is not the app-facing API per ADR-0070.
-
-    let projector = Arc::clone(&store);
-    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
-        match projector.lock() {
-            Ok(g) => project_feed(&g),
-            Err(_) => None,
-        }
-    });
+```rust
+pub fn open_home_feed(app: &impl AppHost) -> Result<FeedHandle, FeedSpecOpenError> {
+    app.feeds().open_spec(
+        FeedKey::app(FEED_KEY)?,
+        feed::events()
+            .primary_kinds([1])
+            .from(source::active_user().follows())
+            .shape(FeedShape::RootIndexed)
+            .order(FeedOrder::NewestByFeedPosition)
+            .window(FeedWindowPolicy::bounded(80))
+            .project(FeedItemProjection::feed_rows()),
+    )
 }
 ```
+
+`open_spec` compiles the descriptor into canonical `FeedParams`, opens the
+session through the standard NMP feed compiler, and returns a `FeedHandle`
+the shell holds for pagination (`app.feeds().load_older(&handle)`) and
+teardown (`app.feeds().close(&handle)`). Compiler selection, observer
+registration, replay-before-live sequencing, source reconciliation (follows
+change on account switch), and typed output all stay internal runtime
+machinery behind that one call — the app never touches them directly.
+
+Each pushed row decodes (host-side, via the generated typed-output helper)
+into the app-owned `NoteRecord` declared above.
+
+> **Sidebar: toy projection shape (for illustrating projections only — NOT
+> the feed API).** Before `app.feeds().open_spec` existed, this walkthrough
+> demonstrated the underlying typed-output projection mechanism with a
+> hand-rolled `Arc<Mutex<Vec<NoteRecord>>>` store and a manual
+> `register_typed_snapshot_projection` closure. That shape is useful for
+> understanding *what a typed projection is* — a plain function from
+> app-owned state to `Option<TypedProjectionData>`, installed once — but it
+> is not how a real feed is built. Do not copy it as a feed implementation:
+>
+> ```rust
+> use std::sync::{Arc, Mutex, OnceLock};
+>
+> pub type FeedStore = Arc<Mutex<Vec<NoteRecord>>>;
+> static FEED_STORE: OnceLock<FeedStore> = OnceLock::new();
+>
+> pub fn project_feed(items: &[NoteRecord]) -> Option<TypedProjectionData> {
+>     Some(encode_feed_projection(items))
+> }
+>
+> pub fn register_microblog_toy_projection(app: &mut impl AppHost, store: FeedStore) {
+>     let projector = Arc::clone(&store);
+>     app.register_typed_snapshot_projection("microblog.items", move || {
+>         match projector.lock() {
+>             Ok(g) => project_feed(&g),
+>             Err(_) => None,
+>         }
+>     });
+> }
+> ```
+>
+> `register()` below does not call this helper — it opens the feed through
+> `open_home_feed` instead.
 
 ## `register()` — wiring the app root
 
@@ -206,12 +233,7 @@ pub fn register_microblog_read_session(app: &mut impl AppHost, store: FeedStore)
 pub fn accepted() -> Update { Update::ActionAccepted }
 pub enum Update { ActionAccepted }
 
-pub fn register(app: &mut impl AppHost) -> FeedStore {
-    // Initialize the process-wide store once.
-    let store: FeedStore = FEED_STORE
-        .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
-        .clone();
-
+pub fn register(app: &mut impl AppHost) -> Result<FeedHandle, FeedSpecOpenError> {
     // 1. Install explicit substrate/protocol features.
     let _substrate_handles =
         nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
@@ -225,12 +247,9 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     // 2. Write path.
     app.register_action(NoteActionModule);
 
-    // 3. Read path — one typed session/helper owns demand, replay, output,
-    // status, and teardown. It may use observed delivery internally, but that
-    // is not the app-facing API.
-    register_microblog_read_session(app, Arc::clone(&store));
-
-    store
+    // 3. Read path — the standard feed helper owns demand, replay, source
+    // reconciliation, output, and teardown behind the returned handle.
+    open_home_feed(app)
 }
 ```
 
@@ -291,6 +310,13 @@ not the recipe for new apps.
   sessions/helpers the app-facing read model. Observed-delivery executor
   machinery is internal/protocol-substrate machinery unless a
   later ADR says otherwise.
+- **Hand-rolling a feed store.** A feed-shaped read (kind:N over an
+  author/follows/list/relay-set source) always opens through
+  `app.feeds().open_spec` / `open_feed` (ADR-0076). An `Arc<Mutex<Vec<_>>>`
+  plus a manual `register_typed_snapshot_projection` closure reinvents
+  acquisition, replay-before-live, pagination, and source reconciliation that
+  the feed engine already owns — see the sidebar above for why that shape is
+  teaching-only, never product code.
 - **Inventing a new extension family.** Use the shipped action, typed read
   output, capability, and composition seams unless an ADR changes the substrate.
 - **Expecting generated framework wiring.** The staticlib shell is thin glue

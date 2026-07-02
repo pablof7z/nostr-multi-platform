@@ -95,7 +95,7 @@ pub enum WireFrame {
 ///
 /// ## Step 8 phase E — `Auth` variant
 ///
-/// Per `docs/architecture/crate-boundaries.md` §3.8: the wire layer
+/// Per `docs/architecture/crate-boundaries.md` §7: the wire layer
 /// pre-classifies the inbound `["AUTH", <challenge>]` frame into the
 /// [`RelayFrame::Auth`] variant so the kernel sees a typed signal
 /// rather than re-discovering AUTH from raw text on the fast path.

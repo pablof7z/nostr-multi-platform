@@ -34,6 +34,7 @@
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
+//! | `doc_citation_truth_gates.rs` | crate-boundaries.md §N.M / ADR-NNNN content-truth (#2768) |
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -43,6 +44,7 @@ mod browser_boundary_gates; // Browser runtime + runtime-web boundary smoke gate
 mod component_host_boundary_gates; // Component host package import/dependency gates.
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod deleted_defaults_tests; // Deleted nmp-defaults production/scaffold ratchet.
+mod doc_citation_truth_gates; // crate-boundaries.md §N.M / ADR-NNNN content-truth gate (#2768).
 mod embed_owner_delegation_tests; // nmp-content embed projection must delegate owned protocol kinds.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod feed_vocabulary_tests; // Feed-facade "session" vocabulary ratchet (#2508/#2783) — sibling module.
