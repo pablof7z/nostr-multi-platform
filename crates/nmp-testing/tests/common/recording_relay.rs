@@ -17,7 +17,7 @@ pub(crate) struct ObservedReq {
 }
 
 #[derive(Debug, Clone)]
-enum ObservedFrame {
+pub(crate) enum ObservedFrame {
     Req(ObservedReq),
     Close { sub_id: String },
 }
@@ -76,46 +76,27 @@ impl RecordingRelay {
     }
 
     pub(crate) fn wait_req(&mut self, label: &str, pred: impl Fn(&Value) -> bool) -> ObservedReq {
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            if let Some(pos) = self
-                .observed
-                .iter()
-                .position(|frame| matches!(frame, ObservedFrame::Req(req) if pred(&req.filter)))
-            {
-                match self.observed.remove(pos) {
-                    ObservedFrame::Req(req) => return req,
-                    ObservedFrame::Close { .. } => unreachable!(),
-                }
-            }
-            let now = Instant::now();
-            assert!(
-                now < deadline,
-                "timed out waiting for {label}; observed backlog = {:?}",
-                self.observed
-            );
-            let remaining = deadline.saturating_duration_since(now);
-            match self
-                .observed_rx
-                .recv_timeout(remaining.min(Duration::from_millis(500)))
-            {
-                Ok(frame) => self.observed.push(frame),
-                Err(_) => panic!(
-                    "timed out waiting for {label}; observed backlog = {:?}",
-                    self.observed
-                ),
-            }
+        match self.wait_frame(
+            label,
+            |frame| matches!(frame, ObservedFrame::Req(req) if pred(&req.filter)),
+        ) {
+            ObservedFrame::Req(req) => req,
+            ObservedFrame::Close { .. } => unreachable!(),
         }
     }
 
     pub(crate) fn wait_close(&mut self, label: &str, sub_id: &str) {
+        let _ = self.wait_frame(
+            label,
+            |frame| matches!(frame, ObservedFrame::Close { sub_id: got } if got == sub_id),
+        );
+    }
+
+    fn wait_frame(&mut self, label: &str, pred: impl Fn(&ObservedFrame) -> bool) -> ObservedFrame {
         let deadline = Instant::now() + Duration::from_secs(10);
         loop {
-            if let Some(pos) = self.observed.iter().position(
-                |frame| matches!(frame, ObservedFrame::Close { sub_id: got } if got == sub_id),
-            ) {
-                self.observed.remove(pos);
-                return;
+            if let Some(pos) = self.observed.iter().position(&pred) {
+                return self.observed.remove(pos);
             }
             let now = Instant::now();
             assert!(

@@ -1,5 +1,7 @@
 use crate::support::*;
 
+use crate::common::recording_relay::{has_author, has_kind, RecordingRelay};
+
 #[test]
 fn replacement_updates_open_feed_via_source_effects() {
     let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());

@@ -185,6 +185,12 @@ path = "tests/m2_subscription_compilation_audit.rs"
 name = "m8_subscription_lifecycle"
 path = "tests/m8_subscription_lifecycle.rs"
 
+# NIP-29 public-runtime discovery smoke. Hermetic local relay, no network.
+# `cargo test -p nmp-testing --test nip29_discovery_runtime_smoke`
+[[test]]
+name = "nip29_discovery_runtime_smoke"
+path = "tests/nip29_discovery_runtime_smoke.rs"
+
 # Framework magic contract — 13 behaviour tests (C1-C13) + coverage meta-test.
 # Cross-cutting; intentionally not milestone-prefixed.
 # `cargo test -p nmp-testing --test framework_magic_contract`
@@ -218,6 +224,15 @@ path = "tests/real_relay_nip17_roundtrip.rs"
 [[test]]
 name = "real_relay_nip50_search"
 path = "tests/real_relay_nip50_search.rs"
+required-features = ["real-relay"]
+
+# NIP-29 discovery through the public native-runtime path against a real relay.
+# `#[ignore]` by default and gated behind `real-relay` so CI stays hermetic:
+#   cargo test -p nmp-testing --features real-relay --test real_relay_nip29_discovery \
+#     -- --ignored --nocapture
+[[test]]
+name = "real_relay_nip29_discovery"
+path = "tests/real_relay_nip29_discovery.rs"
 required-features = ["real-relay"]
 
 # F-02 cold-start DM receive-side verification (issue #977).

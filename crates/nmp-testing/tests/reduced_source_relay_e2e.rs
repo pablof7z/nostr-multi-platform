@@ -4,6 +4,8 @@
 //! local WebSocket relay. The relay records actual `REQ`/`CLOSE` frames and
 //! sends signed Nostr `EVENT`/`EOSE` frames back through the kernel ingest path.
 
+#[path = "common/mod.rs"]
+mod common;
 #[path = "reduced_source_relay_e2e/list_members.rs"]
 mod list_members;
 #[path = "reduced_source_relay_e2e/support.rs"]
@@ -16,6 +18,7 @@ use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage};
 use serde_json::Value;
 
+use common::recording_relay::{has_author, has_kind, RecordingRelay};
 use support::*;
 
 #[derive(Default)]
