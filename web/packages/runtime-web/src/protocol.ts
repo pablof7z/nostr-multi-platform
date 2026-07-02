@@ -37,6 +37,24 @@ export type WorkerRequest =
       consumer_id: string;
       correlation_id: string;
     }
+  /** #1626 typed feed-session controls. `params_json` is canonical
+   *  `FeedParams` JSON; Rust parses and opens the session through the standard
+   *  feed compiler. TypeScript never owns source reduction or feed compilation. */
+  | {
+      type: "feed_open_json";
+      params_json: string;
+      correlation_id: string;
+    }
+  | {
+      type: "feed_load_older";
+      handle: FeedSessionHandle;
+      correlation_id: string;
+    }
+  | {
+      type: "feed_close";
+      handle: FeedSessionHandle;
+      correlation_id: string;
+    }
   /** ADR-0064 / S2 (#1750) — the typed binary write doorway. `bytes` are a
    *  finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying the
    *  correlation_id + generated action_namespace + opaque typed payload. This
@@ -214,10 +232,16 @@ export type IdentityRelayPermission = {
   write?: boolean;
 };
 
+export type FeedSessionHandle = {
+  projection_key: string;
+  session_id: number;
+};
+
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
   | { type: "action_accepted"; action_type: string; correlation_id: string }
+  | { type: "feed_opened"; handle: FeedSessionHandle; correlation_id: string }
   | { type: "update_bytes"; bytes: Uint8Array }
   | {
       type: "capability_failure";
@@ -256,6 +280,7 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
   switch (event.type) {
     case "runtime_status":
     case "action_accepted":
+    case "feed_opened":
     case "error":
       return event.correlation_id;
     case "capability_failure":

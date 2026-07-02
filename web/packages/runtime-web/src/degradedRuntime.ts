@@ -49,6 +49,33 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "feed_open_json":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.feed.open",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "feed_load_older":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.feed.load_older",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "feed_close":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.feed.close",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "dispatch_bytes": {
         // Decode only the routing fields (correlation_id + action_namespace);
         // the opaque payload is never interpreted. A buffer that is not a

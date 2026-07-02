@@ -25,6 +25,9 @@ pub(crate) enum WorkerRequest {
     Start(StartConfig),
     ResolveRef(ResolveRef),
     ReleaseRef(ReleaseRef),
+    FeedOpenJson(FeedOpenJson),
+    FeedLoadOlder(FeedHandleRequest),
+    FeedClose(FeedHandleRequest),
     DispatchBytes(DispatchBytesPayload),
     SearchOpen(SearchOpen),
     SearchClose(SearchClose),
@@ -127,6 +130,18 @@ pub(crate) struct ReleaseRef {
     pub namespace: u32,
     pub key: String,
     pub consumer_id: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct FeedOpenJson {
+    pub params_json: String,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct FeedHandleRequest {
+    pub handle: nmp_feed::FeedHandle,
     pub correlation_id: String,
 }
 
@@ -288,6 +303,10 @@ pub(crate) enum WorkerEvent {
     },
     ActionAccepted {
         action_type: String,
+        correlation_id: String,
+    },
+    FeedOpened {
+        handle: nmp_feed::FeedHandle,
         correlation_id: String,
     },
     CapabilityFailure {

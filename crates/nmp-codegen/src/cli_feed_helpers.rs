@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use nmp_codegen::FeedHelperPlatform;
 
-/// `nmp gen feed-helpers --platform swift|kotlin --out <path> [--check]`.
+/// `nmp gen feed-helpers --platform swift|kotlin|ts --out <path> [--check]`.
 pub fn run_gen_feed_helpers(args: Vec<String>, help: &str) -> Result<(), String> {
     let mut platform_arg: Option<String> = None;
     let mut check = false;
@@ -17,7 +17,7 @@ pub fn run_gen_feed_helpers(args: Vec<String>, help: &str) -> Result<(), String>
                 platform_arg = Some(
                     args.get(index)
                         .cloned()
-                        .ok_or_else(|| "--platform requires swift|kotlin".to_string())?,
+                        .ok_or_else(|| "--platform requires swift|kotlin|ts".to_string())?,
                 );
             }
             "--out" => {
@@ -35,7 +35,7 @@ pub fn run_gen_feed_helpers(args: Vec<String>, help: &str) -> Result<(), String>
     }
 
     let platform_arg =
-        platform_arg.ok_or_else(|| format!("--platform is required (swift|kotlin)\n{help}"))?;
+        platform_arg.ok_or_else(|| format!("--platform is required (swift|kotlin|ts)\n{help}"))?;
     let platform = FeedHelperPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
     let out = out.ok_or_else(|| "--out is required".to_string())?;
 

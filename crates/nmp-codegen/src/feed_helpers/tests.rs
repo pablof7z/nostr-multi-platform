@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn render_is_deterministic_for_all_platforms() {
-    for platform in [Platform::Swift, Platform::Kotlin] {
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
         assert_eq!(render_feed_helpers(platform), render_feed_helpers(platform));
     }
 }
@@ -11,15 +11,15 @@ fn render_is_deterministic_for_all_platforms() {
 fn platform_parse_roundtrips() {
     assert_eq!(Platform::parse("swift").unwrap(), Platform::Swift);
     assert_eq!(Platform::parse("kotlin").unwrap(), Platform::Kotlin);
-    assert!(Platform::parse("ts").is_err());
+    assert_eq!(Platform::parse("ts").unwrap(), Platform::Ts);
     assert!(Platform::parse("rust").is_err());
 }
 
 #[test]
 fn helpers_use_canonical_json_bridge_shape() {
-    for platform in [Platform::Swift, Platform::Kotlin] {
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
         let rendered = render_feed_helpers(platform);
-        assert!(rendered.contains("openFeedJson"));
+        assert!(rendered.contains("openFeedJson") || rendered.contains("feed_open_json"));
         assert!(rendered.contains("ActiveUserFollows"));
         assert!(rendered.contains("RootIndexed"));
         assert!(rendered.contains("Flat"));
@@ -32,7 +32,7 @@ fn helpers_use_canonical_json_bridge_shape() {
 
 #[test]
 fn generate_then_check_is_up_to_date() {
-    for platform in [Platform::Swift, Platform::Kotlin] {
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
         let tmp = std::env::temp_dir().join(format!(
             "nmp-feed-helpers-roundtrip-{}-{:?}.gen",
             std::process::id(),
@@ -55,6 +55,7 @@ fn checked_fixtures_are_current() {
     for (platform, file) in [
         (Platform::Swift, "FeedHelpers.generated.swift"),
         (Platform::Kotlin, "FeedHelpers.kt"),
+        (Platform::Ts, "feedHelpers.generated.ts"),
     ] {
         let outcome = check_feed_helpers(platform, &root.join(file)).unwrap();
         assert!(

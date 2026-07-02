@@ -1,4 +1,4 @@
-import type { WorkerEvent, WorkerRequest } from "./protocol";
+import type { FeedSessionHandle, WorkerEvent, WorkerRequest } from "./protocol";
 
 // Package-relative module URL for the wasm composition root emitted by
 // wasm-pack (`nmp_browser_runtime.js`, underscore form from the crate name).
@@ -153,6 +153,15 @@ export class WasmBridge {
         },
       ];
     }
+  }
+
+  openFeedJson(paramsJson: string, correlationId: string): FeedSessionHandle | undefined {
+    const events = this.handle({
+      type: "feed_open_json",
+      params_json: paramsJson,
+      correlation_id: correlationId,
+    });
+    return events.find((event) => event.type === "feed_opened")?.handle;
   }
 }
 
