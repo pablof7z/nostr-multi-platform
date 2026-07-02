@@ -20,7 +20,11 @@
 //!     examples/shell.rs        # NmpAppBuilder → app register → start
 //!   crates/<name>-app/
 //!     Cargo.toml               # app-owned UniFFI facade cdylib/staticlib/rlib
-//!     src/lib.rs               # setup_scaffolding! + facade-local types
+//!     src/lib.rs               # setup_scaffolding! + facade-local types +
+//!                              # ref-resolution/feed-session seams
+//!     src/bin/uniffi-bindgen.rs # the facade's own bindgen binary (bindgen
+//!                              # feature); no shared framework bindgen crate
+//!                              # exists (#2763 deleted `nmp-uniffi`)
 //! ```
 //!
 //! # ADR-0069 — explicit feature composition
@@ -54,6 +58,7 @@ const ADD_ENTRY_SCHEMA_TMPL: &str = include_str!("../templates/add_entry.fbs.tmp
 const ADD_ENTRY_GENERATED_TMPL: &str = include_str!("../templates/add_entry_generated.rs.tmpl");
 const ACTION_BUILDERS_TMPL: &str = include_str!("../templates/action-builders.json.tmpl");
 const FACADE_LIB_TMPL: &str = include_str!("../templates/facade_lib.rs.tmpl");
+const FACADE_BINDGEN_TMPL: &str = include_str!("../templates/facade_bindgen.rs.tmpl");
 const CHECK_UNIFFI_BINDINGS_TMPL: &str = include_str!("../templates/check-uniffi-bindings.sh.tmpl");
 const NMP_TOML_TMPL: &str = include_str!("../templates/nmp.toml.tmpl");
 const SHELL_TMPL: &str = include_str!("../templates/shell.rs.tmpl");
@@ -226,6 +231,10 @@ pub fn run(args: &[String]) -> Result<(), String> {
     write(
         &facade_dir.join("src").join("lib.rs"),
         &render(FACADE_LIB_TMPL),
+    )?;
+    write(
+        &facade_dir.join("src").join("bin").join("uniffi-bindgen.rs"),
+        &render(FACADE_BINDGEN_TMPL),
     )?;
     write(
         &root.join("ci").join("check-uniffi-bindings.sh"),

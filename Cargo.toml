@@ -17,7 +17,6 @@ members = [
     "crates/nmp-feed-session",
     "crates/nmp-marmot",
     "crates/nmp-native-runtime",
-    "crates/nmp-uniffi",
     "crates/nmp-uniffi-support",
     "crates/nmp-nip01",
     "crates/nmp-note-feed",

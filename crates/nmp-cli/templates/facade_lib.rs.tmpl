@@ -4,9 +4,12 @@
 //! and drive the app through one Rust-owned object. The facade owns
 //! `NmpApp` by value and delegates shared runtime mechanics to
 //! `nmp-uniffi-support`; it does not expose raw C symbols or duplicate
-//! lifecycle/dispatch/capability policy.
+//! lifecycle/dispatch/capability policy. There is no stock, consumable
+//! framework binding crate (#2763 deleted `nmp-uniffi`) — this facade IS the
+//! native binding surface, modeled on
+//! `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nmp_native_runtime::NmpApp as RuntimeApp;
 
@@ -39,9 +42,21 @@ impl From<nmp_uniffi_support::DispatchOutcome> for {{facade_struct}}DispatchOutc
     }
 }
 
+/// Ref-resolution metadata (event hints / author) for embed resolution.
+///
+/// Facade-local record — UniFFI resolves every exported record to its owning
+/// facade namespace, so this cannot live in a shared crate (see the
+/// `nmp-uniffi-support` module docs).
+#[derive(uniffi::Record, Debug, Clone, Default)]
+pub struct {{facade_struct}}ResolveMetadata {
+    pub hints: Vec<String>,
+    pub event_author: Option<String>,
+}
+
 #[derive(uniffi::Object)]
 pub struct {{facade_struct}} {
     inner: RuntimeApp,
+    home_feed: Mutex<Option<{{crate_ident}}::HomeTimelineSession>>,
 }
 
 #[uniffi::export]
@@ -51,7 +66,10 @@ impl {{facade_struct}} {
         let mut inner = nmp_native_runtime::new_app();
         {{crate_ident}}::register(&mut inner);
         inner.consume_all_builtin_projections();
-        Arc::new(Self { inner })
+        Arc::new(Self {
+            inner,
+            home_feed: Mutex::new(None),
+        })
     }
 
     pub fn start(&self, visible_limit: u32, emit_hz: u32) {
@@ -97,6 +115,93 @@ impl {{facade_struct}} {
     pub fn dispatch_action(&self, envelope: Vec<u8>) -> {{facade_struct}}DispatchOutcome {
         nmp_uniffi_support::dispatch_action_vec(&self.inner, envelope).into()
     }
+
+    /// Resolve a profile ref. `key` must be a 64-char hex pubkey; malformed
+    /// keys are rejected before reaching the runtime (the shared guard every
+    /// facade over `nmp-uniffi-support` gets for free — see #2763).
+    pub fn resolve_profile_ref(&self, key: String, consumer_id: String) {
+        if !nmp_uniffi_support::is_hex_pubkey(&key) {
+            return;
+        }
+        self.inner.resolve_ref_with_metadata(
+            nmp_core::RefNamespace::Profile,
+            key,
+            consumer_id,
+            nmp_core::RefShape::Profile(nmp_core::ProfileShape::Ref),
+            nmp_core::RefLiveness::CacheOk,
+            nmp_core::RefResolveMetadata::default(),
+        );
+    }
+
+    /// Resolve a live-updating profile card ref (guarded like
+    /// [`Self::resolve_profile_ref`]).
+    pub fn resolve_profile_card_live(&self, key: String, consumer_id: String) {
+        if !nmp_uniffi_support::is_hex_pubkey(&key) {
+            return;
+        }
+        self.inner.resolve_ref_with_metadata(
+            nmp_core::RefNamespace::Profile,
+            key,
+            consumer_id,
+            nmp_core::RefShape::Profile(nmp_core::ProfileShape::Card),
+            nmp_core::RefLiveness::Live,
+            nmp_core::RefResolveMetadata::default(),
+        );
+    }
+
+    pub fn release_profile_ref(&self, key: String, consumer_id: String) {
+        self.inner
+            .release_ref(nmp_core::RefNamespace::Profile, key, consumer_id);
+    }
+
+    pub fn resolve_event_embed_with_metadata(
+        &self,
+        key: String,
+        consumer_id: String,
+        metadata: {{facade_struct}}ResolveMetadata,
+    ) {
+        self.inner.resolve_ref_with_metadata(
+            nmp_core::RefNamespace::Event,
+            key,
+            consumer_id,
+            nmp_core::RefShape::Event(nmp_core::EventShape::Embed),
+            nmp_core::RefLiveness::CacheOk,
+            nmp_core::RefResolveMetadata {
+                hints: metadata.hints,
+                event_author: metadata.event_author,
+            },
+        );
+    }
+
+    pub fn release_event_ref(&self, key: String, consumer_id: String) {
+        self.inner
+            .release_ref(nmp_core::RefNamespace::Event, key, consumer_id);
+    }
+
+    /// Open the starter home-timeline feed session, returning its projection
+    /// key so the shell knows which projection to render. Idempotent:
+    /// returns the existing session's key if one is already open.
+    pub fn open_home_feed(&self) -> Option<String> {
+        let mut guard = self.home_feed.lock().ok()?;
+        if let Some(session) = guard.as_ref() {
+            return Some(session.projection_key().as_str().to_string());
+        }
+        let session = {{crate_ident}}::open_home_timeline_session(&self.inner).ok()?;
+        let key = session.projection_key().as_str().to_string();
+        *guard = Some(session);
+        Some(key)
+    }
+
+    /// Close the home-timeline feed session opened by
+    /// [`Self::open_home_feed`]. A no-op if none is open (D6 idempotent).
+    pub fn close_home_feed(&self) {
+        let Ok(mut guard) = self.home_feed.lock() else {
+            return;
+        };
+        if let Some(session) = guard.take() {
+            {{crate_ident}}::close_home_timeline_session(&self.inner, session);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -116,5 +221,25 @@ mod tests {
         let out = app.dispatch_action(Vec::new());
         assert!(out.correlation_id.is_none());
         assert!(out.error.is_some());
+    }
+
+    #[test]
+    fn malformed_profile_key_is_rejected_before_reaching_the_runtime() {
+        let app = {{facade_struct}}::new();
+        // Not a panic, not a runtime call — the hex-pubkey guard rejects it.
+        app.resolve_profile_ref("not-a-hex-pubkey".to_string(), "consumer".to_string());
+    }
+
+    #[test]
+    fn home_feed_open_close_is_idempotent() {
+        let app = {{facade_struct}}::new();
+        let first = app.open_home_feed();
+        assert!(first.is_some());
+        let second = app.open_home_feed();
+        assert_eq!(first, second, "reopening returns the same projection key");
+        app.close_home_feed();
+        // Closing twice must not panic (D6 idempotent close).
+        app.close_home_feed();
+        app.shutdown();
     }
 }

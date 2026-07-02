@@ -203,11 +203,15 @@ instead of app-specific *kinds*.
 
 ## App-owned UniFFI facades (#2494)
 
-Reusable framework verbs reach Swift/Kotlin through the stock `nmp-uniffi`
-generated namespace. When your app needs app-specific protocol verbs — verbs
-that are not reusable framework verbs — you do not stand up a parallel binding
-crate or hand-write a C bridge. You own **one** app-facade UniFFI crate layered
-over `nmp-native-runtime` and `crates/nmp-uniffi-support`.
+There is no stock, consumable UniFFI facade crate (`nmp-uniffi` was deleted in
+#2763 — zero real consumers; every shipped app built its own facade). The ONE
+native binding pattern is an app-owned UniFFI facade crate: whether the verb is
+a reusable framework verb or an app-specific protocol verb, your app exposes it
+to Swift/Kotlin through your own generated namespace. You do not stand up a
+second, framework-owned binding crate or hand-write a C bridge. You own **one**
+app-facade UniFFI crate layered over `nmp-native-runtime` and
+`crates/nmp-uniffi-support` — `apps/nmp-gallery/crates/nmp-app-gallery`
+(`GalleryApp`) is the in-repo reference facade.
 
 What you write in the facade crate:
 
@@ -295,8 +299,9 @@ You cannot export shared UniFFI records or callback interfaces cross-crate from
 callback interface to its owning facade namespace; an earlier attempt that
 exported them directly from `nmp-uniffi-support` compiled in Rust but failed at
 `uniffi-bindgen --library` with `Unknown namespace for CallbackInterface(...)
-(nmp_uniffi_support)` when generating bindings from both `nmp-uniffi` and the
-app. That is why `nmp-uniffi-support` deliberately does **not** call
+(nmp_uniffi_support)` when generating bindings from two facade crates at once
+(the now-deleted `nmp-uniffi` reference facade plus an app facade). That is why
+`nmp-uniffi-support` deliberately does **not** call
 `setup_scaffolding!()`: it shares only the Rust-side mechanics. So you still
 define tiny local shims (your own `DispatchOutcome`, `UpdateSink`,
 `CapabilitySink` types) — but they delegate straight to the shared helpers and
@@ -306,10 +311,11 @@ carry no policy of their own.
 
 App facades are for app-owned verbs and composition roots, not for bypassing NMP
 ownership. A generic Nostr mechanism that an unrelated second app could reuse
-unchanged belongs in a Layer-4 NMP protocol crate (and the reusable `nmp-uniffi`
-surface), not in your app facade — exactly as a generic kind belongs upstream
-rather than in an app-private action registry. Native shells still only render
-state and execute raw capabilities.
+unchanged belongs in a Layer-4 NMP protocol crate, exposed through the app's own
+facade (there is no separate reusable binding surface to add it to), not kept
+as an app-private verb — exactly as a generic kind belongs upstream rather than
+in an app-private action registry. Native shells still only render state and
+execute raw capabilities.
 
 ### Worked example: 29er
 
@@ -354,8 +360,9 @@ uniffi-bindgen generate --library <app-cdylib> --language swift --out-dir <swift
 uniffi-bindgen generate --library <app-cdylib> --language kotlin --out-dir <kotlin-out>
 ```
 
-For the reusable framework surface, drift is gated by
-`bash ci/check-uniffi-bindings-drift.sh`. The durable rationale and binding-surface
+Each app-owned facade's own generated bindings drift is gated by that app's
+`ci/check-uniffi-bindings.sh` (emitted by `nmp init`); there is no shared
+framework-level binding-drift gate. The durable rationale and binding-surface
 rules live in [`docs/ffi-surface.md`](../ffi-surface.md) ("App-Owned UniFFI
 Facades" / "Verification Pointers") and
 [ADR-0072](../decisions/0072-runtime-capability-and-shell-boundary.md); this guide is only the

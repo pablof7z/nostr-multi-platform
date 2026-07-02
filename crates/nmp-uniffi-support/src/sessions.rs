@@ -47,8 +47,8 @@ impl OpenedFeed {
 
 /// Why a feed open failed.
 ///
-/// Facades map these onto their facade-local UniFFI error namespace (e.g.
-/// `nmp-uniffi`'s `NmpError::InvalidInput` / `NmpError::FeedOpenFailed`).
+/// Facades map these onto their facade-local UniFFI error namespace (for
+/// example `InvalidInput` / `FeedOpenFailed` variants in the app facade).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedError {
     /// `params_json` is not valid JSON, or the `FeedParams` primary kinds fail

@@ -57,6 +57,9 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         .join("crates/demoapp-core/schema/add_entry.fbs")
         .exists());
     assert!(root.join("crates/demoapp-app/src/lib.rs").exists());
+    assert!(root
+        .join("crates/demoapp-app/src/bin/uniffi-bindgen.rs")
+        .exists());
     assert!(root.join("crates/demoapp-core/examples/shell.rs").exists());
     assert!(root.join("ci/check-uniffi-bindings.sh").exists());
 
@@ -158,6 +161,38 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && !facade.contains("#[no_mangle]")
             && !facade.contains("extern \"C\""),
         "scaffolded app facade must be app-owned UniFFI over nmp-uniffi-support, not raw C glue:\n{facade}"
+    );
+    // #2763: the scaffold facade must expose the full seam set (ref-resolution
+    // + feed-session open/close), not just lifecycle/dispatch/capability, so
+    // new apps don't start thinner than the gallery reference facade.
+    assert!(
+        facade.contains("nmp_uniffi_support::is_hex_pubkey")
+            && facade.contains("fn resolve_profile_ref")
+            && facade.contains("fn resolve_profile_card_live")
+            && facade.contains("fn release_profile_ref")
+            && facade.contains("fn resolve_event_embed_with_metadata")
+            && facade.contains("fn release_event_ref")
+            && facade.contains("fn open_home_feed")
+            && facade.contains("fn close_home_feed")
+            && facade.contains("open_home_timeline_session")
+            && facade.contains("close_home_timeline_session"),
+        "scaffolded app facade must expose the full seam set (ref-resolution + feed-session open/close), modeled on the gallery facade:\n{facade}"
+    );
+    let facade_bindgen =
+        std::fs::read_to_string(root.join("crates/demoapp-app/src/bin/uniffi-bindgen.rs"))
+            .expect("read scaffolded facade bindgen binary");
+    assert!(
+        facade_bindgen.contains("uniffi::uniffi_bindgen_main"),
+        "scaffolded facade must carry its own uniffi-bindgen binary (no shared framework bindgen crate, #2763):\n{facade_bindgen}"
+    );
+    let facade_cargo_toml = std::fs::read_to_string(root.join("crates/demoapp-app/Cargo.toml"))
+        .expect("read scaffolded facade Cargo.toml");
+    assert!(
+        facade_cargo_toml.contains("nmp-core")
+            && facade_cargo_toml.contains("bindgen = [\"uniffi/cli\"]")
+            && facade_cargo_toml.contains("name = \"uniffi-bindgen\"")
+            && facade_cargo_toml.contains("required-features = [\"bindgen\"]"),
+        "scaffolded facade Cargo.toml must declare its own bindgen bin behind a feature:\n{facade_cargo_toml}"
     );
     assert!(
         uniffi_check.contains("cargo build -p \"${FACADE_PKG}\"")

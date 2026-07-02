@@ -182,7 +182,7 @@ def is_sub_l5_framework_crate(rel: str) -> bool:
     return not any(
         x in r
         for x in (
-            "nmp-uniffi",
+            "nmp-uniffi-support",
             "nmp-native-runtime",
             "nmp-browser-runtime",
             "nmp-cli",

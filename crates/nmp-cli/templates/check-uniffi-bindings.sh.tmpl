@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NMP_MANIFEST="{{nmp_codegen_manifest}}"
 FACADE_PKG="{{facade_pkg}}"
 FACADE_CRATE="{{facade_crate_ident}}"
 OUT_DIR="${1:-generated/uniffi}"
@@ -20,7 +19,10 @@ cargo build -p "${FACADE_PKG}"
 rm -rf "${OUT_DIR}/swift" "${OUT_DIR}/kotlin"
 mkdir -p "${OUT_DIR}/swift" "${OUT_DIR}/kotlin"
 
-cargo run --manifest-path "${NMP_MANIFEST}" -p nmp-uniffi --features bindgen --bin uniffi-bindgen -- \
+# The facade generates its own Swift/Kotlin bindings over its own cdylib —
+# there is no shared framework bindgen crate to borrow (#2763 deleted
+# `nmp-uniffi`; it had zero real consumers).
+cargo run -p "${FACADE_PKG}" --features bindgen --bin uniffi-bindgen -- \
   generate --library --crate "${FACADE_CRATE}" --language swift --out-dir "${OUT_DIR}/swift" --no-format "${FACADE_LIB}"
-cargo run --manifest-path "${NMP_MANIFEST}" -p nmp-uniffi --features bindgen --bin uniffi-bindgen -- \
+cargo run -p "${FACADE_PKG}" --features bindgen --bin uniffi-bindgen -- \
   generate --library --crate "${FACADE_CRATE}" --language kotlin --out-dir "${OUT_DIR}/kotlin" --no-format "${FACADE_LIB}"
