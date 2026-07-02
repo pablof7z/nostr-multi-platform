@@ -1,12 +1,10 @@
-use std::cell::UnsafeCell;
 use std::collections::BTreeMap;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
+use std::fmt;
+use std::sync::Arc;
 
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
+use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 use nmp_core::{CommandSender, DependentInterestChild};
 use nmp_feed::{FeedShape, ProjectionKey, TeardownAction};
 #[cfg(test)]
@@ -17,6 +15,7 @@ use trellis_core::{
 };
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
+use crate::trellis_owner_cell::ActorThreadCell;
 use crate::trellis_resources::{
     FeedSessionResourceCommand, FeedSessionResourceKey, FeedSessionScopeKey, ProjectionAttachment,
 };
@@ -35,7 +34,7 @@ type FeedSessionOutput = ProjectionAttachment;
 /// stay inside this module.
 #[derive(Clone)]
 pub(super) struct FeedSessionTrellisAdapter {
-    inner: Arc<SingleWriterCell<FeedSessionTrellisInner>>,
+    inner: Arc<ActorThreadCell<FeedSessionTrellisInner>>,
     sender: CommandSender,
     owner: SubOwnerKey,
 }
@@ -80,61 +79,6 @@ pub(super) struct FeedSessionResourceTrace {
 
 struct FeedSessionCloseOutcome {
     output_cleared: bool,
-}
-
-struct SingleWriterCell<T> {
-    borrowed: AtomicBool,
-    value: UnsafeCell<T>,
-}
-
-// Safety: callback handles are shared across runtime threads, but every graph
-// access goes through a non-blocking exclusive borrow. Concurrent or reentrant
-// callers fail loudly instead of waiting on a lock or exposing aliasing access.
-unsafe impl<T: Send> Send for SingleWriterCell<T> {}
-unsafe impl<T: Send> Sync for SingleWriterCell<T> {}
-
-impl<T> SingleWriterCell<T> {
-    fn new(value: T) -> Self {
-        Self {
-            borrowed: AtomicBool::new(false),
-            value: UnsafeCell::new(value),
-        }
-    }
-
-    fn with_mut<R>(&self, operation: &'static str, f: impl FnOnce(&mut T) -> R) -> R {
-        self.with_exclusive_borrow(operation, || f(unsafe { &mut *self.value.get() }))
-    }
-
-    #[cfg(test)]
-    fn with_ref<R>(&self, operation: &'static str, f: impl FnOnce(&T) -> R) -> R {
-        self.with_exclusive_borrow(operation, || f(unsafe { &*self.value.get() }))
-    }
-
-    fn with_exclusive_borrow<R>(&self, operation: &'static str, f: impl FnOnce() -> R) -> R {
-        if self
-            .borrowed
-            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
-            .is_err()
-        {
-            panic!(
-                "FeedSessionTrellisAdapter {operation} called while the Trellis graph is already borrowed"
-            );
-        }
-        let _guard = SingleWriterBorrowGuard {
-            borrowed: &self.borrowed,
-        };
-        f()
-    }
-}
-
-struct SingleWriterBorrowGuard<'a> {
-    borrowed: &'a AtomicBool,
-}
-
-impl Drop for SingleWriterBorrowGuard<'_> {
-    fn drop(&mut self) {
-        self.borrowed.store(false, Ordering::Release);
-    }
 }
 
 impl FeedSessionTrellisAdapter {
@@ -221,7 +165,7 @@ impl FeedSessionTrellisAdapter {
         let output_frames = output_frame_kinds(&_result.output_frames);
 
         Ok(Self {
-            inner: Arc::new(SingleWriterCell::new(FeedSessionTrellisInner {
+            inner: Arc::new(ActorThreadCell::new(FeedSessionTrellisInner {
                 graph,
                 scope,
                 demand_input,
@@ -260,6 +204,24 @@ impl FeedSessionTrellisAdapter {
         true
     }
 
+    pub(super) fn schedule_source_effect(
+        &self,
+        extra: ExtraAcquisition,
+        reason: &'static str,
+        rebaseline: bool,
+    ) {
+        let _ = self.sender.send(ActorCommand::Protocol(Box::new(
+            FeedSessionTrellisCommand {
+                adapter: self.clone(),
+                operation: FeedSessionTrellisOperation::SourceEffect {
+                    extra,
+                    reason,
+                    rebaseline,
+                },
+            },
+        )));
+    }
+
     pub(super) fn close_action(&self, remove_projection: TeardownAction) -> TeardownAction {
         let adapter = self.clone();
         Box::new(move || {
@@ -290,11 +252,6 @@ impl FeedSessionTrellisAdapter {
         })
     }
 
-    #[cfg(test)]
-    pub(super) fn hold_graph_borrow_for_test<R>(&self, f: impl FnOnce() -> R) -> R {
-        self.inner.with_mut("test-borrow", |_inner| f())
-    }
-
     fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
         let _ = self.sender.send(ActorCommand::Interests(
             InterestsCommand::ReplaceDependentInterestSet {
@@ -303,6 +260,54 @@ impl FeedSessionTrellisAdapter {
                 reason: reason.to_string(),
             },
         ));
+    }
+}
+
+struct FeedSessionTrellisCommand {
+    adapter: FeedSessionTrellisAdapter,
+    operation: FeedSessionTrellisOperation,
+}
+
+enum FeedSessionTrellisOperation {
+    SourceEffect {
+        extra: ExtraAcquisition,
+        reason: &'static str,
+        rebaseline: bool,
+    },
+}
+
+impl fmt::Debug for FeedSessionTrellisCommand {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FeedSessionTrellisCommand")
+            .field("operation", &self.operation.label())
+            .finish()
+    }
+}
+
+impl FeedSessionTrellisOperation {
+    fn label(&self) -> &'static str {
+        match self {
+            FeedSessionTrellisOperation::SourceEffect { .. } => "source-effect",
+        }
+    }
+}
+
+impl ProtocolCommand for FeedSessionTrellisCommand {
+    fn run(
+        self: Box<Self>,
+        _ctx: &mut ProtocolCommandContext<'_>,
+    ) -> Result<(), ProtocolCommandError> {
+        match self.operation {
+            FeedSessionTrellisOperation::SourceEffect {
+                extra,
+                reason,
+                rebaseline,
+            } => {
+                self.adapter.sync(&extra, reason);
+                self.adapter.rebaseline_output_if_changed(rebaseline);
+            }
+        }
+        Ok(())
     }
 }
 

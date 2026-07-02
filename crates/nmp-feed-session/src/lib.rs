@@ -58,6 +58,7 @@ mod trellis_adapter_equivalence_support;
 mod trellis_adapter_equivalence_tests;
 #[cfg(test)]
 mod trellis_adapter_tests;
+mod trellis_owner_cell;
 // #2629 owns the private taxonomy; #2630 is the first production adapter user.
 mod trellis_resources;
 #[cfg(test)]

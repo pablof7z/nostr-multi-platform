@@ -109,8 +109,11 @@ fn build_observed_source_session(
         let trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             reset_app_projection(reset.as_ref());
             sync_observer.sync();
-            acquisition_adapter.sync(&extra, "feed-observed-source-acquisition");
-            acquisition_adapter.rebaseline_output_if_changed(true);
+            acquisition_adapter.schedule_source_effect(
+                Arc::clone(&extra),
+                "feed-observed-source-acquisition",
+                true,
+            );
         });
         hook(trigger);
     }
