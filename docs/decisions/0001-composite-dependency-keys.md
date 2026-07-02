@@ -14,7 +14,7 @@ The naive union wakes every view sharing any single axis with the event, regardl
 
 ## Decision
 
-Register each view under the **most specific composite key** its `Dependencies` declaration supports. Conjunctive dependencies are the default; single-axis registration is reserved for views with genuinely broad filters (search, hashtag scan) and triggers a `nmp-guardrails` warning in debug builds.
+Register each view under the **most specific composite key** its `Dependencies` declaration supports. Conjunctive dependencies are the default; single-axis registration is reserved for views with genuinely broad filters (search, hashtag scan). Broad registrations are legal but must stay explicit in tests/design evidence because they carry higher wake cost.
 
 | View shape | Primary index |
 |---|---|
@@ -24,7 +24,7 @@ Register each view under the **most specific composite key** its `Dependencies` 
 | `kinds + d-tag refs` (parameterized replaceable) | `by_kind_author_d[(k, a, d)]` |
 | `kinds` only | `by_kind[k]` — broad-cost flag |
 | `authors` only | `by_author[a]` — broad-cost flag |
-| no constraint | `catch_all` — explicit guardrail warning |
+| no constraint | `catch_all` — explicit broad-cost path |
 
 On insert, the event generates its tuple signature (every `(kind, axis-value)` pair it implies), and lookup is the union of small sets. False wakes go to near-zero in well-shaped views.
 
@@ -32,7 +32,7 @@ On insert, the event generates its tuple signature (every `(kind, axis-value)` p
 
 - Index registration size grows by the product of axis sizes for a view. A timeline with 1k authors × 3 kinds inserts 3k composite entries (vs ~1k under the v0 model). Acceptable; far smaller than the working-set memory budget.
 - Empty composite buckets are free (never inserted).
-- Single-axis registrations are guardrailed but legal.
+- Single-axis registrations are broad-cost but legal.
 - False-wakeup rate becomes a first-class quality gate.
 
 ## Alternatives considered

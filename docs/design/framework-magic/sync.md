@@ -9,7 +9,7 @@
 
 **Framework does:** the dedup-with-provenance-merge rule at `docs/product-spec/subsystems.md` §7.1 row "Duplicate id". Storage of provenance sidecars at `docs/design/lmdb/watermarks.md` (the 32-distinct-relay-per-event bound is set there). The "primary relay" selection is a deterministic function of the first observer, used for cache locality and diagnostics.
 
-**App writes:** nothing. The view payload's `id` field is the event id from the first observation; any per-event diagnostic UI ("seen on N relays") reads `Provenance` through `DebugDiagnostics` per `subsystems.md` §7.16.
+**App writes:** nothing. The view payload's `id` field is the event id from the first observation; any per-event diagnostic UI ("seen on N relays") reads the Rust-owned provenance state exposed by the owning projection or diagnostics surface.
 
 **Failure mode prevented:** `product-spec/overview-and-dx.md` §3.3 **bug #10** ("Re-published event missing its original `id` due to re-signing"). Plus the related "duplicate event in timeline" bug where naive dedup-on-id is missing and the same note appears twice from two relays. Plus the diagnostic-visibility regression where the app loses the ability to say "this event came from relay X" because the cache layer collapsed provenance.
 

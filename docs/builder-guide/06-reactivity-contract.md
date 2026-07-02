@@ -40,8 +40,9 @@ atomics — sequential message processing
 The store keys the reverse index on **composite** (conjunctive) tuples by
 default. A view registers a `Dependencies` declaration; the registry picks the
 most-specific index. Single-axis ("broad") keys are legal but trip a
-`nmp-guardrails` debug-build warning (`loop-and-reverse-index.md:81-117`,
-ADR-0001).
+broad-cost classification (`loop-and-reverse-index.md:81-117`, ADR-0001).
+Today that classification is enforced by review, doctrine tests, and perf
+gates; the post-v1 guardrails target may make it a debug-build runtime warning.
 
 | Composite key (preferred) | Matches view shape |
 |---|---|
@@ -51,7 +52,7 @@ ADR-0001).
 | `by_kind_author_d[(k,a,d)]` | kinds + author + d-tag (param-replaceable) |
 | `by_kind_d_tag[(k,d)]` | kinds + d-tag only |
 
-| Broad key (guardrailed) | Cost / guardrail |
+| Broad key (broad-cost) | Cost |
 |---|---|
 | `by_kind[k]` | kinds only — broad-cost flag; every kind:k wakes it |
 | `by_author[a]` | authors only — broad-cost flag |
@@ -141,8 +142,8 @@ planner/reactivity machinery carries the result.
 ## Anti-patterns
 
 - **Broad single-axis keys for typed views.** Declaring `by_kind` /
-  `by_author` for a view that is really kinds+authors trips the guardrail and
-  reintroduces the v0 98% false-wake rate. Declare the conjunction.
+  `by_author` for a view that is really kinds+authors reintroduces the v0 98%
+  false-wake rate. Declare the conjunction.
 - **Emitting `Some(delta)` when nothing changed.** A spurious delta is a
   false wakeup the buffer cannot coalesce away and a snapshot the host must
   diff. Return `None`; the actor already gates emit on `changed_since_emit`
@@ -152,8 +153,9 @@ planner/reactivity machinery carries the result.
   `format!`, or a `clone()` in the hot path fails the bench gate before it
   lands.
 - **`catch_all_filter` for anything indexable.** It forces the view onto the
-  every-insert slow path and emits a debug guardrail warning. Reserve it for
-  genuine full-text / regex / time-window scans.
+  every-insert slow path. Reserve it for genuine full-text / regex /
+  time-window scans and make that broad-cost choice explicit in the owning
+  test/design evidence.
 - **Polling instead of observing — forbidden at every layer.** This is not
   just a UI rule; it applies to all code in the repo:
   - *UI → kernel*: consume `ViewBatch` / snapshots pushed by the actor; never

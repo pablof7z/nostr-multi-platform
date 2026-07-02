@@ -29,7 +29,7 @@ Both bullets in this chapter discharge cardinal doctrine **D3** ("outbox routing
            .order(FeedOrder::NewestByFeedPosition),
    )?;
    ```
-3. Read the wire-emission audit log (exposed via `DebugDiagnostics`) and assert: relay count = union; per-relay author partition = subset semantics; sub-shape merge = one REQ per relay; plan-id stable on re-compile.
+3. Inspect the compiled wire plan in the contract test and assert: relay count = union; per-relay author partition = subset semantics; sub-shape merge = one REQ per relay; plan-id stable on re-compile.
 4. Ingest a new kind:10002 for one author moving them off relay-1 onto relay-4; assert exactly one CLOSE-and-REQ pair fires for the affected slice; no churn for the unmoved authors.
 5. **NDK comparison for step 4:** NDK's `refreshRelayConnections` (`core/src/ndk/index.ts:458-471`, `subscription/index.ts:787-812`) only *adds* relays and never removes stale ones. NMP's wire-emitter diff emits CLOSE for the stale slice and a new REQ for the author's updated relay, covering the window with `since: last_seen_for_author`. The test asserts no events are missed during the transition.
 

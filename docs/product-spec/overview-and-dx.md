@@ -231,12 +231,15 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | `nmp-nip77` | Negentropy sync module | Pure Rust |
 | `nmp-blossom` | Blossom upload action and upload view | Pure Rust |
 | `nmp-wot` | Web-of-trust graph + filter | Pure Rust |
-| `nmp-guardrails` | Debug-build runtime checks | Pure Rust |
 | `nmp-metrics` | Performance instrumentation (counters, budgets, exposed via `AppState.debug`) | Pure Rust |
 | `nmp-testing` | Mock relay, factories, simulated time, perf-replay harness | Pure Rust |
 | `nmp-cli` | Scaffolding tool | Binary |
 
 The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
+
+Developer guardrails remain a post-v1 aim until a real crate/API exists. v1
+docs and release claims must point at the shipped typed APIs, doctrine gates,
+tests, and perf gates instead of naming a nonexistent guardrails artifact.
 
 The v1 release does **not** ship every module above as a finished product
 module. Per the v1 plan tracked in GitHub Issues, v1 first proves the kernel

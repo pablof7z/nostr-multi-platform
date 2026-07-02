@@ -77,12 +77,12 @@ Decode the snapshot and read `relay_statuses` (per-role: `connection`,
 `auth`, `bytes_rx/tx`, `reconnect_count`, `last_error`) — the Swift mirror is
 `KernelBridge.swift:183-197`.
 
-**Q12. How do I enable debug diagnostics?**
-The guardrail checker runs only under `cfg(debug_assertions)` (debug builds):
-bech32-where-hex, `limit` on replaceable filters, empty `authors`, cache miss
-with no fallback loader, etc. Violations produce a `DebugDiagnostics` entry
-plus an `eprintln!` with a doc URL. Release cost is zero
-(`subsystems.md:323-336`). Build in debug to see them.
+**Q12. How do I enable developer guardrails?**
+There is no general guardrails crate in v1. Current enforcement comes from
+typed Rust APIs, doctrine lint, framework-magic tests, perf gates, and ordinary
+diagnostics surfaces such as relay/auth/publish status. Developer guardrails
+remain a post-v1 aim; do not depend on a separate debug diagnostics API for
+correctness.
 
 **Q13. Where do I file a doc/code discrepancy?**
 Correct the owning doc in place when it is wrong. If the mismatch represents active work rather than bad guidance, open or update the GitHub issue instead.
