@@ -55,7 +55,7 @@ fn nmp_ffi_crate_is_not_in_cargo_metadata() {
         !has_nmp_ffi,
         "nmp-ffi is a RETIRED crate (deleted in the M14 migration). It must not \
          appear in cargo metadata. Native platform API belongs in \
-         nmp-native-runtime or nmp-uniffi."
+         nmp-native-runtime or an app-owned UniFFI facade."
     );
 }
 
@@ -67,7 +67,7 @@ fn nmp_ffi_directory_does_not_exist() {
         !ffi_dir.exists(),
         "crates/nmp-ffi must not exist — it is a retired crate (deleted in the \
          M14 migration). Native platform API belongs in nmp-native-runtime or \
-         nmp-uniffi."
+         app-owned UniFFI facades."
     );
 }
 
@@ -138,7 +138,7 @@ fn nmp_ffi_is_not_reintroduced_as_live_crate_in_source() {
         violations.is_empty(),
         "nmp-ffi has been reintroduced as a live crate in TOML source. It is a \
          RETIRED crate (deleted in the M14 migration); native platform API \
-         belongs in nmp-native-runtime or nmp-uniffi. Violations:\n{}",
+         belongs in nmp-native-runtime or app-owned UniFFI facades. Violations:\n{}",
         violations.join("\n")
     );
 }
@@ -295,7 +295,7 @@ fn no_nmp_app_c_abi_symbols_in_crates() {
     // M14-D ratchet: the nmp-ffi C-ABI crate is deleted. No code in crates/*/src/
     // may re-introduce #[no_mangle] extern "C" fn nmp_app_* symbols. #2232
     // extends this to the deleted nmp_marmot_* shell. New platform API must go
-    // through nmp-native-runtime Rust methods or nmp-uniffi.
+    // through nmp-native-runtime Rust methods or app-owned UniFFI facades.
     let (root, files) = crate_native_rs_files();
     let mut violations = Vec::new();
 
@@ -311,7 +311,7 @@ fn no_nmp_app_c_abi_symbols_in_crates() {
             if let Some(symbol) = exported_native_nmp_symbol(&live) {
                 if symbol.starts_with("nmp_app_") || symbol.starts_with("nmp_marmot_") {
                     violations.push(format!(
-                        "{}:{} banned C-ABI symbol `{symbol}` — crate-layer C ABI is deleted (M14-D/#2232);                          use nmp-native-runtime Rust API or nmp-uniffi instead",
+                        "{}:{} banned C-ABI symbol `{symbol}` — crate-layer C ABI is deleted (M14-D/#2232);                          use nmp-native-runtime Rust API or an app-owned UniFFI facade instead",
                         relative_to(&root, path).display(),
                         idx + 1,
                     ));
@@ -322,7 +322,7 @@ fn no_nmp_app_c_abi_symbols_in_crates() {
 
     assert!(
         violations.is_empty(),
-        "crates/*/src must not contain #[no_mangle] extern \"C\" fn nmp_app_* or nmp_marmot_* symbols.          The nmp-ffi C-ABI layer was deleted in M14-D and the Marmot C shell in #2232. Platform callers must use          nmp-native-runtime or nmp-uniffi:\n{}",
+        "crates/*/src must not contain #[no_mangle] extern \"C\" fn nmp_app_* or nmp_marmot_* symbols.          The nmp-ffi C-ABI layer was deleted in M14-D and the Marmot C shell in #2232. Platform callers must use          nmp-native-runtime or app-owned UniFFI facades:\n{}",
         violations.join("\n")
     );
 }
