@@ -61,11 +61,27 @@ pub(crate) fn observed_shape_matches_fields(
         return true;
     };
 
-    relay_provenance.iter().any(|relay| relay == pin)
+    relay_provenance
+        .iter()
+        .any(|relay| relay_pin_matches_provenance(pin, relay))
         || (shape.search.is_none()
             && relay_provenance
                 .iter()
                 .any(|relay| relay == "local://publish"))
+}
+
+fn relay_pin_matches_provenance(pin: &str, relay: &str) -> bool {
+    if relay == pin {
+        return true;
+    }
+
+    match (
+        crate::substrate::canonicalize_relay_url(pin),
+        crate::substrate::canonicalize_relay_url(relay),
+    ) {
+        (Some(pin), Some(relay)) => pin == relay,
+        _ => false,
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -157,7 +173,7 @@ pub struct ViewContext {}
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::planner::{InterestId, InterestLifecycle, InterestScope};
+    use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 
     #[test]
     fn bridge_maps_kinds_and_relay_pin() {
@@ -258,5 +274,48 @@ mod tests {
             InterestLifecycle::Tailing,
         );
         assert_eq!(interest.shape.limit, None);
+    }
+
+    #[test]
+    fn relay_pinned_observed_shape_matches_canonical_provenance_variant() {
+        let shape = relay_pinned_shape("wss://groups.example");
+        let event = event_from_relay("WSS://GROUPS.EXAMPLE/");
+
+        assert!(
+            observed_shape_matches_event(&shape, &event),
+            "URL-equivalent relay provenance must satisfy the relay pin"
+        );
+    }
+
+    #[test]
+    fn relay_pinned_observed_shape_rejects_different_relay_after_canonicalization() {
+        let shape = relay_pinned_shape("wss://groups.example");
+        let event = event_from_relay("wss://other.example/");
+
+        assert!(
+            !observed_shape_matches_event(&shape, &event),
+            "relay pin canonicalization must not widen to another host"
+        );
+    }
+
+    fn relay_pinned_shape(pin: &str) -> InterestShape {
+        let mut shape = InterestShape {
+            relay_pin: Some(pin.to_string()),
+            ..Default::default()
+        };
+        shape.kinds.insert(39000);
+        shape
+    }
+
+    fn event_from_relay(relay: &str) -> KernelEvent {
+        KernelEvent {
+            id: "1".repeat(64),
+            author: "2".repeat(64),
+            kind: 39000,
+            created_at: 1_782_984_103,
+            tags: vec![vec!["d".to_string(), "room".to_string()]],
+            content: String::new(),
+            relay_provenance: vec![relay.to_string()],
+        }
     }
 }
