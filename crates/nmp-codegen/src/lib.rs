@@ -101,6 +101,16 @@ pub mod signer_catalog;
 // `nmp_core::refs::RefRowCache` and to each other across platforms.
 pub mod kotlin_keyed_cache;
 pub mod swift_keyed_cache;
+// ADR-0063 Lane A twin (#2722) — the THIRD platform twin, generated
+// TypeScript `KeyedRefCache` for `@nmp/runtime-web`. Sourced from the SAME
+// `KEYED_PROJECTIONS` registry so it can never drift from the Swift/Kotlin
+// caches. See module doc for why it collapses hl's/nmp-gallery's separate
+// hand-written `RefRowCache` + `RefProfileStore` into one generated class.
+pub mod ts_keyed_cache;
+// #2722 — generated TypeScript `PROJECTION_CONTRACT` table, the read-side twin
+// of `projection_contract`'s neutral schema_id/file_identifier facts the Swift
+// typed decoders already consume via `contract_for`.
+pub mod ts_projection_contract;
 
 pub use action_contract::{
     canonical_default_action_namespaces, contract_for as action_contract_for, dm_action_namespaces,
@@ -161,6 +171,14 @@ pub use swift_projection_cache::{
 };
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
+};
+pub use ts_keyed_cache::{
+    check_ts_keyed_ref_cache, generate_ts_keyed_ref_cache, render_ts_keyed_ref_cache,
+    TsKeyedRefCacheCheckOutcome,
+};
+pub use ts_projection_contract::{
+    check_ts_projection_contract, generate_ts_projection_contract, render_ts_projection_contract,
+    TsProjectionContractCheckOutcome,
 };
 // ADR-0064 §3 (#1783) — generated typed action-builder codegen (Swift + Kotlin).
 // Emits the host-facing typed write builders that construct the

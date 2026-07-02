@@ -266,12 +266,13 @@ pub fn run_gen_projection_cache(args: Vec<String>, help: &str) -> Result<(), Str
     }
 }
 
-/// `nmp gen keyed-ref-cache --platform swift|kotlin --out <path> [--check]`.
+/// `nmp gen keyed-ref-cache --platform swift|kotlin|ts --out <path> [--check]`.
 ///
 /// ADR-0063 Lane A (#1671) — generates the per-key (row-keyed) reference cache
 /// (`KeyedRefCache`) for keyed projections (`refs.profile` / `refs.event`).
 /// Driven by `KEYED_PROJECTIONS`; takes no schema stdin. Mirrors
 /// `gen projection-cache`: `--out` required, `--check` diffs on disk.
+/// `--platform ts` (#2722) is the `@nmp/runtime-web` twin.
 pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), String> {
     let mut platform = "swift".to_string();
     let mut check = false;
@@ -346,9 +347,95 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
                 Ok(())
             }
         }
+        "ts" => {
+            if check {
+                let outcome =
+                    nmp_codegen::check_ts_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!(
+                        "nmp gen keyed-ref-cache --platform ts --check: ok ({})",
+                        out.display()
+                    );
+                    Ok(())
+                } else {
+                    Err(stale_message(
+                        "keyed-ref-cache (ts)",
+                        &out,
+                        outcome.first_diff_line,
+                    ))
+                }
+            } else {
+                nmp_codegen::generate_ts_keyed_ref_cache(&out).map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
+        }
         other => Err(format!(
-            "unknown --platform {other:?}: expected swift or kotlin\n{help}"
+            "unknown --platform {other:?}: expected swift, kotlin, or ts\n{help}"
         )),
+    }
+}
+
+/// `nmp gen projection-contract --platform ts --out <path> [--check]`.
+///
+/// #2722 — generates the read-side TypeScript `PROJECTION_CONTRACT` table for
+/// `@nmp/runtime-web` from the SAME neutral manifest the Swift typed decoders
+/// consume via `projection_contract::contract_for`. Takes no schema stdin.
+/// `--platform` is required and currently accepts only `ts` (the only
+/// consumer); the flag is spelled out so a future platform can be added
+/// without a breaking CLI shape change.
+pub fn run_gen_projection_contract(args: Vec<String>, help: &str) -> Result<(), String> {
+    let mut platform: Option<String> = None;
+    let mut check = false;
+    let mut out: Option<PathBuf> = None;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--platform" => {
+                index += 1;
+                platform = Some(
+                    args.get(index)
+                        .cloned()
+                        .ok_or_else(|| "--platform requires ts".to_string())?,
+                );
+            }
+            "--out" => {
+                index += 1;
+                out = Some(
+                    args.get(index)
+                        .map(PathBuf::from)
+                        .ok_or_else(|| "--out requires a path".to_string())?,
+                );
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{help}")),
+        }
+        index += 1;
+    }
+    let out =
+        out.ok_or_else(|| "--out is required (the app-owned destination path)".to_string())?;
+    match platform.as_deref() {
+        Some("ts") => {
+            if check {
+                let outcome = nmp_codegen::check_ts_projection_contract(&out)
+                    .map_err(|e| e.to_string())?;
+                if outcome.up_to_date {
+                    println!("nmp gen projection-contract --check: ok ({})", out.display());
+                    Ok(())
+                } else {
+                    Err(stale_message(
+                        "projection-contract (ts)",
+                        &out,
+                        outcome.first_diff_line,
+                    ))
+                }
+            } else {
+                nmp_codegen::generate_ts_projection_contract(&out).map_err(|e| e.to_string())?;
+                println!("wrote {}", out.display());
+                Ok(())
+            }
+        }
+        other => Err(format!("unknown --platform {other:?}: expected ts\n{help}")),
     }
 }
 
