@@ -299,8 +299,8 @@ You cannot export shared UniFFI records or callback interfaces cross-crate from
 callback interface to its owning facade namespace; an earlier attempt that
 exported them directly from `nmp-uniffi-support` compiled in Rust but failed at
 `uniffi-bindgen --library` with `Unknown namespace for CallbackInterface(...)
-(nmp_uniffi_support)` when generating bindings from both the now-deleted
-`nmp-uniffi` reference facade and an app facade at once. That is why
+(nmp_uniffi_support)` when generating bindings from two facade crates at once
+(the now-deleted `nmp-uniffi` reference facade plus an app facade). That is why
 `nmp-uniffi-support` deliberately does **not** call
 `setup_scaffolding!()`: it shares only the Rust-side mechanics. So you still
 define tiny local shims (your own `DispatchOutcome`, `UpdateSink`,
@@ -360,8 +360,9 @@ uniffi-bindgen generate --library <app-cdylib> --language swift --out-dir <swift
 uniffi-bindgen generate --library <app-cdylib> --language kotlin --out-dir <kotlin-out>
 ```
 
-For the reusable framework surface, drift is gated by
-`bash ci/check-uniffi-bindings-drift.sh`. The durable rationale and binding-surface
+Each app-owned facade's own generated bindings drift is gated by that app's
+`ci/check-uniffi-bindings.sh` (emitted by `nmp init`); there is no shared
+framework-level binding-drift gate. The durable rationale and binding-surface
 rules live in [`docs/ffi-surface.md`](../ffi-surface.md) ("App-Owned UniFFI
 Facades" / "Verification Pointers") and
 [ADR-0072](../decisions/0072-runtime-capability-and-shell-boundary.md); this guide is only the

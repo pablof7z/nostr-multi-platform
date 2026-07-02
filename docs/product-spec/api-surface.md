@@ -9,8 +9,10 @@ capability sockets, typed projection registration, and one write doorway. Relay
 routing, cache invalidation, subscription lifecycle, signing orchestration, and
 store admission stay inside Rust.
 
-Native app bindings target `crates/nmp-uniffi` over
-`crates/nmp-native-runtime::NmpAppBuilder`. Browser bindings target
+Native app bindings target an app-owned UniFFI facade crate (there is no
+stock, consumable framework facade — `nmp-uniffi` was deleted in #2763) over
+`crates/nmp-uniffi-support` and `crates/nmp-native-runtime::NmpAppBuilder`.
+Browser bindings target
 `nmp-browser-runtime` wasm-bindgen exports. Hot Rust-to-host updates are binary
 `nmp.transport.UpdateFrame` frames. The frame carries a `SnapshotEnvelope` plus
 typed projection payloads; production hosts decode typed frame data. Generated
