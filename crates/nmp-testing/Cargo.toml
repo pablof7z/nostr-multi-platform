@@ -300,7 +300,7 @@ path = "tests/marmot_perf.rs"
 # `GenericOutboxRouter` + `InMemoryMailboxCache` + `RoutingTraceProjection`
 # directly, seeds the cache from a live kind:10002 fetched from a real
 # Nostr relay (pablof7z's published NIP-65), routes a subscription, and
-# asserts lane attribution (`Nip65/Read`, no `AppRelay/Fallback`).
+# asserts lane attribution (`Nip65/Write`, no `AppRelay/Fallback`).
 # All tests `#[ignore]` by default; run explicitly:
 #   cargo test --ignored -p nmp-testing --test routing_trace_real_nostr -- --nocapture
 [[test]]
