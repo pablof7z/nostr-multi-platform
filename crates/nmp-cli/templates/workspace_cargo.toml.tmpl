@@ -1,10 +1,11 @@
 # Scaffolded by `nmp init {{name}}`.
 #
-# The `{{pkg}}` crate is a thin composition shell over the NMP framework
-# (ADR-0069 — explicit feature composition). See README.md for the release
-# (git-rev pin) vs. local-checkout NMP dependency modes.
+# The `{{pkg}}` crate is the app-owned Rust composition shell. The
+# `{{facade_pkg}}` crate is the app-owned UniFFI doorway native shells link.
+# See README.md for the release (git-rev pin) vs. local-checkout NMP dependency
+# modes.
 [workspace]
-members = ["crates/{{pkg}}"]
+members = ["crates/{{pkg}}", "crates/{{facade_pkg}}"]
 resolver = "2"
 
 [workspace.package]

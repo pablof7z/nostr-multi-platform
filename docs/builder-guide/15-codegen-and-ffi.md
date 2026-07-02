@@ -2,7 +2,7 @@
 
 **Status:** UniFFI native binding + FlatBuffers update transport are the public native target ·
 wasm-bindgen is the browser binding ·
-`nmp init` thin-shell scaffold SHIPS · full multi-platform starter M16 PLANNED · Audience: both
+`nmp init` app-core + app-owned UniFFI facade scaffold SHIPS · full multi-platform starter M16 PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. The
 canonical composition is delivered as a **library call**, not as generated wiring
@@ -75,8 +75,7 @@ must not collapse back to a broad hidden preset or a substrate-only starter.
 - **`gen typed-decoders`** — native decoders for the typed FlatBuffers projection
   rows carried in `SnapshotFrame.typed_projections`.
 - **Typed action builders** — generated host builders for declared action
-  contracts, including app-local contracts once #2408's app-private kind lane is
-  implemented.
+  contracts, including app-local contracts declared by `action-builders.json`.
 
 These are *bindings* (projections of a typed surface), not *composition wiring*.
 Deleting the old `gen modules` scaffolder did not touch them.
@@ -141,6 +140,13 @@ Generated builders only encode typed action bytes for the same byte doorway:
 UniFFI native dispatch for Swift/Kotlin and wasm-bindgen `dispatch_bytes` for
 TypeScript. They do not install modules, choose relays, create a per-app FFI
 crate, or generate a composition root.
+
+`nmp init` composes this with the app-owned facade lane: it writes one
+`action-builders.json` row, one app-owned `.fbs` payload schema, checked
+Swift/Kotlin/TS generated builders, a Rust `ActionPayload`/`ActionModule`, and a
+`<name>-app` UniFFI facade that exposes the byte dispatch doorway. The generated
+builders still do not own runtime policy; they feed the facade's
+`dispatch_action(Vec<u8>)` method.
 
 This is distinct from reusable NMP protocols. A generic Nostr mechanism that an
 unrelated second app can consume unchanged belongs in a Layer-4 NMP crate and
@@ -365,12 +371,12 @@ app-author how-to.
 │ action/update doorways to Swift/Kotlin/desktop native hosts.          │
 │ Native shells import generated UniFFI modules; they do not call       │
 │ deleted framework symbols as starter-app API.                         │
-│ An app may also own a UniFFI facade for app-specific verbs (#2494).   │
+│ `nmp init` scaffolds one app-owned UniFFI facade for app-specific verbs. │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
 │ runtime snapshot fallback and no pull/drain update symbol.           │
-│ There is NO generated per-app FFI crate; the app core owns explicit  │
-│ Rust composition.                                                    │
+│ There is NO generated app-glue tree. The app core owns explicit      │
+│ Rust composition; the app facade owns the native doorway.            │
 ├─ PUBLIC BROWSER BINDING ─────────────────────────────────────────────┤
 │ wasm-bindgen exposes the browser runtime surface. Browser hosts use  │
 │ the same FlatBuffers action/update bytes and browser capability      │
@@ -386,13 +392,11 @@ app-author how-to.
 │ behind the public binding and be justified by measurement, not       │
 │ exposed as a second API.                                             │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
-│ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
-│ with an explicit composition root, plus a headless `examples/shell.rs`│
-│ that drives it through nmp-native-runtime's `NmpAppBuilder`. No      │
-│ `gen modules` step                                                   │
-│ and no                                                               │
-│ generated `apps/` tree. Full multi-platform starter is a future       │
-│ milestone.                                                            │
+│ `nmp init <app>` scaffolds `<name>-core` with explicit composition,  │
+│ `<name>-app` as the app-owned UniFFI facade, an app-local action     │
+│ registry/schema, generated action builders, app-owned reactive view, │
+│ Swift/Kotlin binding check script, and a headless shell.             │
+│ No `gen modules` step and no generated raw `apps/` tree.             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 

@@ -14,11 +14,13 @@ from the workspace root, not the crate directory. Add new crates to the root
 
 **Q2. What does `nmp init` scaffold?**
 `nmp init my-app` creates a thin Rust workspace: a `<name>-core` crate that
-owns explicit NMP composition and registers app-specific seams, an `nmp.toml`
-manifest used by `nmp upgrade`, a starter domain/view/action module, and a
-headless `examples/shell.rs` using `NmpAppBuilder`. It does
-**not** produce an Xcode project or Android Compose module — that's the platform
-shell layer you wire yourself. See
+owns explicit NMP composition, a `<name>-app` UniFFI facade native shells link,
+an `nmp.toml` manifest used by `nmp upgrade`, an app-local action-builder
+registry/schema/generated builders, a starter action-to-reactive-view module,
+a `ci/check-uniffi-bindings.sh` Swift/Kotlin binding check, and a headless
+`examples/shell.rs` using `NmpAppBuilder`. It does **not** produce an Xcode
+project or Android Compose module — that's the platform shell layer you wire
+yourself. See
 [17 — iOS shell](17-ios-shell.md) for the Swift wiring and
 `apps/nmp-gallery/android/` as the Android reference.
 

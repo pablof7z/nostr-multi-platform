@@ -1,0 +1,120 @@
+//! `{{facade_pkg}}` — app-owned UniFFI facade for `{{display}}`.
+//!
+//! Native shells link this crate, import its generated Swift/Kotlin namespace,
+//! and drive the app through one Rust-owned object. The facade owns
+//! `NmpApp` by value and delegates shared runtime mechanics to
+//! `nmp-uniffi-support`; it does not expose raw C symbols or duplicate
+//! lifecycle/dispatch/capability policy.
+
+use std::sync::Arc;
+
+use nmp_native_runtime::NmpApp as RuntimeApp;
+
+uniffi::setup_scaffolding!();
+
+#[uniffi::export(callback_interface)]
+pub trait {{facade_struct}}UpdateSink: Send + Sync {
+    fn on_update(&self, frame: Vec<u8>);
+}
+
+#[uniffi::export(callback_interface)]
+pub trait {{facade_struct}}CapabilitySink: Send + Sync {
+    fn on_capability_request(&self, request_json: String) -> String;
+}
+
+#[derive(uniffi::Record, Debug, Clone)]
+pub struct {{facade_struct}}DispatchOutcome {
+    pub correlation_id: Option<String>,
+    pub error: Option<String>,
+    pub code: Option<String>,
+}
+
+impl From<nmp_uniffi_support::DispatchOutcome> for {{facade_struct}}DispatchOutcome {
+    fn from(out: nmp_uniffi_support::DispatchOutcome) -> Self {
+        Self {
+            correlation_id: out.correlation_id,
+            error: out.error,
+            code: out.code,
+        }
+    }
+}
+
+#[derive(uniffi::Object)]
+pub struct {{facade_struct}} {
+    inner: RuntimeApp,
+}
+
+#[uniffi::export]
+impl {{facade_struct}} {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        let mut inner = nmp_native_runtime::new_app();
+        {{crate_ident}}::register(&mut inner);
+        inner.consume_all_builtin_projections();
+        Arc::new(Self { inner })
+    }
+
+    pub fn start(&self, visible_limit: u32, emit_hz: u32) {
+        nmp_uniffi_support::start_runtime(&self.inner, visible_limit, emit_hz);
+    }
+
+    pub fn configure(&self, visible_limit: u32, emit_hz: u32) {
+        nmp_uniffi_support::configure_runtime(&self.inner, visible_limit, emit_hz);
+    }
+
+    pub fn stop(&self) {
+        self.inner.stop_runtime();
+    }
+
+    pub fn reset(&self) {
+        self.inner.reset_runtime();
+    }
+
+    pub fn shutdown(&self) {
+        self.inner.shutdown();
+    }
+
+    pub fn set_storage_path(&self, path: Option<String>) {
+        self.inner.set_storage_path(path);
+    }
+
+    pub fn set_update_sink(&self, sink: Option<Box<dyn {{facade_struct}}UpdateSink>>) {
+        nmp_uniffi_support::set_update_sink(&self.inner, sink, |sink, frame| {
+            sink.on_update(frame);
+        });
+    }
+
+    pub fn set_capability_callback(&self, sink: Option<Box<dyn {{facade_struct}}CapabilitySink>>) {
+        nmp_uniffi_support::set_capability_callback(&self.inner, sink, |sink, request_json| {
+            sink.on_capability_request(request_json)
+        });
+    }
+
+    pub fn dispatch_capability_json(&self, request_json: String) -> String {
+        nmp_uniffi_support::dispatch_capability_json(&self.inner, &request_json)
+    }
+
+    pub fn dispatch_action(&self, envelope: Vec<u8>) -> {{facade_struct}}DispatchOutcome {
+        nmp_uniffi_support::dispatch_action_vec(&self.inner, envelope).into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_installs_composition_and_starts() {
+        let app = {{facade_struct}}::new();
+        app.start(128, 4);
+        app.shutdown();
+    }
+
+    #[test]
+    fn empty_action_envelope_fails_as_data() {
+        let app = {{facade_struct}}::new();
+        let out = app.dispatch_action(Vec::new());
+        assert!(out.correlation_id.is_none());
+        assert!(out.error.is_some());
+    }
+}

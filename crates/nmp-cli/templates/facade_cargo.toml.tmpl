@@ -1,0 +1,18 @@
+[package]
+name = "{{facade_pkg}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "{{display}} app-owned UniFFI facade over nmp-native-runtime."
+
+[lib]
+# `staticlib` lets iOS link the app facade, `cdylib` lets UniFFI generate
+# Swift/Kotlin bindings from the library, and `rlib` keeps Rust smoke tests
+# and desktop/headless hosts on the normal Rust path.
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+{{pkg}} = { path = "../{{pkg}}" }
+nmp-native-runtime = {{nmp_native_runtime_dep}}
+nmp-uniffi-support = {{nmp_uniffi_support_dep}}
+uniffi = { version = "0.29" }

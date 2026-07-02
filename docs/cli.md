@@ -47,13 +47,22 @@ Produced layout:
 
 ```text
 <root>/
-  Cargo.toml                 # workspace: members = ["crates/<name>-core"]
+  Cargo.toml                 # workspace: core + app-owned UniFFI facade
   nmp.toml                   # NMP dependency policy (read by upgrade)
+  action-builders.json       # app-local typed action-builder contract
+  generated/                 # Swift/Kotlin/TS builders from action-builders.json
+  ci/check-uniffi-bindings.sh # Swift/Kotlin UniFFI binding-generation check
   README.md                  # per-app next steps
   crates/<name>-core/
     Cargo.toml               # nmp-substrate + selected protocol crates + nmp-native-runtime + nmp-core + serde
     src/lib.rs               # explicit register() root + example domain
+    src/entry_action.rs      # app-owned typed ActionPayload + ActionModule
+    src/entry_view.rs        # app-owned reactive read model
+    schema/add_entry.fbs     # app-owned FlatBuffers payload schema
     examples/shell.rs        # NmpAppBuilder → register → start
+  crates/<name>-app/
+    Cargo.toml               # app-owned UniFFI cdylib/staticlib/rlib
+    src/lib.rs               # setup_scaffolding! + facade-local types
 ```
 
 The `<name>-core` crate is a **thin composition shell** (ADR-0069): its
@@ -64,12 +73,32 @@ view and a validating action), deliberately not social-app-shaped, to
 demonstrate the kernel boundary: per cardinal doctrine **D0**, app nouns live in
 `<name>-core`, never in `nmp-core`.
 
+The `<name>-app` crate is the app-owned native doorway. It calls
+`uniffi::setup_scaffolding!()`, owns `NmpApp` by value inside an `Arc<Facade>`
+UniFFI object, defines facade-local callback/record types, and delegates
+lifecycle, update, capability, and action-dispatch mechanics to
+`nmp-uniffi-support`. The scaffold therefore teaches one native path: app shells
+link the facade and dispatch generated action bytes; they do not hand-write raw
+`extern "C"` symbols.
+
+The starter also includes one app-local typed action end to end:
+`action-builders.json` declares `<name>.entries.add`, `schema/add_entry.fbs`
+owns the wire payload, generated Swift/Kotlin/TS builders emit
+`GeneratedActionBuilders.addEntry(...)`, and `entry_action.rs` decodes those
+bytes into `AddEntryAction` through the app's `EntryActionModule`. The action
+publishes the starter app-private event kind, and `entry_view.rs` declares the
+event dependency, maintains bounded Rust-owned view state, and snapshots rows
+for rendering.
+
 The shell compiles the moment it is scaffolded:
 
 ```sh
 cd my-app
-cargo check --all-targets                  # green
-cargo test -p my-app-core                  # skeleton tests pass
+cargo check --all-targets                  # core + facade green
+cargo test -p my-app-core                  # core tests pass
+cargo test -p my-app-app                   # facade tests pass
+cargo run --manifest-path /path/to/nostr-multi-platform/Cargo.toml -p nmp-codegen -- gen action-builders --registry action-builders.json --check
+bash ci/check-uniffi-bindings.sh            # Swift/Kotlin facade bindings generate
 cargo run --example shell -p my-app-core   # app register → start → stop
 ```
 
@@ -171,12 +200,17 @@ Component contract:
 
 1. `nmp init` into a fresh tempdir.
 2. Assert the scaffold is a composition shell: `register` installs the NMP
-   substrate explicitly, the example drives `NmpAppBuilder`, and there is no
-   generated `apps/` FFI tree.
+   substrate explicitly, the example drives `NmpAppBuilder`, and the native
+   doorway is exactly one app-owned UniFFI facade over `nmp-uniffi-support`.
 3. `cargo check --all-targets` on the scaffold → green (links the live
    `nmp-substrate` / selected protocol / `nmp-native-runtime` / `nmp-core`
    crates).
-4. `cargo test -p <name>-core` → skeleton tests pass.
+4. `cargo test -p <name>-core` and `cargo test -p <name>-app` → skeleton tests
+   pass.
+5. The generated `action-builders.json` registry passes the normal
+   `nmp-codegen gen action-builders --registry ... --check` drift gate.
+6. `bash ci/check-uniffi-bindings.sh` builds the app-owned facade cdylib and
+   runs `uniffi-bindgen --library` for Swift/Kotlin.
 
 A second test asserts invalid app names are rejected.
 

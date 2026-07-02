@@ -362,7 +362,6 @@ fn g3_shell_uses_nmp_app_builder() {
         "G3 DX GAP: scaffold must depend on explicit owner crates, not nmp-defaults.\n\
          Cargo.toml:\n{cargo_toml}\nlib.rs:\n{lib_rs}",
     );
-
     for key in [
         "dxdemo.timeline.home",
         "refs.profile",
@@ -376,9 +375,10 @@ fn g3_shell_uses_nmp_app_builder() {
     }
     assert!(
         !lib_rs.contains("GeneratedActionBuilders.publishRaw")
-            && lib_rs.contains("GeneratedActionBuilders.publishReply")
-            && lib_rs.contains("GeneratedActionBuilders.publishProfile"),
-        "G3 DX GAP: starter must point shells at typed generated publish builders, not generic publishRaw.\n\
+            && !lib_rs.contains("GeneratedActionBuilders.publishReply")
+            && !lib_rs.contains("GeneratedActionBuilders.publishProfile")
+            && lib_rs.contains("GeneratedActionBuilders.addEntry"),
+        "G3 DX GAP: starter must point shells at the app-local generated builder, not generic publishRaw or built-in publish builders.\n\
          lib.rs:\n{lib_rs}",
     );
     assert!(

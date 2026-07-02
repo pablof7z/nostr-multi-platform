@@ -1,0 +1,19 @@
+namespace app.starter_entries;
+
+// App-private FlatBuffers payload for the starter typed action.
+// This schema is owned by the scaffolded app core, not by an NMP crate.
+//
+// The checked-in Rust binding in this scaffold was generated with:
+//   flatc --rust -o crates/<name>-core/src/entry_action/generated \
+//         crates/<name>-core/schema/add_entry.fbs
+
+table AddEntryPayload {
+  // Fail-closed schema_version tripwire. The app-owned Rust decoder reads this
+  // before accepting the payload.
+  schema_version:uint;
+  id:string (required);
+  label:string (required);
+}
+
+file_identifier "APPS";
+root_type AddEntryPayload;

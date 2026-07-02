@@ -132,7 +132,7 @@ map keyed by that id.
 | typed output transport | ✅ DONE | — |
 | UniFFI native lifecycle/action binding + FlatBuffers update frames | ✅ public native path | — |
 | wasm-bindgen browser action/update binding | ✅ public browser path | — |
-| `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |
+| `nmp init` (app core + facade scaffold) | ✅ ships | Creates a `<name>-core` composition crate, `<name>-app` UniFFI facade, app-local action builders, and `examples/shell.rs`; full multi-platform starter is M16. |
 | Native shell proof | ✅ DONE | Gallery is the in-tree shell proof; Chirp is an external consumer |
 
 The publish substrate, the local signer, multi-account, typed read sessions, and

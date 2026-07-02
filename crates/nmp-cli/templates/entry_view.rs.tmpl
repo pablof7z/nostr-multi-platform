@@ -1,0 +1,278 @@
+//! App-owned reactive view for the starter entry domain.
+//!
+//! The kernel provides generic event delivery and projection plumbing. This
+//! module owns the product meaning: which app-private event kind becomes an
+//! entry row, how rows are bounded, and what snapshot shape platform shells
+//! render.
+
+use nmp_core::substrate::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
+use serde::{Deserialize, Serialize};
+
+use crate::entry_action::EVENT_KIND;
+
+const ENTRY_VIEW_LIMIT: usize = 80;
+const ENTRY_VIEW_LIMIT_U32: u32 = 80;
+
+/// An app-owned record. This is a generic example — not a social-app noun.
+/// Make it whatever your app stores.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EntryRecord {
+    pub id: String,
+    pub label: String,
+    pub archived: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct EntryListSpec {
+    pub include_archived: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EntryListView {
+    pub items: Vec<EntryRecord>,
+    pub active_count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum EntryDelta {
+    Replaced { payload: EntryListView },
+}
+
+#[derive(Clone, Debug)]
+pub struct EntryViewState {
+    spec: EntryListSpec,
+    source: Vec<(EventId, EntryRecord)>,
+    payload: EntryListView,
+}
+
+/// A reactive view over [`EntryRecord`]s. Its methods are plain inherent
+/// methods reached via static dispatch (`EntryViewModule::open(...)`); there
+/// is no kernel-side `ViewModule` trait or registry.
+pub struct EntryViewModule;
+
+impl EntryViewModule {
+    pub const NAMESPACE: &'static str = "{{name}}.entries.view";
+
+    pub fn key(spec: &EntryListSpec) -> bool {
+        spec.include_archived
+    }
+
+    pub fn dependencies(_spec: &EntryListSpec) -> ViewDependencies {
+        ViewDependencies {
+            kinds: vec![EVENT_KIND],
+            limit: Some(ENTRY_VIEW_LIMIT_U32),
+            ..Default::default()
+        }
+    }
+
+    pub fn open(_ctx: &ViewContext, spec: EntryListSpec) -> (EntryViewState, EntryListView) {
+        let payload = EntryListView::default();
+        (
+            EntryViewState {
+                spec,
+                source: Vec::new(),
+                payload: payload.clone(),
+            },
+            payload,
+        )
+    }
+
+    pub fn on_event_inserted(
+        _ctx: &ViewContext,
+        state: &mut EntryViewState,
+        event: &KernelEvent,
+    ) -> Option<EntryDelta> {
+        let record = record_from_event(event)?;
+        upsert_record(state, event.id.clone(), record);
+        Some(rebuild_delta(state))
+    }
+
+    pub fn on_event_removed(
+        _ctx: &ViewContext,
+        state: &mut EntryViewState,
+        id: &EventId,
+    ) -> Option<EntryDelta> {
+        remove_event(state, id).then(|| rebuild_delta(state))
+    }
+
+    pub fn on_event_replaced(
+        _ctx: &ViewContext,
+        state: &mut EntryViewState,
+        old_id: &EventId,
+        new_event: &KernelEvent,
+    ) -> Option<EntryDelta> {
+        let mut changed = remove_event(state, old_id);
+        if let Some(record) = record_from_event(new_event) {
+            upsert_record(state, new_event.id.clone(), record);
+            changed = true;
+        }
+        changed.then(|| rebuild_delta(state))
+    }
+
+    pub fn on_projection_changed(
+        _ctx: &ViewContext,
+        state: &mut EntryViewState,
+        change: &ProjectionChange,
+    ) -> Option<EntryDelta> {
+        if change.namespace != Self::NAMESPACE {
+            return None;
+        }
+        Some(rebuild_delta(state))
+    }
+
+    pub fn snapshot(_ctx: &ViewContext, state: &EntryViewState) -> EntryListView {
+        state.payload.clone()
+    }
+}
+
+fn record_from_event(event: &KernelEvent) -> Option<EntryRecord> {
+    if event.kind != EVENT_KIND {
+        return None;
+    }
+    let id = tag_value(&event.tags, "d")?.trim();
+    let content = event.content.trim();
+    let label = if content.is_empty() {
+        tag_value(&event.tags, "alt")?.trim()
+    } else {
+        content
+    };
+    if id.is_empty() || label.is_empty() {
+        return None;
+    }
+    let archived = tag_value(&event.tags, "archived")
+        .map(|raw| matches!(raw, "1" | "true" | "yes"))
+        .unwrap_or(false);
+    Some(EntryRecord {
+        id: id.to_string(),
+        label: label.to_string(),
+        archived,
+    })
+}
+
+fn tag_value<'a>(tags: &'a [Vec<String>], name: &str) -> Option<&'a str> {
+    tags.iter()
+        .find(|tag| tag.first().map(String::as_str) == Some(name))
+        .and_then(|tag| tag.get(1).map(String::as_str))
+}
+
+fn upsert_record(state: &mut EntryViewState, event_id: EventId, record: EntryRecord) {
+    if let Some((_, existing)) = state
+        .source
+        .iter_mut()
+        .find(|(candidate, _)| candidate == &event_id)
+    {
+        *existing = record;
+    } else {
+        state.source.push((event_id, record));
+    }
+    if state.source.len() > ENTRY_VIEW_LIMIT {
+        let overflow = state.source.len() - ENTRY_VIEW_LIMIT;
+        state.source.drain(..overflow);
+    }
+}
+
+fn remove_event(state: &mut EntryViewState, id: &EventId) -> bool {
+    let before = state.source.len();
+    state.source.retain(|(event_id, _)| event_id != id);
+    before != state.source.len()
+}
+
+fn rebuild_delta(state: &mut EntryViewState) -> EntryDelta {
+    let items = state
+        .source
+        .iter()
+        .map(|(_, record)| record)
+        .filter(|record| state.spec.include_archived || !record.archived)
+        .cloned()
+        .collect::<Vec<_>>();
+    let active_count = items.iter().filter(|record| !record.archived).count();
+    state.payload = EntryListView {
+        items,
+        active_count,
+    };
+    EntryDelta::Replaced {
+        payload: state.payload.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(event_id: &str, id: &str, label: &str) -> KernelEvent {
+        KernelEvent {
+            id: event_id.to_string(),
+            author: "author".to_string(),
+            kind: EVENT_KIND,
+            created_at: 1,
+            tags: vec![
+                vec!["d".to_string(), id.to_string()],
+                vec!["alt".to_string(), label.to_string()],
+            ],
+            content: label.to_string(),
+            relay_provenance: vec!["local://publish".to_string()],
+        }
+    }
+
+    #[test]
+    fn dependencies_subscribe_to_app_entry_kind() {
+        let deps = EntryViewModule::dependencies(&EntryListSpec {
+            include_archived: false,
+        });
+
+        assert_eq!(deps.kinds, vec![EVENT_KIND]);
+        assert_eq!(deps.limit, Some(ENTRY_VIEW_LIMIT_U32));
+    }
+
+    #[test]
+    fn inserted_entry_updates_snapshot() {
+        let ctx = ViewContext::default();
+        let (mut state, initial) = EntryViewModule::open(
+            &ctx,
+            EntryListSpec {
+                include_archived: false,
+            },
+        );
+        assert!(initial.items.is_empty());
+
+        let Some(EntryDelta::Replaced { payload }) =
+            EntryViewModule::on_event_inserted(&ctx, &mut state, &event("evt1", "one", "One"))
+        else {
+            panic!("expected inserted entry to replace snapshot");
+        };
+
+        assert_eq!(payload.items[0].id, "one");
+        assert_eq!(payload.items[0].label, "One");
+        assert_eq!(payload.active_count, 1);
+        assert_eq!(EntryViewModule::snapshot(&ctx, &state), payload);
+    }
+
+    #[test]
+    fn replaced_and_removed_events_update_snapshot() {
+        let ctx = ViewContext::default();
+        let (mut state, _) = EntryViewModule::open(
+            &ctx,
+            EntryListSpec {
+                include_archived: false,
+            },
+        );
+        let _ = EntryViewModule::on_event_inserted(&ctx, &mut state, &event("evt1", "one", "One"));
+
+        let Some(EntryDelta::Replaced { payload }) = EntryViewModule::on_event_replaced(
+            &ctx,
+            &mut state,
+            &"evt1".to_string(),
+            &event("evt2", "one", "One updated"),
+        ) else {
+            panic!("expected replacement to update snapshot");
+        };
+        assert_eq!(payload.items[0].label, "One updated");
+
+        let Some(EntryDelta::Replaced { payload }) =
+            EntryViewModule::on_event_removed(&ctx, &mut state, &"evt2".to_string())
+        else {
+            panic!("expected removal to update snapshot");
+        };
+        assert!(payload.items.is_empty());
+    }
+}
