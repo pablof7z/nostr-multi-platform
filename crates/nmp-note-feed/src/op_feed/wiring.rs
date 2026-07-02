@@ -62,7 +62,8 @@ use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::tags::parse_nip10;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
+    admit_all_roots, CardBuilder, EventGate, EventLookup, FeedWindowPolicy, FollowPredicate,
+    RootIndexedFeed,
 };
 use nmp_threading::{ParentResolver, ThreadPointer};
 
@@ -160,6 +161,24 @@ pub fn register_op_feed_with_admission(
     root_admission: nmp_feed::RootAdmission,
     event_lookup: EventLookup,
 ) -> Arc<OpFeedEngine> {
+    register_op_feed_with_admission_and_window_policy(
+        viewer,
+        follow_predicate,
+        root_admission,
+        event_lookup,
+        FeedWindowPolicy::default(),
+    )
+}
+
+/// Construct the OP-feed engine with explicit ROOT admission and window policy.
+#[must_use]
+pub fn register_op_feed_with_admission_and_window_policy(
+    viewer: Pubkey,
+    follow_predicate: FollowPredicate,
+    root_admission: nmp_feed::RootAdmission,
+    event_lookup: EventLookup,
+    window_policy: FeedWindowPolicy,
+) -> Arc<OpFeedEngine> {
     // `viewer` is carried for parity with `ModularTimelineSpec.viewer` and
     // future per-viewer personalization; the engine has no viewer field today.
     let _ = viewer;
@@ -184,13 +203,14 @@ pub fn register_op_feed_with_admission(
             NoteFeedItem::from_event_for_op_feed(root, target)
         });
 
-    Arc::new(RootIndexedFeed::new(
+    Arc::new(RootIndexedFeed::new_with_window_policy(
         NoteFeedResolver,
         follow_predicate,
         root_admission,
         event_gate,
         event_lookup,
         card_builder,
+        window_policy,
     ))
 }
 

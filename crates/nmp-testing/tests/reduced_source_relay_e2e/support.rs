@@ -196,7 +196,7 @@ pub(crate) fn active_follows_params(key: &str) -> FeedParams {
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned(key).unwrap(),
         item_projection: FeedItemProjection::FeedRows,
     }
@@ -209,7 +209,7 @@ pub(crate) fn flat_active_follows_params(key: &str) -> FeedParams {
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned(key).unwrap(),
         item_projection: FeedItemProjection::FeedRows,
     }
@@ -224,7 +224,7 @@ pub(crate) fn mute_source_params(key: &str) -> FeedParams {
         },
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned(key).unwrap(),
         item_projection: FeedItemProjection::FeedRows,
     }
@@ -239,7 +239,7 @@ pub(crate) fn list_members_params(key: &str, list_id: &str) -> FeedParams {
         },
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned(key).unwrap(),
         item_projection: FeedItemProjection::FeedRows,
     }

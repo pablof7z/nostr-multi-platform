@@ -15,7 +15,7 @@ use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::engine::{
     CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
 };
-use crate::FeedRequest;
+use crate::{FeedRequest, FeedWindowPolicy};
 
 // ─── Synthetic resolver ────────────────────────────────────────────────────
 //
@@ -152,6 +152,20 @@ impl Harness {
         event_gate: EventGate,
         root_admission: crate::RootAdmission,
     ) -> Self {
+        Self::with_root_admission_and_window_policy(
+            follows,
+            event_gate,
+            root_admission,
+            FeedWindowPolicy::default(),
+        )
+    }
+
+    pub(super) fn with_root_admission_and_window_policy(
+        follows: &[&str],
+        event_gate: EventGate,
+        root_admission: crate::RootAdmission,
+        window_policy: FeedWindowPolicy,
+    ) -> Self {
         let follow_set: HashSet<String> = follows.iter().map(|s| (*s).to_string()).collect();
         let follow: FollowPredicate = Arc::new(move |pk: &str| follow_set.contains(pk));
 
@@ -183,13 +197,14 @@ impl Harness {
             },
         );
 
-        let engine = Arc::new(RootIndexedFeed::new(
+        let engine = Arc::new(RootIndexedFeed::new_with_window_policy(
             TestResolver,
             follow,
             root_admission,
             event_gate,
             event_lookup,
             card_builder,
+            window_policy,
         ));
 
         Self { engine, lookup }

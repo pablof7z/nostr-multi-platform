@@ -7,7 +7,7 @@ use super::{
     controller_with_pages, inserted, opaque_shape, page, real_shape, FakeFeed, PullFeedController,
     PullFn,
 };
-use crate::FeedController;
+use crate::{FeedController, FeedWindowPolicy};
 
 /// THE bug fix: a low-`created_at` event ingested LATE (higher seq) is NOT
 /// skipped — a later `load_older` drains it by seq, and the feed's display sort
@@ -84,6 +84,91 @@ fn display_order_stays_created_at_after_seq_drain() {
         ["m2", "m1", "late"],
         "snapshot order is created_at-desc — late (ts=100) sorts to the bottom"
     );
+}
+
+#[test]
+fn window_policy_source_page_size_bounds_one_load_older_drain() {
+    let feed = Arc::new(FakeFeed::default());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let queue = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        page(vec![inserted(1, "one", 10)], 1, 4),
+        page(vec![inserted(2, "two", 20)], 2, 4),
+        page(vec![inserted(3, "three", 30)], 3, 4),
+    ])));
+    let pull: PullFn = {
+        let queue = Arc::clone(&queue);
+        let seen = Arc::clone(&seen);
+        Arc::new(move |_scope, after_seq| {
+            seen.lock().unwrap().push(after_seq);
+            queue.lock().unwrap().pop_front().unwrap()
+        })
+    };
+    let ctrl = PullFeedController::new_with_perspective_and_window_policy(
+        real_shape(),
+        pull,
+        feed.apply(),
+        None,
+        None,
+        feed.advance(),
+        FeedWindowPolicy {
+            source_page_size: 2,
+            ..FeedWindowPolicy::default()
+        },
+    );
+
+    assert!(ctrl.load_older());
+    assert_eq!(
+        seen.lock().unwrap().as_slice(),
+        &[0, 1],
+        "source_page_size=2 stops after two accepted rows"
+    );
+    assert_eq!(
+        feed.ingested
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|event| event.id.as_str())
+            .collect::<Vec<_>>(),
+        ["one", "two"]
+    );
+}
+
+#[test]
+fn window_policy_source_scan_budget_bounds_unmatched_work() {
+    let feed = Arc::new(FakeFeed::default());
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let queue = Arc::new(Mutex::new(std::collections::VecDeque::from(vec![
+        page(vec![], 1, 3),
+        page(vec![inserted(2, "would-not-be-read", 20)], 2, 3),
+    ])));
+    let pull: PullFn = {
+        let queue = Arc::clone(&queue);
+        let seen = Arc::clone(&seen);
+        Arc::new(move |_scope, after_seq| {
+            seen.lock().unwrap().push(after_seq);
+            queue.lock().unwrap().pop_front().unwrap()
+        })
+    };
+    let ctrl = PullFeedController::new_with_perspective_and_window_policy(
+        real_shape(),
+        pull,
+        feed.apply(),
+        None,
+        None,
+        feed.advance(),
+        FeedWindowPolicy {
+            source_scan_budget: 1,
+            ..FeedWindowPolicy::default()
+        },
+    );
+
+    assert!(!ctrl.load_older());
+    assert_eq!(
+        seen.lock().unwrap().as_slice(),
+        &[0],
+        "source_scan_budget=1 yields after one visited row"
+    );
+    assert!(feed.ingested.lock().unwrap().is_empty());
 }
 
 /// An empty-but-advancing pull (store caught up, nothing matched) terminates at

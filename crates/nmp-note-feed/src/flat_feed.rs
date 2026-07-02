@@ -36,8 +36,8 @@ use std::sync::Arc;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    FeedController, FeedInterestShape, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem,
-    FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
+    FeedController, FeedInterestShape, FeedRequest, FeedWindowPolicy, FlatFeed as GenericFlatFeed,
+    FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
 };
 use nmp_planner::InterestShape;
 
@@ -60,12 +60,22 @@ impl FlatFeed {
     /// [`Self::with_interest`] to make it pull-pageable.
     #[must_use]
     pub fn new(predicate: FlatFeedPredicate) -> Arc<Self> {
+        Self::new_with_window_policy(predicate, FeedWindowPolicy::default())
+    }
+
+    /// Construct a flat feed with explicit app-declared window policy.
+    #[must_use]
+    pub fn new_with_window_policy(
+        predicate: FlatFeedPredicate,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
         Arc::new(Self {
-            inner: GenericFlatFeed::with_merge(
+            inner: GenericFlatFeed::with_merge_and_window_policy(
                 predicate,
                 event_card_builder(),
                 None,
                 timeline_merge(),
+                window_policy,
             ),
         })
     }
@@ -83,12 +93,24 @@ impl FlatFeed {
         predicate: FlatFeedPredicate,
         interest: Option<InterestShape>,
     ) -> Arc<Self> {
+        Self::with_interest_and_window_policy(predicate, interest, FeedWindowPolicy::default())
+    }
+
+    /// Construct a flat feed with pull interest and explicit app-declared
+    /// window policy.
+    #[must_use]
+    pub fn with_interest_and_window_policy(
+        predicate: FlatFeedPredicate,
+        interest: Option<InterestShape>,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
         Arc::new(Self {
-            inner: GenericFlatFeed::with_merge(
+            inner: GenericFlatFeed::with_merge_and_window_policy(
                 predicate,
                 event_card_builder(),
                 interest,
                 timeline_merge(),
+                window_policy,
             ),
         })
     }

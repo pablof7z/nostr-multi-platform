@@ -40,9 +40,7 @@ pub(super) fn open_simple_group_feed(
         source: nmp_feed::FeedScope::ActiveUserHostedGroups,
         admission: nmp_feed::FeedAdmission::All,
         order: nmp_feed::FeedOrder::NewestByFeedPosition,
-        window: nmp_feed::FeedWindowPolicy {
-            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
-        },
+        window: nmp_feed::FeedWindowPolicy::bounded(nmp_feed::DEFAULT_FEED_WINDOW_LIMIT),
         key: nmp_feed::ProjectionKey::app_owned(feed_key).unwrap(),
         item_projection: nmp_feed::FeedItemProjection::FeedRows,
     };

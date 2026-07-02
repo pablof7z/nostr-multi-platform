@@ -264,9 +264,7 @@ pub fn active_follows_op_feed_params(
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy {
-            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
-        },
+        window: FeedWindowPolicy::bounded(nmp_feed::DEFAULT_FEED_WINDOW_LIMIT),
         key,
         item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }

@@ -3,6 +3,8 @@ use std::sync::Arc;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 
+use crate::{FeedWindowResetPolicy, DEFAULT_FEED_WINDOW_LIMIT};
+
 use super::*;
 
 fn event(id: &str, kind: u32, created_at: u64, content: &str) -> KernelEvent {
@@ -167,6 +169,50 @@ fn perspective_reset_clears_rows_and_restores_first_window() {
     assert!(snap.cards.is_empty());
     assert_eq!(snap.page.unwrap().limit, DEFAULT_FEED_WINDOW_LIMIT);
     assert!(!feed.reset_for_perspective_change());
+}
+
+#[test]
+fn flat_feed_window_policy_drives_initial_grow_and_reset_limits() {
+    let policy = FeedWindowPolicy {
+        initial_limit: 5,
+        page_size: 3,
+        max_visible: 9,
+        reset: FeedWindowResetPolicy::ResetToInitial,
+        ..FeedWindowPolicy::default()
+    };
+    let feed = FlatFeed::with_merge_and_window_policy(
+        Arc::new(|_| true),
+        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        None,
+        default_merge(),
+        policy,
+    );
+
+    for idx in 0..12 {
+        feed.on_kernel_event(&event(&format!("event-{idx:02}"), 1, idx as u64, "row"));
+    }
+
+    assert_eq!(feed.snapshot_current_window().cards.len(), 5);
+    assert!(feed.grow_visible_window());
+    assert_eq!(feed.snapshot_current_window().cards.len(), 8);
+    assert!(feed.grow_visible_window());
+    assert_eq!(
+        feed.snapshot_current_window().cards.len(),
+        9,
+        "max_visible caps regrow"
+    );
+    assert!(!feed.grow_visible_window());
+
+    assert!(feed.reset_for_perspective_change());
+    for idx in 0..12 {
+        feed.on_kernel_event(&event(
+            &format!("after-reset-{idx:02}"),
+            1,
+            idx as u64,
+            "row",
+        ));
+    }
+    assert_eq!(feed.snapshot_current_window().cards.len(), 5);
 }
 
 #[test]

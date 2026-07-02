@@ -63,7 +63,7 @@ mod tests {
             },
             admission: FeedAdmission::All,
             order: FeedOrder::NewestByFeedPosition,
-            window: FeedWindowPolicy { initial_limit: 20 },
+            window: FeedWindowPolicy::bounded(20),
             key: ProjectionKey::app_owned("test.observed.rust").unwrap(),
             item_projection: nmp_feed::FeedItemProjection::FeedRows,
         }

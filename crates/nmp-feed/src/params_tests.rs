@@ -7,6 +7,8 @@
 
 use super::*;
 
+use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
+
 // ---------------------------------------------------------------------------
 // FeedScope / FeedSourceExpr construction + exhaustiveness.
 // ---------------------------------------------------------------------------
@@ -167,17 +169,54 @@ fn authors_scope_is_a_static_set_distinct_from_contact_list() {
 #[test]
 fn feed_window_clamps_into_bounds() {
     assert_eq!(
-        FeedWindowPolicy { initial_limit: 0 }.bounded_limit(),
+        FeedWindowPolicy::bounded(0).bounded_limit(),
         DEFAULT_FEED_WINDOW_LIMIT
     );
     assert_eq!(
         FeedWindowPolicy {
-            initial_limit: MAX_FEED_WINDOW_LIMIT + 1000
+            initial_limit: MAX_FEED_WINDOW_LIMIT + 1000,
+            ..FeedWindowPolicy::default()
         }
         .bounded_limit(),
         MAX_FEED_WINDOW_LIMIT
     );
-    assert_eq!(FeedWindowPolicy { initial_limit: 25 }.bounded_limit(), 25);
+    assert_eq!(FeedWindowPolicy::bounded(25).bounded_limit(), 25);
+}
+
+#[test]
+fn feed_window_policy_bounds_regrow_reset_and_source_budgets() {
+    let policy = FeedWindowPolicy {
+        initial_limit: 10,
+        page_size: 7,
+        max_visible: 20,
+        source_page_size: 3,
+        source_scan_budget: 9,
+        reset: FeedWindowResetPolicy::ResetToInitial,
+    };
+
+    assert_eq!(policy.initial_visible_limit(), 10);
+    assert_eq!(policy.page_size(), 7);
+    assert_eq!(policy.max_visible(), 20);
+    assert_eq!(policy.source_page_size(), 3);
+    assert_eq!(policy.source_scan_budget(), 9);
+    assert_eq!(policy.next_visible_limit(10, 100), Some(17));
+    assert_eq!(policy.next_visible_limit(17, 100), Some(20));
+    assert_eq!(policy.next_visible_limit(20, 100), None);
+    assert_eq!(policy.reset_visible_limit(20), 10);
+}
+
+#[test]
+fn feed_window_preserve_reset_keeps_bounded_visible_limit() {
+    let policy = FeedWindowPolicy {
+        initial_limit: 10,
+        page_size: 10,
+        max_visible: 30,
+        reset: FeedWindowResetPolicy::PreserveVisibleLimit,
+        ..FeedWindowPolicy::default()
+    };
+
+    assert_eq!(policy.reset_visible_limit(25), 25);
+    assert_eq!(policy.reset_visible_limit(99), 30);
 }
 
 #[test]
