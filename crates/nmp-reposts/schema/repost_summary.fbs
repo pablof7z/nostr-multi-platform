@@ -1,0 +1,37 @@
+namespace nmp.reposts;
+
+// Typed FlatBuffers wire for the repost-summary read model
+// (`nmp_reposts::RepostSummarySnapshot`), schema_id "nmp.reposts.summary".
+//
+// The repost owner folds the NIP-18 repost wrappers it is handed — kind:6
+// reposts (implicit kind:1 target) and kind:16 generic reposts whose `k` tag
+// discriminates a kind:1 target — for ONE target and exposes, for that
+// target, the distinct-reposter count and the raw hex pubkeys of those
+// reposters. Which wrapper kinds apply and which events are TRUE reposts of
+// the target (k-tag discrimination) is nmp-reposts' job over nmp-nip18; the
+// shell renders this typed output and never parses tags or counts events.
+//
+// Raw data only (aim.md Sec2): `target_id` and `reposter_pubkeys` are raw
+// identifiers; no `display::` forwarder runs on the encode path. Whether the
+// ACTIVE user reposted is derived by the shell comparing its own
+// active_account pubkey against `reposter_pubkeys` — this concept never
+// depends on viewer identity.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-reposts/src/wire/generated \
+//         crates/nmp-reposts/schema/repost_summary.fbs
+
+table RepostSummarySnapshot {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint32 = 1;
+  // The repost target: raw kind:1 note event id.
+  target_id:string;
+  // Distinct reposter count (one repost per pubkey counts once).
+  count:uint64;
+  // Raw hex pubkeys of the accepted reposters, ascending.
+  reposter_pubkeys:[string];
+}
+
+file_identifier "NRPS";
+root_type RepostSummarySnapshot;
