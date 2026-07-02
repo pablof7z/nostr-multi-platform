@@ -195,25 +195,31 @@ fn panicking_typed_projection_is_contained_and_others_survive() {
 }
 
 /// `remove(key)` drops the typed entry and emits one `Cleared` row.
+///
+/// `SnapshotRegistry::register_typed` is the raw internal registry
+/// `register_typed_snapshot_projection` (PR #2610) lowers into after
+/// unwrapping its `ProjectionRegistrationKey` — it takes a bare `String` and
+/// performs no ownership check, so these keys are arbitrary test data, not an
+/// app-facing naming example.
 #[test]
 fn remove_drops_typed_and_emits_cleared_row() {
     let mut registry = SnapshotRegistry::new();
     // A transient feed registers a typed projection; a sibling is also present.
-    registry.register_typed("nmp.feed.author.alice", || {
-        Some(typed_entry("nmp.feed.author.alice", &[0xAB]))
+    registry.register_typed("test.feed.author.alice", || {
+        Some(typed_entry("test.feed.author.alice", &[0xAB]))
     });
     registry.register_typed("test.feed.home", || {
         Some(typed_entry("test.feed.home", &[0x01]))
     });
 
     // Removing the transient key reports success.
-    assert!(registry.remove("nmp.feed.author.alice"));
+    assert!(registry.remove("test.feed.author.alice"));
 
     // The next run_typed emits one Cleared row for the removed key.
     let typed = registry.run_typed();
     let clear = typed
         .iter()
-        .find(|t| t.key == "nmp.feed.author.alice")
+        .find(|t| t.key == "test.feed.author.alice")
         .expect("Cleared row");
     assert_eq!(clear.state, WireProjectionState::Cleared);
     assert!(clear.payload.is_empty(), "Cleared rows carry no payload");
@@ -221,7 +227,7 @@ fn remove_drops_typed_and_emits_cleared_row() {
     // Cleared row is one-shot: the next run does not re-emit it.
     let typed_again = registry.run_typed();
     assert!(
-        typed_again.iter().all(|t| t.key != "nmp.feed.author.alice"),
+        typed_again.iter().all(|t| t.key != "test.feed.author.alice"),
         "typed Cleared row must be one-shot"
     );
 
@@ -230,9 +236,9 @@ fn remove_drops_typed_and_emits_cleared_row() {
     assert!(home.is_some(), "removing one key must not disturb siblings");
 
     // Idempotent: a second remove of the now-absent key reports `false`.
-    assert!(!registry.remove("nmp.feed.author.alice"));
+    assert!(!registry.remove("test.feed.author.alice"));
     // Removing a never-registered key is a harmless `false`.
-    assert!(!registry.remove("nmp.feed.thread.never"));
+    assert!(!registry.remove("test.feed.thread.never"));
 }
 
 /// `run_typed_projections` with no slot bound yields an empty vector — D6: a

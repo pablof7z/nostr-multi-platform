@@ -108,11 +108,27 @@ pub fn register_actions(app: &mut impl AppHost) {
 
 // Called separately after the read model is constructed.
 pub fn register_projector(app: &mut impl AppHost, projection: Arc<GroupEventsProjection>) {
-    app.register_typed_snapshot_projection("nmp.nip29.group_events", move || {
-        projection.typed_snapshot()    // cheap, non-blocking
-    });
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            "nmp.nip29.group_events",
+            "projection.nmp.nip29.group_events",
+        ),
+        move || {
+            projection.typed_snapshot()    // cheap, non-blocking
+        },
+    );
 }
 ```
+
+`register_typed_snapshot_projection` takes anything that implements
+`Into<ProjectionRegistrationKey>` (`nmp-ownership`), not a raw string: a
+framework-owned `nmp.*` key must go through
+`DeclaredProjectionKey::framework(key, owner_claim)`, citing the ownership
+claim declared in the crate's `nmp-ownership` descriptor
+(`crates/nmp-nip29/src/ownership.rs`). `nmp crate-ownership audit --deny`
+verifies the cited claim exists and covers the key (PR #2610). App/product
+projection keys never use this path — they use `ProjectionKey::app_owned(...)`
+/ `DynamicProjectionKey::app_owned(...)` with a non-`nmp.*` namespace.
 
 Each `ActionModule` carries a typed `GroupId` routing key so `execute` can
 call `send(ActorCommand::PublishUnsignedEventToRelays { relays: vec![group.host], … })`

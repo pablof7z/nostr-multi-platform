@@ -122,16 +122,22 @@ pub fn project_feed(items: &[NoteRecord]) -> Option<TypedProjectionData> {
 
 // In register():
 let projector = Arc::clone(&store);
-app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
-    match projector.lock() {
-        Ok(g)  => project_feed(&g),
-        Err(_) => None,   // D6: no panic on poison
-    }
-});
+app.register_typed_snapshot_projection(
+    nmp_ownership::DynamicProjectionKey::app_owned(FEED_SNAPSHOT_KEY)
+        .expect("FEED_SNAPSHOT_KEY is a non-`nmp.*` app-owned constant"),
+    move || match projector.lock() {
+        Ok(g) => project_feed(&g),
+        Err(_) => None, // D6: no panic on poison
+    },
+);
 ```
 
 This is D8 + D6 in one line: the producer is cheap and panic-safe. It is output
-transport machinery, not the public read lifecycle.
+transport machinery, not the public read lifecycle. `FEED_SNAPSHOT_KEY` is
+app-owned (`"microblog.items"`, not `nmp.*`), so it goes through
+`DynamicProjectionKey::app_owned` — the same conversion
+`register_typed_snapshot_projection`'s `Into<ProjectionRegistrationKey>` bound
+expects (PR #2610).
 
 ### The codegen convention exports
 
@@ -196,10 +202,21 @@ pub fn register_actions(app: &mut NmpApp) {
 And the snapshot projector:
 
 ```rust
-app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
-    projection.typed_snapshot()  // non-blocking read-model snapshot
-});
+app.register_typed_snapshot_projection(
+    nmp_ownership::DeclaredProjectionKey::framework(
+        "nmp.nip29.group_events",
+        "projection.nmp.nip29.group_events",
+    ),
+    move || {
+        projection.typed_snapshot() // non-blocking read-model snapshot
+    },
+);
 ```
+
+The `nmp.*` key is framework-owned, so it is declared through
+`DeclaredProjectionKey::framework`, citing the ownership claim
+`nmp-nip29` registers for it (`crates/nmp-nip29/src/ownership.rs`) — see
+[20](20-new-protocol-module.md) for the full contract.
 
 The crate-boundary statement at `lib.rs:10–19` is the doctrine in code:
 *`nmp-nip29` does NOT import any other `nmp-nip*` crate; cross-protocol

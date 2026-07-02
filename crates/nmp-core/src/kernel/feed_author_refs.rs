@@ -20,10 +20,13 @@
 //! ## Consumer-id scheme (dedup with explicit claims)
 //!
 //! Each feed reconciles under `feed-author:<feed_key>`:
-//! `feed-author:microblog.timeline.home`, `feed-author:nmp.feed.author.<pk>`,
-//! `feed-author:nmp.feed.thread.<id>`. Because the auto-resolve goes through the
-//! SAME `resolve_ref` seam as an explicit open-profile-screen claim, the two
-//! share one per-pubkey resolver slot: the feed holds `Ref`/`CacheOk`, the open
+//! `feed-author:microblog.timeline.home`,
+//! `feed-author:microblog.feed.author.<pk>`,
+//! `feed-author:test.feed.thread.<id>`. `feed_key` is an app-owned dynamic
+//! projection key (`DynamicProjectionKey::app_owned`, PR #2610), never
+//! `nmp.*`. Because the auto-resolve goes through the SAME `resolve_ref` seam
+//! as an explicit open-profile-screen claim, the two share one per-pubkey
+//! resolver slot: the feed holds `Ref`/`CacheOk`, the open
 //! screen holds `Card`/`Live`, and Lane B's widen + "Live wins" rules keep the
 //! slot at the widest/liveliest demand while BOTH consumers hold it. Releasing
 //! one consumer narrows but does not tear down the slot until the last releases.
@@ -39,9 +42,10 @@ pub(crate) const FEED_AUTHOR_CONSUMER_PREFIX: &str = "feed-author:";
 /// Build the auto-resolve consumer id for a feed snapshot key.
 ///
 /// `feed-author:microblog.timeline.home` for an app-owned timeline feed;
-/// `feed-author:nmp.feed.author.<pk>` / `feed-author:nmp.feed.thread.<id>` for
-/// the transient author/thread feeds (whose `feed_key` already carries the
-/// per-screen suffix).
+/// `feed-author:microblog.feed.author.<pk>` / `feed-author:test.feed.thread.<id>`
+/// for the transient author/thread feeds (whose `feed_key` already carries
+/// the per-screen suffix). `feed_key` is always app-owned
+/// (`DynamicProjectionKey::app_owned`) — never `nmp.*`.
 #[must_use]
 pub(crate) fn feed_author_consumer_id(feed_key: &str) -> String {
     format!("{FEED_AUTHOR_CONSUMER_PREFIX}{feed_key}")
