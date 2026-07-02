@@ -1,6 +1,7 @@
 # Native Binding Surface Reference
 
-> **Reviewed:** 2026-07-02 after #2763 (`nmp-uniffi` deleted).
+> **Reviewed:** 2026-07-03 after #2403/#2463/#2484/#2494/#2726 and #2763
+> (`nmp-uniffi` deleted).
 >
 > **Current public native target:** UniFFI for iOS, Android, and desktop native
 > hosts. There is no stock, consumable UniFFI facade crate. Every native app
@@ -86,6 +87,41 @@ App facades are for app-owned verbs and composition roots, not for bypassing
 NMP ownership. Reusable Nostr protocol mechanisms still belong in NMP protocol
 crates and the native runtime; native shells still render state and execute raw
 capabilities only.
+
+### App-RPC / provider calls (#2726)
+
+App-defined request/response calls that are not reusable framework verbs — LLM
+completion, speech-to-text, text-to-speech, model catalogs, BYOK key
+validation, feed-provider fetches, and similar product service calls — are
+named async methods on the app-owned facade. NMP does not own a generic
+`app_rpc(request_bytes) -> response_bytes` transport lane: an opaque byte
+envelope is the same untyped escape hatch the typed-projection migration
+deleted from the update wire, and no second consumer has demonstrated a
+reusable shape.
+
+Request/response schemas are app-owned: FlatBuffers carried as `Vec<u8>` /
+`ByteArray` when the app already owns a hot byte schema, or facade-local UniFFI
+records for small non-hot calls. Provider policy and typed errors are owned by
+the app facade and its Rust crate. Timeout, cancellation, request identity,
+retry, and threading semantics are facade-local; promoting any of them into NMP
+requires the same reusable shape demonstrated by at least two independent apps
+and a follow-up decision.
+
+Triage each candidate call before giving it a facade method:
+
+- A shell-initiated app service verb — the common case — becomes a named async
+  facade method.
+- A genuinely host-executed operation, for example on-device speech APIs the OS
+  owns, is the ADR-0072 capability lane: Rust requests the raw operation, the
+  shell executes it, and Rust owns the resulting policy. It is not a facade
+  RPC.
+- A pure network call whose provider policy Rust should own may not need to be
+  an FFI RPC at all: the Rust side performs the HTTP call itself, and the
+  facade only exposes the app verb that triggers it.
+
+Provider RPCs use generic action dispatch only when the call is actually an
+NMP action that mutates Rust-owned state, publishes, opens a typed session, or
+participates in action-result reporting.
 
 ### Shared facade helper mechanics
 
@@ -224,6 +260,10 @@ thresholds, retest date, and delete trigger.
 - App-owned UniFFI facades may expose app-specific verbs, but exported UniFFI
   records/callback traits live in the owning facade namespace and shared NMP
   bridge mechanics live in `nmp-uniffi-support`.
+- App-defined provider/app-RPC request/response calls are named facade verbs
+  with app-owned schemas. There is no framework-wide generic app-RPC byte lane,
+  and provider calls are not capability callbacks unless they are genuinely
+  host-executed operations reported back to Rust-owned policy.
 - Native shells do not choose relays, mutate protocol tags, infer publish
   success, own retries, or cache product truth.
 - Deleted legacy native symbols are not compatibility requirements.
