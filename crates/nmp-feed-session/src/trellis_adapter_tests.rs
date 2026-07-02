@@ -4,6 +4,7 @@ use std::sync::{
     mpsc, Arc,
 };
 use std::thread;
+use std::time::Duration;
 
 use nmp_core::actor::{ActorCommand, ActorMail, InterestsCommand, LifecycleCommand};
 use nmp_core::subs::SubOwnerKey;
@@ -200,30 +201,43 @@ fn adapter_output_lifecycle_frames_drive_rebaseline_and_clear() {
 }
 
 #[test]
-fn adapter_rejects_off_actor_thread_callbacks() {
+fn adapter_rejects_concurrent_callbacks() {
     let (sender, _rx) = command_receiver();
     let adapter =
         FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
             .unwrap();
+    let contender = adapter.clone();
+    let (start_tx, start_rx) = mpsc::channel();
+    let (result_tx, result_rx) = mpsc::channel();
 
-    let callback_result = thread::spawn(move || {
-        adapter.sync(
-            &extra(vec![interest("wrong-thread")]),
-            "wrong-thread-callback",
+    let handle = thread::spawn(move || {
+        start_rx.recv().expect("main thread starts contender");
+        let callback_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            contender.sync(&extra(vec![interest("concurrent")]), "concurrent-callback");
+        }));
+        result_tx
+            .send(callback_result)
+            .expect("main thread receives contender result");
+    });
+
+    adapter.hold_graph_borrow_for_test(|| {
+        start_tx.send(()).expect("contender starts");
+        let callback_result = result_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("contender must fail without waiting on a lock");
+        let panic = callback_result.expect_err("concurrent adapter access must panic");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or("");
+        assert!(
+            message.contains("already borrowed"),
+            "unexpected panic payload: {message}"
         );
-    })
-    .join();
+    });
 
-    let panic = callback_result.expect_err("off-thread adapter access must panic");
-    let message = panic
-        .downcast_ref::<String>()
-        .map(String::as_str)
-        .or_else(|| panic.downcast_ref::<&str>().copied())
-        .unwrap_or("");
-    assert!(
-        message.contains("outside its owner actor thread"),
-        "unexpected panic payload: {message}"
-    );
+    handle.join().expect("contender thread exits cleanly");
 }
 
 fn remove_projection_action(count: Arc<AtomicUsize>) -> nmp_feed::TeardownAction {

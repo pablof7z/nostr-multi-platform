@@ -1,7 +1,9 @@
-use std::cell::{Cell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::thread::{self, ThreadId};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
@@ -33,7 +35,7 @@ type FeedSessionOutput = ProjectionAttachment;
 /// stay inside this module.
 #[derive(Clone)]
 pub(super) struct FeedSessionTrellisAdapter {
-    inner: Arc<ActorThreadCell<FeedSessionTrellisInner>>,
+    inner: Arc<SingleWriterCell<FeedSessionTrellisInner>>,
     sender: CommandSender,
     owner: SubOwnerKey,
 }
@@ -80,64 +82,58 @@ struct FeedSessionCloseOutcome {
     output_cleared: bool,
 }
 
-struct ActorThreadCell<T> {
-    owner: ThreadId,
-    borrowed: Cell<bool>,
+struct SingleWriterCell<T> {
+    borrowed: AtomicBool,
     value: UnsafeCell<T>,
 }
 
-// Safety: callers can move/share the handle to satisfy callback traits, but
-// `with_ref`/`with_mut` only expose the value on the creating actor thread.
-unsafe impl<T: Send> Send for ActorThreadCell<T> {}
-unsafe impl<T: Send> Sync for ActorThreadCell<T> {}
+// Safety: callback handles are shared across runtime threads, but every graph
+// access goes through a non-blocking exclusive borrow. Concurrent or reentrant
+// callers fail loudly instead of waiting on a lock or exposing aliasing access.
+unsafe impl<T: Send> Send for SingleWriterCell<T> {}
+unsafe impl<T: Send> Sync for SingleWriterCell<T> {}
 
-impl<T> ActorThreadCell<T> {
+impl<T> SingleWriterCell<T> {
     fn new(value: T) -> Self {
         Self {
-            owner: thread::current().id(),
-            borrowed: Cell::new(false),
+            borrowed: AtomicBool::new(false),
             value: UnsafeCell::new(value),
         }
     }
 
     fn with_mut<R>(&self, operation: &'static str, f: impl FnOnce(&mut T) -> R) -> R {
-        self.assert_owner(operation);
         self.with_exclusive_borrow(operation, || f(unsafe { &mut *self.value.get() }))
     }
 
     #[cfg(test)]
     fn with_ref<R>(&self, operation: &'static str, f: impl FnOnce(&T) -> R) -> R {
-        self.assert_owner(operation);
         self.with_exclusive_borrow(operation, || f(unsafe { &*self.value.get() }))
     }
 
     fn with_exclusive_borrow<R>(&self, operation: &'static str, f: impl FnOnce() -> R) -> R {
-        assert!(
-            !self.borrowed.replace(true),
-            "FeedSessionTrellisAdapter {operation} re-entered while the Trellis graph is borrowed"
-        );
-        let _guard = ActorThreadBorrowGuard {
+        if self
+            .borrowed
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
+            panic!(
+                "FeedSessionTrellisAdapter {operation} called while the Trellis graph is already borrowed"
+            );
+        }
+        let _guard = SingleWriterBorrowGuard {
             borrowed: &self.borrowed,
         };
         f()
     }
-
-    fn assert_owner(&self, operation: &'static str) {
-        assert_eq!(
-            thread::current().id(),
-            self.owner,
-            "FeedSessionTrellisAdapter {operation} called outside its owner actor thread"
-        );
-    }
 }
 
-struct ActorThreadBorrowGuard<'a> {
-    borrowed: &'a Cell<bool>,
+struct SingleWriterBorrowGuard<'a> {
+    borrowed: &'a AtomicBool,
 }
 
-impl Drop for ActorThreadBorrowGuard<'_> {
+impl Drop for SingleWriterBorrowGuard<'_> {
     fn drop(&mut self) {
-        self.borrowed.set(false);
+        self.borrowed.store(false, Ordering::Release);
     }
 }
 
@@ -225,7 +221,7 @@ impl FeedSessionTrellisAdapter {
         let output_frames = output_frame_kinds(&_result.output_frames);
 
         Ok(Self {
-            inner: Arc::new(ActorThreadCell::new(FeedSessionTrellisInner {
+            inner: Arc::new(SingleWriterCell::new(FeedSessionTrellisInner {
                 graph,
                 scope,
                 demand_input,
@@ -292,6 +288,11 @@ impl FeedSessionTrellisAdapter {
         self.inner.with_ref("resource-trace-test-read", |inner| {
             inner.resource_traces.clone()
         })
+    }
+
+    #[cfg(test)]
+    pub(super) fn hold_graph_borrow_for_test<R>(&self, f: impl FnOnce() -> R) -> R {
+        self.inner.with_mut("test-borrow", |_inner| f())
     }
 
     fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
