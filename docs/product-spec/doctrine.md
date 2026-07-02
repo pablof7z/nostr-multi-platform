@@ -219,7 +219,7 @@ This rules out, by construction:
 - Memory growing with your cache size instead of your screen count.
 - Every view recomputing on every event regardless of relevance.
 
-*Implementation detail: A composite reverse index maps each inserted event to the views interested in it. View recompute is bounded to ≤60 deltas per second per view. Working set is hot-resident with claim-pinned overlays; allocations after warmup are linear in active-view count. Idle ticks that produce no state change do not emit snapshots. Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).*
+*Implementation detail: A composite reverse index maps each inserted event to the views interested in it. View recompute is bounded to ≤60 deltas per second per view. Working set is hot-resident with claim-pinned overlays; allocations after warmup are linear in active-view count. Idle ticks that produce no state change do not emit snapshots. Validation lives in doctrine lint plus focused tests/instrumentation for the actor, store, projection, framework-magic, and native transport surfaces touched by a change.*
 
 ---
 

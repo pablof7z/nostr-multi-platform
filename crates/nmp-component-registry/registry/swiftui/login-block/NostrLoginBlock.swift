@@ -75,10 +75,8 @@ public struct NostrSignerInfo: Identifiable, Equatable {
 /// nostrconnect-generic. Extend `knownSigners` as new iOS signer apps emerge.
 public enum NostrSignerDetector {
 
-    // `knownSigners` is GENERATED from the Rust catalog (nmp_core::signer_catalog)
-    // into the sibling file `KnownSigners.generated.swift` as an
-    // `extension NostrSignerDetector`. Edit the catalog + re-run
-    // `nmp gen signer-catalog`, never this file (#1493 P9).
+    // `knownSigners` lives in the sibling `KnownSigners.swift` extension so
+    // the detector mechanics stay separate from the view.
 
     /// Returns every known signer whose URL scheme the OS can open.
     /// Safe to call from a `.task { }` modifier — the Task runs on the actor

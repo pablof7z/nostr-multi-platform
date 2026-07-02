@@ -48,7 +48,7 @@ table SignerApp {
   // `display_label` (the English vendor name "Amber"/"Primal"/"Nostr Connect")
   // was removed from the wire (#1712, D7/D27 — presentation artifact). The raw
   // `scheme` token is present; shells resolve the brand name from their own
-  // generated signer catalog (`KnownSigners.generated.{swift,kt}`) keyed by
+  // source-owned signer lists (`KnownSigners.{swift,kt}`) keyed by
   // scheme. Slot reserved to preserve vtable order — no break for in-flight
   // clients.
   _reserved_was_display_label:string (deprecated);

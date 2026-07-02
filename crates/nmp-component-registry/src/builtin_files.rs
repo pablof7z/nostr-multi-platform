@@ -62,8 +62,8 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../registry/swiftui/login-block/NostrLoginBlock.swift"),
     ),
     (
-        "swiftui/login-block/KnownSigners.generated.swift",
-        include_str!("../registry/swiftui/login-block/KnownSigners.generated.swift"),
+        "swiftui/login-block/KnownSigners.swift",
+        include_str!("../registry/swiftui/login-block/KnownSigners.swift"),
     ),
     (
         "swiftui/relay-list/NostrRelayList.swift",
@@ -389,8 +389,8 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../registry/compose/login-block/ExternalSignerWire.kt"),
     ),
     (
-        "compose/login-block/KnownSigners.generated.kt",
-        include_str!("../registry/compose/login-block/KnownSigners.generated.kt"),
+        "compose/login-block/KnownSigners.kt",
+        include_str!("../registry/compose/login-block/KnownSigners.kt"),
     ),
     (
         "compose/login-block/ExternalSignerCapabilityBridge.kt",

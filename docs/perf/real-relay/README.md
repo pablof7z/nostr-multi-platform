@@ -17,7 +17,6 @@ the captured output.
 | `connect-subscribe` | connect/subscribe | `relay.damus.io`, `nos.lol`, `relay.primal.net` | `cargo test -p nmp-testing --test real_relay_connect -- --ignored --nocapture --test-threads=1` |
 | `publish-ok` | publish OK | `relay.damus.io` | `cargo test -p nmp-testing --test real_relay_smoke damus_round_trip_kind1 -- --ignored --nocapture --test-threads=1` |
 | `nip65-outbox` | NIP-65 outbox routing | `relay.damus.io`, `relay.primal.net`, `purplepag.es`, `nos.lol` | `cargo test -p nmp-testing --test real_relay_outbox -- --ignored --nocapture --test-threads=1` |
-| `nip77-negentropy` | NIP-77 negentropy | `nip29.f7z.io` | `cargo run -p nmp-testing --bin nip77-real-relay-tui -- --once --neg-only --relay wss://nip29.f7z.io` |
 | `nip42-auth` | NIP-42 auth | `nostr.wine`, `relay.snort.social`, `auth.nostr1.com`, `nostr.land`, `relay.damus.io` | `cargo test -p nmp-testing --test real_relay_nip42 -- --ignored --nocapture --test-threads=1` |
 | `nip17-cold-start` | NIP-17 cold start | `relay.primal.net` | `cargo test -p nmp-testing --test real_relay_nip17_cold_start_kernel nip17_cold_start_receive_through_real_kernel -- --ignored --nocapture --test-threads=1` |
 | `marmot-roundtrip` | Marmot roundtrip | `relay.damus.io` | `cargo test -p nmp-testing --test real_relay_marmot_roundtrip marmot_kind445_roundtrip_over_damus -- --ignored --nocapture --test-threads=1` |
@@ -48,9 +47,9 @@ not exhibit the capability the scenario needs, such as no usable kind:3 contact
 list or no auth challenge. A skip is a recorded public-relay limitation, not a
 product green.
 
-`FAIL` means the command exited non-zero, or the NIP-77 binary reported a
-negentropy error after the relay reachability probe passed. Treat failures as
-product or harness regressions until triage proves otherwise.
+`FAIL` means the command exited non-zero after the relay reachability probe
+passed. Treat failures as product or harness regressions until triage proves
+otherwise.
 
 ## Local Runs
 

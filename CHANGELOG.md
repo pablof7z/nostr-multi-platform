@@ -333,8 +333,8 @@ delivers a single event.
   A generated `FfiApp` never installed the required composition owners and was a
   non-functional Nostr app; the fixture existed only to give the orphan
   generator a test target.
-  The `nmp.toml` manifest parser and the `gen swift` / `gen typed-decoders`
-  emitters (live CI gates) are unaffected.
+  The `nmp.toml` manifest parser and the then-live Swift/typed-decoder
+  emitters were unaffected.
 
   **Migration for old `nmp-app-template` consumers**: that historical migration
   path is superseded. Current apps should depend on explicit owner crates and
@@ -482,8 +482,8 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
   A generated `FfiApp` never installed the required composition owners and was a
   non-functional Nostr app; the fixture existed only to give the orphan
   generator a test target (Opus review #49). The `nmp.toml` manifest parser and
-  the Swift `gen swift` / `gen typed-decoders` emitters (live CI gates) are
-  unaffected. `nmp init` now scaffolds a thin composition shell.
+  the then-live Swift/typed-decoder emitters were unaffected. `nmp init` now
+  scaffolds a thin composition shell.
 
 ### Changed (BREAKING)
 

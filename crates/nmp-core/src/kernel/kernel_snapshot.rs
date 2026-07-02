@@ -56,10 +56,7 @@ pub(super) struct TimingMilestones {
 }
 
 // ── Metrics snapshot ──────────────────────────────────────────────────────────
-// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
-// `crate::codegen_schema` re-export. See `RelayStatus` in `relay_health.rs`.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct Metrics {
     pub(super) generated_events: u64,
     pub(super) note_events: u64,

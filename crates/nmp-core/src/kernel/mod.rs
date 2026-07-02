@@ -211,14 +211,6 @@ pub use snapshot_registry::SnapshotProjectionSlot;
 pub use snapshot_registry::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7
 use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
-#[cfg(feature = "codegen-schema")]
-pub(crate) use types::LogicalInterestStatus as LogicalInterestStatusForCodegen;
-#[cfg(feature = "codegen-schema")]
-pub(crate) use types::Metrics as MetricsForCodegen;
-#[cfg(feature = "codegen-schema")]
-pub(crate) use types::RelayStatus as RelayStatusForCodegen;
-#[cfg(feature = "codegen-schema")]
-pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 use types::{
     Counters, DiagnosticFirehoseState, LogicalInterestStatus, Metrics, NoticeEntry,
     OutboxSummarySnapshot, ProfileCard, PublishOutboxItem, PublishOutboxRelay, RelayHealth,

@@ -225,8 +225,8 @@ source = "compose/login-block/ExternalSignerWire.kt"
 target = "Components/Auth/ExternalSignerWire.kt"
 role = "source"
 [[components.files]]
-source = "compose/login-block/KnownSigners.generated.kt"
-target = "Components/Auth/KnownSigners.generated.kt"
+source = "compose/login-block/KnownSigners.kt"
+target = "Components/Auth/KnownSigners.kt"
 role = "source"
 [[components.files]]
 source = "compose/login-block/AmberIntentCodec.kt"

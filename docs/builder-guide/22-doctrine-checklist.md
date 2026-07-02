@@ -10,8 +10,8 @@
 
 Every PR self-asserts against this list. After each merge to master, actionable review findings are promoted into GitHub Issues or corrected in the owning doc. Review dumps are not committed. The machine-enforced subset runs in CI:
 `cargo run -p nmp-testing --bin doctrine-lint` (D0/D6/D7 grep gates,
-`.github/workflows/doctrine-lint.yml`), plus the target-state CI gates tracked in issue #2124
-(`cargo test --workspace`, `reactivity-bench --fail-on-gate`). File-size
+`.github/workflows/doctrine-lint.yml`), plus targeted crate tests and
+framework-magic coverage where the changed surface touches it. File-size
 ceiling (`AGENTS.md`: ≤300 LOC) is its own gate (`file-size-gate.yml`).
 
 ## The checklist (≥1 item per doctrine)
@@ -73,7 +73,7 @@ reference waiving it.
 
 - [ ] No per-event allocation on the hot path after warmup.
 - [ ] Idle ticks with no state change do **not** emit (`changed_since_emit()` guard intact).
-- [ ] `reactivity-bench --fail-on-gate` is green; no view exceeds 60 Hz.
+- [ ] Tests or instrumentation covering the touched reactive path prove no view exceeds 60 Hz.
 
 **D9 — kernel owns time**
 

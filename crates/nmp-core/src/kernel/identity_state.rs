@@ -51,7 +51,6 @@ pub fn new_active_account_slot() -> ActiveAccountSlot {
 ///   compare strings to decide active-ness. `status` stays for the same
 ///   backward-compat reason as `signer_kind`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct AccountSummary {
     /// Hex pubkey — the canonical `IdentityId` (matches NDK / applesauce).
     pub(crate) id: String,
@@ -147,7 +146,6 @@ pub(crate) struct RelayAckOutcome {
 /// One relay row the UI's Accounts screen edits. Mirrors the kernel's
 /// per-role `RelayHealth` for the relays Pulse drives.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub struct AppRelay {
     pub(crate) url: String,
     pub(crate) role: String,

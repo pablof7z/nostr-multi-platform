@@ -13,10 +13,6 @@ name = "nmp_content_fixtures"
 name = "build-wire-fixtures"
 path = "src/bin/build-wire-fixtures.rs"
 
-[[bin]]
-name = "build-android-gallery-bundle"
-path = "src/bin/build-android-gallery-bundle.rs"
-
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-content = { path = "../nmp-content" }

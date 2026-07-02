@@ -1,16 +1,11 @@
-//! V6 Stage 2 — `SnapshotProjections` dotted-projection-key registry.
+//! Projection-key registry for generated native read helpers.
 //!
-//! This module owns the single source of truth that replaces the hand-written
-//! `SnapshotProjections` struct + `CodingKeys` enum at the bottom of
-//! `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`. The renderer in
-//! [`crate::swift`] reads this slice and emits the equivalent Swift.
+//! This module owns the shared projection-key rows used by typed Swift decoders,
+//! projection merge caches, keyed-ref caches, and drift gates.
 //!
 //! ## Why the registry lives in `nmp-codegen`, not `nmp-core`
 //!
-//! The Stage 2 registry is a list of `(json_key, swift_field, swift_type)`
-//! triples — there is no Rust type to reflect via `schemars` (unlike Stage 1).
-//! The natural home would have been `nmp-core::codegen_schema` alongside
-//! Stage 1, BUT the registry MUST name dotted host-registered keys like
+//! The registry MUST name dotted host-registered keys like
 //! `"nmp.nip29.group_events"`, `"nmp.nip17.dm_inbox"`.
 //! Those substrings would trip D0 doctrine-lint (`nip29` / `nip17` / `nip57`
 //! tokens forbidden in `nmp-core` per `crates/nmp-testing/bin/doctrine-lint/
@@ -19,17 +14,10 @@
 //! inlined into the kernel.
 //!
 //! `nmp-codegen` is exempt from D0 (it is a host-side tool crate, not the
-//! kernel substrate), so the registry compiles cleanly here. The schema dump
-//! binary in `nmp-core` already stays D0-clean — Stage 1 ships `Metrics` /
-//! `RelayStatus` etc. by their Rust type names alone.
+//! kernel substrate), so the registry compiles cleanly here.
 //!
 //! ## What is *not* in this registry
 //!
-//! - The per-projection-value types themselves (`WalletStatusData`,
-//!   `BunkerHandshake`, `PublishQueueEntry`, etc.). Those remain hand-written
-//!   in `KernelBridge.swift` and are Stage 3 work. The generated
-//!   `SnapshotProjections` only references them by their Swift type name —
-//!   the reader must declare them somewhere reachable in the same module.
 //! - The decoder configuration. The iOS shell's `KernelHandle.decode`
 //!   continues to set `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase`
 //!   — every `CodingKeys` raw value in the rendered enum is therefore the
@@ -43,13 +31,8 @@
 //! 1. Add a new [`SnapshotProjectionEntry`] to [`SNAPSHOT_PROJECTIONS`] with
 //!    the kernel-emitted JSON key, the Swift property name, and the Swift
 //!    value type.
-//! 2. Run `cargo run -p nmp-core --features codegen-schema --bin
-//!    dump_projection_schemas | cargo run -p nmp-codegen -- gen swift` to
-//!    regenerate `KernelTypes.generated.swift`. The CI gate
-//!    (`.github/workflows/codegen-drift.yml`) fails any PR that forgets.
-//! 3. If the new key's *value* type is not already declared in
-//!    `KernelBridge.swift` (or in a previous Stage of the generator), add
-//!    the Swift `Decodable` mirror there too — that work is Stage 3.
+//! 2. Run the relevant `nmp-codegen` drift gate (`typed-decoders`,
+//!    `projection-cache`, `keyed-ref-cache`, or kernel registry generators).
 
 // ADR-0063 (#1671): the KEYED reference registry (`KeyedProjectionEntry` +
 // `KEYED_PROJECTIONS`) and its Lane-C typed ROW-PAYLOAD descriptors live in a

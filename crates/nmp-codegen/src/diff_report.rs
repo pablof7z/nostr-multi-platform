@@ -1,7 +1,6 @@
-//! Shared `--check` diff-line reporting for the Swift codegen gates.
+//! Shared `--check` diff-line reporting for codegen gates.
 //!
-//! Both `swift::check_swift` and `swift_typed_decoders::check_typed_decoders`
-//! report the first differing line of a stale generated file. They distinguish
+//! Generated-file checks report the first differing line of a stale file. They distinguish
 //! three states for the caller / CI reporting code: up-to-date (`None` line,
 //! `up_to_date = true`), file-missing (`None` line, `up_to_date = false`), and
 //! stale-but-present (`Some(line)`). A naive `lines().zip()` walk collapses the

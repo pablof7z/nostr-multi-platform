@@ -1,8 +1,7 @@
 //! # nmp-content-fixtures
 //!
-//! Offline signed-event + pre-tokenized DTO bundle generator for the
-//! **NmpGallery** content showcase (the NMP analogue of NDKSwift's
-//! content-component demo app).
+//! Offline signed-event + pre-tokenized DTO bundle generator for content
+//! renderer tests.
 //!
 //! ## Why a pre-tokenized bundle
 //!
@@ -19,15 +18,10 @@
 //!
 //! ## Output
 //!
-//! [`build_bundle`] returns a [`dto::Bundle`]. The original iOS-facing
-//! `build-bundle` binary (which serialized it to
-//! `ios/NmpGallery/Resources/content-gallery-bundle.json`) was deleted once
-//! the NmpGallery iOS showcase moved to hand-authored `ContentTreeWire`
-//! fixtures (see `apps/nmp-gallery/ios/NmpGallery/Gallery/ContentComponentPages.swift`)
-//! and no longer consumes a generated bundle. [`build_bundle`] itself is
-//! retained as the spec-as-code fixture generator exercised directly by
-//! `tests/bundle.rs`, and the sibling `build-android-gallery-bundle` binary
-//! still emits the analogous bundle for the Android gallery module.
+//! [`build_bundle`] returns a [`dto::Bundle`] for Rust tests. The old gallery
+//! bundle binaries were deleted once iOS and Android stopped consuming a
+//! generated gallery JSON asset; gallery shells now keep their own
+//! hand-authored `ContentTreeWire` fixtures.
 //!
 //! Every event is signed in-process with deterministic test keys via BIP340
 //! schnorr **without auxiliary randomness** (so signatures are byte-stable

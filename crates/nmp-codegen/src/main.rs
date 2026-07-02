@@ -26,10 +26,6 @@ fn run() -> Result<(), String> {
     args.remove(0); // drop "gen"
     let h = help();
     match subcommand.as_str() {
-        // V6 Stage 1 — Swift `Decodable` emitter. Reads projection schema
-        // documents (default: stdin) and writes Swift to `--out`. See
-        // `crates/nmp-codegen/src/swift.rs` for the emitter itself.
-        "swift" => cli::run_gen_swift(args, &h),
         // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar
         // decoders. Writes `TypedProjectionDecoders.generated.swift` from the
         // registry's `typed_sidecar` metadata; no schema-document stdin needed.
@@ -80,12 +76,6 @@ fn run() -> Result<(), String> {
         // entry. Writes one `<name>_producer_consts.generated.rs` per producer
         // under `--repo-root` (default `.`); no stdin.
         "producer-consts" => cli_builtin::run_gen_producer_consts(args, &h),
-        // #1493 P9 — generate the native known-signer detection lists (Kotlin
-        // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog
-        // JSON on stdin (`dump_signer_catalog`). Mirrors `gen swift`: reads the
-        // catalog from stdin, `--check` diffs the generated files + asserts the
-        // AndroidManifest/Info.plist schemes.
-        "signer-catalog" => cli::run_gen_signer_catalog(args, &h),
         // NOTE (ADR-0046): `gen modules` was deleted. Composition is explicit
         // app Rust over owner crates, not a generated FFI crate.
         other => Err(format!("unknown subcommand `gen {other}`\n{h}")),
@@ -94,7 +84,6 @@ fn run() -> Result<(), String> {
 
 fn help() -> String {
     "usage:\n  \
-     nmp gen swift             [--schemas - | <path>] --out <path> [--check]\n  \
      nmp gen typed-decoders    --out <path> [--check]\n  \
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen keyed-ref-cache   --platform swift|kotlin|ts --out <path> [--check]\n  \
@@ -106,7 +95,6 @@ fn help() -> String {
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \
      nmp gen presence-keys     [--out <path>] [--check]\n  \
-     nmp gen producer-consts   [--repo-root <path>] [--check]\n  \
-     nmp gen signer-catalog    [--catalog - | <path>] [--check]"
+     nmp gen producer-consts   [--repo-root <path>] [--check]"
         .to_string()
 }

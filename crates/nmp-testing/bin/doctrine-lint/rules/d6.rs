@@ -393,7 +393,7 @@ mod tests {
             "crates/nmp-testing/src/store_harness.rs"
         )));
         assert!(file_is_test_only(Path::new(
-            "crates/nmp-testing/bin/ffi-stress/s4_reconciler_backpressure.rs"
+            "crates/nmp-testing/bin/ffi-transport-bench/s4_reconciler_backpressure.rs"
         )));
         assert!(file_is_test_only(Path::new(
             "crates/nmp-testing/bin/doctrine-lint/rules/d6.rs"

@@ -1,7 +1,7 @@
-# 18 — Testing: `nmp-testing`, benches, contract tests
+# 18 — Testing: `nmp-testing`, transport bench, contract tests
 
 The kernel is tested without networking. Every tier below runs deterministically
-in CI; real relays appear only in opt-in live-bench modes. The test tiers are
+in CI; real relays appear only in scheduled/manual ignored-test modes. The test tiers are
 owned by `crates/nmp-testing/`; the pyramid below is the canonical tier map.
 
 ## The test pyramid
@@ -12,8 +12,6 @@ owned by `crates/nmp-testing/`; the pyramid below is the canonical tier map.
                     ├───────────────────────────────┤
    per-app UI       │ XCUITest / Playwright          │  ios/<app>/UITests/
                     ├───────────────────────────────┤
-   firehose-bench   │ replay (manual) · live (real iOS)│ bin/firehose-bench/
-   reactivity-bench │ composite index · alloc gates  │  bin/reactivity-bench/
    ffi-transport    │ UniFFI byte update budget (CI) │  bin/ffi-transport-bench/
                     ├───────────────────────────────┤
    native x-platform│ same scenario, AppState byte=  │  (post-M15)
@@ -35,13 +33,11 @@ milestone owns the contract.
 |---|---|---|
 | Unit | `cargo test -p <crate>` | each crate's `tests/` |
 | Subsystem | `cargo test -p nmp-testing --test '*'` | `crates/nmp-testing/tests/` |
-| Reactivity bench | `reactivity-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/reactivity-bench/main.rs` |
-| Firehose bench | `firehose-bench replay --standard --fail-on-gate` | `crates/nmp-testing/bin/firehose-bench/main.rs` |
 | FFI transport bench | `ffi-transport-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/ffi-transport-bench/main.rs` |
 
 `nmp-testing`'s library surface stays deliberately thin
 (`crates/nmp-testing/src/lib.rs`: `store_harness` + `crate_ready()`); the value
-is in the `bin/` benches and the `tests/` suites.
+is in the transport bench and the `tests/` suites.
 
 ## Automatic performance signal
 
@@ -69,18 +65,16 @@ Manual commands remain:
 
 ```bash
 cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard --fail-on-gate
-cargo run -p nmp-testing --bin reactivity-bench --release -- --standard --fail-on-gate
-cargo run -p nmp-testing --bin firehose-bench --release -- replay --standard --fail-on-gate
 ```
 
 ## The `test-support` feature gate
 
-Live-bench binaries need the actor internals (`run_actor`, `ActorCommand`,
+Test-only harnesses may need actor internals (`run_actor`, `ActorCommand`,
 `spawn_actor`). Production code must not. The gate
 (`crates/nmp-core/src/lib.rs:23-56`) is
 `#[cfg(any(test, feature = "test-support"))]` so `cargo test` always has access
 without a flag, while a normal `nmp-core` consumer cannot reach `testing::`. If
-a bench needs the actor, add `features = ["test-support"]` to its dev/bin dep —
+a harness needs the actor, add `features = ["test-support"]` to its dev/bin dep —
 never widen the gate.
 
 ## Worked example — "I added a feed, source reducer, or projection; what tests do I write?"
@@ -154,10 +148,9 @@ records which `#[ignore]` lines you removed.
 - **Platform tests for Rust logic.** Asserting kernel behavior through
   XCUITest/Swift instead of a `nmp-testing` subsystem test — slow, flaky,
   tests the bridge not the logic. Push the assertion down the pyramid.
-- **Treating a bench as an integration test.** `reactivity-bench` /
-  `firehose-bench` are *budget contracts* (alloc gates, delta budgets), not
-  correctness suites. A green bench does not mean the view is correct; a unit
-  test does.
+- **Treating a budget gate as an integration test.** The FFI transport bench
+  proves the native byte lane budget; it does not prove product correctness.
+  Product behavior belongs in unit, subsystem, or framework-magic tests.
 - **Adding `#[test] fn c<N>_*` without the doc-table row** (or vice versa).
   `contract_surface_complete` fails on either side of the drift — and silently
   renaming a contract test breaks the doc↔test correspondence.
@@ -167,9 +160,9 @@ records which `#[ignore]` lines you removed.
 - **Time-based flake.** `sleep`/wall-clock assertions instead of the harness's
   `SimulatedClock` / `advance_clock_ms`. The full contract suite budget is
   <5s deterministic; real time has no place in it.
-- **Requiring real relays in CI.** Every subsystem test uses `MockRelay`; live
-  modes (`firehose-bench live`) are opt-in and run against real relays only
-  for on-device evidence, never as a gate's correctness oracle.
+- **Requiring real relays in PR CI.** Every subsystem test uses `MockRelay`;
+  real-relay tests are scheduled/manual ignored rows for public-relay evidence,
+  never a PR gate's correctness oracle.
 
 ## E2E shell seams — relay override + headless sign-in
 

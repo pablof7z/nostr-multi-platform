@@ -146,8 +146,9 @@ typed result envelopes and never require native retry policy.
 
 `nmp init` scaffolds a thin Rust app shell with an explicit composition root for
 selected substrate, protocol, app, signing/publish, and capability features.
-`nmp gen swift`, `nmp gen kotlin`, and `nmp gen typed-decoders` emit host helpers
-from the live UniFFI/schema surface.
+`nmp gen typed-decoders`, projection-cache, keyed-ref-cache, and feed/action
+helper emitters produce focused host helpers from the live UniFFI/schema
+surface.
 
 ### 6.7 API Doctrine
 

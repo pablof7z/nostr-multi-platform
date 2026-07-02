@@ -11,11 +11,10 @@ driver exists and the surviving clean-break read/native surfaces have settled.
 (unbounded RSS), latency cliffs, dropped events, or correctness breaks. The gates
 are **absolute thresholds**, not deltas.
 
-This is the **harness + absolute gates**. It is built from NEW files only and
-reuses (never edits) the existing churning benches' hooks:
-`firehose-bench` gate constants, `ffi-stress` mach-RSS + capture-cb pattern,
-`reactivity-bench` CountingAllocator, the typed `decode_snapshot_envelope`, and
-the `nmp_app_*` public FFI (sign-in-as-account).
+This is the **harness + absolute gates**. It is built from new files only and
+must use current runtime surfaces: typed `UpdateFrame` decode, public FFI entry
+points, and OS sidecar metrics. The old modeled firehose/reactivity/stress
+binaries were retired and must not be treated as reusable hooks.
 
 ## Pieces
 
@@ -72,9 +71,8 @@ scripts/perf-sanity/run.sh --live --relay wss://relay.primal.net \
 | `dedup-no-growth-on-duplicate` | `0 extra rows` | re-inject corpus | `visible_items` must not grow |
 | `follow-feed-not-truncated` | `>= 200 items` (2k-follow account) | `decode_snapshot_envelope` | `visible_items` (proves #1500 500-cap didn't truncate) |
 
-Latency + memory thresholds are **reused verbatim** from
-`crates/nmp-testing/bin/firehose-bench/config.rs` (cited in
-`bin/sanity-gate/config.rs`). Verdicts: `PASS | FAIL | SKIP-relay-miss | BLOCKED`.
+Latency + memory thresholds are absolute architecture budgets owned by this
+future harness. Verdicts: `PASS | FAIL | SKIP-relay-miss | BLOCKED`.
 
 ## Documented hook gaps (measured what we can; wire in a follow-up)
 

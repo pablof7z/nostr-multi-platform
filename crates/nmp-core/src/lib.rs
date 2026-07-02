@@ -50,12 +50,6 @@ pub(crate) mod profile_card_generated {
 // `profile_card_generated` above) was deleted — its only consumers were the
 // retired `author_view.fbs` / `thread_view.fbs` typed projections.
 
-// V6 Stage 1 — Swift `Decodable` emitter input surface for kernel-owned types.
-// Feature-gated `dump_projection_schemas` emits the Stage-1 pilot schemas for
-// `nmp-codegen gen swift`.
-// Off by default — shipped artifacts never link `schemars`.
-#[cfg(feature = "codegen-schema")]
-pub mod codegen_schema;
 // Promoted from `mod capability_socket` so `nmp-ffi` can reach
 // `dispatch_capability` / `new_capability_callback_slot` /
 // `CapabilityCallbackSlot` through `nmp_core::__ffi_internal::*`. The
@@ -163,7 +157,6 @@ pub mod refs; // ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed r
               // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
               // (private); promoted here so the crate-private actor module can still name them after
               // the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
-pub mod signer_catalog;
 pub mod slots;
 pub mod subs;
 pub mod substrate;

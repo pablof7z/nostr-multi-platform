@@ -54,8 +54,9 @@ Representative crates are labelled in their layer above:
 (app cores), `nmp-substrate` (shared substrate floor), `nmp-native-runtime`
 (native runtime owner), and binding crates/adapters (UniFFI for native,
 wasm-bindgen for browser).
-`nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
-it no longer generates per-app composition crates (ADR-0046). `nmp-gallery` is
+`nmp-codegen` still emits focused host helpers (`gen typed-decoders`,
+projection caches, keyed-ref caches, action/feed helpers, and registry builtin
+files); it no longer generates per-app composition crates (ADR-0046). `nmp-gallery` is
 the in-tree reference app (iOS/Android/desktop/TUI shells over one Rust core);
 Chirp has been extracted into its own external consumer repo and is no longer
 part of this monorepo.
@@ -209,8 +210,8 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
 A thin staticlib shell (`nmp-app-<name>`) or an `examples/shell.rs` calls only
 `<app>_core::register(app)`. Broad compatibility presets, test helpers, and
 replacement defaults bundles are not current composition architecture.
-`nmp-codegen` still exists for host bindings (`gen swift`, `gen typed-decoders`),
-but it does not generate composition wiring.
+`nmp-codegen` still exists for focused host helpers and cache emitters, but it
+does not generate composition wiring.
 
 ## The no-app-nouns-in-kernel rule
 

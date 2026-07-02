@@ -259,8 +259,8 @@ impl BunkerStageKind {
 ///
 /// The pre-rendered `display_label` vendor name ("Amber"/"Primal"/"Nostr
 /// Connect") was removed from the wire (#1712, D7/D27 — presentation artifact);
-/// shells resolve the brand name from their own generated signer catalog
-/// (`KnownSigners.generated.{swift,kt}`) keyed by `scheme`.
+/// shells resolve the brand name from their local signer detector list keyed by
+/// `scheme`.
 ///
 /// `signer_kind` is the stable label that matches `AccountSummary.signer_kind`
 /// once the user signs in through this app — exposed so hosts that want to
@@ -276,33 +276,20 @@ pub(crate) struct SignerAppDescriptor {
     pub(crate) signer_kind: String,
 }
 
-/// The NIP-46 `nostrconnect` onboarding probe table — **derived from the
-/// single Rust-owned [`crate::signer_catalog`]** (#1493 P9), no longer a
-/// hand-authored list. The platform shell iterates it and uses its platform
-/// capability (`UIApplication.canOpenURL`) to detect which entry is installed,
-/// then resolves the matching brand name from its own generated signer catalog.
+const NIP46_SIGNER_SCHEME_PROBES: &[&str] = &["nostrsigner://", "primal://", "nostrconnect://"];
+
+/// The NIP-46 onboarding probe table. The platform shell iterates it and uses
+/// its platform capability (`UIApplication.canOpenURL` or equivalent) to detect
+/// which entry is installed, then resolves presentation names locally.
 ///
-/// This surface is the iOS onboarding catalog, so it is exactly the catalog
-/// entries that (a) are offered on iOS (`ios.is_some()`) and (b) speak NIP-46.
-/// A catalog entry offered only on Android, or one that speaks NIP-55 only,
-/// would be excluded here — it is not a `nostrconnect`/NIP-46 onboarding target.
-///
-/// D0: protocol-layer knowledge of which app schemes qualify as NIP-46 signers
-/// must not live in the platform shell — that catalog is a protocol-substrate
-/// concern, owned in `crate::signer_catalog`.
+/// D0: protocol-layer knowledge of which URL schemes qualify as NIP-46 signers
+/// must not live only in the platform shell.
 fn signer_apps_table() -> Vec<SignerAppDescriptor> {
-    use crate::signer_catalog::{known_signer_apps, SignerCapability};
-    known_signer_apps()
+    NIP46_SIGNER_SCHEME_PROBES
         .iter()
-        .filter_map(|app| {
-            let ios = app.ios?;
-            if !app.speaks(SignerCapability::Nip46) {
-                return None;
-            }
-            Some(SignerAppDescriptor {
-                scheme: format!("{}://", ios.url_scheme),
-                signer_kind: SignerCapability::Nip46.as_token().to_string(),
-            })
+        .map(|scheme| SignerAppDescriptor {
+            scheme: (*scheme).to_string(),
+            signer_kind: "nip46".to_string(),
         })
         .collect()
 }

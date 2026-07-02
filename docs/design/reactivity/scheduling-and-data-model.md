@@ -121,7 +121,9 @@ The reverse index keys on attributes, not bodies, so it can cover unbounded cach
 
 Projection caches (`author_display`, `reaction_summary`, etc.) are LRU-bounded by **referenced-view count** — only pubkeys/events referenced by some open view stay in cache. A profile rendered once and dismissed evicts; reappearance re-hydrates from the store.
 
-The working-set memory budget (≤ 100 MB at 100 active views, 10k hot events) is what reactivity-bench gates against. Total cached events on disk is unbounded.
+The working-set memory budget (≤ 100 MB at 100 active views, 10k hot events)
+is the D8 target for any current instrumentation covering this path. Total
+cached events on disk is unbounded.
 
 ## 7.6 Allocation discipline (ADR-0004)
 

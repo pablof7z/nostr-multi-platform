@@ -18,13 +18,13 @@ cargo install --path crates/nmp-cli      # installs the `nmp` binary
 cargo run -p nmp-cli -- <args>
 ```
 
-> **Relationship to the `nmp-codegen` binary.** The `nmp-codegen` crate ships a
-> `[[bin]] name = "nmp"` that does only the Swift emitters (`gen swift` / `gen
-> typed-decoders`, the CI-gated consumer-side codegen). `nmp-cli` is the
+> **Relationship to the `nmp-codegen` binary.** The `nmp-codegen` crate ships the
+> `nmp-codegen` binary for focused host-helper emitters (`gen typed-decoders`,
+> projection-cache, keyed-ref-cache, feed/action helpers, registry builtin
+> files). `nmp-cli` is the
 > developer-facing CLI (`init`, `add`/`update component`, `upgrade`,
-> `export`). Because two workspace members declare a `nmp` binary, prefer
-> `cargo run -p nmp-cli --` / `cargo install --path crates/nmp-cli` over a bare
-> workspace `cargo build` when you want the full developer CLI.
+> `export`). Use `cargo run -p nmp-cli --` / `cargo install --path crates/nmp-cli`
+> for the full developer CLI.
 
 ## Commands
 
