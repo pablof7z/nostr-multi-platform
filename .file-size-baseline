@@ -17,4 +17,3 @@ crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576
 crates/nmp-core/src/kernel/discovery_tests.rs	602
 crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/state_projection_tests.rs	584
-crates/nmp-core/src/subs/lifecycle_tests.rs	963
