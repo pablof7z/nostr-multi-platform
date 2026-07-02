@@ -9,7 +9,7 @@
 //
 // These helpers build canonical FeedParams JSON and call the existing
 // openFeedJson binding. They do not own feed reactivity, compiler selection, or
-// session teardown; Rust/NMP does.
+// feed teardown; Rust/NMP does.
 // -----------------------------------------------------------------------------
 
 import Foundation
@@ -65,7 +65,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
         shape: FeedHelperShape = .rootIndexed
-    ) throws -> FeedSessionHandle {
+    ) throws -> FeedHandle {
         let paramsJson = try activeUserFollowsFeedParamsJson(
             feedKey: feedKey,
             primaryKinds: primaryKinds,
@@ -98,7 +98,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
         shape: FeedHelperShape = .rootIndexed
-    ) throws -> FeedSessionHandle {
+    ) throws -> FeedHandle {
         let paramsJson = try hostedGroupsFeedParamsJson(
             feedKey: feedKey,
             primaryKinds: primaryKinds,
@@ -133,7 +133,7 @@ public enum GeneratedFeedHelpers {
         listId: String,
         visibleLimit: UInt32 = 80,
         shape: FeedHelperShape = .rootIndexed
-    ) throws -> FeedSessionHandle {
+    ) throws -> FeedHandle {
         let paramsJson = try listMembersFeedParamsJson(
             feedKey: feedKey,
             primaryKinds: primaryKinds,
@@ -168,7 +168,7 @@ public enum GeneratedFeedHelpers {
         relaySetId: String,
         visibleLimit: UInt32 = 80,
         shape: FeedHelperShape = .rootIndexed
-    ) throws -> FeedSessionHandle {
+    ) throws -> FeedHandle {
         let paramsJson = try relaySetFeedParamsJson(
             feedKey: feedKey,
             primaryKinds: primaryKinds,

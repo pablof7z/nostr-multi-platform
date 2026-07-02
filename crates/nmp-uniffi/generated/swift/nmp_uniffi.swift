@@ -586,18 +586,18 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func clearActionResultObserver()
 
     /**
-     * Close a feed session previously opened by `open_feed_json`.
+     * Close a feed previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
-     * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live matching session was torn down;
+     * registered when the feed was opened, then removes the feed from
+     * the registry. Returns `true` when a live matching feed was torn down;
      * `false` when the handle is unknown, mismatched, or already closed
      * (idempotent — D6).
      *
-     * D8: the session's resources are released immediately; the registry entry
+     * D8: the feed's resources are released immediately; the registry entry
      * is removed so a subsequent close of the same handle is always a no-op.
      */
-    func closeFeedSession(handle: FeedSessionHandle)  -> Bool
+    func closeFeed(handle: FeedHandle)  -> Bool
 
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
@@ -692,17 +692,17 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Advance the feed's viewport to the next older page.
      *
      * Uses the full handle returned by `open_feed_json`; a raw projection key
-     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * or raw handle id is not sufficient to page a feed. Returns `true` when
      * the viewport cursor actually changed; `false` for an unknown, closed, or
      * mismatched handle, or when already at the oldest page (D6: always
      * succeeds, never panics).
      */
-    func loadOlderFeed(handle: FeedSessionHandle)  -> Bool
+    func loadOlderFeed(handle: FeedHandle)  -> Bool
 
     /**
      * Advance a feed's viewport and return the Rust-owned stop reason.
      */
-    func loadOlderFeedStatus(handle: FeedSessionHandle)  -> FeedLoadStatus
+    func loadOlderFeedStatus(handle: FeedHandle)  -> FeedLoadStatus
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -717,12 +717,12 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
     func nostrconnectUri(callbackScheme: String?)  -> String?
 
     /**
-     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     * Open a new feed from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then opens the session through
+     * Parses and validates the declaration, then opens the feed through
      * `NmpApp::open_feed` using the canonical native compiler below the facade
      * boundary.
-     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     * Returns a [`FeedHandle`] with the projection key and handle id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
      *
@@ -731,10 +731,10 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the feed
      * (e.g. an unsupported scope or poisoned registry).
      */
-    func openFeedJson(paramsJson: String) throws  -> FeedSessionHandle
+    func openFeedJson(paramsJson: String) throws  -> FeedHandle
 
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
@@ -1208,21 +1208,21 @@ open func clearActionResultObserver()  {try! rustCall() {
 }
 
     /**
-     * Close a feed session previously opened by `open_feed_json`.
+     * Close a feed previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
-     * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live matching session was torn down;
+     * registered when the feed was opened, then removes the feed from
+     * the registry. Returns `true` when a live matching feed was torn down;
      * `false` when the handle is unknown, mismatched, or already closed
      * (idempotent — D6).
      *
-     * D8: the session's resources are released immediately; the registry entry
+     * D8: the feed's resources are released immediately; the registry entry
      * is removed so a subsequent close of the same handle is always a no-op.
      */
-open func closeFeedSession(handle: FeedSessionHandle) -> Bool  {
+open func closeFeed(handle: FeedHandle) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(self.uniffiClonePointer(),
-        FfiConverterTypeFeedSessionHandle_lower(handle),$0
+    uniffi_nmp_uniffi_fn_method_nmpapp_close_feed(self.uniffiClonePointer(),
+        FfiConverterTypeFeedHandle_lower(handle),$0
     )
 })
 }
@@ -1359,15 +1359,15 @@ open func initSignerBroker()throws   {try rustCallWithError(FfiConverterTypeNmpE
      * Advance the feed's viewport to the next older page.
      *
      * Uses the full handle returned by `open_feed_json`; a raw projection key
-     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * or raw handle id is not sufficient to page a feed. Returns `true` when
      * the viewport cursor actually changed; `false` for an unknown, closed, or
      * mismatched handle, or when already at the oldest page (D6: always
      * succeeds, never panics).
      */
-open func loadOlderFeed(handle: FeedSessionHandle) -> Bool  {
+open func loadOlderFeed(handle: FeedHandle) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(self.uniffiClonePointer(),
-        FfiConverterTypeFeedSessionHandle_lower(handle),$0
+        FfiConverterTypeFeedHandle_lower(handle),$0
     )
 })
 }
@@ -1375,10 +1375,10 @@ open func loadOlderFeed(handle: FeedSessionHandle) -> Bool  {
     /**
      * Advance a feed's viewport and return the Rust-owned stop reason.
      */
-open func loadOlderFeedStatus(handle: FeedSessionHandle) -> FeedLoadStatus  {
+open func loadOlderFeedStatus(handle: FeedHandle) -> FeedLoadStatus  {
     return try!  FfiConverterTypeFeedLoadStatus_lift(try! rustCall() {
     uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed_status(self.uniffiClonePointer(),
-        FfiConverterTypeFeedSessionHandle_lower(handle),$0
+        FfiConverterTypeFeedHandle_lower(handle),$0
     )
 })
 }
@@ -1402,12 +1402,12 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
 }
 
     /**
-     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     * Open a new feed from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then opens the session through
+     * Parses and validates the declaration, then opens the feed through
      * `NmpApp::open_feed` using the canonical native compiler below the facade
      * boundary.
-     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     * Returns a [`FeedHandle`] with the projection key and handle id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
      *
@@ -1416,11 +1416,11 @@ open func nostrconnectUri(callbackScheme: String?) -> String?  {
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the feed
      * (e.g. an unsupported scope or poisoned registry).
      */
-open func openFeedJson(paramsJson: String)throws  -> FeedSessionHandle  {
-    return try  FfiConverterTypeFeedSessionHandle_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
+open func openFeedJson(paramsJson: String)throws  -> FeedHandle  {
+    return try  FfiConverterTypeFeedHandle_lift(try rustCallWithError(FfiConverterTypeNmpError_lift) {
     uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(self.uniffiClonePointer(),
         FfiConverterString.lower(paramsJson),$0
     )
@@ -2071,6 +2071,84 @@ public func FfiConverterTypeDispatchOutcome_lower(_ value: DispatchOutcome) -> R
 
 
 /**
+ * Opaque handle for a feed opened via `open_feed_json`.
+ *
+ * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
+ * subscribes to for feed-frame updates.
+ * `handle_id` — the numeric handle id. The handle is only valid when this id
+ * still resolves to `projection_key`.
+ */
+public struct FeedHandle {
+    public var projectionKey: String
+    public var handleId: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(projectionKey: String, handleId: UInt64) {
+        self.projectionKey = projectionKey
+        self.handleId = handleId
+    }
+}
+
+#if compiler(>=6)
+extension FeedHandle: Sendable {}
+#endif
+
+
+extension FeedHandle: Equatable, Hashable {
+    public static func ==(lhs: FeedHandle, rhs: FeedHandle) -> Bool {
+        if lhs.projectionKey != rhs.projectionKey {
+            return false
+        }
+        if lhs.handleId != rhs.handleId {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(projectionKey)
+        hasher.combine(handleId)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFeedHandle: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeedHandle {
+        return
+            try FeedHandle(
+                projectionKey: FfiConverterString.read(from: &buf),
+                handleId: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FeedHandle, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.projectionKey, into: &buf)
+        FfiConverterUInt64.write(value.handleId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedHandle_lift(_ buf: RustBuffer) throws -> FeedHandle {
+    return try FfiConverterTypeFeedHandle.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFeedHandle_lower(_ value: FeedHandle) -> RustBuffer {
+    return FfiConverterTypeFeedHandle.lower(value)
+}
+
+
+/**
  * Result of a feed load command.
  */
 public struct FeedLoadStatus {
@@ -2140,84 +2218,6 @@ public func FfiConverterTypeFeedLoadStatus_lift(_ buf: RustBuffer) throws -> Fee
 #endif
 public func FfiConverterTypeFeedLoadStatus_lower(_ value: FeedLoadStatus) -> RustBuffer {
     return FfiConverterTypeFeedLoadStatus.lower(value)
-}
-
-
-/**
- * Opaque handle for a feed session opened via `open_feed_json`.
- *
- * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
- * subscribes to for feed-frame updates.
- * `session_id` — the numeric session id. The handle is only valid when this id
- * still resolves to `projection_key`.
- */
-public struct FeedSessionHandle {
-    public var projectionKey: String
-    public var sessionId: UInt64
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(projectionKey: String, sessionId: UInt64) {
-        self.projectionKey = projectionKey
-        self.sessionId = sessionId
-    }
-}
-
-#if compiler(>=6)
-extension FeedSessionHandle: Sendable {}
-#endif
-
-
-extension FeedSessionHandle: Equatable, Hashable {
-    public static func ==(lhs: FeedSessionHandle, rhs: FeedSessionHandle) -> Bool {
-        if lhs.projectionKey != rhs.projectionKey {
-            return false
-        }
-        if lhs.sessionId != rhs.sessionId {
-            return false
-        }
-        return true
-    }
-
-    public func hash(into hasher: inout Hasher) {
-        hasher.combine(projectionKey)
-        hasher.combine(sessionId)
-    }
-}
-
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeFeedSessionHandle: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FeedSessionHandle {
-        return
-            try FeedSessionHandle(
-                projectionKey: FfiConverterString.read(from: &buf),
-                sessionId: FfiConverterUInt64.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: FeedSessionHandle, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.projectionKey, into: &buf)
-        FfiConverterUInt64.write(value.sessionId, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFeedSessionHandle_lift(_ buf: RustBuffer) throws -> FeedSessionHandle {
-    return try FfiConverterTypeFeedSessionHandle.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeFeedSessionHandle_lower(_ value: FeedSessionHandle) -> RustBuffer {
-    return FfiConverterTypeFeedSessionHandle.lower(value)
 }
 
 
@@ -4596,7 +4596,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 28028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 59539) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed() != 58223) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391) {
@@ -4620,16 +4620,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 55957) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 54730) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 19193) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 47635) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 13798) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 12173) {

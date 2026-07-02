@@ -72,7 +72,7 @@ pub(crate) use notifications::{
     BrowserNotificationsSessionHandle,
 };
 mod feed_lifecycle;
-pub use feed_lifecycle::BrowserFeedSessions;
+pub use feed_lifecycle::BrowserFeeds;
 mod search;
 pub(crate) use search::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
 

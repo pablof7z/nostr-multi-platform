@@ -14,16 +14,16 @@ pub fn render() -> String {
 //
 // These helpers build canonical FeedParams JSON and call the runtime-web
 // feed_open_json Worker control. They do not own feed reactivity, compiler
-// selection, or session teardown; Rust/NMP does.
+// selection, or feed teardown; Rust/NMP does.
 // -----------------------------------------------------------------------------
 
-import type { FeedSessionHandle, WorkerEvent, WorkerRequest } from "./protocol";
+import type { FeedHandle, WorkerEvent, WorkerRequest } from "./protocol";
 
 export type FeedHelperShape = "RootIndexed" | "Flat";
 
 export type FeedRuntime = {
   handle(request: WorkerRequest): WorkerEvent[];
-  openFeedJson?: (paramsJson: string, correlationId: string) => FeedSessionHandle | undefined;
+  openFeedJson?: (paramsJson: string, correlationId: string) => FeedHandle | undefined;
 };
 
 function buildFeedParamsJson(
@@ -49,7 +49,7 @@ function buildFeedParamsJson(
   });
 }
 
-function feedHandleFromEvents(events: WorkerEvent[]): FeedSessionHandle | undefined {
+function feedHandleFromEvents(events: WorkerEvent[]): FeedHandle | undefined {
   return events.find((event) => event.type === "feed_opened")?.handle;
 }
 
@@ -61,7 +61,7 @@ function openFeed(
   runtime: FeedRuntime,
   correlationId: string,
   paramsJson: string,
-): FeedSessionHandle | undefined {
+): FeedHandle | undefined {
   if (typeof runtime.openFeedJson === "function") {
     return runtime.openFeedJson(paramsJson, correlationId);
   }
@@ -98,7 +98,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
-  ): FeedSessionHandle | undefined {
+  ): FeedHandle | undefined {
     return openFeed(
       runtime,
       correlationId,
@@ -136,7 +136,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
-  ): FeedSessionHandle | undefined {
+  ): FeedHandle | undefined {
     return openFeed(
       runtime,
       correlationId,
@@ -177,7 +177,7 @@ export const GeneratedFeedHelpers = {
     listId: string,
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
-  ): FeedSessionHandle | undefined {
+  ): FeedHandle | undefined {
     return openFeed(
       runtime,
       correlationId,
@@ -218,7 +218,7 @@ export const GeneratedFeedHelpers = {
     relaySetId: string,
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
-  ): FeedSessionHandle | undefined {
+  ): FeedHandle | undefined {
     return openFeed(
       runtime,
       correlationId,
@@ -226,11 +226,11 @@ export const GeneratedFeedHelpers = {
     );
   },
 
-  loadOlderRequest(handle: FeedSessionHandle, correlationId: string): WorkerRequest {
+  loadOlderRequest(handle: FeedHandle, correlationId: string): WorkerRequest {
     return { type: "feed_load_older", handle, correlation_id: correlationId };
   },
 
-  closeRequest(handle: FeedSessionHandle, correlationId: string): WorkerRequest {
+  closeRequest(handle: FeedHandle, correlationId: string): WorkerRequest {
     return { type: "feed_close", handle, correlation_id: correlationId };
   },
 };

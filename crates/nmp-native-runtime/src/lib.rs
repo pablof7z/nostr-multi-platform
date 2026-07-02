@@ -63,7 +63,7 @@ pub use builder::{
     NmpAppBuilder, ProjectionsDeclared, RelaysDeclared, RunConfig, StorageSet, Unstarted,
 };
 pub use debug_info::{empty_debug_info_json, DOMAIN_COMPOSITION, DOMAIN_MERGED, DOMAIN_ROUTING};
-pub use feed_facade::{FeedSessions, FeedSpecOpenError};
+pub use feed_facade::{Feeds, FeedSpecOpenError};
 pub use feed_params::{
     decode_and_validate_feed_params, feed, source, validate_feed_params, CustomAdmissionDef,
     CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef, CustomSourceId,

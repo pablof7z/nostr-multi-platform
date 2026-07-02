@@ -37,8 +37,8 @@ export type WorkerRequest =
       consumer_id: string;
       correlation_id: string;
     }
-  /** #1626 typed feed-session controls. `params_json` is canonical
-   *  `FeedParams` JSON; Rust parses and opens the session through the standard
+  /** #1626 typed feed controls. `params_json` is canonical
+   *  `FeedParams` JSON; Rust parses and opens the feed through the standard
    *  feed compiler. TypeScript never owns source reduction or feed compilation. */
   | {
       type: "feed_open_json";
@@ -47,12 +47,12 @@ export type WorkerRequest =
     }
   | {
       type: "feed_load_older";
-      handle: FeedSessionHandle;
+      handle: FeedHandle;
       correlation_id: string;
     }
   | {
       type: "feed_close";
-      handle: FeedSessionHandle;
+      handle: FeedHandle;
       correlation_id: string;
     }
   /** ADR-0071 / S2 (#1750) — the typed binary write doorway. `bytes` are a
@@ -232,9 +232,9 @@ export type IdentityRelayPermission = {
   write?: boolean;
 };
 
-export type FeedSessionHandle = {
+export type FeedHandle = {
   projection_key: string;
-  session_id: number;
+  handle_id: number;
 };
 
 export type FeedLoadStopReason =
@@ -254,7 +254,7 @@ export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
   | { type: "action_accepted"; action_type: string; correlation_id: string }
-  | { type: "feed_opened"; handle: FeedSessionHandle; correlation_id: string }
+  | { type: "feed_opened"; handle: FeedHandle; correlation_id: string }
   | { type: "feed_load_status"; status: FeedLoadStatus; correlation_id: string }
   | { type: "update_bytes"; bytes: Uint8Array }
   | {

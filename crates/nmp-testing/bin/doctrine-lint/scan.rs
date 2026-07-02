@@ -13,8 +13,8 @@ use crate::cli::Config;
 use crate::event_flow_gates;
 use crate::report;
 use crate::rules::{
-    d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, deleted_defaults, nip29_kind_blind,
-    no_raw_tap_reintroduction, product_raw_read,
+    d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, deleted_defaults, feed_vocabulary,
+    nip29_kind_blind, no_raw_tap_reintroduction, product_raw_read,
 };
 use crate::scope::{
     action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
@@ -65,6 +65,7 @@ pub(super) struct FileContext {
     no_raw_tap_in_scope: bool,
     product_raw_read_in_scope: bool,
     deleted_defaults_in_scope: bool,
+    feed_vocabulary_in_scope: bool,
     action_namespace_in_scope: bool,
     nip29_kind_blind_in_scope: bool,
     d7_in_scope: bool,
@@ -107,6 +108,7 @@ impl FileContext {
             no_raw_tap_in_scope: no_raw_tap_reintroduction::file_in_scope(path),
             product_raw_read_in_scope: product_raw_read::file_in_scope(path),
             deleted_defaults_in_scope: deleted_defaults::file_in_scope(path),
+            feed_vocabulary_in_scope: feed_vocabulary::file_in_scope(path),
             action_namespace_in_scope: action_namespace_file_in_scope(path),
             nip29_kind_blind_in_scope: nip29_kind_blind::file_in_scope(path),
             d7_in_scope: d7::file_in_scope(path),
