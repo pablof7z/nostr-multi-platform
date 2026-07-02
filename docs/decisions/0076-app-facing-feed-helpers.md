@@ -19,10 +19,12 @@ private session machinery.
 
 The feed implementation now has useful lower-level pieces: `FeedParams`,
 `FeedSourceExpr`, `FeedHandle`, feed-session compilation,
-native/browser `feeds().open/load_older/close` facades, UniFFI support helpers
-that call the default compiler, app-owned dynamic projection keys, and separate
-`FeedParams.key` / `FeedParams.item_projection` fields. Issue #1626 remains
-open because ergonomic feed builders, generated helper surfaces, and names such
+native/browser `feeds().open/load_older/close` facades, native/browser
+`open_spec(feed_key, feed_spec)` helpers, UniFFI support helpers that call the
+default compiler, app-owned dynamic projection keys, separate `FeedParams.key` /
+`FeedParams.item_projection` fields, and the `FeedSpec` builder over
+`FeedParams`. Issue #1626 remains open because generated helper surfaces,
+richer window policy, explicit pointer-target hydration naming, and names such
 as `CustomPerspectiveId` still hide important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
@@ -36,10 +38,15 @@ ADR-0070.
 The normal app-facing feed lifecycle is:
 
 ```rust
-let handle = app.feeds().open(feed_key, feed_spec)?;
-app.feeds().load_older(&handle, page_request)?;
+let handle = app.feeds().open_spec(feed_key, feed_spec)?;
+app.feeds().load_older(&handle);
 app.feeds().close(&handle);
 ```
+
+The long-term generated-helper spelling may expose this as
+`open(feed_key, feed_spec)` on surfaces that can support that shape. The current
+Rust facade uses `open_spec` alongside `open(&FeedParams)` so the canonical
+serializable descriptor remains directly available.
 
 The helper uses the standard NMP feed compiler. App, native, browser, TUI, and
 generated helper code do not pass a `FeedCompiler`, observer registrar,
@@ -89,7 +96,7 @@ asks callers to assemble Trellis graphs.
 The headline API should be intent-level:
 
 ```rust
-let handle = app.feeds().open(
+let handle = app.feeds().open_spec(
     FeedKey::app("app.chirp.home")?,
     feed::events()
         .primary_kinds([KIND_NOTE])
@@ -97,14 +104,14 @@ let handle = app.feeds().open(
         .shape(FeedShape::RootIndexed)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(100))
-        .project(ItemProjection::nip01_op_rows()),
+        .project(FeedItemProjection::feed_rows()),
 )?;
 ```
 
 Equivalent product feeds use the same helper:
 
 ```rust
-let handle = app.feeds().open(
+let handle = app.feeds().open_spec(
     FeedKey::app("app.olas.following")?,
     feed::events()
         .primary_kinds([KIND_PICTURE])
@@ -112,12 +119,12 @@ let handle = app.feeds().open(
         .shape(FeedShape::Flat)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(100))
-        .project(ItemProjection::nip68_picture_rows()),
+        .project(FeedItemProjection::feed_rows()),
 )?;
 ```
 
 ```rust
-let handle = app.feeds().open(
+let handle = app.feeds().open_spec(
     FeedKey::app("app.29er.groups")?,
     feed::events()
         .primary_kinds([KIND_GROUP_EVENT])
@@ -125,7 +132,7 @@ let handle = app.feeds().open(
         .shape(FeedShape::Flat)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(100))
-        .project(ItemProjection::group_event_rows()),
+        .project(FeedItemProjection::feed_rows()),
 )?;
 ```
 
@@ -164,7 +171,7 @@ pagination by handle.
 
 | Current lower-level name | Public target | Reason |
 | --- | --- | --- |
-| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` and `app.feeds().open(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
+| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)`, `app.feeds().open(params)`, and `app.feeds().open_spec(feed_key, spec)` now; generated helpers may later expose `open(feed_key, spec)` | Normal app code must not choose a compiler. |
 | explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
 | former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | former `render` field | `shape` | NMP projects row/window shape; hosts render. |
@@ -208,8 +215,8 @@ policy, expand source sets, or own feed teardown.
 
 ## Fitness Functions / Enforcement
 
-- Product app code opens feeds through `app.feeds().open(...)` or generated
-  helpers, not raw `open_interest`.
+- Product app code opens feeds through `app.feeds().open_spec(...)`,
+  `app.feeds().open(...)`, or generated helpers, not raw `open_interest`.
 - Normal app code does not pass a `FeedCompiler`, observer registrar,
   source-effect hook, projection registrar, pull controller, or teardown recipe.
 - `FeedParams` rejects wrapper and maintenance kinds as primary input.

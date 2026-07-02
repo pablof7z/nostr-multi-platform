@@ -214,6 +214,12 @@ impl Default for FeedWindowPolicy {
 }
 
 impl FeedWindowPolicy {
+    /// Build a bounded initial visible-row policy.
+    #[must_use]
+    pub fn bounded(initial_limit: usize) -> Self {
+        Self { initial_limit }
+    }
+
     /// The window limit clamped into the bounded range. A zero limit falls back
     /// to the default; oversized limits are capped at [`MAX_FEED_WINDOW_LIMIT`].
     #[must_use]
@@ -237,6 +243,19 @@ impl FeedWindowPolicy {
 pub struct ProjectionKey(DynamicProjectionKey);
 
 impl ProjectionKey {
+    /// Build an app-owned dynamic feed projection key.
+    ///
+    /// Alias for [`Self::app_owned`] so app-facing examples can read as
+    /// `FeedKey::app("app.my.feed")`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SurfaceTokenError`] when `value` is empty or uses the reserved
+    /// `nmp.*` framework prefix.
+    pub fn app(value: impl Into<String>) -> Result<Self, SurfaceTokenError> {
+        Self::app_owned(value)
+    }
+
     /// Build an app-owned dynamic feed projection key.
     ///
     /// # Errors
@@ -280,6 +299,13 @@ impl From<ProjectionKey> for String {
     }
 }
 
+/// App-owned feed output key.
+///
+/// This is an alias, not a second type: the canonical serializable field on
+/// [`FeedParams`] remains [`ProjectionKey`]. The alias lets builder-facing code
+/// say `FeedKey::app("app.my.feed")` while retaining one runtime model.
+pub type FeedKey = ProjectionKey;
+
 /// (f) ITEM PROJECTION — the row/schema contract carried inside the feed
 /// snapshot emitted under [`FeedParams::key`].
 ///
@@ -290,6 +316,14 @@ impl From<ProjectionKey> for String {
 pub enum FeedItemProjection {
     /// NMP's generic feed-window row payload.
     FeedRows,
+}
+
+impl FeedItemProjection {
+    /// NMP's generic feed-window row payload.
+    #[must_use]
+    pub fn feed_rows() -> Self {
+        Self::FeedRows
+    }
 }
 
 // ---------------------------------------------------------------------------

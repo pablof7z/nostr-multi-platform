@@ -26,7 +26,7 @@ They solve the same *problem* (typed derived views) with incompatible
 | NDK term | Applesauce term | NMP term |
 |---|---|---|
 | `NDKRelaySet` / per-author relay calc | relay-map / `selectOptimalRelays` | `CompiledPlan` — the planner resolves relays from a `LogicalInterest`; you never assemble relay sets (`07-subscription-planner.md`) |
-| `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `app.feeds().open(feed_key, feed_spec)` / generated typed-session helper -> Rust compiles `FeedParams` into `LogicalInterest`s; you pass intent, not filters/relays |
+| `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `app.feeds().open_spec(feed_key, feed_spec)` / generated typed-session helper -> Rust compiles `FeedParams` into `LogicalInterest`s; you pass intent, not filters/relays |
 | `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | **typed read-session helper** + `register_snapshot_projection` — helper owns demand/replay/delivery; snapshot pushed as a JSON slice on every emit tick; **not** a stream you subscribe to |
 | build event → `signer.sign` → `ndk.publish` | `ActionRunner` + `ctx.publish(event, relays?)` | `ActionModule` + the publish engine — one action signs, publishes (outbox-routed), and updates the store atomically |
 | `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; browser NIP-44 is capability-specific, not implied by every browser signer; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |

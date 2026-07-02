@@ -148,10 +148,10 @@ This rules out:
 `inserted`, `updated`, `removed` appear only when the app/defaults layer opens a
 typed feed session over declared primary content kinds and source expressions.
 ADR-0076 makes the normal product API a feed-shaped helper over that session:
-`app.feeds().open(feed_key, spec)` compiles through the standard NMP feed
+`app.feeds().open_spec(feed_key, spec)` compiles through the standard NMP feed
 compiler and returns a handle for close/pagination. The current Rust runtime
-facade opens `FeedParams` directly; the `feed_key`/`spec` form is builder sugar
-over the same descriptor. Chirp declares primary kind
+facade also opens `FeedParams` directly; the `feed_key`/`spec` form is builder
+sugar over the same descriptor. Chirp declares primary kind
 `[1]`; protocol adapters derive repost wrapper acquisition below that
 app-facing declaration. The shell does not pass concrete follow pubkeys, choose
 feed compilers, assemble raw interests, or own follow-feed lifecycle policy.

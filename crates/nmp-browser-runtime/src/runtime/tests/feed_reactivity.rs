@@ -283,21 +283,20 @@ fn event_id_from_json(event_json: &str) -> String {
 }
 
 fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHandle {
-    let params = nmp_feed::FeedParams {
-        primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
-        shape: nmp_feed::FeedShape::RootIndexed,
-        source: nmp_feed::FeedScope::ActiveUserFollows,
-        admission: nmp_feed::FeedAdmission::All,
-        order: nmp_feed::FeedOrder::NewestByFeedPosition,
-        window: nmp_feed::FeedWindowPolicy {
-            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
-        },
-        key: nmp_feed::ProjectionKey::app_owned(BROWSER_FEED_KEY).unwrap(),
-        item_projection: nmp_feed::FeedItemProjection::FeedRows,
-    };
     handle
         .feeds()
-        .open(params)
+        .open_spec(
+            nmp_feed::FeedKey::app(BROWSER_FEED_KEY).unwrap(),
+            nmp_feed::feed::events()
+                .primary_kinds([nmp_kinds::KIND_SHORT_TEXT_NOTE])
+                .from(nmp_feed::source::active_user().follows())
+                .shape(nmp_feed::FeedShape::RootIndexed)
+                .order(nmp_feed::FeedOrder::NewestByFeedPosition)
+                .window(nmp_feed::FeedWindowPolicy::bounded(
+                    nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+                ))
+                .project(nmp_feed::FeedItemProjection::feed_rows()),
+        )
         .expect("test-owned browser feed session opens")
 }
 

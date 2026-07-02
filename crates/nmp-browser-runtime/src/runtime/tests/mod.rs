@@ -33,6 +33,7 @@ mod feed_attribution;
 mod feed_composition;
 mod feed_reactivity;
 mod feed_simple_groups_reactivity;
+mod feed_spec;
 mod group_discovery;
 mod group_events;
 mod pump;
