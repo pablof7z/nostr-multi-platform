@@ -186,25 +186,21 @@ pub(crate) use identity::SignerStateDto;
 // V-01 Phase 1c: lifecycle handler consumes the native dispatch path.
 #[cfg(feature = "native")]
 pub(super) use lifecycle::handle_lifecycle_event;
-// V-01 Phase 1c: lifecycle slot/registration types consumed only by native FFI / actor runtime.
-// `new_observer_slot` + `LifecycleObserverSlot` + `LifecycleObserverRegistration`
-// are reached by `nmp-ffi` through `nmp_core::__ffi_internal::*` (after the
-// step 11-final extraction).
+// V-01 Phase 1c: lifecycle slot types consumed only by native FFI / actor runtime.
+// `new_observer_slot` + `LifecycleObserverSlot` are reached by `nmp-uniffi`
+// through `nmp_core::__ffi_internal::*` (after the step 11-final extraction).
 #[cfg(feature = "native")]
-pub use lifecycle::{
-    new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
-    NativeLifecycleObserver,
-};
+pub use lifecycle::{new_observer_slot, LifecycleObserverSlot, NativeLifecycleObserver};
 // `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
 // `commands` is crate-private (`mod commands;`), so external Rust code only
 // sees these through the gated `pub use` in lib.rs. The downstream re-export
 // fires under `any(test, feature = "test-support")` (top-level) or
-// `feature = "native"` (`__ffi_internal::LifecycleObserverFn`), so this gate
+// `feature = "native"` (`__ffi_internal`), so this gate
 // is the union: anything narrower would leave the lib.rs imports unresolved.
 #[cfg(any(test, feature = "test-support", feature = "native"))]
-pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+pub use lifecycle::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 // Declared observed-projection sink slot. Re-exported up the actor module chain
-// so nmp-ffi and per-app registration paths reach the same `Arc<Mutex<…>>`
+// so nmp-uniffi and per-app registration paths reach the same `Arc<Mutex<…>>`
 // instance the kernel holds for scoped delivery.
 // `ObservedProjectionSinkSlot` and `notify_observers` are used by
 // kernel/event_observer.rs unconditionally. The slot constructors and

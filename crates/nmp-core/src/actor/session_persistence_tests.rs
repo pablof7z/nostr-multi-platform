@@ -7,13 +7,12 @@ use super::session_persistence::{
 use crate::actor::capability_worker::spawn_capability_worker;
 use crate::actor::{ActorMail, CommandSender};
 use crate::bunker_hook::BunkerHookRequest;
-use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
+use crate::capability_socket::CapabilityCallbackSlot;
 use crate::external_signer_hook::ExternalSignerHookRequest;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -23,11 +22,8 @@ const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9l
 static STORE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
 static SERIAL: Mutex<()> = Mutex::new(());
 
-extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *mut c_char {
-    let request = unsafe { CStr::from_ptr(request_json) }
-        .to_str()
-        .unwrap_or("");
-    let parsed: serde_json::Value = serde_json::from_str(request).unwrap_or_default();
+fn mock_handler(request_json: String) -> String {
+    let parsed: serde_json::Value = serde_json::from_str(&request_json).unwrap_or_default();
     let correlation_id = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
@@ -74,17 +70,12 @@ extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *m
         correlation_id,
         result_json: serde_json::to_string(&result).unwrap(),
     };
-    CString::new(serde_json::to_string(&envelope).unwrap())
-        .unwrap()
-        .into_raw()
+    serde_json::to_string(&envelope).unwrap()
 }
 
 fn registered_slot() -> CapabilityCallbackSlot {
     let slot = crate::capability_socket::new_capability_callback_slot();
-    slot.set_registration(Some(CapabilityCallbackRegistration {
-        context: 0,
-        callback: mock_handler,
-    }));
+    slot.set_native_handler(Some(Arc::new(mock_handler)));
     slot
 }
 

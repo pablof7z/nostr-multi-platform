@@ -71,14 +71,6 @@ impl NmpApp {
         self.lifecycle_event(nmp_core::__ffi_internal::LifecyclePhase::Background);
     }
 
-    /// Install or clear the lifecycle observer slot.
-    pub fn set_lifecycle_observer(
-        &self,
-        registration: Option<nmp_core::__ffi_internal::LifecycleObserverRegistration>,
-    ) {
-        self.lifecycle_observer.set_registration(registration);
-    }
-
     /// Install or clear the Rust-native lifecycle observer slot.
     pub fn set_native_lifecycle_observer(
         &self,
