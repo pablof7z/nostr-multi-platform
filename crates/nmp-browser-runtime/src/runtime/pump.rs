@@ -90,11 +90,26 @@ pub(super) fn drain_inbox(
     while applied < BROWSER_COMMAND_DRAIN_BUDGET {
         let cmd = match rx.try_recv() {
             Ok(ActorMail::Command(cmd)) => cmd,
-            // `ActorMail::Relay` exists only when `nmp-core/native` is unified
-            // into this build (workspace feature unification adds the cfg-gated
-            // variant). The browser ignores relay mail here — it has its own
-            // relay driver (#2050). Unreachable under `--no-default-features`
-            // (Command is then the only variant), so the wildcard is allow'd.
+            // `ActorMail::Relay` exists whenever `nmp-core/native` is compiled
+            // in — either this crate's own `native` feature (mirroring
+            // `nmp-core/native`, see Cargo.toml) is enabled, or workspace
+            // feature unification turns `nmp-core/native` on because some
+            // other crate in the same build graph (e.g. `nmp-native-runtime`)
+            // requests it, regardless of whether *this* crate's `native`
+            // feature is on.
+            //
+            // Named exhaustively (not a bare wildcard) whenever we can prove
+            // the variant exists from our own Cargo.toml condition, so a
+            // future unconditional `ActorMail` variant fails to compile here
+            // instead of silently matching this arm and no-op'ing (#2769 item
+            // 10 — known hazard class: silently-dropped new variants). The
+            // `not(feature = "native")` wildcard below is strictly narrower
+            // than before this fix: it exists only to keep the build green
+            // under the workspace-unification case just described, which this
+            // crate cannot detect from its own `#[cfg]` surface.
+            #[cfg(feature = "native")]
+            Ok(ActorMail::Relay(_)) => continue,
+            #[cfg(not(feature = "native"))]
             #[allow(unreachable_patterns)]
             Ok(_) => continue,
             // Channel drained or sender gone: no more work this turn and nothing

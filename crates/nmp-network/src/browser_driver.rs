@@ -56,13 +56,13 @@
 //! see this file at all.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::rc::Rc;
 use std::time::Duration;
 
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
+use crate::browser_send_buffer::{DroppedOutboundFrame, PreConnectSendBuffer};
 use crate::relay_protocol::{
     is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
@@ -74,7 +74,9 @@ use crate::role::RelayRole;
 /// buffers `Send` commands in a `pending` VecDeque and drains them on connect).
 /// The cap bounds memory for a relay that is targeted but never connects (e.g.
 /// an on-demand-discovered URL that is unreachable); the oldest frame is
-/// dropped when the buffer is full.
+/// evicted when the buffer is full, and every eviction is recorded (never a
+/// silent loss — #2765, D6) via [`crate::browser_send_buffer::PreConnectSendBuffer`]
+/// and drained by [`BrowserRelayDriver::take_dropped_outbound`].
 const MAX_PENDING_FRAMES: usize = 256;
 
 /// Kernel-touchpoint callbacks the driver invokes from its JS event handlers.
@@ -157,7 +159,12 @@ struct DriverState {
     /// `build_on_open` on connect. Survives reconnect attempts (so a frame
     /// buffered before the *first* successful open is not lost if the first
     /// dial fails), bounded by [`MAX_PENDING_FRAMES`]; cleared by `close()`.
-    pending: VecDeque<String>,
+    ///
+    /// On overflow the oldest frame is recorded in the buffer's own drop log
+    /// rather than silently discarded (#2765 — D6-honest, mirrors the inbound
+    /// side's `InboundQueue.dropped` counter). `take_dropped_outbound` drains
+    /// that log for the host to surface.
+    pending: PreConnectSendBuffer,
 }
 
 /// Holder for the four JS closures wired to a single `WebSocket`. Keeping
@@ -202,7 +209,7 @@ impl BrowserRelayDriver {
                 permanent_failure: false,
                 _closures: SocketClosures::default(),
                 _reconnect_timer: None,
-                pending: VecDeque::new(),
+                pending: PreConnectSendBuffer::new(MAX_PENDING_FRAMES),
             }),
             kernel,
         });
@@ -224,6 +231,11 @@ impl BrowserRelayDriver {
     /// a just-spawned (still-connecting) driver is buffered and replayed when
     /// the socket opens, rather than dropped (which would leave the relay
     /// connected-but-idle).
+    ///
+    /// On buffer overflow the oldest frame is evicted and recorded in the
+    /// buffer's drop log (never silently discarded — #2765); this call still
+    /// returns `Ok(())` since the frame *was* accepted for buffering, and
+    /// [`Self::take_dropped_outbound`] is how the host observes the eviction.
     pub fn send_text(&self, text: &str) -> Result<(), JsValue> {
         let mut state = self.state.borrow_mut();
         match &state.current_socket {
@@ -231,13 +243,28 @@ impl BrowserRelayDriver {
             // CONNECTING (socket present, not yet open) or between a close and
             // the next reconnect dial (no socket): buffer until `onopen`.
             _ => {
-                if state.pending.len() >= MAX_PENDING_FRAMES {
-                    state.pending.pop_front();
-                }
-                state.pending.push_back(text.to_string());
+                state.pending.push(text.to_string());
                 Ok(())
             }
         }
+    }
+
+    /// Drain outbound frames evicted from the pre-connect buffer since the
+    /// last call (#2765). Each drop is surfaced exactly once — the caller
+    /// (`nmp-browser-runtime::relay::drain_outbound_drops`) is expected to
+    /// call this once per pump turn and emit a host event for every entry.
+    pub fn take_dropped_outbound(&self) -> Vec<DroppedOutboundFrame> {
+        self.state
+            .borrow_mut()
+            .pending
+            .take_dropped()
+            .into_iter()
+            .map(|text| DroppedOutboundFrame {
+                url: self.url.clone(),
+                role: self.role,
+                text,
+            })
+            .collect()
     }
 
     /// Close the socket cleanly and stop any pending reconnect. Idempotent:
@@ -325,7 +352,7 @@ impl BrowserRelayDriver {
                 let was_connected = s.has_connected_before;
                 s.has_connected_before = true;
                 // Take the pre-connect buffer to flush now that we are OPEN.
-                let drained: Vec<String> = s.pending.drain(..).collect();
+                let drained: Vec<String> = s.pending.drain_pending();
                 (was_connected, drained)
             };
             // Flush buffered frames first (causal order: the REQ that triggered

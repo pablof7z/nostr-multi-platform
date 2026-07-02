@@ -29,11 +29,14 @@ pub(crate) mod budgets;
 pub(crate) mod handlers;
 pub(crate) mod inbound;
 pub(crate) mod info_fetch;
+pub(crate) mod outbound;
 pub(crate) mod plan;
 pub(crate) mod spawn;
 pub(crate) mod timer;
 
 use inbound::{drain_inbound, InboundDrainOutcome, InboundQueue};
+use nmp_network::browser_send_buffer::DroppedOutboundFrame;
+pub(crate) use outbound::surface_outbound_drops;
 use timer::CancelableTimer;
 
 /// Stable wake indirection shared between the relay pool, the JS driver
@@ -253,6 +256,25 @@ impl RelayPool {
         }
 
         outbound
+    }
+
+    /// Drain outbound frames evicted from every driver's pre-connect send
+    /// buffer since the last call (#2765). wasm32-only (native: no drivers,
+    /// always empty). Called once per pump turn, after `fan_out_outbound` so
+    /// same-turn evictions (the only site that can produce one is inside
+    /// `send_text`, called from `fan_out_outbound`) are drained the same turn.
+    pub(crate) fn drain_outbound_drops(&self) -> Vec<DroppedOutboundFrame> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.drivers
+                .iter()
+                .flat_map(|driver| driver.take_dropped_outbound())
+                .collect()
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            Vec::new()
+        }
     }
 
     /// Close all drivers and cancel the maintenance timer. Idempotent.

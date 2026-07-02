@@ -259,6 +259,7 @@ pub(super) fn map_pump_events(events: Vec<crate::BrowserRuntimeEvent>) -> Vec<Wo
             | BrowserRuntimeEvent::RelaySpawnFailed { .. }
             | BrowserRuntimeEvent::RelaySendFailed { .. }
             | BrowserRuntimeEvent::RelayInboundDropped { .. }
+            | BrowserRuntimeEvent::RelayOutboundDropped { .. }
             | BrowserRuntimeEvent::SnapshotDecodeFailed { .. } => None,
         })
         .collect()

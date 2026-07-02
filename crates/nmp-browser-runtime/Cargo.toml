@@ -14,6 +14,13 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
+# Mirrors `nmp-core`'s `native` feature so the browser pump's `ActorMail`
+# match (`runtime/pump.rs`) can gate the `ActorMail::Relay` arm on the same
+# condition that gates the variant's existence in `nmp-core` (#2765 / #2769
+# item 10). Not enabled by default: the browser runtime's own dependency on
+# `nmp-core` is `default-features = false`, so `ActorMail::Relay` does not
+# exist in a plain `cargo build -p nmp-browser-runtime`.
+native = ["nmp-core/native"]
 # Enable the wasm-only NIP-07 async signing bridge inside `signer/completion.rs`.
 # Must be paired with `--target wasm32-unknown-unknown` — enabling on a native
 # target compiles the cfg guard out, not a build error. Propagates to
