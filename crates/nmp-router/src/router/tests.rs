@@ -171,12 +171,12 @@ fn publish_drops_blocked_relays() {
 }
 
 #[test]
-fn subscribe_uses_nip65_read_set_for_each_author() {
+fn subscribe_uses_nip65_write_set_for_each_author() {
     let cache = Arc::new(InMemoryMailboxCache::new());
     cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
-            read: vec!["wss://alice-r.example".into()],
+            write: vec!["wss://alice-w.example".into()],
             ..ParsedRelayList::default()
         },
     );
@@ -196,7 +196,7 @@ fn subscribe_uses_nip65_read_set_for_each_author() {
         .route_subscription(&interest_for(&["alice", "bob"]), &c)
         .unwrap();
     let urls: std::collections::HashSet<&String> = r.urls().collect();
-    assert!(urls.contains(&"wss://alice-r.example".to_string()));
+    assert!(urls.contains(&"wss://alice-w.example".to_string()));
     assert!(urls.contains(&"wss://bob-b.example".to_string()));
 }
 
@@ -351,14 +351,14 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     // V-50 self-seal regression: seed the mailbox cache with
     // { alice -> ["wss://stale.example"] } and issue a kind:10002
     // refresh for alice. The resolved set must include BOTH the cached
-    // (stale) URL via Nip65/Read AND the configured indexer URL via
+    // (stale) URL via Nip65/Write AND the configured indexer URL via
     // RoutingSource::Indexer — so a newer kind:10002 published on a
     // different relay is structurally reachable.
     let cache = Arc::new(InMemoryMailboxCache::new());
     cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
-            read: vec!["wss://stale.example".into()],
+            write: vec!["wss://stale.example".into()],
             ..ParsedRelayList::default()
         },
     );
@@ -375,7 +375,7 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     let indexer = "wss://indexer.example".to_string();
     assert!(
         urls.contains(&stale),
-        "lane 1 (stale NIP-65 read) must still resolve — got {urls:?}"
+        "lane 1 (stale NIP-65 write) must still resolve — got {urls:?}"
     );
     assert!(
         urls.contains(&indexer),
@@ -386,7 +386,7 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     assert!(stale_sources.iter().any(|s| matches!(
         s,
         RoutingSource::Nip65 {
-            direction: Direction::Read
+            direction: Direction::Write
         }
     )));
     let indexer_sources = r.relays.get(&indexer).unwrap();

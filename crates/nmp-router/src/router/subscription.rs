@@ -18,14 +18,17 @@ pub(super) fn route(
     let mut out = RoutedRelaySet::new();
     let mut attempts: Vec<RouteAttempt> = Vec::new();
 
-    // Lane 1 — each author's NIP-65 read set.
+    // Lane 1 — each author's NIP-65 write/outbox set. You fetch an
+    // author's notes from their WRITE relays (NIP-65) — this mirrors
+    // `route_publish`'s `write_relays(&evt.pubkey)` lookup, just keyed
+    // per-author instead of per-event.
     // Count admissible URLs so that a URL that also appeared in an
     // earlier lane still reports Matched here.
     {
         let mut lane_count = 0usize;
         for author in &interest.shape.authors {
-            if let Some(reads) = ctx.mailbox_cache.read_relays(author) {
-                for url in reads {
+            if let Some(writes) = ctx.mailbox_cache.write_relays(author) {
+                for url in writes {
                     if ctx.blocked_relays.contains(&url) {
                         continue;
                     }
@@ -35,7 +38,7 @@ pub(super) fn route(
                     out.add(
                         url,
                         RoutingSource::Nip65 {
-                            direction: Direction::Read,
+                            direction: Direction::Write,
                         },
                     );
                     if tracing_active {

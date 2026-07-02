@@ -139,12 +139,14 @@ fn lane6_does_not_fire_for_content_only_kinds() {
 
 #[test]
 fn blocked_relay_casing_mismatch_is_caught() {
-    // The author publishes a kind:10002 with a MIXED-CASE read relay
+    // The author publishes a kind:10002 with a MIXED-CASE write relay
     // `wss://BLOCKED.EXAMPLE`. The ingest parser canonicalises it to
     // `wss://blocked.example`. A blocked set carrying the canonical lowercase
     // form must therefore exclude it from the subscribe route — before Bug 2's
     // fix the kind:10002 entry stayed mixed-case and never matched the
-    // lowercase block, silently defeating the filter.
+    // lowercase block, silently defeating the filter. Marked `write` (not
+    // `read`) so the fixture exercises lane 1's NIP-65 write/outbox lookup
+    // (#2764) rather than the (unconsulted) read set.
     let cache = Arc::new(InMemoryMailboxCache::new());
     let parser = Kind10002Parser::new(Arc::clone(&cache));
 
@@ -154,8 +156,8 @@ fn blocked_relay_casing_mismatch_is_caught() {
         created_at: 0,
         kind: 10_002,
         tags: vec![
-            vec!["r".into(), "wss://BLOCKED.EXAMPLE".into(), "read".into()],
-            vec!["r".into(), "wss://Good.Example".into(), "read".into()],
+            vec!["r".into(), "wss://BLOCKED.EXAMPLE".into(), "write".into()],
+            vec!["r".into(), "wss://Good.Example".into(), "write".into()],
         ],
         content: String::new(),
         sig: "22".repeat(64),
@@ -186,12 +188,12 @@ fn blocked_relay_casing_mismatch_is_caught() {
 
     let out = router
         .route_subscription(&interest, &c)
-        .expect("good.example read relay keeps the route routable");
+        .expect("good.example write relay keeps the route routable");
     let urls: Vec<&String> = out.urls().collect();
 
     assert!(
         urls.iter().any(|u| *u == "wss://good.example"),
-        "the unblocked (canonicalised) read relay must survive, got {urls:?}"
+        "the unblocked (canonicalised) write relay must survive, got {urls:?}"
     );
     assert!(
         !urls.iter().any(|u| *u == "wss://blocked.example"),
