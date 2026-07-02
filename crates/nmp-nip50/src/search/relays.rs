@@ -4,8 +4,8 @@
 //! concrete relay set before opening the relay-pinned generic interest. The
 //! actual kind:10007 (NIP-51 search-relays) read and the app-default fallback
 //! are NOT owned here — they are supplied through the [`SearchRelaySource`]
-//! seam, which `nmp_nip51::register_search_relay_runtime_with_fallbacks`
-//! backs with the live `nmp_nip51::SearchRelayListProjection` snapshot + the
+//! seam, which `nmp_nip51::register` backs with the live
+//! `nmp_nip51::SearchRelayListProjection` snapshot + the
 //! app-declared default set. This keeps `nmp-nip50` free of any kind:10007
 //! parsing (that lives in `nmp-nip51`, D0) while still owning the
 //! orchestration policy of WHICH source each `SearchTargets` variant draws
@@ -48,8 +48,8 @@ impl SearchFallbackRelays {
 /// scaffolded host compiles and runs for free, while a real composition host
 /// (`NmpApp`) overrides it to store the provider. `nmp-nip50` never names the
 /// host type (D0); the generic [`PreferredRelaySource`] seam in `nmp-core` is
-/// the bridge. `nmp_nip51::register_search_relay_runtime_with_fallbacks` calls
-/// this once, during the app's own composition step (e.g. the
+/// the bridge. `nmp_nip51::register` calls this once, during the app's own
+/// composition step (e.g. the
 /// `nmp-native-runtime` or `nmp-browser-runtime` builder wiring NIP-51
 /// support), so it is never invoked by `nmp-nip50` itself.
 pub fn install_search_relay_source(

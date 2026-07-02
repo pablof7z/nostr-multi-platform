@@ -12,7 +12,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ProtocolCommand,
-    ProtocolCommandContext, ProtocolCommandError, ProtocolDescriptor,
+    ProtocolCommandContext, ProtocolCommandError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -100,19 +100,6 @@ impl ProtocolCommand for DeleteCommand {
     }
 }
 
-/// Typed protocol descriptor for the NIP-09 generic deletion action.
-///
-/// Zero-cost unit struct exposing this crate's single action-module
-/// contribution (`nmp.nip09.delete`) through the [`ProtocolDescriptor`]
-/// trait so explicit app/runtime roots can compose descriptors without
-/// ad-hoc action-registration call sites (ADR-0069 explicit composition).
-///
-/// Registered as a **yielding default**: an app that pre-registers its own
-/// deletion handler pre-empts this regardless of call order.
-pub struct Nip09Descriptor;
-
-impl ProtocolDescriptor for Nip09Descriptor {
-    fn register_actions(&self, app: &mut impl ActionRegistrar) {
-        app.register_default_action(DeleteModule);
-    }
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
+    app.register_default_action(DeleteModule);
 }

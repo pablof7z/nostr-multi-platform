@@ -395,8 +395,8 @@ fn run_scenario() -> Result<bool, String> {
     {
         let app = unsafe { &mut *app };
         nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
-        nmp_nip17::register_actions(app);
-        nmp_nip17::register_runtime(app);
+        nmp_nip17::register(app, nmp_nip17::Config::default())
+            .expect("nmp-nip17 registration must not collide");
     }
 
     // Start the actor + real relay-worker pool, then add the relay as

@@ -25,16 +25,16 @@ pub mod search;
 pub mod wire;
 
 pub use input_recognizers::{
-    register_input_scopes, LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,
+    LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,
 };
 pub use projection::{SearchHit, SearchHitSource, SearchResultsProjection, SearchResultsSnapshot};
 pub use request::{
     SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS, HARD_MAX_SEARCH_HITS,
 };
 pub use scopes::{
-    register_search_scopes, LongFormSearchScope, NoteSearchScope, ProfileSearchScope,
-    SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES, SCOPE_NAME_LONGFORM,
-    SCOPE_NAME_NOTES, SCOPE_NAME_PROFILES,
+    LongFormSearchScope, NoteSearchScope, ProfileSearchScope, SCOPE_LABEL_LONGFORM,
+    SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES, SCOPE_NAME_LONGFORM, SCOPE_NAME_NOTES,
+    SCOPE_NAME_PROFILES,
 };
 pub use search::{
     install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,
@@ -46,6 +46,21 @@ pub use wire::{
     FILE_IDENTIFIER as SEARCH_RESULTS_FILE_IDENTIFIER, SCHEMA_ID as SEARCH_RESULTS_SCHEMA_ID,
     SCHEMA_VERSION as SEARCH_RESULTS_SCHEMA_VERSION,
 };
+
+#[derive(Clone, Debug, Default)]
+pub struct Config {}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {}
+
+pub fn register(
+    app: &(impl nmp_core::substrate::SearchScopeRegistrar + nmp_core::substrate::InputScopeRegistrar),
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    scopes::register_search_scopes(app);
+    input_recognizers::register_input_scopes(app);
+    Ok(Handles {})
+}
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

@@ -5,14 +5,15 @@
 //! running the module's validation.
 
 use nmp_core::__ffi_internal::ActionRegistry;
-use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection, ProtocolDescriptor};
-use nmp_nip84::{Nip84Descriptor, PublishHighlightAction};
+use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
+use nmp_nip84::PublishHighlightAction;
 
 const NAMESPACE: &str = "nmp.nip84.publish_highlight";
 
 fn registry_with_nip84() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
-    Nip84Descriptor.register_actions(&mut registry);
+    nmp_nip84::register(&mut registry, nmp_nip84::Config::default())
+        .expect("nmp-nip84 registration must not collide");
     registry
 }
 

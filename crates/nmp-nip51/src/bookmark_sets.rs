@@ -388,7 +388,7 @@ impl ActionModule for RemoveBookmarkSetItemAction {
     }
 }
 
-pub fn register_bookmark_set_actions(
+pub(crate) fn register_bookmark_set_actions(
     app: &mut impl ActionRegistrar,
     projection: Arc<BookmarkSetsProjection>,
 ) {

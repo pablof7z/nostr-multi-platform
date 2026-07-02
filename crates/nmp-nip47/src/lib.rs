@@ -14,7 +14,7 @@
 //!
 //! # Composition
 //!
-//! The single entry point is [`register_wallet`], which performs all wiring
+//! The single entry point is [`register`], which performs all wiring
 //! during the app's config phase (before the kernel starts). It:
 //!
 //! * constructs a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`)
@@ -50,7 +50,7 @@ pub mod status;
 pub mod ui_codes;
 pub mod wire;
 
-pub use register::{register_wallet, wallet_typed_projection};
+pub use register::{register, wallet_typed_projection, Config, Handles};
 
 pub use action::{
     WalletAction, WalletConnectAction, WalletConnectModule, WalletDisconnectAction,

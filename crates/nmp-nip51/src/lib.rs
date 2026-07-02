@@ -105,20 +105,18 @@ pub mod bookmark_sets;
 pub mod bookmarks;
 pub mod group_list;
 mod group_list_graph;
+mod installer;
 pub mod interests;
 pub mod people_list;
 mod people_list_graph;
 pub mod projection;
-pub mod runtime;
+mod runtime;
 pub mod search_fallback;
 pub mod search_relays;
 pub mod web_bookmarks;
 pub mod wire;
 
-pub use block_relay::{
-    register_block_relay_actions, BlockRelayAction, BlockRelayInput, UnblockRelayAction,
-    UnblockRelayInput,
-};
+pub use block_relay::{BlockRelayAction, BlockRelayInput, UnblockRelayAction, UnblockRelayInput};
 pub use blocked_relays::{InMemoryBlockedRelayCache, Kind10006Parser};
 pub use interests::{
     active_bookmark_list_identity, active_bookmark_list_interest, active_bookmark_list_interest_id,
@@ -128,33 +126,28 @@ pub use interests::{
 };
 
 pub use bookmark_sets::{
-    build_bookmark_set_event, register_bookmark_set_actions, AddBookmarkSetItemAction,
-    BookmarkSetKind, BookmarkSetSnapshot, BookmarkSetUpdateInput, BookmarkSetsProjection,
-    BookmarkSetsSnapshot, RemoveBookmarkSetItemAction,
+    build_bookmark_set_event, AddBookmarkSetItemAction, BookmarkSetKind, BookmarkSetSnapshot,
+    BookmarkSetUpdateInput, BookmarkSetsProjection, BookmarkSetsSnapshot,
+    RemoveBookmarkSetItemAction,
 };
 pub use bookmarks::{
-    build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,
-    BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,
-    RemoveBookmarkAction,
+    build_bookmark_list_event, AddBookmarkAction, BookmarkItem, BookmarkListMetadata,
+    BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput, RemoveBookmarkAction,
 };
 pub use group_list::{
     simple_groups_from_tags, SimpleGroupListProjection, SimpleGroupListSnapshot,
     SimpleGroupListSourceEffect, SimpleGroupRef,
 };
+pub use installer::{register, Config, Handles};
 pub use people_list::{PeopleListProjection, PeopleListSnapshot};
 pub use projection::{
     mute_pubkeys_from_tags, MuteListProjection, MuteListSnapshot, ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID,
 };
-pub use runtime::{
-    register_bookmark_runtime, register_bookmark_set_runtime, register_mute_runtime,
-    register_search_relay_runtime_with_fallbacks, register_web_bookmark_runtime,
-};
 pub use search_fallback::effective_search_relays;
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use web_bookmarks::{
-    build_web_bookmark_event, register_web_bookmark_actions, PublishWebBookmarkAction,
-    PublishWebBookmarkInput, WebBookmarkDraft, WebBookmarkSnapshot, WebBookmarksProjection,
-    WebBookmarksSnapshot,
+    build_web_bookmark_event, PublishWebBookmarkAction, PublishWebBookmarkInput, WebBookmarkDraft,
+    WebBookmarkSnapshot, WebBookmarksProjection, WebBookmarksSnapshot,
 };
 pub use wire::bookmark_list_fb::{
     decode_bookmark_list, encode_bookmark_list, BOOKMARK_LIST_FILE_IDENTIFIER,

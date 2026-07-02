@@ -13,7 +13,7 @@
 //!      its read relay R (the proven path that also fetches kind:0/3/10002/10006),
 //!   3. R returns the kind:10007, the `SearchRelayListProjection` ingests it,
 //!   4. the auto-wired default search-relay source (installed by
-//!      `nmp_nip51::register_search_relay_runtime_with_fallbacks` now
+//!      `nmp_nip51::register` now
 //!      resolves `UserPreferred` to `wss://nostr.wine`.
 //!
 //! Then we call ONLY `open_search("bitcoin", Users, UserPreferred, ..)` and
@@ -158,12 +158,15 @@ pub(crate) fn run() {
     {
         let app = unsafe { &mut *app };
         nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
-        nmp_nip50::register_search_scopes(app);
-        nmp_nip50::register_input_scopes(app);
-        nmp_nip51::register_search_relay_runtime_with_fallbacks(
+        nmp_nip50::register(app, nmp_nip50::Config::default())
+            .expect("nmp-nip50 registration must not collide");
+        nmp_nip51::register(
             app,
-            nmp_nip50::SearchFallbackRelays::default(),
-        );
+            nmp_nip51::Config {
+                search_fallback_relays: nmp_nip50::SearchFallbackRelays::default(),
+            },
+        )
+        .expect("nmp-nip51 registration must not collide");
     }
 
     unsafe { &*app }.start_runtime(256, 8); // emit_hz=8 → ~125ms snapshot cadence

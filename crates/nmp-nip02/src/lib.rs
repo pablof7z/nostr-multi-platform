@@ -27,9 +27,8 @@
 //! follow-list edits are generic Nostr protocol primitives.
 //!
 //! This crate lifts follow/unfollow into a reusable substrate crate. Public
-//! NIP-25 reactions now live in `nmp-nip25`; this crate re-exports the old
-//! `ReactAction` / `ReactModule` names and its legacy `register_actions`
-//! helper delegates to `nmp-nip25` for compatibility.
+//! NIP-25 reactions live in `nmp-nip25`; app composition roots install both
+//! crates explicitly through their protocol installers.
 //!
 //! # D0 — namespace hygiene
 //!
@@ -67,12 +66,29 @@ pub mod wire;
 
 pub use active_follow_set::ActiveFollowSet;
 pub use latest_kind3::LatestKind3FollowSet;
-pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{
     decode_follow_list, encode_follow_list, FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER,
     SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID, SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION,
 };
+
+#[derive(Clone, Debug, Default)]
+pub struct Config {}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {}
+
+pub fn register(
+    app: &mut (impl ActionRegistrar
+              + HostCapabilities
+              + IdentityChangeRegistrar
+              + SnapshotProjectionRegistrar),
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    register_follow_actions(app);
+    register_follow_state_runtime(app);
+    Ok(Handles {})
+}
 
 const FOLLOW_LIST_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
     nmp_ownership::DeclaredProjectionKey::framework(
@@ -157,24 +173,13 @@ pub struct FollowManyModule;
 ///
 /// Registration MUST happen before `nmp_app_start` because
 /// the host-side action registrar requires `&mut self`.
-pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
+pub(crate) fn register_follow_actions(app: &mut impl ActionRegistrar) {
     // Yielding defaults (ADR-0069 Part 1): each module installs only if its
     // namespace is unclaimed, so an app may pre-empt any of them regardless of
     // whether it registers before or after `explicit owner composition`.
     app.register_default_action(FollowModule);
     app.register_default_action(UnfollowModule);
     app.register_default_action(FollowManyModule);
-}
-
-/// Compatibility helper for older composition roots that expected
-/// `nmp_nip02::register_actions` to wire the full public social bundle.
-///
-/// New composition code should call [`register_follow_actions`] and
-/// `nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app)`
-/// explicitly so NIP-25 remains the visible owner of public reactions.
-pub fn register_actions(app: &mut impl ActionRegistrar) {
-    register_follow_actions(app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
 }
 
 /// Wire the NIP-02 follow-list read runtime into `app`.
@@ -223,7 +228,7 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// instead of constructing a `FollowListProjection` directly. No caller-side
 /// active-pubkey argument is needed to seed a local slot; the projection
 /// reads the kernel's canonical active-account slot via `app.active_pubkey()`.
-pub fn register_follow_state_runtime(
+pub(crate) fn register_follow_state_runtime(
     app: &(impl HostCapabilities + IdentityChangeRegistrar + SnapshotProjectionRegistrar),
 ) {
     use crate::wire::typed_fb;

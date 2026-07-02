@@ -12,7 +12,7 @@
 //! - [`AddressCoordinate`] — the canonical `kind:pubkey:d` address-coordinate
 //!   identity for the `a`-tag grammar. Shared by every crate that reads or
 //!   writes an addressable-event coordinate, not only deletion (#2589).
-//! - [`Nip09Descriptor`] / [`DeleteModule`] — a generic "delete my event"
+//! - [`register`] / [`DeleteModule`] — a generic "delete my event"
 //!   action that apps can dispatch without writing any kind:5 wire code.
 //! - [`ownership`] — the compiled ownership descriptor (ADR-0074).
 //!
@@ -32,7 +32,7 @@ mod builder;
 mod coordinate;
 mod read;
 
-pub use action::{DeleteAction, DeleteModule, Nip09Descriptor};
+pub use action::{DeleteAction, DeleteModule};
 pub use builder::{
     build_deletion_draft, build_deletion_event, DeletionRequest, OwnedDeletionDraft,
 };
@@ -44,3 +44,17 @@ pub const KIND_DELETION: u32 = 5;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
+
+#[derive(Clone, Debug, Default)]
+pub struct Config {}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {}
+
+pub fn register(
+    app: &mut impl nmp_core::substrate::ActionRegistrar,
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    action::register_actions(app);
+    Ok(Handles {})
+}

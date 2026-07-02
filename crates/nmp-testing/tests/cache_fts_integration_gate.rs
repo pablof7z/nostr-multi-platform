@@ -28,8 +28,9 @@
 
 use std::collections::BTreeSet;
 use std::ops::ControlFlow;
+use std::sync::Arc;
 
-use nmp_core::substrate::SearchScopeRegistry;
+use nmp_core::substrate::{SearchScopeRegistrar, SearchScopeRegistry};
 use nmp_store::{
     DeleteFilter, EventStore, GcBudget, RawEvent, SearchScopeId, TextSearchBudget, TextSearchHit,
     TextSearchOrder, TextSearchQuery, TextSearchStatus,
@@ -53,14 +54,16 @@ mod cache_serve_tests;
 
 // ─── seam construction ────────────────────────────────────────────────────────
 
-/// The canonical registration the composition root performs: NIP-50 public
-/// scopes (default bundle) + NIP-29 group scope (leaf-app opt-in). Drives the
-/// REAL crate helpers against a bare registry — `SearchScopeRegistry` is itself
-/// a `SearchScopeRegistrar`, so this is the exact call shape the `AppHost` makes.
+/// The canonical scope set a composition root installs: NIP-50 public scopes
+/// (default bundle) + NIP-29 group scope (leaf-app opt-in). This fixture stays
+/// registry-only because the store FTS seam is independent from input scopes or
+/// app runtime hosts.
 fn registry_with_all_scopes() -> SearchScopeRegistry {
     let registry = SearchScopeRegistry::new();
-    nmp_nip50::register_search_scopes(&registry);
-    nmp_nip29::register_search_scopes(&registry);
+    registry.register_search_scope(Arc::new(nmp_nip50::ProfileSearchScope::new()));
+    registry.register_search_scope(Arc::new(nmp_nip50::NoteSearchScope::new()));
+    registry.register_search_scope(Arc::new(nmp_nip50::LongFormSearchScope::new()));
+    registry.register_search_scope(Arc::new(nmp_nip29::GroupMetadataSearchScope::new()));
     registry
 }
 

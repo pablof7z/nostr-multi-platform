@@ -42,13 +42,22 @@ pub use result::{
 pub use upload::http::BlobDescriptor;
 pub use upload::BlossomUploadCommand;
 
+#[derive(Clone, Debug, Default)]
+pub struct Config {}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {}
+
 /// Register the Blossom action(s) on an [`ActionRegistrar`]
-/// (`nmp_core::substrate`). Mirrors `nmp_nip57::register_actions`.
+/// (`nmp_core::substrate`).
 ///
 /// [`ActionRegistrar`]: nmp_core::substrate::ActionRegistrar
-pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
-    app.register_action(UploadAction)
-        .expect("duplicate registration: nmp-blossom UploadAction"); // doctrine-allow: D6 — startup-only call; a RegistrationError here is a programmer error (duplicate module wiring), not a runtime failure
+pub fn register(
+    app: &mut impl nmp_core::substrate::ActionRegistrar,
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    app.register_action(UploadAction)?;
+    Ok(Handles {})
 }
 
 /// Compiled ownership descriptor for crate-ownership reports.

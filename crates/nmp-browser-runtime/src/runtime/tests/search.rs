@@ -81,7 +81,8 @@ fn browser_search_session_emits_n50s_results_from_cache_hits() {
     let builder = crate::BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections();
-    nmp_nip50::register_search_scopes(&builder);
+    nmp_nip50::register(&builder, nmp_nip50::Config::default())
+        .expect("nmp-nip50 registration must not collide");
     let mut handle = builder
         .without_initial_relays()
         .decide_providers(crate::BrowserRunConfig::default())

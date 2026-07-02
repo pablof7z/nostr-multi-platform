@@ -8,8 +8,8 @@ mod bookmarks;
 mod mute;
 mod search_relay;
 
-pub use bookmarks::{
+pub(crate) use bookmarks::{
     register_bookmark_runtime, register_bookmark_set_runtime, register_web_bookmark_runtime,
 };
-pub use mute::register_mute_runtime;
-pub use search_relay::register_search_relay_runtime_with_fallbacks;
+pub(crate) use mute::register_mute_runtime;
+pub(crate) use search_relay::register_search_relay_runtime_with_fallbacks;

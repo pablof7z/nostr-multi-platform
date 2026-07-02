@@ -1,6 +1,6 @@
-//! Integration test: prove the compatibility `register_actions` helper wires
-//! follow/unfollow plus delegated NIP-25 reaction namespaces against a real
-//! `NmpApp` and that each one round-trips through the typed byte doorway
+//! Integration test: prove the canonical protocol installers wire follow,
+//! unfollow, and NIP-25 reaction namespaces against a real `NmpApp` and that
+//! each one round-trips through the typed byte doorway
 //! `nmp_app_dispatch_action_bytes` (ADR-0071 / S4, #1996).
 //!
 //! This is the migration-success contract — the same shape the chirp
@@ -46,21 +46,38 @@ fn dispatch_bytes(
     (correlation_id, parsed)
 }
 
-/// After `nmp_nip02::register_actions`, the old public social bundle is
+fn register_nip02_actions(registry: &mut nmp_core::__ffi_internal::ActionRegistry) {
+    use nmp_core::substrate::ActionRegistrar;
+
+    registry.register_default_action(nmp_nip02::FollowModule);
+    registry.register_default_action(nmp_nip02::UnfollowModule);
+    registry.register_default_action(nmp_nip02::FollowManyModule);
+}
+
+fn register_social_actions(registry: &mut nmp_core::__ffi_internal::ActionRegistry) {
+    register_nip02_actions(registry);
+    nmp_nip25::register(registry, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
+}
+
+/// After `nmp_nip02::register` and `nmp_nip25::register`, the public social verbs are
 /// reachable through the typed byte doorway. Each accepted dispatch echoes the
 /// host-supplied `correlation_id` with no `error`, proving BOTH the
 /// shape-validating module (consumed by `ActionRegistry::start_bytes`) AND the
 /// `ActorCommand`-enqueuing executor (consumed by `ActionRegistry::execute_bytes`)
 /// are wired under each namespace.
 #[test]
-fn register_actions_wires_compat_social_bundle() {
+fn canonical_installers_wire_social_actions() {
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     assert!(!app.is_null(), "nmp_app_new must return a valid app");
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; we hold the
     // sole `&mut` for the duration of the registration call and drop it
     // before any other access.
     unsafe {
-        nmp_nip02::register_actions(&mut *app);
+        nmp_nip02::register(&mut *app, nmp_nip02::Config::default())
+            .expect("nmp-nip02 registration must not collide");
+        nmp_nip25::register(&mut *app, nmp_nip25::Config::default())
+            .expect("nmp-nip25 registration must not collide");
     }
 
     let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -145,7 +162,7 @@ fn typed_bytes_dispatch_round_trips_trio_through_registry() {
     use nmp_core::substrate::{ActionContext, ActionPayload};
 
     let mut registry = ActionRegistry::new();
-    nmp_nip02::register_actions(&mut registry);
+    register_social_actions(&mut registry);
 
     // Build typed payloads with each crate's `ActionPayload::encode`, then drive
     // them through the registry's typed-bytes doorway exactly as the byte
@@ -266,7 +283,7 @@ fn start_bytes_rejects_wrong_schema_version_for_unfollow() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_nip02::register_actions(&mut registry);
+    register_nip02_actions(&mut registry);
 
     let bad_version = build_bad_version_unfollow_payload();
     let err = registry
@@ -294,7 +311,7 @@ fn start_bytes_rejects_wrong_schema_version_for_follow_many() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_nip02::register_actions(&mut registry);
+    register_nip02_actions(&mut registry);
 
     let bad_version = build_bad_version_follow_many_payload();
     let err = registry
@@ -339,14 +356,15 @@ fn build_bad_version_follow_many_payload() -> Vec<u8> {
 }
 
 /// Unknown namespace is rejected by the registry — this proves the
-/// registration is namespace-scoped (a host that calls `register_actions`
+/// registration is namespace-scoped (a host that calls `register`
 /// only gets the three social verbs, not a wildcard).
 #[test]
-fn unregistered_namespace_is_rejected_even_after_register_actions() {
+fn unregistered_namespace_is_rejected_even_after_register() {
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
-    // SAFETY: same as `register_actions_wires_all_three_social_verbs`.
+    // SAFETY: same as `canonical_installers_wire_social_actions`.
     unsafe {
-        nmp_nip02::register_actions(&mut *app);
+        nmp_nip02::register(&mut *app, nmp_nip02::Config::default())
+            .expect("nmp-nip02 registration must not collide");
     }
     let payload = nmp_nip02::PubkeyAction {
         pubkey: "deadbeef".to_string(),

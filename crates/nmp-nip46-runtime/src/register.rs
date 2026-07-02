@@ -1,7 +1,8 @@
 //! Reusable host-side composition for the NIP-46 actor-lane runtime.
 //!
 //! [`register_nip46`] is the canonical, app-neutral wiring for the NIP-46
-//! actor-relay lane.  It mirrors the shape of `nmp-nip47::register::register_wallet`:
+//! actor-relay lane. It mirrors the handle-returning shape of
+//! `nmp-nip47::register::register`:
 //!
 //! 1. Creates a [`Nip46RuntimeHandle`].
 //! 2. Installs a [`Nip46Interceptor`] on the relay-text interceptor slot.

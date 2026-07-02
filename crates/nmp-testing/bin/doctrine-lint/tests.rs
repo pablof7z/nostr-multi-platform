@@ -53,6 +53,7 @@ mod nip29_kind_blind_tests; // nip29 kind-blind transport ratchet (#2509/#2513) 
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod ownership_contract_gates; // Compiled positive ownership descriptor gates.
 mod product_raw_read_tests; // Product raw-read/session ratchet smoke tests.
+mod protocol_installer_shape_gates; // Protocol installer public-shape ratchet.
 mod publish_route_gates; // Publish-route provenance/default deletion gates.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.

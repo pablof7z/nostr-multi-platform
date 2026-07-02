@@ -275,11 +275,18 @@ fn g5_example_uses_explicit_composition() {
     let mut cursor = 0;
     for installer in [
         "nmp_substrate::install",
-        "nmp_nip50::register_search_scopes",
-        "nmp_nip02::register_follow_actions",
-        "nmp_nip51::register_mute_runtime",
-        "nmp_nip17::register_runtime",
-        "nmp_nip23::register_longform_projection",
+        "nmp_nip50::register",
+        "nmp_nip02::register",
+        "nmp_replies::register",
+        "nmp_nip25::register",
+        "nmp_nip18::register",
+        "nmp_nip84::register",
+        "nmp_nip29::register",
+        "nmp_wot::register",
+        "nmp_nip51::register",
+        "nmp_nip22::register",
+        "nmp_nip17::register",
+        "nmp_nip23::register",
     ] {
         let index = content[cursor..]
             .find(installer)

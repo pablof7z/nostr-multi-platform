@@ -252,7 +252,7 @@ impl ActionModule for PublishWebBookmarkAction {
     }
 }
 
-pub fn register_web_bookmark_actions(
+pub(crate) fn register_web_bookmark_actions(
     app: &mut impl ActionRegistrar,
     projection: Arc<WebBookmarksProjection>,
 ) {

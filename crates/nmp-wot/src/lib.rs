@@ -10,16 +10,18 @@
 //! `register_runtime` is wired by `explicit composition`, so apps such as Chirp get
 //! the bootstrap through the normal `explicit owner composition` path.
 
+mod installer;
 pub mod interest;
 pub mod runtime;
 pub mod score;
 pub mod wire;
 
+pub use installer::{register, Config, Handles};
 pub use interest::{
     active_follow_graph_identity, active_follow_graph_interest_id, follow_graph_interest,
     KIND_CONTACT_LIST, KIND_MUTE_LIST, KIND_PROFILE, KIND_RELAY_LIST, WOT_BOOTSTRAP_KINDS,
 };
-pub use runtime::{register_runtime, WotBootstrapRuntime, WotBootstrapSnapshot};
+pub use runtime::{WotBootstrapRuntime, WotBootstrapSnapshot};
 pub use score::{
     TrustDecision, WotGraph, WotGraphStats, DEFAULT_AUTO_HIDE_SCORE, DIRECT_FOLLOW_SCORE,
     FOLLOWED_MUTE_SCORE, SECOND_DEGREE_SCORE, SELF_MUTE_SCORE, SELF_SCORE,

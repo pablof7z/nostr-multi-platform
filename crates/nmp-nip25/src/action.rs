@@ -3,7 +3,6 @@ use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-    ProtocolDescriptor,
 };
 use nmp_nip09::DeletionRequest;
 use nmp_signer_iface::UnsignedEvent;
@@ -152,23 +151,9 @@ impl ProtocolCommand for UnreactReactionCommand {
     }
 }
 
-/// Typed protocol descriptor for NIP-25 reactions (#1724 criterion 5).
-///
-/// Zero-cost unit struct exposing this crate's two action-module contributions
-/// (`nmp.nip25.react`, `nmp.nip25.unreact`) through the [`ProtocolDescriptor`]
-/// trait so explicit app/runtime roots can compose descriptors without
-/// ad-hoc action-registration call sites (criterion 6).
-///
-/// Both modules are registered as **yielding defaults** (ADR-0069 Part 1): an
-/// app that pre-registers its own reaction handler pre-empts these regardless of
-/// call order.
-pub struct Nip25Descriptor;
-
-impl ProtocolDescriptor for Nip25Descriptor {
-    fn register_actions(&self, app: &mut impl ActionRegistrar) {
-        app.register_default_action(ReactModule);
-        app.register_default_action(UnreactModule);
-    }
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
+    app.register_default_action(ReactModule);
+    app.register_default_action(UnreactModule);
 }
 
 fn validate_react(action: &ReactAction) -> Result<(), ActionRejection> {

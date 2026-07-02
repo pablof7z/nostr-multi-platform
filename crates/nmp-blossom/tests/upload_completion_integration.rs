@@ -150,7 +150,8 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
         capture_frame(std::ptr::null_mut(), bytes.as_ptr(), bytes.len());
     })));
     // SAFETY: valid until nmp_app_free.
-    nmp_blossom::register_actions(unsafe { &mut *app });
+    nmp_blossom::register(unsafe { &mut *app }, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
     unsafe { &*app }.start_runtime(256, 8);
 
     unsafe { &*app }.signin_nsec_for_test(TEST_NSEC, true);

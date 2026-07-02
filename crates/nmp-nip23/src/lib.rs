@@ -83,6 +83,7 @@ use nmp_core::substrate::{
 use nmp_core::ObservedProjectionSink;
 
 mod feed;
+mod installer;
 pub mod ownership;
 mod projection;
 pub mod wire;
@@ -90,6 +91,7 @@ pub use feed::{
     longform_acquisition_kinds, longform_feed_predicate, LongformFeed, LongformFeedEntry,
     LongformFeedPredicate, LongformRepostAttribution,
 };
+pub use installer::{register, Config, Handles};
 pub use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 pub(crate) use projection::article_address;
 pub use projection::{ArticleFeedItem, LongformProjection};
@@ -134,7 +136,7 @@ pub fn register_content_embed_projection_adapter() {
 /// [`ObservedProjectionSink`] and as the typed snapshot projection under
 /// [`LONGFORM_PROJECTION_KEY`]. The payload is typed-only (`NL23`) and never
 /// writes to the retiring generic JSON `projections` map.
-pub fn register_longform_projection(
+pub(crate) fn register_longform_projection(
     app: &(impl ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
 ) {
     register_content_embed_projection_adapter();

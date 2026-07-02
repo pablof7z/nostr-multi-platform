@@ -65,7 +65,8 @@ fn dispatch_well_formed_blossom_upload_is_accepted_through_registry() {
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid until
     // `nmp_app_free` and no aliasing `&NmpApp` is live during registration.
-    nmp_blossom::register_actions(unsafe { &mut *app });
+    nmp_blossom::register(unsafe { &mut *app }, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
     signin(app);
 
     // Write a real blob the action can hash (file_path must point at a real
@@ -110,7 +111,8 @@ fn dispatch_rejects_empty_servers_through_registry() {
     let _g = guard();
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: see above.
-    nmp_blossom::register_actions(unsafe { &mut *app });
+    nmp_blossom::register(unsafe { &mut *app }, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
     signin(app);
 
     let input = UploadInput {
@@ -137,7 +139,8 @@ fn dispatch_rejects_empty_file_path_through_registry() {
     let _g = guard();
     let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
     // SAFETY: see above.
-    nmp_blossom::register_actions(unsafe { &mut *app });
+    nmp_blossom::register(unsafe { &mut *app }, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
     signin(app);
 
     let input = UploadInput {

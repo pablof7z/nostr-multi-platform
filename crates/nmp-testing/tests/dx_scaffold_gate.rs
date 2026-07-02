@@ -18,17 +18,10 @@
 //! | G4   | Shell (examples/shell.rs) contains zero business-logic patterns |
 //! | G5   | Adding a typed projection via the intended seam touches 1 file  |
 //!
-//! # Invocation
-//!
-//! ```sh
-//! cargo test -p nmp-testing --test dx_scaffold_gate
-//! ```
-//!
 //! - `docs/aim.md` §1  — one-shot claim
 //! - `docs/aim.md` §2 inv-4 — No native business logic
 //! - `docs/aim.md` §4.14  — scaffolding CLI contract
 //! - `docs/aim.md` §6 doctrine — all reads/writes through store/actions
-//! - `AGENTS.md` — file-size rules (this file ≤ 300 LOC)
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,7 +29,6 @@ use std::process::{Command, Output, Stdio};
 use std::sync::{mpsc, OnceLock};
 use std::time::Duration;
 
-// ---------------------------------------------------------------------------
 fn nmp_checkout() -> PathBuf {
     // CARGO_MANIFEST_DIR is crates/nmp-testing; repo root is two levels up.
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -207,10 +199,6 @@ fn count_policy_loc(content: &str) -> (usize, Vec<String>) {
     (count, hits)
 }
 
-// ---------------------------------------------------------------------------
-// G1: Fresh scaffold compiles (cargo check --all-targets)
-// ---------------------------------------------------------------------------
-
 #[test]
 fn g1_fresh_scaffold_compiles() {
     let scaffold = scaffold();
@@ -261,10 +249,6 @@ fn g1_fresh_scaffold_compiles() {
         String::from_utf8_lossy(&run.stdout),
     );
 }
-
-// ---------------------------------------------------------------------------
-// G2: Zero user-authored policy LOC in scaffold
-// ---------------------------------------------------------------------------
 
 #[test]
 fn g2_scaffold_has_zero_policy_loc() {
@@ -338,11 +322,18 @@ fn g3_shell_uses_nmp_app_builder() {
     let mut cursor = 0;
     for installer in [
         "nmp_substrate::install",
-        "nmp_nip50::register_search_scopes",
-        "nmp_nip02::register_follow_actions",
-        "nmp_nip51::register_mute_runtime",
-        "nmp_nip17::register_runtime",
-        "nmp_nip23::register_longform_projection",
+        "nmp_nip50::register",
+        "nmp_nip02::register",
+        "nmp_replies::register",
+        "nmp_nip25::register",
+        "nmp_nip18::register",
+        "nmp_nip84::register",
+        "nmp_nip29::register",
+        "nmp_wot::register",
+        "nmp_nip51::register",
+        "nmp_nip17::register",
+        "nmp_nip22::register",
+        "nmp_nip23::register",
     ] {
         let index = lib_rs[cursor..]
             .find(installer)

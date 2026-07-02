@@ -60,8 +60,8 @@ use std::sync::Arc;
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, BlockedRelayLookup,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    BlockedRelayLookup,
 };
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 use nmp_signer_iface::UnsignedEvent;
@@ -164,7 +164,7 @@ pub struct BlockRelayInput {
 /// Holds an [`Arc<InMemoryBlockedRelayCache>`] so it can read the active
 /// account's current blocked set without reaching through the kernel (ADR-0072
 /// rung 5.2 — stateful module carries its dependency, captured at composition
-/// time by [`register_block_relay_actions`]).
+/// time by the NIP-51 substrate composition.
 pub struct BlockRelayAction {
     cache: Arc<InMemoryBlockedRelayCache>,
 }
@@ -345,30 +345,6 @@ impl ActionModule for UnblockRelayAction {
         }));
         Ok(())
     }
-}
-
-// ─── Registration ────────────────────────────────────────────────────────────
-
-/// Register the `nmp.nip51.block_relay` and `nmp.nip51.unblock_relay` action
-/// modules as **yielding defaults** (ADR-0069 Part 1): an app may pre-empt
-/// either regardless of call order.
-///
-/// Both modules share a clone of `cache` — the SAME
-/// `InMemoryBlockedRelayCache` that `Kind10006Parser` writes into and the
-/// kernel reads via `Arc<dyn BlockedRelayLookup>`. Sharing one instance is
-/// what lets the module's idempotency guard see live state from the ingest
-/// path.
-///
-/// Designed to be called from `explicit_composition::tiers::register_substrate`
-/// immediately after the `InMemoryBlockedRelayCache` is constructed and handed
-/// to `set_blocked_relay_lookup` and `Kind10006Parser`. The Arc clones here
-/// add no overhead — the cache lives for the process lifetime.
-pub fn register_block_relay_actions(
-    app: &mut impl ActionRegistrar,
-    cache: Arc<InMemoryBlockedRelayCache>,
-) {
-    app.register_default_action(BlockRelayAction::new(Arc::clone(&cache)));
-    app.register_default_action(UnblockRelayAction::new(cache));
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

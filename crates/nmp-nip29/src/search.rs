@@ -126,7 +126,7 @@ impl SearchScopeProvider for GroupMetadataSearchScope {
 /// host calls this one-liner during composition to add the `nip29.groups`
 /// cache-only group-metadata FTS scope. A duplicate scope id yields to the
 /// existing registration (first wins).
-pub fn register_search_scopes(host: &impl SearchScopeRegistrar) {
+pub(crate) fn register_search_scopes(host: &impl SearchScopeRegistrar) {
     host.register_search_scope(Arc::new(GroupMetadataSearchScope::new()));
 }
 

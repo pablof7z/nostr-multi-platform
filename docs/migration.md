@@ -86,18 +86,35 @@ use nmp_core::substrate::AppHost;
 pub fn register(app: &mut impl AppHost) {
     let _substrate_handles =
         nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
-    nmp_nip50::register_search_scopes(app);
-    nmp_nip50::register_input_scopes(app);
-    nmp_nip02::register_follow_actions(app);
-    nmp_replies::register_actions(app);
-    nmp_nip17::register_actions(app);
-    nmp_nip17::register_runtime(app);
-    let _comment_runtime = nmp_nip22::register_runtime(app);
-    nmp_nip23::register_longform_projection(app);
+    nmp_nip50::register(app, nmp_nip50::Config::default())?;
+    nmp_nip02::register(app, nmp_nip02::Config::default())?;
+    nmp_replies::register(app, nmp_replies::Config::default())?;
+    nmp_nip17::register(app, nmp_nip17::Config::default())?;
+    nmp_nip22::register(app, nmp_nip22::Config::default())?;
+    nmp_nip23::register(app, nmp_nip23::Config::default())?;
     my_app_core::register_actions(app);
     my_app_core::register_projections(app);
 }
 ```
+
+### Protocol installers
+
+Old split calls:
+
+```rust
+nmp_nip17::register_actions(app);
+nmp_nip17::register_runtime(app);
+```
+
+New canonical call:
+
+```rust
+let _nip17 = nmp_nip17::register(app, nmp_nip17::Config::default())?;
+```
+
+Every protocol crate exposes `Config`, `Handles`, and `register`. Public
+`register_*` aliases are intentionally absent so a protocol cannot be
+half-installed.
 
 App-owned relays, seed follows, signer permissions, and product defaults stay
 in the leaf app Rust crate or operator config. They do not move into a shared

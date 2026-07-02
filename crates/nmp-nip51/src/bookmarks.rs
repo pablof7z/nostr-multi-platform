@@ -16,9 +16,8 @@ use serde::{Deserialize, Serialize};
 
 #[path = "bookmarks/actions.rs"]
 mod actions;
-pub use actions::{
-    register_bookmark_actions, AddBookmarkAction, BookmarkUpdateInput, RemoveBookmarkAction,
-};
+pub(crate) use actions::register_bookmark_actions;
+pub use actions::{AddBookmarkAction, BookmarkUpdateInput, RemoveBookmarkAction};
 
 /// NIP-51 metadata tags carried by a bookmark list.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]

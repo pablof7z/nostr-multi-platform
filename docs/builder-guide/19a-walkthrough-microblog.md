@@ -215,14 +215,12 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     // 1. Install explicit substrate/protocol features.
     let _substrate_handles =
         nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
-    nmp_nip50::register_search_scopes(app);
-    nmp_nip50::register_input_scopes(app);
-    nmp_nip02::register_follow_actions(app);
-    nmp_replies::register_actions(app);
-    nmp_nip17::register_actions(app);
-    nmp_nip17::register_runtime(app);
-    let _comment_runtime = nmp_nip22::register_runtime(app);
-    nmp_nip23::register_longform_projection(app);
+    nmp_nip50::register(app, nmp_nip50::Config::default())?;
+    nmp_nip02::register(app, nmp_nip02::Config::default())?;
+    nmp_replies::register(app, nmp_replies::Config::default())?;
+    nmp_nip17::register(app, nmp_nip17::Config::default())?;
+    nmp_nip22::register(app, nmp_nip22::Config::default())?;
+    nmp_nip23::register(app, nmp_nip23::Config::default())?;
 
     // 2. Write path.
     app.register_action(NoteActionModule);

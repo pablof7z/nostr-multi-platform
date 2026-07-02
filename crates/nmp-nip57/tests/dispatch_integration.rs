@@ -21,7 +21,8 @@ fn start_bytes_rejects_wrong_schema_version_for_zap() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_nip57::register_actions(&mut registry);
+    nmp_nip57::register(&mut registry, nmp_nip57::Config::default())
+        .expect("nmp-nip57 registration must not collide");
 
     let bad_version = build_bad_version_zap_payload();
     let err = registry
@@ -52,7 +53,8 @@ fn start_bytes_accepts_valid_zap_payload() {
     use nmp_nip57::ZapInput;
 
     let mut registry = ActionRegistry::new();
-    nmp_nip57::register_actions(&mut registry);
+    nmp_nip57::register(&mut registry, nmp_nip57::Config::default())
+        .expect("nmp-nip57 registration must not collide");
 
     let action = ZapInput {
         recipient_pubkey: "a".repeat(64),
@@ -276,7 +278,8 @@ fn generated_zap_builder_bytes_minimal_dispatch_through_start_bytes() {
     assert_eq!(action.comment, None);
 
     let mut registry = ActionRegistry::new();
-    nmp_nip57::register_actions(&mut registry);
+    nmp_nip57::register(&mut registry, nmp_nip57::Config::default())
+        .expect("nmp-nip57 registration must not collide");
     // POSITIVE: routed to nmp.nip57.zap, payload decodes + start() OK.
     registry
         .start_bytes(

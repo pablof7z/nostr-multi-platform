@@ -2,7 +2,6 @@ use nmp_core::actor::{ActorCommand, PublishCommand};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-    ProtocolDescriptor,
 };
 use nmp_core::tags::{p_tag, q_tag};
 use nmp_signer_iface::UnsignedEvent;
@@ -144,16 +143,7 @@ impl ProtocolCommand for QuoteRepostCommand {
     }
 }
 
-pub struct Nip18Descriptor;
-
-impl ProtocolDescriptor for Nip18Descriptor {
-    fn register_actions(&self, app: &mut impl ActionRegistrar) {
-        app.register_default_action(RepostModule);
-        app.register_default_action(QuoteRepostModule);
-    }
-}
-
-pub fn register_actions(app: &mut impl ActionRegistrar) {
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(RepostModule);
     app.register_default_action(QuoteRepostModule);
 }

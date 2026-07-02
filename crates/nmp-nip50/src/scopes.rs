@@ -221,7 +221,7 @@ fn bounded_prefix(s: &str, max_bytes: usize) -> String {
 /// against the host. Narrow registration surface (D6): a protocol crate takes
 /// `&impl SearchScopeRegistrar`, never the whole `AppHost`. Called from the
 /// composition root.
-pub fn register_search_scopes(host: &impl SearchScopeRegistrar) {
+pub(crate) fn register_search_scopes(host: &impl SearchScopeRegistrar) {
     host.register_search_scope(Arc::new(ProfileSearchScope::new()));
     host.register_search_scope(Arc::new(NoteSearchScope::new()));
     host.register_search_scope(Arc::new(LongFormSearchScope::new()));

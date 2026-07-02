@@ -19,7 +19,7 @@ pub mod showcase;
 const GALLERY_COMPOSITION_ROOT: &str = "nmp-app-gallery";
 const GALLERY_COMPOSITION_PROVIDER: &str = "nmp_app_gallery::install_gallery_composition";
 
-pub use composition::{install_gallery_composition, register_gallery_embed_projection_adapters};
+pub use composition::install_gallery_composition;
 pub use facade::{
     GalleryApp, GalleryCapabilitySink, GalleryDispatchOutcome, GalleryEventRef, GalleryEventShape,
     GalleryProfileShape, GalleryRefLiveness, GalleryRefNamespace, GalleryRefShape,

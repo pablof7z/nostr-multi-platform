@@ -33,6 +33,34 @@ The same rule applies to decoding. Projections that need deletion facts should
 share one canonical decoder instead of importing another protocol crate's
 private projection helper.
 
+`nmp-nip25` does NOT build the kind:5 wire event. It calls
+`nmp_nip09::build_deletion_draft` and receives an `OwnedDeletionDraft` carrying
+`nmp-nip09` artifact provenance.
+
+### Publish gate
+
+`crates/nmp-ownership/src/lib.rs::validate_publish_ownership` now enforces a
+generic rule:
+
+```
+if kind == 5 { require artifact("nmp.nip09", "nostr.kind.5.deletion") }
+```
+
+The previous narrow gate (`kind == 5 && deletes_kind_7_reaction(tags)`) is
+replaced by this generic check. The `deletes_kind_7_reaction` helper is deleted;
+the publish gate does not inspect k-tags to decide which owner to require.
+
+### Composition
+
+`nmp-nip09` exposes the canonical protocol installer
+`nmp_nip09::register(app, nmp_nip09::Config::default())` over the generic
+`nmp.nip09.delete` action for explicit app/runtime composition roots (ADR-0069
+explicit composition; the `nmp-defaults` bundle was removed in #2546). It is
+registered as a yielding default, so an app that pre-registers a custom deletion
+handler overrides it. The installer is opt-in: reaction retraction (the
+immediate driver) flows through `nmp-nip25`'s delegation to the `nmp-nip09`
+builder and does not depend on `nmp-nip09` being installed.
+
 ## Consequences
 
 Future crates that need deletion call the same builder and pass the same publish

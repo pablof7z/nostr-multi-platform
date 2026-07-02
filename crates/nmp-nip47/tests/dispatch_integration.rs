@@ -28,7 +28,7 @@ const NOW_MS: u64 = 1_700_000_000_000;
 
 /// Register all three wallet action modules into a fresh registry, each bound to
 /// an independent (empty) per-app `WalletRuntimeHandle` — the same shape
-/// `register_wallet` installs, minus the interceptor/projection wiring those
+/// `nmp_nip47::register` installs, minus the interceptor/projection wiring those
 /// `start_bytes` paths never touch.
 fn registry_with_wallet_actions() -> ActionRegistry {
     let mut registry = ActionRegistry::new();

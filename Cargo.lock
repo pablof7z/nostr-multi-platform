@@ -3994,6 +3994,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-native-runtime",
+ "nmp-nip23",
  "nmp-nostr-id",
  "nmp-ownership",
  "ratatui",

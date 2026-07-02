@@ -75,10 +75,40 @@ drift checks.
 
 ## Per-seam checklist
 
-Implement only the seams your protocol needs; `register_actions()` wires them
-into the app composition root through `AppHost`. `nmp-nip29` registers 15
-`ActionModule`s and typed read-session/output support for the group-chat read
-model. Minimum surface:
+Implement only the seams your protocol needs. Each reusable protocol crate
+exposes exactly one public installer:
+
+```rust
+#[derive(Clone, Debug, Default)]
+pub struct Config {
+    // Explicit app policy knobs. Empty if none.
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {
+    // Runtime/projection handles the app may retain. Empty if none.
+}
+
+pub fn register(
+    app: &mut (impl ActionRegistrar + SnapshotProjectionRegistrar /* + exact narrow seams */),
+    config: Config,
+) -> Result<Handles, RegistrationError> {
+    // Register actions, parsers, projections, runtimes, and observers owned by this crate.
+    // Do not expose public register_actions/register_runtime aliases.
+    Ok(Handles::default())
+}
+```
+
+The public installer must take only narrow registrar traits. Do not take
+`AppHost` from a reusable protocol crate: `AppHost` is a composition-root
+super-trait for app/runtime roots, not a reusable crate boundary. `Config` is
+intentional even when empty; it keeps app-owned policy knobs visible rather than
+hiding them in presets. `Handles` carries only meaningful runtime/projection
+handles an app may retain.
+
+`nmp-nip29` registers its owned actions plus input/search scopes through this
+single call; typed read-session/output support stays in the protocol-owned
+runtime/session modules. Minimum surface:
 
 | Seam | Must provide | Reference |
 |---|---|---|
@@ -94,29 +124,18 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 
 ### How `nmp-nip29` wires its seams
 
-`crates/nmp-nip29/src/register.rs`:
+`crates/nmp-nip29/src/installer.rs`:
 
 ```rust
 // Called from an app-core composition root during init.
-pub fn register_actions(app: &mut impl AppHost) {
-    app.register_action(PublishGroupEventAction);
-    app.register_action(CreateGroupAction);
-    app.register_action(DiscoverGroupsAction);
-    app.register_action(JoinGroupAction);
-    // additional NIP-29 owner actions
-}
-
-// Called separately after the read model is constructed.
-pub fn register_projector(app: &mut impl AppHost, projection: Arc<GroupEventsProjection>) {
-    app.register_typed_snapshot_projection(
-        nmp_ownership::DeclaredProjectionKey::framework(
-            "nmp.nip29.group_events",
-            "projection.nmp.nip29.group_events",
-        ),
-        move || {
-            projection.typed_snapshot()    // cheap, non-blocking
-        },
-    );
+pub fn register(
+    app: &mut (impl ActionRegistrar + InputScopeRegistrar + SearchScopeRegistrar),
+    _config: Config,
+) -> Result<Handles, RegistrationError> {
+    action_registration::register_actions(app)?;
+    input_scope::register_input_scopes(app);
+    search::register_search_scopes(app);
+    Ok(Handles)
 }
 ```
 
@@ -177,7 +196,8 @@ app's CI owns its drift gate.
   (plus `serde`, protocol libs). Add the crate to the workspace `members`.
 - `crates/nmp-nip<N>/src/lib.rs` — module layout + the boundary statement
   ("does NOT import any other `nmp-nip*`"; "`nmp-core` gains zero <noun>
-  nouns") + public `register_actions(app: &mut impl AppHost)` fn.
+  nouns") + public `Config`, `Handles`, and `register(...) -> Result<Handles,
+  RegistrationError>` installer using only exact narrow registrar traits.
 - `src/<protocol_id>.rs` — the typed routing/identity key (cf.
   `group_id.rs`, 117 LOC: `GroupId { host_relay_url, local_id }` + codec).
 - `src/kinds.rs` — kind constants + a dispatch helper.
