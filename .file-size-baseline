@@ -22,5 +22,4 @@ crates/nmp-core/src/kernel/publish_terminal_status_tests.rs	816
 crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/state_projection_tests.rs	584
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
-crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
 crates/nmp-threading/tests/grouper.rs	657
