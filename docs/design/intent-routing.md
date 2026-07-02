@@ -8,7 +8,7 @@
 > the noun-free `substrate::search` registry (`SearchScopeRegistrar` /
 > `SearchScopeProvider` / `SearchScopeRegistry` / cache-serve hook), and the
 > account-config self-kind bootstrap including kind:10007 — plus (for
-> Draft/Wiki) the `EventClass` class-routing lane. ALL NIP-50 search
+> owner-declared classes) the `EventClass` class-routing lane. ALL NIP-50 search
 > orchestration (entrypoint, relay selection from kind:10007, cache scan,
 > ranking, dedup, result projection) is higher-order in `nmp-nip50`. There is
 > no `EventClass::Search`.

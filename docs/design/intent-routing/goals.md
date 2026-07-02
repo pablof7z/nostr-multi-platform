@@ -17,8 +17,10 @@
    - **10006** blocked relays (global filter via `blocked_relays()`).
    - **10007** search relays → read by `SearchRelayListProjection` in
      `nmp-nip51`; consumed by `nmp-nip50` directly (not a core routing class).
-   - **10013** draft relays (nip44-encrypted) → `EventClass::Draft`.
-   - **10102** good wiki relays → `EventClass::Wiki` (publisher-keyed).
+   - Future draft relay support must be introduced by the draft producer owner
+     as an owner-declared `EventClass::Other(...)` value.
+   - Future wiki relay support must be introduced by the wiki producer owner
+     as an owner-declared `EventClass::Other(...)` value.
 4. The diagnostic UI sees every class-routed decision as a distinct
    lane — no silent "the kernel just did something."
 5. Raw user input resolves through one framework seam before free text reaches

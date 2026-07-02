@@ -10,8 +10,8 @@
 |-------------|----------------------------|----------------------------------------|------------|-------------|
 | 10006       | blocked (global filter)    | `blocked_relays()`                     | no         | no          |
 | 10007       | search relays (higher-order) | `SearchRelayListProjection` in `nmp-nip51`; consumed by `nmp-nip50` directly — NOT routed via `class_relays_personal` | no | no |
-| 10013       | `Draft` (NIP-37)           | `class_relays_personal(&Draft)`        | **yes** (nip44 to self) | no |
-| 10102       | `Wiki` (NIP-54)            | `class_relays_for_author(&Wiki, _)`    | no         | **yes**     |
+| 10013       | Draft relay list (NIP-37)  | future owner-declared class            | **yes** (nip44 to self) | no |
+| 10102       | Wiki relay list (NIP-54)   | future owner-declared class            | no         | **yes**     |
 | 10050       | DM (NIP-17)                | decoded only; routing deferred         | no         | no          |
 | 30002       | named — see §5.1           | not consumed in v1                     | n/a        | n/a         |
 
@@ -50,7 +50,7 @@ pub struct Nip51RoutingFacts {
     pub dm: Vec<RelayUrl>,
 
     /// Per-author kind:10102 lists. Lazy-populated when a class-routed
-    /// Wiki interest first names the author. Evicted when the last
+    /// Publisher-keyed interest first names the author. Evicted when the last
     /// such interest ends.
     pub wiki_per_author: HashMap<Pubkey, Vec<RelayUrl>>,
 }

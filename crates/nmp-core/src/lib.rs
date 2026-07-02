@@ -67,15 +67,6 @@ pub mod display;
 // `mod ffi;` / `pub use ffi::*` are gone; consumers reach
 // the symbols through `nmp_ffi::*` directly. The substrate types the FFI
 // marshals are re-exported through the public surface below + `__ffi_internal`.
-// ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
-// because actor/commands/* use it on the native side (also actor is always
-// compiled until Phase 1c decoupling). Promoted from `mod ffi_guard` to
-// `pub mod ffi_guard` so the extracted `nmp-ffi` crate can reach
-// `guard_ffi_callback` through a normal Rust path. The guard is substrate-
-// grade (no app or protocol nouns); making it public is a layer-shape
-// concession, not a noun leak.
-#[doc(hidden)]
-pub mod ffi_guard;
 // Step 8 phase A — the keepalive FSM moved with the relay worker to
 // `nmp-network::keepalive`. It's purely transport-internal; `nmp-core`
 // no longer re-exports it.

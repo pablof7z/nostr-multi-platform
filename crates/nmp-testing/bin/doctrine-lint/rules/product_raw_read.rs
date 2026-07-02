@@ -9,7 +9,9 @@
 //! - allowed: `nmp-core`, `nmp-ffi`, native-runtime internals, protocol crates,
 //!   diagnostics, tests, and export/pull consumers;
 //! - denied: Rust app shells under `apps/**/src/**` and starter templates under
-//!   `crates/nmp-cli/templates/**`.
+//!   `crates/nmp-cli/templates/**`;
+//! - denied: the worked example product crate under
+//!   `crates/nmp-example-login-timeline/src/**`.
 //!
 //! This deliberately does not retire the existing low-level runtime behavior,
 //! but native `NmpApp` must not expose public raw `open_interest` /
@@ -70,6 +72,11 @@ pub fn file_in_scope(path: &Path) -> bool {
     if s.contains("/crates/nmp-cli/templates/") || s.starts_with("crates/nmp-cli/templates/") {
         return true;
     }
+    if s.contains("/crates/nmp-example-login-timeline/src/")
+        || s.starts_with("crates/nmp-example-login-timeline/src/")
+    {
+        return true;
+    }
     let under_apps = s.contains("/apps/") || s.starts_with("apps/");
     under_apps && s.contains("/src/")
 }
@@ -125,13 +132,16 @@ mod tests {
     }
 
     #[test]
-    fn scope_is_product_and_templates_only() {
+    fn scope_is_product_example_and_templates_only() {
         assert!(file_in_scope(Path::new("apps/demo/src/main.rs")));
         assert!(file_in_scope(Path::new(
             "apps/demo/crates/nmp-app-demo/src/lib.rs"
         )));
         assert!(file_in_scope(Path::new(
             "crates/nmp-cli/templates/lib.rs.tmpl"
+        )));
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-example-login-timeline/src/lib.rs"
         )));
         assert!(!file_in_scope(Path::new("crates/nmp-core/src/lib.rs")));
         assert!(!file_in_scope(Path::new("crates/nmp-ffi/src/timeline.rs")));

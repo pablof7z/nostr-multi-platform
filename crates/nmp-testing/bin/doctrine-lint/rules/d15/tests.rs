@@ -71,15 +71,6 @@ fn flags_observer_invocation_after_block_closes() {
 }
 
 #[test]
-fn allows_guard_ffi_callback_wrap() {
-    let hits = check_one("    guard_ffi_callback(\"site\", || callback(ctx, payload));");
-    assert!(
-        hits.is_empty(),
-        "guard_ffi_callback must be recognised as a guard; got {hits:?}"
-    );
-}
-
-#[test]
 fn flags_parens_wrapped_invocation_unguarded() {
     let hits = check_one("    (self.validate)(action_json);");
     assert_eq!(
@@ -135,8 +126,8 @@ fn does_not_flag_method_call_on_observer_name() {
 
 #[test]
 fn flags_callback_invocation_unguarded() {
-    // The C-ABI shape: `(registration.callback)(ctx, payload);` — must
-    // be wrapped in `guard_ffi_callback`. Unguarded → D15 finding.
+    // The callback shape: `(registration.callback)(ctx, payload);` — must
+    // be wrapped in `catch_unwind`. Unguarded -> D15 finding.
     let hits = check_one("    (registration.callback)(ctx, payload);");
     assert_eq!(hits.len(), 1);
     assert!(hits[0].1.contains("registration.callback"));

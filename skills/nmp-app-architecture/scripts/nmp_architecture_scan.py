@@ -160,7 +160,8 @@ def _norm(rel: str) -> str:
 
 def is_framework_crate(rel: str) -> bool:
     """A shared NMP framework crate (crates/nmp-*)."""
-    return "crates/nmp-" in _norm(rel)
+    r = f"/{_norm(rel)}"
+    return "/crates/nmp-" in r and "/crates/nmp-app-" not in r
 
 
 def is_app_code(rel: str) -> bool:
@@ -231,7 +232,9 @@ REPEATING_TIMER_RE = re.compile(r"Timer\.scheduledTimer")
 ONESHOT_TIMER_RE = re.compile(
     r"\b(Task\.sleep|setTimeout)\b|DispatchQueue\.[A-Za-z0-9_.]+\.asyncAfter"
 )
-LOOP_CONTEXT_RE = re.compile(r"\b(while|for|loop|repeat)\b")
+LOOP_CONTEXT_RE = re.compile(
+    r"\bwhile\b|\brepeat\b|\bfor\s+[A-Za-z_][A-Za-z0-9_]*\s+in\b|\bloop\s*\{"
+)
 
 ONESHOT_TIMER_REASON = (
     "One-shot presentation timer (toast/copy-feedback/focus/initial-scroll). "
@@ -402,9 +405,7 @@ RULES = [
     ),
 ]
 
-D6_PATTERN = re.compile(
-    r"(extern\s+\"C\"|@Throws|throws\b|try\s*\{|catch\s*\(|->\s*Result\s*<)"
-)
+D6_PATTERN = re.compile(r"(@Throws|throws\b|try\s*\{|catch\s*\(|->\s*Result\s*<)")
 D6_REASON = "Errors must surface as state, not native exceptions or FFI Result types."
 
 

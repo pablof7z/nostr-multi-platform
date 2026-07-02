@@ -68,6 +68,9 @@ pub struct SnapshotEnvelope {
     pub events_since_last_update: u64,
     /// Current actor command-queue depth.
     pub actor_queue_depth: u32,
+    /// External event sink frames dropped because the bounded dispatch channel
+    /// was full.
+    pub external_event_sink_channel_overflow_drops: u64,
     /// Monotonically-increasing update sequence counter.
     pub update_sequence: u64,
     // --- Relay statuses (PR-B: extended for chirp-desktop typed-first migration) ---
@@ -142,6 +145,7 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         events_since_last_update,
         actor_queue_depth,
         update_sequence,
+        external_event_sink_channel_overflow_drops,
         serialize_us,
     ) = if let Some(metrics) = snapshot.metrics() {
         (
@@ -151,10 +155,11 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
             metrics.events_since_last_update(),
             metrics.actor_queue_depth(),
             metrics.update_sequence(),
+            metrics.external_event_sink_channel_overflow_drops(),
             metrics.serialize_us(),
         )
     } else {
-        (0, 0, 0, 0, 0, 0, 0)
+        (0, 0, 0, 0, 0, 0, 0, 0)
     };
 
     SnapshotEnvelope {
@@ -168,6 +173,7 @@ fn envelope_from_snapshot_frame(snapshot: &fb::SnapshotFrame<'_>) -> SnapshotEnv
         visible_items,
         events_since_last_update,
         actor_queue_depth,
+        external_event_sink_channel_overflow_drops,
         update_sequence,
         relay_statuses: relay_status::decode_relay_statuses(snapshot),
         relay_status: relay_status::decode_relay_status_aggregate(snapshot),

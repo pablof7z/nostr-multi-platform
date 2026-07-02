@@ -117,6 +117,9 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     // contract.
     let command_drops_handle = ctx.kernel.take_command_drops_handle_for_reset();
     let relay_backlog_drops_handle = ctx.kernel.take_relay_backlog_drops_handle_for_reset();
+    let external_event_sink_channel_overflow_drops_handle = ctx
+        .kernel
+        .take_external_event_sink_channel_overflow_drops_handle_for_reset();
     // Preserve the observed-projection sink slot across Reset for the
     // same reason: the `Arc<Mutex<…>>` is shared with the FFI
     // surface and per-app crates; replacing it would silently
@@ -162,6 +165,10 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     }
     if let Some(handle) = relay_backlog_drops_handle {
         ctx.kernel.set_relay_backlog_drops_handle(handle);
+    }
+    if let Some(handle) = external_event_sink_channel_overflow_drops_handle {
+        ctx.kernel
+            .set_external_event_sink_channel_overflow_drops_handle(handle);
     }
     if let Some(handle) = event_observers_handle {
         ctx.kernel.set_event_observers_handle(handle);

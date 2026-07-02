@@ -1,9 +1,7 @@
 //! Negative D15 fixture — must produce zero D15 findings.
 //!
-//! Every host-closure invocation here is wrapped in either `catch_unwind`
-//! (Rust observers) or `guard_ffi_callback` (C-ABI fn pointers), matching
-//! the canonical pattern in `nmp-core/src/actor/commands/event_observer.rs`
-//! and `nmp-core/src/capability_socket.rs`.
+//! Every host-closure invocation here is wrapped in `catch_unwind`, matching
+//! the canonical pattern in `nmp-core/src/actor/commands/event_observer.rs`.
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -34,19 +32,6 @@ impl FfiSlot {
             (self.callback)(payload);
         }));
     }
-}
-
-/// `guard_ffi_callback` is recognised as a guard alongside `catch_unwind`
-/// — it's the same machinery scoped to the C-ABI direction. An unguarded
-/// `extern "C" fn` call wrapped in it must NOT fire D15.
-pub fn cabi_guarded(callback: extern "C" fn(*const u8), payload: *const u8) {
-    let _: Option<()> = guard_ffi_callback("cabi shim", || callback(payload));
-}
-
-// Stub so the fixture's `guard_ffi_callback(...)` call type-checks at
-// review time. Never compiled — the lint scans text only.
-fn guard_ffi_callback<R>(_site: &str, _body: impl FnOnce() -> R) -> Option<R> {
-    None
 }
 
 /// Per-line `// doctrine-allow: D15 — reason` opt-out: the rule has an

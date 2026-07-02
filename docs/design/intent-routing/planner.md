@@ -18,20 +18,20 @@ This drives the partition logic:
 
 ```
 interest: shape = { kinds: [30818], authors: [bob, alice] }
-       → class = Wiki (from_kind(30818))
+       → class = owner-declared wiki class (from_kind(30818))
        → routing_family = PublisherKeyed
        → split per author:
            sub-shape A: { kinds: [30818], authors: [bob] }
-                        relays = class_relays_for_author(Wiki, bob)
+                        relays = class_relays_for_author(<wiki class>, bob)
                                  .unwrap_or_else(|| nip65.write_relays(bob))
            sub-shape B: { kinds: [30818], authors: [alice] }
-                        relays = class_relays_for_author(Wiki, alice)
+                        relays = class_relays_for_author(<wiki class>, alice)
                                  .unwrap_or_else(|| nip65.write_relays(alice))
 ```
 
 When `class.routing_family() == Personal`, the partition does not split
 by author — the active account's `class_relays_personal(class)` answers
-the whole interest (used for Draft/kind:10013 only). When
+the whole interest (used for future personal classes). When
 `class.routing_family() == None`, the planner skips class routing entirely
 and runs the existing four-lane partition.
 
@@ -71,7 +71,7 @@ by mistake will otherwise see nothing happen.
 
 ### 4.4 Lazy 10102 fetch lifecycle
 
-When `case_g_class_routed` encounters a Wiki interest naming an author
+When `case_g_class_routed` encounters a publisher-keyed class interest naming an author
 whose kind:10102 hasn't been fetched yet:
 
 1. The planner returns the current plan with that author's lane routed

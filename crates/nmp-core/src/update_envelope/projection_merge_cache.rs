@@ -224,6 +224,8 @@ fn encode_metrics<'bldr>(
             update_frame_degradations_total: m.update_frame_degradations_total(),
             command_drops: m.command_drops(),
             relay_backlog_drops: m.relay_backlog_drops(),
+            external_event_sink_channel_overflow_drops: m
+                .external_event_sink_channel_overflow_drops(),
         },
     )
 }

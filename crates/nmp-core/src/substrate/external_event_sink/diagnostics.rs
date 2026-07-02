@@ -5,13 +5,14 @@
 //! degradation (a panicking policy, an overflowing inbound channel).
 
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Atomic diagnostic counters, shared between the worker thread and the
 /// dispatcher handle.
 #[derive(Debug, Default)]
 pub struct ExternalEventSinkDiagnostics {
     /// Frames dropped because the inbound bounded channel was full.
-    channel_overflow_drops: AtomicU64,
+    channel_overflow_drops: Arc<AtomicU64>,
     /// Policy `destinations()` calls that panicked and were isolated.
     policy_panics: AtomicU64,
 }
@@ -26,6 +27,9 @@ pub struct DiagnosticsSnapshot {
 impl ExternalEventSinkDiagnostics {
     pub(super) fn inc_channel_overflow_drops(&self) {
         self.channel_overflow_drops.fetch_add(1, Ordering::Relaxed);
+    }
+    pub(super) fn channel_overflow_drops_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.channel_overflow_drops)
     }
     pub(super) fn inc_policy_panics(&self) {
         self.policy_panics.fetch_add(1, Ordering::Relaxed);

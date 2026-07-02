@@ -337,6 +337,7 @@ impl Kernel {
             queue_depth: None,
             command_drops: None,
             relay_backlog_drops: None,
+            external_event_sink_channel_overflow_drops: None,
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
             external_event_sink_dispatcher: None,

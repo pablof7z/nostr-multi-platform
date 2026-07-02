@@ -192,6 +192,8 @@ impl Kernel {
                 // #2767 — backpressure drop counters, host-visible in release builds.
                 command_drops: self.command_drops(),
                 relay_backlog_drops: self.relay_backlog_drops(),
+                external_event_sink_channel_overflow_drops: self
+                    .external_event_sink_channel_overflow_drops(),
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),
@@ -488,8 +490,7 @@ impl Kernel {
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;
-        // One-tick-lag diagnostics: store this tick's measurements so the
-        // NEXT tick's Metrics reflect them. Same pattern as `last_payload_bytes`.
+        // One-tick-lag diagnostics: this tick's measurements surface next tick.
         self.last_serialize_us = this_serialize_us;
         self.last_make_update_us = this_make_update_us;
         self.last_payload_bytes = encoded.len();

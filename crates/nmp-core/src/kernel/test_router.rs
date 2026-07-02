@@ -32,7 +32,6 @@
 use std::sync::Arc;
 
 use super::Kernel;
-use crate::actor::LifecycleCommand;
 use crate::planner::{HintSource, LogicalInterest};
 use crate::substrate::{
     AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
@@ -259,7 +258,7 @@ impl Kernel {
     /// Use this in tests that exercise the routing seam (`open_author`,
     /// `open_thread`, `open_firehose_tag`, profile claims, AUTH gating,
     /// etc.) instead of the bare [`Kernel::new`].
-    pub(crate) fn new_for_test(visible_limit: usize) -> Self {
+    pub fn new_for_test(visible_limit: usize) -> Self {
         let mut kernel = Self::new(visible_limit);
         kernel.set_routing(
             Arc::new(TestOutboxRouter::new()),

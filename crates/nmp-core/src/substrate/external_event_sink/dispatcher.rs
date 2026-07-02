@@ -18,6 +18,7 @@
 //!   actor loop with the live `Pool`; it spawns the worker thread. Frames
 //!   dispatched before binding buffer in the bounded channel.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Mutex};
 
@@ -174,6 +175,16 @@ impl ExternalEventSinkDispatcher {
     #[must_use]
     pub fn diagnostics(&self) -> super::diagnostics::DiagnosticsSnapshot {
         self.diagnostics.snapshot()
+    }
+
+    /// Shared production counter handle for kernel `Metrics`.
+    ///
+    /// The dispatcher owns the counter because it is the writer on bounded
+    /// channel overflow; the kernel reads the same atomic so drops are
+    /// host-visible on every snapshot instead of test-only diagnostics.
+    #[must_use]
+    pub(crate) fn channel_overflow_drops_handle(&self) -> Arc<AtomicU64> {
+        self.diagnostics.channel_overflow_drops_handle()
     }
 
     /// Gate: should the dispatcher emit a frame for this `outcome`?

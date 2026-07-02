@@ -13,36 +13,8 @@
 
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum EventClass {
-    /// kind:1, kind:6, kind:7, generic public-feed traffic.
-    PublicNote,
-    /// kind:0 — profile metadata.
-    Profile,
-    /// kind:10002 — NIP-65 relay list.
-    RelayList,
-    /// kind:30023 — NIP-23 long-form articles.
-    LongForm,
-    /// NIP-37 drafts.
-    /// - `kind:31234` — encrypted draft envelope (parent).
-    /// - `kind:1234`  — encrypted checkpoint, references parent via
-    ///   `["a", "31234:<pubkey>:<d>"]`.
-    /// Both route to the user's NIP-51 kind:10013 list (personal).
-    Draft,
-    /// NIP-54 wikis.
-    /// - `kind:30818` — addressable wiki entry.
-    /// - `kind:818`   — merge request.
-    /// - `kind:30819` — redirect.
-    /// All three route to the *publishing author's* kind:10102 list
-    /// (publisher-keyed; see `planner.md` §4.1).
-    Wiki,
-    /// kind:4 / kind:14 — direct messages. Reserved variant; routing
-    /// wiring (kind:10050 / NIP-17) is deferred to its own ADR.
-    DM,
-    /// NIP-29 group-messaging kinds. Kept for diagnostic clarity. NEVER
-    /// participates in `class_relays`; NIP-29 events use the existing
-    /// `InterestShape::relay_pin` lane (ADR-0071).
-    GroupMessage,
-    /// Anything not enumerated above. Falls through to NIP-65 routing.
-    Other,
+    /// Owner-declared class name for a concrete routed producer.
+    Other(String),
     // NOTE (2026-06-22): EventClass::Search was removed. Search routing does
     // not need a planner class. The generic InterestShape.search wire-filter
     // field is sufficient; relay selection from kind:10007 is performed at the
@@ -51,20 +23,9 @@ pub enum EventClass {
 }
 
 impl EventClass {
-    /// Concrete v1 table (extend as NIPs land):
-    /// - 0          → Profile
-    /// - 1, 6, 7    → PublicNote
-    /// - 4, 14      → DM           (variant reserved; routing TBD)
-    /// - 818,
-    ///   30818,
-    ///   30819      → Wiki
-    /// - 1234,
-    ///   31234      → Draft        (checkpoint + parent share class)
-    /// - 10002      → RelayList
-    /// - 30023      → LongForm
-    /// - NIP-29
-    ///   group kinds → GroupMessage
-    /// - everything else → Other
+    /// There is no core kind-to-class table. The owner that produces a routed
+    /// class introduces its `Other("<owner.class>")` value together with the
+    /// producer and tests.
     pub fn from_kind(kind: u32) -> Self { /* table */ }
 
     /// Routing family: which resolver method serves this class.
@@ -73,18 +34,18 @@ impl EventClass {
 
 pub enum RoutingFamily {
     /// Active account's NIP-51 list. No author argument.
-    /// Used by: Draft.
+    /// Used by future owner-declared personal classes.
     /// NOTE (2026-06-22): Search was removed from this family. kind:10007
     /// relay selection is higher-order (see nmp-nip50/SearchRelayListProjection).
     Personal,
     /// Publisher's NIP-51 list, consulted per author at compile time.
-    /// Used by: Wiki.
+    /// Used by future owner-declared publisher-keyed classes.
     PublisherKeyed,
     /// Existing relay_pin lane (ADR-0071). Used by: GroupMessage.
     /// `class_relays` is never called for this family.
     RelayPin,
     /// No class routing — falls through to NIP-65 / four-lane planner.
-    /// Used by: PublicNote, Profile, RelayList, LongForm, DM (v1), Other.
+    /// Used by ordinary NIP-65 traffic and any class with no routed producer.
     None,
 }
 ```
@@ -123,7 +84,7 @@ pub trait OutboxResolver: Send + Sync {
 
     /// Personal NIP-51 routing — active account context, no author.
     /// Used for classes whose NIP-51 list is intrinsically self-keyed
-    /// (Draft: "where I store my drafts").
+    /// (personal classes: "where I store this private/protected family").
     /// NOTE (2026-06-22): kind:10007 search relays are NOT routed through
     /// this method. Search relay selection is performed at the higher layer
     /// by `nmp-nip50` via `SearchRelayListProjection` from `nmp-nip51`.
@@ -131,8 +92,8 @@ pub trait OutboxResolver: Send + Sync {
     fn class_relays_personal(&self, class: &EventClass) -> Option<Vec<RelayUrl>>;
 
     /// Publisher-keyed NIP-51 routing — consult the publishing author's
-    /// list. Used for Wiki (kind:10102 reflects "the relays I want my
-    /// wiki content to live on"). Lazy-fetched per author the first time
+    /// list. Used for publisher-keyed classes (kind:10102 reflects "the
+    /// relays I want this content to live on"). Lazy-fetched per author the first time
     /// a class-routed interest names them; cached as long as a live
     /// interest references them.
     /// Returns `None` when:
@@ -175,8 +136,8 @@ pub enum PublishTarget {
 No new `AutoByClass` variant. `Auto` is upgraded. Existing call sites
 (Chirp, gallery, M11 tests) get class routing automatically. P5 of the
 rollout is an audit pass to verify no existing call site relies on
-NIP-65-only behavior for an event the new `EventClass::from_kind`
-would classify away from `Other`.
+NIP-65-only behavior for an event an owner-declared class routes away
+from generic NIP-65 fallback.
 
 ### 3.5 Input-intent type surface
 

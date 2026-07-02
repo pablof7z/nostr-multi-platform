@@ -1,5 +1,5 @@
 //! D15 — host-supplied closures invoked through the kernel MUST be wrapped
-//! in `catch_unwind` (or the equivalent `guard_ffi_callback`).
+//! in `catch_unwind`.
 //!
 //! # Why this rule exists
 //!
@@ -11,13 +11,11 @@
 //!
 //! Those invocations are the only sites where an *unguarded* panic can kill
 //! the kernel: the actor thread's outer [`catch_unwind`] only wraps the
-//! relay-event lane, command drain panics are intentionally loud, and FFI
-//! callbacks crossing the C-ABI raise undefined behaviour. The fix is the
-//! same in every case — wrap the call site in [`catch_unwind`] (Rust
-//! observers) or [`guard_ffi_callback`] (C-ABI callbacks).
+//! relay-event lane, and command drain panics are intentionally loud. The fix
+//! is the same at every host-closure call site: wrap it in [`catch_unwind`].
 //!
 //! D15 flags the inverse of that pattern: an invocation of a host-supplied
-//! closure that is NOT lexically contained in either guard. Catching a
+//! closure that is NOT lexically contained in that guard. Catching a
 //! new registration seam at code-review time is much cheaper than waiting
 //! for the next codex panic-isolation audit.
 //!
@@ -40,9 +38,9 @@
 //!   slot lock.
 //!
 //! An invocation is **guarded** when the same line contains
-//! `catch_unwind(` / `guard_ffi_callback(`, OR the invocation sits inside an
-//! enclosing block whose opening line did. The guard window closes when the
-//! file's brace depth returns to the depth recorded at the opening line.
+//! `catch_unwind(`, OR the invocation sits inside an enclosing call whose
+//! opening line did. The guard window closes when the file's paren depth
+//! returns to the depth recorded at the opening line.
 //!
 //! # Allowed exemptions
 //!
@@ -79,7 +77,7 @@ pub fn file_in_scope(path: &Path) -> bool {
 /// Tokens that mark a line as opening a panic-guard scope. When any of these
 /// substrings appear on a line, the rest of the brace block that line opens
 /// is considered guarded and any host-closure invocation inside it is allowed.
-const GUARD_TOKENS: &[&str] = &["catch_unwind(", "guard_ffi_callback("];
+const GUARD_TOKENS: &[&str] = &["catch_unwind("];
 
 /// Bare-name invocation patterns we recognise as host-supplied closures.
 /// Each entry is the prefix before the call-site `(`. The matcher additionally
@@ -106,14 +104,13 @@ fn is_token_boundary_before(line: &str, idx: usize) -> bool {
 ///   `crate::braces` counter handles strings but we recount parens here
 ///   since it tracks braces only).
 /// * `guard_stack` — stack of paren depths at which a guard scope opened.
-///   While non-empty the cursor is inside a `catch_unwind(...)` /
-///   `guard_ffi_callback(...)` call; an invocation on such a line is
-///   allowed.
+///   While non-empty the cursor is inside a `catch_unwind(...)` call; an
+///   invocation on such a line is allowed.
 ///
 /// Why paren depth and not brace depth? Guard sites are paren-delimited
 /// (`catch_unwind(...)`); the body MAY also contain `|| { ... }` braces but
 /// those are not what closes the guard scope. Tracking parens makes the
-/// multi-line shape `guard_ffi_callback(` (line N) … `)` (line M) Just Work.
+/// multi-line shape `catch_unwind(` (line N) … `)` (line M) Just Work.
 ///
 /// Pop semantics: when `paren_depth` falls back to (or below) the top of
 /// the stack, the guard scope has closed. Nested guards stack naturally.
@@ -124,8 +121,7 @@ pub struct State {
 }
 
 impl State {
-    /// True while the cursor is lexically inside a `catch_unwind(` /
-    /// `guard_ffi_callback(` block.
+    /// True while the cursor is lexically inside a `catch_unwind(` block.
     pub fn in_guard(&self) -> bool {
         !self.guard_stack.is_empty()
     }
@@ -175,7 +171,7 @@ pub fn check(
     // Pop any guard frames whose scope has closed. We pop when the depth
     // strictly drops BELOW the baseline so the line that opens a guard
     // and closes it on the same line stays counted as guarded — without
-    // this we'd pop too eagerly when `guard_ffi_callback(...)` is fully
+    // this we'd pop too eagerly when `catch_unwind(...)` is fully
     // expressed on the opener line.
     while let Some(&top) = state.guard_stack.last() {
         if state.paren_depth < top + 1 && !opened_guard_on_this_line {
@@ -239,13 +235,10 @@ pub fn check(
             open_idx + 1,
             format!(
                 "host-closure invocation `({expr})(...)` is not wrapped in \
-                 `catch_unwind` / `guard_ffi_callback` — D15 requires every \
+                 `catch_unwind` — D15 requires every \
                  host-supplied closure call to be guarded"
             ),
-            "wrap the call in `catch_unwind(AssertUnwindSafe(|| (...)(...)))` \
-             for Rust closures, or `guard_ffi_callback(\"<site>\", || (...))` \
-             for C-ABI fn pointers"
-                .to_string(),
+            "wrap the call in `catch_unwind(AssertUnwindSafe(|| (...)(...)))`".to_string(),
         ));
     }
     // 2. Bare `observer(` / `callback(` / `projection(` — the codebase
@@ -273,14 +266,10 @@ pub fn check(
                 abs + 1,
                 format!(
                     "host-closure invocation `{name}(...)` is not wrapped in \
-                     `catch_unwind` / `guard_ffi_callback` — D15 requires every \
+                     `catch_unwind` — D15 requires every \
                      host-supplied closure call to be guarded"
                 ),
-                format!(
-                    "wrap the call in `catch_unwind(AssertUnwindSafe(|| {name}(...)))` \
-                     (Rust observer) or `guard_ffi_callback(\"<site>\", || {name}(...))` \
-                     (C-ABI fn pointer)"
-                ),
+                format!("wrap the call in `catch_unwind(AssertUnwindSafe(|| {name}(...)))`"),
             ));
         }
     }
