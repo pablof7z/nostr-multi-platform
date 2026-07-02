@@ -350,12 +350,11 @@ pub use actor::{CommandSendError, CommandSendStatus, CommandSender};
 // V-38: the `nmp_app_wallet_*` FFI symbols moved to `nmp-ffi::wallet` as
 // thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
 // (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`.
-// T118 / G3 — lifecycle observer wire-shape exposed for integration tests
-// (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
-// phase-code constants the observer must interpret. The actor module is
-// crate-private, so this is the only Rust-side surface for the wire shape.
+// T118 / G3 — lifecycle observer phase-code constants exposed for
+// integration tests. The actor module is crate-private, so this is the only
+// Rust-side surface for the wire shape.
 #[cfg(any(test, feature = "test-support"))]
-pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+pub use actor::{LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 
 // Scoped observed-projection sink surface exposed to reusable Rust crates.
 // Hosts register these through `substrate::ObservedProjectionRegistrar` with a
@@ -367,14 +366,13 @@ pub use actor::{ObservedProjectionId, ObservedProjectionSink};
 // canonical `actor::kind_filter` module.
 pub use actor::KindFilter;
 
-// ── Step 11 final — `nmp-ffi` re-export surface ────────────────────────────
+// ── Step 11 final — native FFI re-export surface ───────────────────────────
 //
-// The standalone `nmp-ffi` crate (extracted from `nmp-core::ffi`) reaches
-// these symbols through `nmp_core::__ffi_internal::*`. The module is
-// `#[doc(hidden)]` — no app crate or library consumer should import it; the
-// only legitimate consumer is `nmp-ffi`. Adding a new item here is a layer-
-// shape concession (the substrate item was previously crate-private), not a
-// public API addition.
+// `nmp-uniffi` and `nmp-native-runtime` reach these symbols through
+// `nmp_core::__ffi_internal::*`. The module is `#[doc(hidden)]` — no app
+// crate or library consumer should import it directly. Adding a new item
+// here is a layer-shape concession (the substrate item was previously
+// crate-private), not a public API addition.
 //
 // Why the special module rather than promoting each item to `pub` at the
 // crate root: keeps the public surface area visibly identical to before the
@@ -383,8 +381,8 @@ pub use actor::KindFilter;
 // Gated on `feature = "native"` because the re-exports below pull in
 // `run_actor_with_observers` and friends from `crate::actor`, which are
 // themselves `#[cfg(feature = "native")]`. The wasm32 build
-// (`--no-default-features`) has no actor thread and no FFI shell consuming
-// this module.
+// (`--no-default-features`) has no actor thread and no native runtime shell
+// consuming this module.
 #[cfg(feature = "native")]
 #[doc(hidden)]
 pub mod __ffi_internal {
@@ -392,14 +390,13 @@ pub mod __ffi_internal {
         has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
         new_signer_state_slot, nostrconnect_relay_url, register_rust_observer_muted,
         run_actor_with_observers, rust_observer_count, unregister_observer, ActorChannels,
-        ActorConfigSources, ActorRuntimeSlots, LifecycleObserverFn, LifecycleObserverRegistration,
-        LifecycleObserverSlot, NativeLifecycleObserver, ObservedProjectionSinkSlot,
-        LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
+        ActorConfigSources, ActorRuntimeSlots, LifecycleObserverSlot, NativeLifecycleObserver,
+        ObservedProjectionSinkSlot, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND,
     };
     // `ActorMail` is the raw inbox discriminant used by the bounded actor
-    // inbox shared by native/FFI runtime construction. Not part of the
+    // inbox shared by native runtime construction. Not part of the
     // stable public surface (#1608); exposed only through this sealed seam so
-    // the FFI layer can name the mail type without making `ActorMail` a general
+    // the native layer can name the mail type without making `ActorMail` a general
     // API export.
     pub use crate::actor::ActorMail;
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to `nmp-nip47`.
@@ -408,8 +405,7 @@ pub mod __ffi_internal {
     pub use crate::app::KernelAction;
     pub use crate::capability_socket::{
         capability_error_envelope, dispatch_capability, new_capability_callback_slot,
-        CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
-        NativeCapabilityHandler,
+        CapabilityCallbackSlot, NativeCapabilityHandler,
     };
     pub use crate::kernel::{
         default_registry, is_hex_id, is_hex_pubkey, new_app_relay_slot,

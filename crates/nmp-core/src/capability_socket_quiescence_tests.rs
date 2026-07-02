@@ -1,7 +1,6 @@
 //! Blocking regression tests for capability-callback quiescence.
 
-use super::{dispatch_capability, new_capability_callback_slot, CapabilityCallbackRegistration};
-use std::ffi::{c_char, c_void, CStr, CString};
+use super::{dispatch_capability, new_capability_callback_slot};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -14,24 +13,20 @@ struct BlockingHandlerContext {
     completed: AtomicU32,
 }
 
-extern "C" fn blocking_handler(ctx: *mut c_void, req: *const c_char) -> *mut c_char {
-    let ctx = unsafe { &*(ctx as *const BlockingHandlerContext) };
-    ctx.started_tx.send(()).unwrap();
-    ctx.release_rx.lock().unwrap().recv().unwrap();
-    ctx.completed.fetch_add(1, Ordering::SeqCst);
-    let s = unsafe { CStr::from_ptr(req) }
-        .to_string_lossy()
-        .into_owned();
-    CString::new(s).unwrap().into_raw()
+fn blocking_handler(ctx: Arc<BlockingHandlerContext>) -> impl Fn(String) -> String {
+    move |req: String| {
+        ctx.started_tx.send(()).unwrap();
+        ctx.release_rx.lock().unwrap().recv().unwrap();
+        ctx.completed.fetch_add(1, Ordering::SeqCst);
+        req
+    }
 }
 
-extern "C" fn replacement_handler(ctx: *mut c_void, req: *const c_char) -> *mut c_char {
-    let calls = unsafe { &*(ctx as *const AtomicU32) };
-    calls.fetch_add(1, Ordering::SeqCst);
-    let s = unsafe { CStr::from_ptr(req) }
-        .to_string_lossy()
-        .into_owned();
-    CString::new(s).unwrap().into_raw()
+fn replacement_handler(calls: Arc<AtomicU32>) -> impl Fn(String) -> String {
+    move |req: String| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        req
+    }
 }
 
 #[test]
@@ -39,15 +34,12 @@ fn unregister_waits_for_in_flight_callback_to_finish() {
     let slot = new_capability_callback_slot();
     let (started_tx, started_rx) = mpsc::sync_channel(1);
     let (release_tx, release_rx) = mpsc::sync_channel(1);
-    let ctx = Box::new(BlockingHandlerContext {
+    let ctx = Arc::new(BlockingHandlerContext {
         started_tx,
         release_rx: Mutex::new(release_rx),
         completed: AtomicU32::new(0),
     });
-    slot.set_registration(Some(CapabilityCallbackRegistration {
-        context: (&*ctx as *const BlockingHandlerContext) as usize,
-        callback: blocking_handler,
-    }));
+    slot.set_native_handler(Some(Arc::new(blocking_handler(Arc::clone(&ctx)))));
 
     let dispatch_slot = Arc::clone(&slot);
     let dispatch = thread::spawn(move || {
@@ -91,16 +83,13 @@ fn replace_waits_for_in_flight_old_callback_and_installs_new() {
     let slot = new_capability_callback_slot();
     let (started_tx, started_rx) = mpsc::sync_channel(1);
     let (release_tx, release_rx) = mpsc::sync_channel(1);
-    let old_ctx = Box::new(BlockingHandlerContext {
+    let old_ctx = Arc::new(BlockingHandlerContext {
         started_tx,
         release_rx: Mutex::new(release_rx),
         completed: AtomicU32::new(0),
     });
     let new_calls = Arc::new(AtomicU32::new(0));
-    slot.set_registration(Some(CapabilityCallbackRegistration {
-        context: (&*old_ctx as *const BlockingHandlerContext) as usize,
-        callback: blocking_handler,
-    }));
+    slot.set_native_handler(Some(Arc::new(blocking_handler(Arc::clone(&old_ctx)))));
 
     let dispatch_slot = Arc::clone(&slot);
     let dispatch = thread::spawn(move || {
@@ -117,10 +106,7 @@ fn replace_waits_for_in_flight_old_callback_and_installs_new() {
     let setter_slot = Arc::clone(&slot);
     let new_calls_for_setter = Arc::clone(&new_calls);
     let setter = thread::spawn(move || {
-        setter_slot.set_registration(Some(CapabilityCallbackRegistration {
-            context: Arc::as_ptr(&new_calls_for_setter) as usize,
-            callback: replacement_handler,
-        }));
+        setter_slot.set_native_handler(Some(Arc::new(replacement_handler(new_calls_for_setter))));
         setter_done_tx.send(()).unwrap();
     });
 
