@@ -24,3 +24,6 @@ nmp-native-runtime = { path = "../../../crates/nmp-native-runtime" }
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-nip23 = { path = "../../../crates/nmp-nip23" }
