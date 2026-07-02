@@ -1,5 +1,6 @@
 use super::*;
 use crate::stable_hash::stable_hash64;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Deterministic 64-char hex pubkey/event-id fixture from a single byte.
 fn hex(byte: &str) -> String {
