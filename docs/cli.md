@@ -21,7 +21,7 @@ cargo run -p nmp-cli -- <args>
 > **Relationship to the `nmp-codegen` binary.** The `nmp-codegen` crate ships a
 > `[[bin]] name = "nmp"` that does only the Swift emitters (`gen swift` / `gen
 > typed-decoders`, the CI-gated consumer-side codegen). `nmp-cli` is the
-> developer-facing CLI (`init`, `add`/`update component`, `doctor`, `upgrade`,
+> developer-facing CLI (`init`, `add`/`update component`, `upgrade`,
 > `export`). Because two workspace members declare a `nmp` binary, prefer
 > `cargo run -p nmp-cli --` / `cargo install --path crates/nmp-cli` over a bare
 > workspace `cargo build` when you want the full developer CLI.
@@ -48,7 +48,7 @@ Produced layout:
 ```text
 <root>/
   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
-  nmp.toml                   # NMP dependency policy (read by doctor/upgrade)
+  nmp.toml                   # NMP dependency policy (read by upgrade)
   README.md                  # per-app next steps
   crates/<name>-core/
     Cargo.toml               # nmp-substrate + selected protocol crates + nmp-native-runtime + nmp-core + serde
@@ -89,7 +89,6 @@ crate's `nmp-*` dependencies at the new git tag.
 
 ```sh
 nmp upgrade --to 0.4.0
-nmp doctor
 ```
 
 The command updates the `[nmp]` section to `dependency_mode = "version"`,
@@ -98,12 +97,6 @@ app-module crates listed under `[modules].app` to git-rev pins at the new tag
 (the same shape `nmp init --nmp-version` emits). Component source updates remain
 explicit through `nmp update component` so local app edits are not silently
 overwritten.
-
-### `nmp doctor [--manifest nmp.toml]`
-
-Reports the app name, dependency mode, pinned NMP version or checkout path, and
-module count. It is the lightweight post-upgrade sanity check for app repos and
-the seed for deeper toolchain checks.
 
 ### `nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]`
 
@@ -191,7 +184,7 @@ A second test asserts invalid app names are rejected.
 
 1. `nmp upgrade --to <version>` rewrites `[nmp]`.
 2. The app crate's `nmp-*` dependencies become git-rev pins at the new tag.
-3. `nmp doctor` reports the pinned baseline.
+3. The app crate's dependency rewrite is verified directly from `Cargo.toml`.
 
 `crates/nmp-cli/tests/component.rs` covers component installation:
 

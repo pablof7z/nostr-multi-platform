@@ -16,7 +16,6 @@ nmp gen projection <name>            Scaffold an app-core projection seam.
 nmp gen feed <name>                  Scaffold source/reducer wiring.
 nmp gen action <name>                Scaffold an ActionModule.
 nmp gen screen <name>                Scaffold a platform screen.
-nmp doctor                           Diagnose toolchain and build environment.
 nmp upgrade                          Bump NMP dependencies and run migrations.
 ```
 

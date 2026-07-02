@@ -55,36 +55,3 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
         "ADR-0046: upgrade must not produce a generated apps/ tree"
     );
 }
-
-#[test]
-fn doctor_reports_dependency_policy() {
-    let tmp = TempDir::new("doctor");
-    let root = tmp.path().join("demoapp");
-
-    let init = nmp(
-        tmp.path(),
-        &[
-            "init",
-            "demoapp",
-            "--path",
-            root.to_str().unwrap(),
-            "--nmp-version",
-            "0.3.0",
-        ],
-    );
-    assert!(
-        init.status.success(),
-        "init failed: {}",
-        String::from_utf8_lossy(&init.stderr)
-    );
-
-    let doctor = nmp(&root, &["doctor"]);
-    assert!(
-        doctor.status.success(),
-        "doctor failed: {}",
-        String::from_utf8_lossy(&doctor.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&doctor.stdout);
-    assert!(stdout.contains("nmp dependency mode: version"));
-    assert!(stdout.contains("nmp version: 0.3.0"));
-}

@@ -1,7 +1,7 @@
-// `nmp.toml` app-manifest parser — consumed by `nmp doctor` / `nmp upgrade`
-// to read and bump an app's NMP dependency policy. (ADR-0046 deleted the
-// Rust-shell module *generator* that also read this manifest; the manifest
-// model itself survives because the dependency-policy commands still need it.)
+// `nmp.toml` app-manifest parser — consumed by `nmp upgrade` to read and bump
+// an app's NMP dependency policy. (ADR-0046 deleted the Rust-shell module
+// *generator* that also read this manifest; the manifest model itself survives
+// because the dependency-policy command still needs it.)
 mod manifest;
 // Shared `--check` diff-line reporting for the Swift codegen gates — keeps
 // `check_swift` / `check_typed_decoders` reporting consistent and ensures a

@@ -1,24 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-
-pub fn manifest_arg(args: &[String]) -> Result<PathBuf, String> {
-    let mut manifest = PathBuf::from("nmp.toml");
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--manifest" => {
-                index += 1;
-                manifest = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--manifest requires a path".to_string())?;
-            }
-            other => return Err(format!("unknown argument {other}")),
-        }
-        index += 1;
-    }
-    Ok(manifest)
-}
+use std::path::Path;
 
 pub fn read(path: &Path) -> Result<String, String> {
     fs::read_to_string(path).map_err(|error| format!("reading {}: {error}", path.display()))

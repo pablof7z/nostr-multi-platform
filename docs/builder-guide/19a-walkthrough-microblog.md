@@ -42,7 +42,7 @@ comment verbatim:
 
 ```
 apps/microblog/
-├── nmp.toml                         # AppManifest (used by nmp doctor / upgrade)
+├── nmp.toml                         # AppManifest (used by nmp upgrade)
 └── nmp-app-microblog/               # thin binding adapter (created in 19b)
     ├── Cargo.toml
     └── src/
@@ -59,9 +59,8 @@ is a few lines of glue (see [19b](19b-walkthrough-microblog.md)).
 
 ## `apps/microblog/nmp.toml`
 
-The manifest parser is still read by `nmp doctor` / `nmp upgrade`, so a
-minimal `nmp.toml` is useful. It is no longer used to generate a per-app FFI
-crate.
+The manifest parser is still read by `nmp upgrade`, so a minimal `nmp.toml` is
+useful. It is no longer used to generate a per-app FFI crate.
 
 ```toml
 [app]
