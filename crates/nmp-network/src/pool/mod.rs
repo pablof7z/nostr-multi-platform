@@ -201,9 +201,18 @@ impl Pool {
     /// Tear down every worker. Subsequent
     /// [`Self::ensure_open`] calls return a sentinel handle (slot
     /// `u32::MAX`); subsequent `send` calls are structural no-ops.
+    ///
+    /// Also joins the pool's worker→pool translator thread so it does not
+    /// outlive `shutdown()` as a detached task. The join happens *after* the
+    /// lock is dropped: `translator_loop` takes `self.inner`'s lock per
+    /// event, so joining while still holding it here would deadlock.
     pub fn shutdown(&self) {
-        if let Ok(mut guard) = self.inner.lock() {
-            guard.shutdown();
+        let handle = match self.inner.lock() {
+            Ok(mut guard) => guard.shutdown(),
+            Err(_) => None,
+        };
+        if let Some(handle) = handle {
+            let _ = handle.join();
         }
     }
 

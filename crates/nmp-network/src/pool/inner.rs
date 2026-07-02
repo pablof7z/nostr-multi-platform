@@ -281,7 +281,13 @@ impl PoolInner {
         true
     }
 
-    pub(super) fn shutdown(&mut self) {
+    /// Tear down every worker and hand back the translator thread's
+    /// [`JoinHandle`] so the caller can join it *outside* this lock (the
+    /// translator locks `PoolInner` per event, so joining while holding the
+    /// lock would deadlock). The thread exits naturally once every worker
+    /// has processed `RelayCommand::Shutdown` and dropped its
+    /// `worker_event_tx` clone.
+    pub(super) fn shutdown(&mut self) -> Option<JoinHandle<()>> {
         self.shutdown = true;
         for slot in &mut self.slots {
             let Some(state) = slot.as_mut() else { continue };
@@ -314,6 +320,7 @@ impl PoolInner {
         // consumer-side `recv()` exactly as before.
         let (dead_events_tx, _dead_events_rx) = mpsc::channel::<PoolEvent>();
         self.events = Arc::new(dead_events_tx);
+        self.translator.take()
     }
 
     pub(super) fn snapshot(&self) -> PoolSnapshot {
