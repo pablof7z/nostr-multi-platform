@@ -1,5 +1,7 @@
+use std::cell::{Cell, UnsafeCell};
 use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::thread::{self, ThreadId};
 
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
@@ -31,7 +33,7 @@ type FeedSessionOutput = ProjectionAttachment;
 /// stay inside this module.
 #[derive(Clone)]
 pub(super) struct FeedSessionTrellisAdapter {
-    inner: Arc<Mutex<FeedSessionTrellisInner>>,
+    inner: Arc<ActorThreadCell<FeedSessionTrellisInner>>,
     sender: CommandSender,
     owner: SubOwnerKey,
 }
@@ -76,6 +78,67 @@ pub(super) struct FeedSessionResourceTrace {
 
 struct FeedSessionCloseOutcome {
     output_cleared: bool,
+}
+
+struct ActorThreadCell<T> {
+    owner: ThreadId,
+    borrowed: Cell<bool>,
+    value: UnsafeCell<T>,
+}
+
+// Safety: callers can move/share the handle to satisfy callback traits, but
+// `with_ref`/`with_mut` only expose the value on the creating actor thread.
+unsafe impl<T: Send> Send for ActorThreadCell<T> {}
+unsafe impl<T: Send> Sync for ActorThreadCell<T> {}
+
+impl<T> ActorThreadCell<T> {
+    fn new(value: T) -> Self {
+        Self {
+            owner: thread::current().id(),
+            borrowed: Cell::new(false),
+            value: UnsafeCell::new(value),
+        }
+    }
+
+    fn with_mut<R>(&self, operation: &'static str, f: impl FnOnce(&mut T) -> R) -> R {
+        self.assert_owner(operation);
+        self.with_exclusive_borrow(operation, || f(unsafe { &mut *self.value.get() }))
+    }
+
+    #[cfg(test)]
+    fn with_ref<R>(&self, operation: &'static str, f: impl FnOnce(&T) -> R) -> R {
+        self.assert_owner(operation);
+        self.with_exclusive_borrow(operation, || f(unsafe { &*self.value.get() }))
+    }
+
+    fn with_exclusive_borrow<R>(&self, operation: &'static str, f: impl FnOnce() -> R) -> R {
+        assert!(
+            !self.borrowed.replace(true),
+            "FeedSessionTrellisAdapter {operation} re-entered while the Trellis graph is borrowed"
+        );
+        let _guard = ActorThreadBorrowGuard {
+            borrowed: &self.borrowed,
+        };
+        f()
+    }
+
+    fn assert_owner(&self, operation: &'static str) {
+        assert_eq!(
+            thread::current().id(),
+            self.owner,
+            "FeedSessionTrellisAdapter {operation} called outside its owner actor thread"
+        );
+    }
+}
+
+struct ActorThreadBorrowGuard<'a> {
+    borrowed: &'a Cell<bool>,
+}
+
+impl Drop for ActorThreadBorrowGuard<'_> {
+    fn drop(&mut self) {
+        self.borrowed.set(false);
+    }
 }
 
 impl FeedSessionTrellisAdapter {
@@ -162,7 +225,7 @@ impl FeedSessionTrellisAdapter {
         let output_frames = output_frame_kinds(&_result.output_frames);
 
         Ok(Self {
-            inner: Arc::new(Mutex::new(FeedSessionTrellisInner {
+            inner: Arc::new(ActorThreadCell::new(FeedSessionTrellisInner {
                 graph,
                 scope,
                 demand_input,
@@ -180,14 +243,9 @@ impl FeedSessionTrellisAdapter {
     }
 
     pub(super) fn sync(&self, extra: &ExtraAcquisition, reason: &'static str) -> bool {
-        let mut inner = match self.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return false,
-        };
-        let Some(children) = inner.sync(extra) else {
+        let Some(children) = self.inner.with_mut("sync", |inner| inner.sync(extra)) else {
             return false;
         };
-        drop(inner);
         self.replace_children(children, reason);
         true
     }
@@ -196,14 +254,12 @@ impl FeedSessionTrellisAdapter {
         if !changed {
             return false;
         }
-        let mut inner = match self.inner.lock() {
-            Ok(inner) => inner,
-            Err(_) => return false,
-        };
-        if !inner.rebaseline_output() {
+        if !self
+            .inner
+            .with_mut("rebaseline", FeedSessionTrellisInner::rebaseline_output)
+        {
             return false;
         }
-        drop(inner);
         self.sender.mark_changed_since_emit();
         true
     }
@@ -211,14 +267,12 @@ impl FeedSessionTrellisAdapter {
     pub(super) fn close_action(&self, remove_projection: TeardownAction) -> TeardownAction {
         let adapter = self.clone();
         Box::new(move || {
-            let mut inner = match adapter.inner.lock() {
-                Ok(inner) => inner,
-                Err(_) => return,
-            };
-            let Some(outcome) = inner.close_scope() else {
+            let Some(outcome) = adapter
+                .inner
+                .with_mut("close", FeedSessionTrellisInner::close_scope)
+            else {
                 return;
             };
-            drop(inner);
             if outcome.output_cleared {
                 remove_projection();
             }
@@ -228,18 +282,16 @@ impl FeedSessionTrellisAdapter {
 
     #[cfg(test)]
     pub(super) fn output_frame_kinds_for_test(&self) -> Vec<FeedSessionOutputFrameKind> {
-        self.inner
-            .lock()
-            .map(|inner| inner.output_frames.clone())
-            .unwrap_or_default()
+        self.inner.with_ref("output-frame-test-read", |inner| {
+            inner.output_frames.clone()
+        })
     }
 
     #[cfg(test)]
     pub(super) fn resource_traces_for_test(&self) -> Vec<FeedSessionResourceTrace> {
-        self.inner
-            .lock()
-            .map(|inner| inner.resource_traces.clone())
-            .unwrap_or_default()
+        self.inner.with_ref("resource-trace-test-read", |inner| {
+            inner.resource_traces.clone()
+        })
     }
 
     fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
