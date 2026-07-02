@@ -124,6 +124,10 @@ name = "nmp-replies"
 path = "crates/nmp-replies"
 
 [[public_crates]]
+name = "nmp-reposts"
+path = "crates/nmp-reposts"
+
+[[public_crates]]
 name = "nmp-substrate"
 path = "crates/nmp-substrate"
 

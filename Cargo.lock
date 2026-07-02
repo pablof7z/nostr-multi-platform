@@ -4513,6 +4513,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-reposts"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-kinds",
+ "nmp-nip09",
+ "nmp-nip18",
+ "nmp-ownership",
+ "nmp-read-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-router"
 version = "0.8.4"
 dependencies = [
