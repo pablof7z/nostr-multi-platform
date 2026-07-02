@@ -73,6 +73,30 @@ source = "tui/content-kind-registry/nostr_kind_registry.rs"
 target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
 role = "source"
 [[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/short_note.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/article.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/highlight.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/profile.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/unknown.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/text_layout.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs"
+role = "source"
+[[components.files]]
 source = "tui/content-kind-registry/embed_chrome_container.rs"
 target = "src/components/nostr_content/content_kind_registry/embed_chrome_container.rs"
 role = "source"
@@ -91,6 +115,30 @@ dependencies = ["tui/content-kind-registry"]
 source = "tui/content-kind-registry/nostr_kind_registry.rs"
 target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
 role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/short_note.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/article.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/highlight.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/profile.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/unknown.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/text_layout.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs"
+role = "source"
 
 [[components]]
 id = "tui/content-kind-0"
@@ -102,6 +150,30 @@ dependencies = ["tui/content-kind-registry"]
 source = "tui/content-kind-registry/nostr_kind_registry.rs"
 target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
 role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/short_note.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/article.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/highlight.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/profile.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/unknown.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/text_layout.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs"
+role = "source"
 
 [[components]]
 id = "tui/content-kind-9802"
@@ -112,6 +184,30 @@ dependencies = ["tui/content-kind-registry"]
 [[components.files]]
 source = "tui/content-kind-registry/nostr_kind_registry.rs"
 target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/short_note.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/short_note.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/article.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/article.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/highlight.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/highlight.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/profile.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/profile.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/unknown.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/unknown.rs"
+role = "source"
+[[components.files]]
+source = "tui/content-kind-registry/nostr_kind_registry/text_layout.rs"
+target = "src/components/nostr_content/content_kind_registry/nostr_kind_registry/text_layout.rs"
 role = "source"
 
 [[components]]
