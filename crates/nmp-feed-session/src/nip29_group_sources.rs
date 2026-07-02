@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
@@ -7,9 +7,10 @@ use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_SIMPLE_GROUPS;
 use nmp_planner::InterestShape;
 
+use super::nip29_group_context::{group_event_admitted, group_event_context, group_event_shapes};
 use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, LiveShapes, OpSessionIdentity, ReducedSource,
-    SessionReactivityHook,
+    RowContextProvider, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -83,6 +84,13 @@ pub(super) fn resolve_active_simple_groups(
     };
     let extra_acquisition =
         active_simple_groups_extra_acquisition(app.active_account_handle(), &projection, kinds);
+    let row_context: RowContextProvider = {
+        let projection = Arc::clone(&projection);
+        let kinds = kinds.clone();
+        Arc::new(move |event: &KernelEvent| {
+            group_event_context(&projection.groups(), &kinds, event)
+        })
+    };
 
     Ok(ReducedSource {
         op_session_identity: OpSessionIdentity::AllowMissingActive,
@@ -98,6 +106,7 @@ pub(super) fn resolve_active_simple_groups(
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: None,
+        row_context,
     })
 }
 
@@ -144,155 +153,4 @@ fn group_event_live_shapes(
     let projection = Arc::clone(projection);
     let kinds = kinds.clone();
     Arc::new(move || group_event_shapes(&projection.groups(), &kinds))
-}
-
-fn group_event_shapes(
-    groups: &BTreeSet<nmp_nip51::SimpleGroupRef>,
-    kinds: &BTreeSet<u32>,
-) -> Vec<InterestShape> {
-    if groups.is_empty() || kinds.is_empty() {
-        return Vec::new();
-    }
-    let mut by_host: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for group in groups {
-        if let Some(group_id) = routable_group_id(group) {
-            by_host
-                .entry(group_id.host_relay_url)
-                .or_default()
-                .insert(group_id.local_id);
-        }
-    }
-
-    by_host
-        .into_iter()
-        .map(|(host, local_ids)| {
-            let mut shape = InterestShape {
-                kinds: kinds.clone(),
-                relay_pin: Some(host),
-                ..InterestShape::default()
-            };
-            shape.tags.insert("h".to_string(), local_ids);
-            shape
-        })
-        .collect()
-}
-
-fn group_event_admitted(
-    groups: &BTreeSet<nmp_nip51::SimpleGroupRef>,
-    kinds: &BTreeSet<u32>,
-    event: &KernelEvent,
-) -> bool {
-    if groups.is_empty() || !kinds.contains(&event.kind) {
-        return false;
-    }
-    let local_ids: BTreeSet<&str> = event
-        .tags
-        .iter()
-        .filter_map(|tag| {
-            (tag.first().map(String::as_str) == Some("h"))
-                .then(|| tag.get(1).map(String::as_str))
-                .flatten()
-        })
-        .collect();
-    if local_ids.is_empty() {
-        return false;
-    }
-    groups.iter().any(|group| {
-        let Some(group_id) = routable_group_id(group) else {
-            return false;
-        };
-        local_ids.contains(group_id.local_id.as_str())
-            && (event
-                .relay_provenance
-                .iter()
-                .any(|relay| relay == &group_id.host_relay_url)
-                || event
-                    .relay_provenance
-                    .iter()
-                    .any(|relay| relay == "local://publish"))
-    })
-}
-
-fn routable_group_id(group: &nmp_nip51::SimpleGroupRef) -> Option<nmp_nip29::GroupId> {
-    let group_id = nmp_nip29::GroupId::new(group.host_relay_url.clone(), group.local_id.clone());
-    group_id.require_routable().ok()?;
-    Some(group_id)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use nmp_core::substrate::EventId;
-
-    fn groups() -> BTreeSet<nmp_nip51::SimpleGroupRef> {
-        [
-            nmp_nip51::SimpleGroupRef::new("room-a", "wss://relay-a"),
-            nmp_nip51::SimpleGroupRef::new("room-b", "wss://relay-a"),
-            nmp_nip51::SimpleGroupRef::new("room-a", "wss://relay-b"),
-        ]
-        .into_iter()
-        .collect()
-    }
-
-    fn event(local_id: &str, relay: &str, kind: u32) -> KernelEvent {
-        KernelEvent {
-            id: EventId::from("01".repeat(32)),
-            author: "aa".repeat(32),
-            kind,
-            created_at: 10,
-            tags: vec![vec!["h".to_string(), local_id.to_string()]],
-            content: String::new(),
-            relay_provenance: vec![relay.to_string()],
-        }
-    }
-
-    #[test]
-    fn group_event_shapes_group_by_host_relay() {
-        let shapes = group_event_shapes(&groups(), &BTreeSet::from([1_u32, 9_u32]));
-        assert_eq!(shapes.len(), 2);
-        let relay_a = shapes
-            .iter()
-            .find(|shape| shape.relay_pin.as_deref() == Some("wss://relay-a"))
-            .expect("relay-a shape");
-        assert_eq!(
-            relay_a.tags.get("h").cloned().unwrap_or_default(),
-            ["room-a".to_string(), "room-b".to_string()]
-                .into_iter()
-                .collect()
-        );
-        let relay_b = shapes
-            .iter()
-            .find(|shape| shape.relay_pin.as_deref() == Some("wss://relay-b"))
-            .expect("relay-b shape");
-        assert_eq!(
-            relay_b.tags.get("h").cloned().unwrap_or_default(),
-            ["room-a".to_string()].into_iter().collect()
-        );
-    }
-
-    #[test]
-    fn admission_requires_matching_host_and_h_tag() {
-        let groups = groups();
-        let kinds = BTreeSet::from([9_u32]);
-        assert!(group_event_admitted(
-            &groups,
-            &kinds,
-            &event("room-a", "wss://relay-a", 9)
-        ));
-        assert!(group_event_admitted(
-            &groups,
-            &kinds,
-            &event("room-a", "wss://relay-b", 9)
-        ));
-        assert!(!group_event_admitted(
-            &groups,
-            &kinds,
-            &event("room-b", "wss://relay-b", 9)
-        ));
-        assert!(!group_event_admitted(
-            &groups,
-            &kinds,
-            &event("room-a", "wss://relay-a", 1)
-        ));
-    }
 }

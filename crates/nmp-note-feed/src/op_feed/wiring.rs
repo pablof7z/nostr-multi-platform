@@ -68,6 +68,7 @@ use nmp_feed::{
 use nmp_threading::{ParentResolver, ThreadPointer};
 
 use super::attribution::Nip10ReplyAttribution;
+use crate::flat_feed::HostedGroupContextProvider;
 use crate::NoteFeedItem;
 
 pub type Pubkey = String;
@@ -179,6 +180,27 @@ pub fn register_op_feed_with_admission_and_window_policy(
     event_lookup: EventLookup,
     window_policy: FeedWindowPolicy,
 ) -> Arc<OpFeedEngine> {
+    register_op_feed_with_admission_context_and_window_policy(
+        viewer,
+        follow_predicate,
+        root_admission,
+        event_lookup,
+        Arc::new(|_| None),
+        window_policy,
+    )
+}
+
+/// Construct the OP-feed engine with explicit ROOT admission, row context, and
+/// window policy.
+#[must_use]
+pub fn register_op_feed_with_admission_context_and_window_policy(
+    viewer: Pubkey,
+    follow_predicate: FollowPredicate,
+    root_admission: nmp_feed::RootAdmission,
+    event_lookup: EventLookup,
+    hosted_group_context: HostedGroupContextProvider,
+    window_policy: FeedWindowPolicy,
+) -> Arc<OpFeedEngine> {
     // `viewer` is carried for parity with `ModularTimelineSpec.viewer` and
     // future per-viewer personalization; the engine has no viewer field today.
     let _ = viewer;
@@ -199,8 +221,12 @@ pub fn register_op_feed_with_admission_and_window_policy(
     });
 
     let card_builder: CardBuilder<NoteFeedItem> =
-        Box::new(|root: &KernelEvent, target: Option<&KernelEvent>| {
-            NoteFeedItem::from_event_for_op_feed(root, target)
+        Box::new(move |root: &KernelEvent, target: Option<&KernelEvent>| {
+            NoteFeedItem::from_event_for_op_feed_with_hosted_group(
+                root,
+                target,
+                hosted_group_context(root),
+            )
         });
 
     Arc::new(RootIndexedFeed::new_with_window_policy(

@@ -9,8 +9,8 @@ use nmp_kinds::{KIND_FOLLOW_SET, KIND_MUTE_LIST};
 use nmp_planner::InterestShape;
 
 use super::source::{
-    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
-    ReducedSource, SessionReactivityHook,
+    empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
+    OpSessionIdentity, ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -119,6 +119,7 @@ pub(super) fn resolve_list_members(
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 
@@ -221,6 +222,7 @@ pub(super) fn resolve_active_mute_list_members(
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 

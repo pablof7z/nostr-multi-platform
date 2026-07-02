@@ -152,6 +152,159 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum HostedGroupContextOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct HostedGroupContext<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for HostedGroupContext<'a> {
+            type Inner = HostedGroupContext<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> HostedGroupContext<'a> {
+            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 4;
+            pub const VT_LOCAL_ID: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                HostedGroupContext { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args HostedGroupContextArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<HostedGroupContext<'bldr>> {
+                let mut builder = HostedGroupContextBuilder::new(_fbb);
+                if let Some(x) = args.local_id {
+                    builder.add_local_id(x);
+                }
+                if let Some(x) = args.host_relay_url {
+                    builder.add_host_relay_url(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn host_relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        HostedGroupContext::VT_HOST_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn local_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        HostedGroupContext::VT_LOCAL_ID,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for HostedGroupContext<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "host_relay_url",
+                        Self::VT_HOST_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "local_id",
+                        Self::VT_LOCAL_ID,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct HostedGroupContextArgs<'a> {
+            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub local_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for HostedGroupContextArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                HostedGroupContextArgs {
+                    host_relay_url: None,
+                    local_id: None,
+                }
+            }
+        }
+
+        pub struct HostedGroupContextBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> HostedGroupContextBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_host_relay_url(
+                &mut self,
+                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    HostedGroupContext::VT_HOST_RELAY_URL,
+                    host_relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_local_id(&mut self, local_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    HostedGroupContext::VT_LOCAL_ID,
+                    local_id,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> HostedGroupContextBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                HostedGroupContextBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<HostedGroupContext<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for HostedGroupContext<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("HostedGroupContext");
+                ds.field("host_relay_url", &self.host_relay_url());
+                ds.field("local_id", &self.local_id());
+                ds.finish()
+            }
+        }
         pub enum NoteFeedItemOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -178,6 +331,7 @@ pub mod nmp {
             pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 14;
             pub const VT_RELAY_PROVENANCE: ::flatbuffers::VOffsetT = 16;
             pub const VT_REPOSTED_BY: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HOSTED_GROUP: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -195,6 +349,9 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<NoteFeedItem<'bldr>> {
                 let mut builder = NoteFeedItemBuilder::new(_fbb);
                 builder.add_created_at(args.created_at);
+                if let Some(x) = args.hosted_group {
+                    builder.add_hosted_group(x);
+                }
                 if let Some(x) = args.reposted_by {
                     builder.add_reposted_by(x);
                 }
@@ -311,6 +468,19 @@ pub mod nmp {
                         )
                 }
             }
+            #[inline]
+            pub fn hosted_group(&self) -> Option<HostedGroupContext<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<HostedGroupContext>>(
+                            NoteFeedItem::VT_HOSTED_GROUP,
+                            None,
+                        )
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for NoteFeedItem<'_> {
@@ -346,6 +516,11 @@ pub mod nmp {
                         Self::VT_REPOSTED_BY,
                         false,
                     )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<HostedGroupContext>>(
+                        "hosted_group",
+                        Self::VT_HOSTED_GROUP,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -363,6 +538,7 @@ pub mod nmp {
                 >,
             >,
             pub reposted_by: Option<::flatbuffers::WIPOffset<RepostAttribution<'a>>>,
+            pub hosted_group: Option<::flatbuffers::WIPOffset<HostedGroupContext<'a>>>,
         }
         impl<'a> Default for NoteFeedItemArgs<'a> {
             #[inline]
@@ -376,6 +552,7 @@ pub mod nmp {
                     content_tree_bytes: None,
                     relay_provenance: None,
                     reposted_by: None,
+                    hosted_group: None,
                 }
             }
         }
@@ -447,6 +624,17 @@ pub mod nmp {
                     );
             }
             #[inline]
+            pub fn add_hosted_group(
+                &mut self,
+                hosted_group: ::flatbuffers::WIPOffset<HostedGroupContext<'b>>,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<HostedGroupContext>>(
+                        NoteFeedItem::VT_HOSTED_GROUP,
+                        hosted_group,
+                    );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> NoteFeedItemBuilder<'a, 'b, A> {
@@ -474,6 +662,7 @@ pub mod nmp {
                 ds.field("content_tree_bytes", &self.content_tree_bytes());
                 ds.field("relay_provenance", &self.relay_provenance());
                 ds.field("reposted_by", &self.reposted_by());
+                ds.field("hosted_group", &self.hosted_group());
                 ds.finish()
             }
         }

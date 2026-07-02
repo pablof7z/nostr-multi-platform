@@ -4,6 +4,7 @@
 
 import * as flatbuffers from 'flatbuffers';
 
+import { HostedGroupContext } from '../../nmp/note-feed/hosted-group-context.js';
 import { RepostAttribution } from '../../nmp/note-feed/repost-attribution.js';
 
 
@@ -88,8 +89,13 @@ repostedBy(obj?:RepostAttribution):RepostAttribution|null {
   return offset ? (obj || new RepostAttribution()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
+hostedGroup(obj?:HostedGroupContext):HostedGroupContext|null {
+  const offset = this.bb!.__offset(this.bb_pos, 20);
+  return offset ? (obj || new HostedGroupContext()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
+}
+
 static startNoteFeedItem(builder:flatbuffers.Builder) {
-  builder.startObject(8);
+  builder.startObject(9);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -146,6 +152,10 @@ static startRelayProvenanceVector(builder:flatbuffers.Builder, numElems:number) 
 
 static addRepostedBy(builder:flatbuffers.Builder, repostedByOffset:flatbuffers.Offset) {
   builder.addFieldOffset(7, repostedByOffset, 0);
+}
+
+static addHostedGroup(builder:flatbuffers.Builder, hostedGroupOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(8, hostedGroupOffset, 0);
 }
 
 static endNoteFeedItem(builder:flatbuffers.Builder):flatbuffers.Offset {

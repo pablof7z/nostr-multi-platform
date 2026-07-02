@@ -6,6 +6,8 @@
 
 #[path = "common/mod.rs"]
 mod common;
+#[path = "reduced_source_relay_e2e/hosted_groups.rs"]
+mod hosted_groups;
 #[path = "reduced_source_relay_e2e/list_members.rs"]
 mod list_members;
 #[path = "reduced_source_relay_e2e/support.rs"]

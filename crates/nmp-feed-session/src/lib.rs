@@ -38,6 +38,7 @@ mod active_shape;
 mod custom;
 mod dynamic_observer;
 mod flat_replay;
+mod nip29_group_context;
 mod nip29_group_sources;
 mod nip51_sources;
 mod observed_source;

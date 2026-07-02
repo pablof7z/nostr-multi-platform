@@ -101,6 +101,7 @@ fn build_op_scope_session(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set,
+        row_context,
     } = resolved;
 
     let viewer = match (
@@ -129,11 +130,12 @@ fn build_op_scope_session(
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
     let event_lookup_for_observer = event_lookup.clone();
-    let engine = nmp_note_feed::op_feed::register_op_feed_with_admission_and_window_policy(
+    let engine = nmp_note_feed::op_feed::register_op_feed_with_admission_context_and_window_policy(
         viewer,
         follow_predicate,
         root_admission,
         event_lookup,
+        row_context,
         window,
     );
 

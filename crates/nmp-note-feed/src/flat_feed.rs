@@ -42,9 +42,12 @@ use nmp_feed::{
 };
 use nmp_planner::InterestShape;
 
-use crate::{Nip10ReplyAttribution, NoteFeedItem, RepostAttribution};
+use crate::{HostedGroupContext, Nip10ReplyAttribution, NoteFeedItem, RepostAttribution};
 
 pub use nmp_feed::FlatFeedPredicate;
+
+pub type HostedGroupContextProvider =
+    Arc<dyn Fn(&KernelEvent) -> Option<HostedGroupContext> + Send + Sync>;
 
 /// A flat, predicate-gated note feed. Wire-compatible with OP-centric feeds'
 /// [`RootFeedSnapshot`] (empty `attribution`).
@@ -70,10 +73,25 @@ impl FlatFeed {
         predicate: FlatFeedPredicate,
         window_policy: FeedWindowPolicy,
     ) -> Arc<Self> {
+        Self::new_with_window_policy_and_hosted_group_context(
+            predicate,
+            window_policy,
+            Arc::new(|_| None),
+        )
+    }
+
+    /// Construct a flat feed with explicit app-declared window policy and
+    /// source-owned row context.
+    #[must_use]
+    pub fn new_with_window_policy_and_hosted_group_context(
+        predicate: FlatFeedPredicate,
+        window_policy: FeedWindowPolicy,
+        hosted_group_context: HostedGroupContextProvider,
+    ) -> Arc<Self> {
         Arc::new(Self {
             inner: GenericFlatFeed::with_merge_and_window_policy(
                 predicate,
-                event_card_builder(),
+                event_card_builder(hosted_group_context),
                 None,
                 timeline_merge(),
                 window_policy,
@@ -108,7 +126,7 @@ impl FlatFeed {
         Arc::new(Self {
             inner: GenericFlatFeed::with_merge_and_window_policy(
                 predicate,
-                event_card_builder(),
+                event_card_builder(Arc::new(|_| None)),
                 interest,
                 timeline_merge(),
                 window_policy,
@@ -187,9 +205,15 @@ impl FlatFeed {
     }
 }
 
-fn event_card_builder() -> FlatFeedItemBuilder<NoteFeedItem> {
-    Arc::new(|event| {
-        let card = NoteFeedItem::from_event_for_op_feed(event, None);
+fn event_card_builder(
+    hosted_group_context: HostedGroupContextProvider,
+) -> FlatFeedItemBuilder<NoteFeedItem> {
+    Arc::new(move |event| {
+        let card = NoteFeedItem::from_event_for_op_feed_with_hosted_group(
+            event,
+            None,
+            hosted_group_context(event),
+        );
         Some(FlatFeedItem {
             id: card.id.clone(),
             source_id: event.id.clone(),

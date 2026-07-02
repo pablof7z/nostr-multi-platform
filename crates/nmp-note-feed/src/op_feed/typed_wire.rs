@@ -8,13 +8,13 @@ use nmp_feed::{FeedWindowWire, RootCard, RootFeedSnapshot, MAX_ATTRIBUTION_PER_R
 
 use super::attribution::Nip10ReplyAttribution;
 use crate::op_feed_generated::nmp::note_feed as fb;
-use crate::{NoteFeedItem, RepostAttribution};
+use crate::{HostedGroupContext, NoteFeedItem, RepostAttribution};
 
 pub type OpFeedSnapshot = RootFeedSnapshot<NoteFeedItem, Nip10ReplyAttribution>;
 
 pub const OP_FEED_SCHEMA_ID: &str = "nmp.note_feed.opfeed";
 pub const OP_FEED_FILE_IDENTIFIER: &[u8; 4] = b"NNFS";
-pub const OP_FEED_SCHEMA_VERSION: u32 = 1;
+pub const OP_FEED_SCHEMA_VERSION: u32 = 2;
 
 #[must_use]
 pub fn encode_op_feed_snapshot(snapshot: &OpFeedSnapshot) -> Vec<u8> {
@@ -88,6 +88,10 @@ fn encode_note_feed_item<'bldr>(
         .reposted_by
         .as_ref()
         .map(|repost| encode_repost_attribution(builder, repost));
+    let hosted_group = item
+        .hosted_group
+        .as_ref()
+        .map(|context| encode_hosted_group_context(builder, context));
 
     fb::NoteFeedItem::create(
         builder,
@@ -100,6 +104,7 @@ fn encode_note_feed_item<'bldr>(
             content_tree_bytes: Some(content_tree_bytes),
             relay_provenance: Some(relay_provenance),
             reposted_by,
+            hosted_group,
         },
     )
 }
@@ -114,6 +119,21 @@ fn encode_repost_attribution<'bldr>(
         &fb::RepostAttributionArgs {
             author_pubkey: Some(author_pubkey),
             note_created_at: attr.note_created_at,
+        },
+    )
+}
+
+fn encode_hosted_group_context<'bldr>(
+    builder: &mut FlatBufferBuilder<'bldr>,
+    context: &HostedGroupContext,
+) -> WIPOffset<fb::HostedGroupContext<'bldr>> {
+    let host_relay_url = builder.create_string(&context.host_relay_url);
+    let local_id = builder.create_string(&context.local_id);
+    fb::HostedGroupContext::create(
+        builder,
+        &fb::HostedGroupContextArgs {
+            host_relay_url: Some(host_relay_url),
+            local_id: Some(local_id),
         },
     )
 }
@@ -207,6 +227,10 @@ fn decode_note_feed_item(item: fb::NoteFeedItem<'_>) -> Result<NoteFeedItem, Str
             .reposted_by()
             .map(decode_repost_attribution)
             .transpose()?,
+        hosted_group: item
+            .hosted_group()
+            .map(decode_hosted_group_context)
+            .transpose()?,
     })
 }
 
@@ -217,6 +241,21 @@ fn decode_repost_attribution(attr: fb::RepostAttribution<'_>) -> Result<RepostAt
             .ok_or("RepostAttribution missing author_pubkey")?
             .to_string(),
         note_created_at: attr.note_created_at(),
+    })
+}
+
+fn decode_hosted_group_context(
+    context: fb::HostedGroupContext<'_>,
+) -> Result<HostedGroupContext, String> {
+    Ok(HostedGroupContext {
+        host_relay_url: context
+            .host_relay_url()
+            .ok_or("HostedGroupContext missing host_relay_url")?
+            .to_string(),
+        local_id: context
+            .local_id()
+            .ok_or("HostedGroupContext missing local_id")?
+            .to_string(),
     })
 }
 

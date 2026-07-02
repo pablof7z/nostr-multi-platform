@@ -2,6 +2,7 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
+export { HostedGroupContext } from './note-feed/hosted-group-context.js';
 export { NoteFeedItem } from './note-feed/note-feed-item.js';
 export { OpFeedSnapshot } from './note-feed/op-feed-snapshot.js';
 export { ReplyAttribution } from './note-feed/reply-attribution.js';

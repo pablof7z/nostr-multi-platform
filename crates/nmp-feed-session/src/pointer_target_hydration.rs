@@ -11,8 +11,8 @@ use nmp_planner::{InterestShape, NaddrCoord};
 
 use super::resolve::{not_supported, resolve_scope};
 use super::source::{
-    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource,
-    SessionReactivityHook,
+    empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
+    ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 
@@ -94,6 +94,7 @@ pub(super) fn resolve_pointer_target_hydration(
             teardown
         },
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 

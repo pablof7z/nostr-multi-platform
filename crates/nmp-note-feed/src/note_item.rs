@@ -24,6 +24,15 @@ pub struct NoteFeedItem {
     pub relay_provenance: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reposted_by: Option<RepostAttribution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_group: Option<HostedGroupContext>,
+}
+
+/// Typed group context attached by hosted-group feed sessions.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HostedGroupContext {
+    pub host_relay_url: String,
+    pub local_id: String,
 }
 
 /// Attribution for a row surfaced by a NIP-18 repost wrapper.
@@ -65,8 +74,19 @@ impl FeedCard for NoteFeedItem {
 impl NoteFeedItem {
     #[must_use]
     pub fn from_event_for_op_feed(event: &KernelEvent, target: Option<&KernelEvent>) -> Self {
+        Self::from_event_for_op_feed_with_hosted_group(event, target, None)
+    }
+
+    #[must_use]
+    pub fn from_event_for_op_feed_with_hosted_group(
+        event: &KernelEvent,
+        target: Option<&KernelEvent>,
+        hosted_group: Option<HostedGroupContext>,
+    ) -> Self {
         let Some(repost) = try_from_repost_event(event) else {
-            return Self::from_event(event);
+            let mut item = Self::from_event(event);
+            item.hosted_group = hosted_group;
+            return item;
         };
 
         let target_id = repost
@@ -88,6 +108,7 @@ impl NoteFeedItem {
             note_created_at,
         });
         item.created_at = event.created_at;
+        item.hosted_group = hosted_group;
         item
     }
 
@@ -111,6 +132,7 @@ impl NoteFeedItem {
             content_tree,
             relay_provenance: event.relay_provenance.clone(),
             reposted_by,
+            hosted_group: None,
         }
     }
 }

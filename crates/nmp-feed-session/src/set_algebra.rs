@@ -23,7 +23,7 @@ use nmp_feed::RootAdmission;
 use nmp_planner::{InterestScope, InterestShape};
 
 use super::resolve::{resolve_scope, SetOp};
-use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
+use super::source::{ExtraAcquisition, LiveShape, ReducedSource, RowContextProvider};
 
 /// Resolve a binary set-algebra scope by recursing into both children.
 pub(super) fn resolve_set_op(
@@ -145,6 +145,14 @@ pub(super) fn resolve_set_op(
     let mut resolver_teardown = l.resolver_teardown;
     resolver_teardown.extend(r.resolver_teardown);
     let active_follow_set = l.active_follow_set.or(r.active_follow_set);
+    let row_context: RowContextProvider = {
+        let lp = l.row_context;
+        let rp = r.row_context;
+        let include_right = !matches!(op, SetOp::Difference);
+        std::sync::Arc::new(move |event: &KernelEvent| {
+            lp(event).or_else(|| include_right.then(|| rp(event)).flatten())
+        })
+    };
 
     Ok(ReducedSource {
         op_session_identity,
@@ -160,6 +168,7 @@ pub(super) fn resolve_set_op(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set,
+        row_context,
     })
 }
 
