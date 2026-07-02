@@ -142,6 +142,10 @@ pub struct ProjectionContract {
 mod table;
 // Marmot host-registered projection entries split out for 500-LOC cap.
 mod marmot;
+// NIP-02 host-registered projection entry split out for 500-LOC cap.
+mod nip02;
+// Threading-graph host-registered projection entry split out for 500-LOC cap.
+mod threading;
 pub use table::PROJECTION_CONTRACT;
 
 /// Look up a projection's contract by its kernel-emitted key. Returns `None`

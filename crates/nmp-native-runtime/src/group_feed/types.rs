@@ -28,6 +28,51 @@ impl Nip29GroupEventsSession {
     }
 }
 
+/// Descriptor for a NIP-29 group-threading typed read session.
+///
+/// Scoped like [`Nip29GroupEventsSession`]: the reactive `nmp.threading.graph`
+/// read model (`nmp_threading::ThreadingProjection`) is fed the same
+/// `["h", local_id]` + consumer-declared `kinds` event stream as the
+/// group-events view, so its e-tag reply/root edges cover exactly the events a
+/// chat/thread screen already renders. `nmp-threading` never sees the `h` tag
+/// or the group identity — that scoping is composed here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupThreadingSession {
+    pub(super) group_id: GroupId,
+    pub(super) kinds: Vec<u32>,
+}
+
+impl Nip29GroupThreadingSession {
+    #[must_use]
+    pub fn new(group_id: GroupId, kinds: Vec<u32>) -> Self {
+        Self { group_id, kinds }
+    }
+
+    #[must_use]
+    pub fn group_id(&self) -> &GroupId {
+        &self.group_id
+    }
+
+    #[must_use]
+    pub fn kinds(&self) -> &[u32] {
+        &self.kinds
+    }
+}
+
+/// Runtime handle for one host-driven NIP-29 group-threading read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip29GroupThreadingHandle {
+    pub(super) key: String,
+    pub(super) handle_id: u64,
+}
+
+impl Nip29GroupThreadingHandle {
+    #[must_use]
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+}
+
 /// Descriptor for a group-scoped NIP-25 reaction-aggregate typed read session.
 ///
 /// The reaction fold (kind:7) is scoped to one NIP-29 group: the session opens

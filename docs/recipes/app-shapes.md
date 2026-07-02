@@ -104,6 +104,54 @@ teardown. Do not expose a generic `Claim` / `Release` verb, an
 internals as app-facing product APIs — the thing that wants a concept asks that
 concept's owner for it ([#2508](https://github.com/pablof7z/nostr-multi-platform/issues/2508)).
 
+## Group Timeline + Reply Chips
+
+Use for a NIP-29 chat/thread screen (29er) or any group-scoped view that needs
+reply chips, thread jumps, or Twitter-style module grouping without app-side
+`e`-tag parsing. NIP-29 is kind-blind transport (issue #2517): `GroupEvent`
+rows carry no `reply_to` / `root` fields. `nmp-threading` owns the kind-blind
+NIP-10 `e`-tag reply/root grammar (issue #2719) as a sibling read model over
+the SAME event scope.
+
+- Reusable NMP: `nmp-nip29` (group routing + `GroupEventsProjection`) and
+  `nmp-threading` (`ThreadingProjection` — the `nmp.threading.graph` fold).
+  Neither crate names the other.
+- App Rust core (composition root, e.g. `nmp-native-runtime`'s `NmpApp`):
+  opens BOTH typed read sessions against the same group + kind selection —
+  `open_nip29_group_events_session_with_reader` for rows and
+  `open_nip29_group_threading_session_with_reader` for edges — so the
+  threading fold always covers exactly the events the timeline renders.
+- Shell: joins `GroupEventsSnapshot::events` and `ThreadingSnapshot::edges` by
+  `event_id` (or renders `ThreadingSnapshot::blocks` directly for Twitter-style
+  module stacking) and renders reply chips / thread jumps from the typed
+  `ThreadPointer` fields. It does not parse `e` tags.
+- Runtime/host: transports both typed sidecars (`nmp.nip29.group_events` +
+  `nmp.threading.graph`) under the same relay-pinned interest lifecycle.
+- Single writers: `nmp-nip29` writes routing facts; `nmp-threading` writes
+  thread-edge facts from the same `e` tags; the shell writes no thread
+  relationship of its own.
+
+```rust
+// Composition root (nmp-native-runtime): open the paired sessions for the
+// selected group. Both share the same GroupId + kinds selection.
+let (events_handle, events) = app.open_nip29_group_events_session_with_reader(
+    Nip29GroupEventsSession::new(group_id.clone(), vec![9, 11]),
+);
+let (threading_handle, edges) = app.open_nip29_group_threading_session_with_reader(
+    Nip29GroupThreadingSession::new(group_id, vec![9, 11]),
+);
+```
+
+```rust
+// Shell-facing join: pair each row with its resolved thread edge.
+let edges_by_id: HashMap<&str, &ThreadEdge> =
+    threading_snapshot.edges.iter().map(|e| (e.event_id.as_str(), e)).collect();
+for row in &events_snapshot.events {
+    let reply_chip = edges_by_id.get(row.id.as_str()).and_then(|e| e.parent.as_ref());
+    // render `row` with an optional reply-chip pointing at `reply_chip`
+}
+```
+
 ## Long-Form Reader
 
 Use for NIP-23 articles, topic feeds, or a direct `naddr` reader.

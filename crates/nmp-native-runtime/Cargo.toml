@@ -58,6 +58,7 @@ nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-marmot = { path = "../nmp-marmot", optional = true }
+nmp-threading = { path = "../nmp-threading" }
 nmp-intent = { path = "../nmp-intent" }
 nmp-wot = { path = "../nmp-wot" }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }

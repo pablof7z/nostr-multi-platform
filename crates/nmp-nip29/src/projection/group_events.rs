@@ -76,8 +76,14 @@ use crate::kinds::h_tag_value;
 /// NIP-29 is kind-blind transport (issue #2517): it carries the `h` / `previous`
 /// / host-pin envelope only and does **not** interpret NIP-10 reply/thread
 /// (`e`-tag root/reply/mention) markers — that foreign-protocol concept is owned
-/// by `nmp-threading`. So a row exposes no `reply_to` / `root` thread edges; a
-/// threading read model resolves those from the same `e` tags downstream.
+/// by `nmp-threading`. So a row exposes no `reply_to` / `root` thread edges.
+/// The shipped downstream seam (issue #2719): `nmp-native-runtime`'s
+/// `NmpApp::open_nip29_group_threading_session_with_reader` composes
+/// `nmp_threading::ThreadingProjection` against the SAME `["h", local_id]` +
+/// kind interest a group-events view opens, and its `nmp.threading.graph`
+/// typed sidecar carries the reply/root edges (+ Twitter-style module
+/// grouping) resolved from these same `e` tags. See
+/// `docs/recipes/app-shapes.md`, "Group Timeline + Reply Chips".
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupEvent {
     /// Event id (hex). Also the dedupe key inside the projection.

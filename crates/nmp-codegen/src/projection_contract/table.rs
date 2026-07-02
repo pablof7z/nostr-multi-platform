@@ -6,6 +6,8 @@
 //! `projection_contract::PROJECTION_CONTRACT` resolves unchanged.
 
 use super::marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT};
+use super::nip02::FOLLOW_LIST;
+use super::threading::THREADING_GRAPH;
 use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTier};
 
 // ── Source-version counter names ───────────────────────────────────────────────
@@ -292,20 +294,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
     },
-    ProjectionContract {
-        key: "nmp.follow_list",
-        tier: ProjectionTier::HostRegistered,
-        producer: "apps/chirp ffi/register follow_list (NIP-02)",
-        owner_claim: "projection.nmp.follow_list",
-        // Deliberate key/schema_id split: envelope key vs payload schema id.
-        schema_id: "nmp.nip02.follow_list",
-        file_identifier: "NF02",
-        // nmp-nip02 wire/typed_fb::SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
+    FOLLOW_LIST,
     ProjectionContract {
         key: "nmp.nip29.group_events",
         tier: ProjectionTier::HostRegistered,
@@ -340,6 +329,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
     },
+    THREADING_GRAPH,
     ProjectionContract {
         key: "nmp.nip29.discovered_groups",
         tier: ProjectionTier::HostRegistered,

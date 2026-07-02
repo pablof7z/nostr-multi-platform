@@ -1,0 +1,83 @@
+namespace nmp.threading;
+
+// Typed FlatBuffers wire for the reactive threading-graph read model
+// (`nmp_threading::projection::ThreadingSnapshot`), schema_id
+// "nmp.threading.graph".
+//
+// nmp-threading owns e-tag (NIP-10) reply/root grammar, kind-blind: this
+// projection folds ANY event scope it is handed and resolves each event's
+// direct parent + thread root purely from `e` tag markers, plus the
+// Twitter-style module grouping the same grammar implies (see
+// `nmp_threading::Grouper`). Scoping the fold to a concrete event stream (a
+// NIP-29 group, a note feed, ...) is the feeding interest's job; this schema
+// bakes in no group/kind concept.
+//
+// This is the typed sidecar (ADR-0037) carried alongside the generic
+// `serde_json::Value` projection registered under the same key by the
+// composing app-facing typed read session (ADR-0070). The serde shape
+// (`ThreadingProjection::snapshot`) stays authoritative; this buffer mirrors
+// it byte-for-byte so a host with an `NTHR` decoder can read typed accessors
+// instead of JSON reflection.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-threading/src/wire/generated \
+//         crates/nmp-threading/schema/threading_graph.fbs
+
+enum ThreadPointerKind:ubyte {
+  Event = 0,
+  Address = 1,
+  External = 2,
+}
+
+// Anchor for a reply/root: a Nostr event id, a parameterized-replaceable
+// address, or an external URI. Mirrors `nmp_threading::ThreadPointer`.
+table ThreadPointer {
+  kind:ThreadPointerKind;
+  id:string;          // Event: raw hex event id
+  coord:string;        // Address: "kind:pubkey:d-tag" coordinate
+  uri:string;           // External: raw URI
+  relay:string;        // optional relay hint (Event/Address only)
+  has_kind_hint:bool;
+  kind_hint:uint32;
+}
+
+// One event's resolved thread facts.
+table ThreadEdge {
+  event_id:string;
+  author_pubkey:string;
+  kind:uint32;   // raw event kind; the projection does not branch on it
+  created_at:uint64;
+  parent:ThreadPointer;
+  root:ThreadPointer;
+  parent_author_pubkey:string;
+}
+
+enum TimelineBlockKind:ubyte {
+  Standalone = 0,
+  Module = 1,
+}
+
+// One display-order block. `Standalone` uses `standalone_id` (+ optional
+// `root`); `Module` uses `event_ids` (root-first) + `has_gap` (+ optional
+// `root`). Mirrors `nmp_threading::TimelineBlock`.
+table TimelineBlockEntry {
+  kind:TimelineBlockKind;
+  standalone_id:string;
+  event_ids:[string];
+  has_gap:bool;
+  root:ThreadPointer;
+}
+
+// The serialised threading-graph read model.
+table ThreadingSnapshot {
+  schema_version:uint32 = 1;   // mirrors THREADING_GRAPH_SCHEMA_VERSION
+  edges:[ThreadEdge];          // ordered by event_id ascending
+  blocks:[TimelineBlockEntry]; // display order, newest block first
+  pending_ancestor_ids:[string];
+}
+
+root_type ThreadingSnapshot;
+file_identifier "NTHR";

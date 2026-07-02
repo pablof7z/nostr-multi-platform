@@ -4,10 +4,11 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Reply-convention-agnostic timeline grouping algorithm. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper, consumed by per-NIP wrapper view modules (NIP-10 in nmp-nip01). No app nouns, no kind semantics."
+description = "Reply-convention-agnostic timeline grouping algorithm plus the reactive e-tag threading-graph read model. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper (consumed by per-NIP wrapper view modules, e.g. NIP-10 in nmp-nip01) and ThreadingProjection / EtagThreadResolver (the nmp.threading.graph typed read model composed by app-facing typed sessions). No app nouns, no kind semantics."
 
 [dependencies]
 nmp-ownership = { workspace = true }
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

@@ -82,12 +82,13 @@ use crate::app_struct::NmpApp;
 mod feed;
 mod reactions;
 mod roster;
+mod threading;
 mod types;
 pub use types::{
     Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
     Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
-    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
-    Nip29JoinedGroupsSession,
+    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29GroupThreadingHandle,
+    Nip29GroupThreadingSession, Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession,
 };
 
 /// `0` = `ActiveAccount` scope (re-route on account switch) — the joined-groups
@@ -133,6 +134,15 @@ pub(crate) const GROUP_REACTIONS_PROJECTION_TOKEN: nmp_ownership::DeclaredProjec
         GROUP_REACTIONS_KEY,
         "projection.nmp.nip25.reactions",
     );
+/// Snapshot key + singleton session key for the group-scoped threading-graph
+/// view (`nmp-threading`'s e-tag reply/root fold, scoped to one group's `h`
+/// tag + consumer-declared kinds — issue #2719).
+pub const GROUP_THREADING_KEY: &str = "nmp.threading.graph";
+pub(crate) const GROUP_THREADING_PROJECTION_TOKEN: nmp_ownership::DeclaredProjectionKey =
+    nmp_ownership::DeclaredProjectionKey::framework(
+        GROUP_THREADING_KEY,
+        "projection.nmp.threading.graph",
+    );
 
 /// Refcount-owner id for each (singleton) NIP-29 view's pinned interest.
 const GROUP_EVENTS_CONSUMER: &str = "nip29-group-events";
@@ -140,6 +150,7 @@ const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 const GROUP_ROSTER_CONSUMER: &str = "nip29-group-roster";
 const GROUP_REACTIONS_CONSUMER: &str = "nip25-group-reactions";
+const GROUP_THREADING_CONSUMER: &str = "nip29-group-threading";
 static NEXT_GROUP_READ_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Teardown recipe for one live NIP-29 read view (held in

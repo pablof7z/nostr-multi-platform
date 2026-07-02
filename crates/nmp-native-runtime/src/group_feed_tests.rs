@@ -238,6 +238,148 @@ fn group_reactions_reader_aggregates_ingested_kind7() {
 }
 
 #[test]
+fn group_threading_replacement_makes_old_handle_idempotent() {
+    let app = crate::new_app();
+    let first = app.open_nip29_group_threading_session(Nip29GroupThreadingSession::new(
+        GroupId::new("wss://groups.example", "first"),
+        vec![9, 11],
+    ));
+    assert_eq!(session_count(&app), 1);
+
+    let second = app.open_nip29_group_threading_session(Nip29GroupThreadingSession::new(
+        GroupId::new("wss://groups.example", "second"),
+        vec![9, 11],
+    ));
+    assert_eq!(
+        session_count(&app),
+        1,
+        "replacement must tear down the old observer/session"
+    );
+
+    app.close_nip29_group_threading_session(first);
+    assert_eq!(
+        session_count(&app),
+        1,
+        "stale handles must not close the replacement session"
+    );
+
+    app.close_nip29_group_threading_session(second.clone());
+    assert_eq!(session_count(&app), 0);
+    app.close_nip29_group_threading_session(second);
+    assert_eq!(session_count(&app), 0);
+}
+
+#[test]
+fn group_threading_reader_resolves_reply_and_root_edges_for_a_published_tree() {
+    use nmp_core::substrate::KernelEvent;
+    use nmp_core::ObservedProjectionSink;
+
+    let app = crate::new_app();
+    let (_handle, reader) = app.open_nip29_group_threading_session_with_reader(
+        Nip29GroupThreadingSession::new(GroupId::new("wss://groups.example", "room"), vec![9]),
+    );
+
+    // A small reply tree published into the group: a root chat message, a
+    // direct reply, and a reply-to-the-reply. 29er/hl need this exact shape —
+    // reply chips on `msg2`/`msg3` and a thread jump back to `msg1` — with
+    // zero app-side `e`-tag parsing (issue #2719 acceptance criteria).
+    let root_id = "1".repeat(64);
+    let reply_id = "2".repeat(64);
+    let grandchild_id = "3".repeat(64);
+    let author = "a".repeat(64);
+
+    reader.on_kernel_event(&KernelEvent {
+        id: root_id.clone(),
+        author: author.clone(),
+        kind: 9,
+        created_at: 100,
+        tags: vec![vec!["h".into(), "room".into()]],
+        content: "root message".into(),
+        relay_provenance: Vec::new(),
+    });
+    reader.on_kernel_event(&KernelEvent {
+        id: reply_id.clone(),
+        author: author.clone(),
+        kind: 9,
+        created_at: 200,
+        tags: vec![
+            vec!["h".into(), "room".into()],
+            vec!["e".into(), root_id.clone(), String::new(), "root".into()],
+            vec!["e".into(), root_id.clone(), String::new(), "reply".into()],
+        ],
+        content: "a reply".into(),
+        relay_provenance: Vec::new(),
+    });
+    reader.on_kernel_event(&KernelEvent {
+        id: grandchild_id.clone(),
+        author: author.clone(),
+        kind: 9,
+        created_at: 300,
+        tags: vec![
+            vec!["h".into(), "room".into()],
+            vec!["e".into(), root_id.clone(), String::new(), "root".into()],
+            vec!["e".into(), reply_id.clone(), String::new(), "reply".into()],
+        ],
+        content: "a reply to the reply".into(),
+        relay_provenance: Vec::new(),
+    });
+
+    let snapshot = reader.snapshot();
+    assert_eq!(
+        snapshot.edges.len(),
+        3,
+        "one edge row per event, kind-blind"
+    );
+
+    let root_edge = snapshot
+        .edges
+        .iter()
+        .find(|e| e.event_id == root_id)
+        .expect("root edge present");
+    assert!(root_edge.parent.is_none());
+    assert!(root_edge.root.is_none());
+
+    let reply_edge = snapshot
+        .edges
+        .iter()
+        .find(|e| e.event_id == reply_id)
+        .expect("reply edge present");
+    assert_eq!(
+        reply_edge.parent.as_ref().and_then(|p| p.event_id()),
+        Some(root_id.as_str())
+    );
+    assert_eq!(
+        reply_edge.root.as_ref().and_then(|p| p.event_id()),
+        Some(root_id.as_str())
+    );
+
+    let grandchild_edge = snapshot
+        .edges
+        .iter()
+        .find(|e| e.event_id == grandchild_id)
+        .expect("grandchild edge present");
+    assert_eq!(
+        grandchild_edge.parent.as_ref().and_then(|p| p.event_id()),
+        Some(reply_id.as_str())
+    );
+    assert_eq!(
+        grandchild_edge.root.as_ref().and_then(|p| p.event_id()),
+        Some(root_id.as_str())
+    );
+
+    // The grouper stitches all three into one Twitter-style module block —
+    // the thread-jump / module-render seam 29er needs.
+    assert!(
+        snapshot.blocks.iter().any(|b| matches!(
+            b,
+            nmp_threading::TimelineBlock::Module { events, .. } if events.len() == 3
+        )),
+        "expected a 3-event module block, got {:?}",
+        snapshot.blocks
+    );
+}
+
+#[test]
 fn joined_groups_empty_active_pubkey_is_noop() {
     let app = crate::new_app();
     let handle = app.open_nip29_joined_groups_session(Nip29JoinedGroupsSession::new(

@@ -104,8 +104,9 @@ fn swift_registry_keys_resolve_to_contract() {
 ///   SEPARATE `KEYED_PROJECTIONS` registry (the `keyed_and_snapshot_registries_are_disjoint`
 ///   test enforces they never appear in `SNAPSHOT_PROJECTIONS`).
 /// - `nmp.nip29.joined_groups` / `nmp.nip29.group_roster` /
-///   `nmp.nip25.reactions` / `nmp.nip51.mute_list` / `nmp.nip51.bookmarks`
-///   / `nmp.nip23.articles` / `nmp.wot.bootstrap` / `nmp.notifications`
+///   `nmp.nip25.reactions` / `nmp.threading.graph` / `nmp.nip51.mute_list` /
+///   `nmp.nip51.bookmarks` / `nmp.nip23.articles` / `nmp.wot.bootstrap` /
+///   `nmp.notifications`
 ///   — Tier-1 projections registered (by `nmp-nip29` / `nmp-nip25` /
 ///   `nmp-nip51` / `nmp-nip23` / `nmp-wot` / `nmp-browser-runtime`) for the web
 ///   + other hosts but with no iOS Swift `SnapshotProjections` consumer field.
@@ -124,6 +125,10 @@ fn swift_presented_contract_keys_match_registry() {
         // The group-scoped NIP-25 reaction aggregate: a Tier-1 sidecar 29er
         // decodes directly (N25A); no iOS Swift `SnapshotProjections` field yet.
         "nmp.nip25.reactions",
+        // The group-scoped threading-graph read model (#2719): a Tier-1
+        // sidecar 29er/hl decode directly (NTHR); no iOS Swift
+        // `SnapshotProjections` field yet.
+        "nmp.threading.graph",
         "nmp.nip51.mute_list",
         "nmp.nip51.bookmarks",
         "nmp.nip23.articles",
