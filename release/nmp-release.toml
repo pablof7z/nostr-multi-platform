@@ -120,6 +120,10 @@ name = "nmp-note-feed"
 path = "crates/nmp-note-feed"
 
 [[public_crates]]
+name = "nmp-reactions"
+path = "crates/nmp-reactions"
+
+[[public_crates]]
 name = "nmp-replies"
 path = "crates/nmp-replies"
 

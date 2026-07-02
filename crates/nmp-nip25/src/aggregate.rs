@@ -212,6 +212,41 @@ impl ReactionAggregateProjection {
             .find(|t| t.target_event_id == target_event_id)
     }
 
+    /// Distinct reactor pubkeys per reaction token for `target_event_id`
+    /// (raw hex, ascending within each token; tokens ascending).
+    ///
+    /// This is the identity-free per-group membership fact a concept read
+    /// (e.g. `nmp-reactions`' `open_reactions`) exposes so a shell can derive
+    /// viewer-relative facts ("did MY pubkey react with this token") by raw
+    /// pubkey comparison, without the projection ever resolving account
+    /// identity. Bounded by the ingest map ([`MAX_PROJECTION_MESSAGES`]
+    /// surviving reaction entries), the same bound [`Self::snapshot`]'s
+    /// `reactors` list carries. D6: a poisoned lock degrades to empty.
+    #[must_use]
+    pub fn reactors_by_token_for(&self, target_event_id: &str) -> BTreeMap<String, Vec<String>> {
+        let Ok(entries) = self.entries.lock() else {
+            return BTreeMap::new();
+        };
+        let mut by_token: BTreeMap<&str, std::collections::BTreeSet<&str>> = BTreeMap::new();
+        for (_, record) in entries.iter() {
+            if record.target_event_id == target_event_id {
+                by_token
+                    .entry(&record.token)
+                    .or_default()
+                    .insert(&record.author_pubkey);
+            }
+        }
+        by_token
+            .into_iter()
+            .map(|(token, reactors)| {
+                (
+                    token.to_string(),
+                    reactors.into_iter().map(str::to_string).collect(),
+                )
+            })
+            .collect()
+    }
+
     /// Return the currently surviving kind:7 reaction ids for `target_event_id`
     /// with their original authors. A runtime active-read uses these to open a
     /// bounded kind:5 `#e=<reaction_event_id>` delete observer; delete ingest
