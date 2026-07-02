@@ -19,10 +19,11 @@
 //! compiler. No native closure crosses FFI — app-defined source, admission, and
 //! order policies are referenced by phase-specific opaque ids.
 
+use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
 use serde::{Deserialize, Serialize};
 
-use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
-use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
+mod window;
+pub use window::{FeedWindowPolicy, FeedWindowResetPolicy};
 
 // ---------------------------------------------------------------------------
 // Acquisition source — the closed `FeedSourceExpr` algebra.
@@ -211,41 +212,6 @@ pub enum FeedOrder {
     OldestByFeedPosition,
     /// Ordered per an app-registered order perspective (opaque id).
     Custom(CustomOrderId),
-}
-
-/// (d) WINDOW — the bounded viewport over admitted, ordered rows (D8).
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct FeedWindowPolicy {
-    /// Initial visible page size. Clamped into
-    /// `1..=MAX_FEED_WINDOW_LIMIT` by [`FeedWindowPolicy::bounded_limit`].
-    pub initial_limit: usize,
-}
-
-impl Default for FeedWindowPolicy {
-    fn default() -> Self {
-        Self {
-            initial_limit: DEFAULT_FEED_WINDOW_LIMIT,
-        }
-    }
-}
-
-impl FeedWindowPolicy {
-    /// Build a bounded initial visible-row policy.
-    #[must_use]
-    pub fn bounded(initial_limit: usize) -> Self {
-        Self { initial_limit }
-    }
-
-    /// The window limit clamped into the bounded range. A zero limit falls back
-    /// to the default; oversized limits are capped at [`MAX_FEED_WINDOW_LIMIT`].
-    #[must_use]
-    pub fn bounded_limit(&self) -> usize {
-        if self.initial_limit == 0 {
-            DEFAULT_FEED_WINDOW_LIMIT
-        } else {
-            self.initial_limit.min(MAX_FEED_WINDOW_LIMIT)
-        }
-    }
 }
 
 /// (e) OUTPUT KEY — the app-owned dynamic projection key this feed session

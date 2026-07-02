@@ -40,8 +40,8 @@ pub use pager::{
 pub use params::{
     CustomAdmissionId, CustomOrderId, CustomSourceId, FeedAdmission, FeedHandle,
     FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape,
-    FeedSourceExpr, FeedWindowPolicy, ListId, ProjectionKey, RelaySetId, TagTerm, WotRulesId,
-    WotSeed,
+    FeedSourceExpr, FeedWindowPolicy, FeedWindowResetPolicy, ListId, ProjectionKey, RelaySetId,
+    TagTerm, WotRulesId, WotSeed,
 };
 pub use pull_controller::{
     ClosureInterestShape, ClosureInterestShapes, FeedAdvance, FeedApply, FeedInterestShapes,

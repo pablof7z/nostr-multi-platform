@@ -209,6 +209,7 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
         app,
         params.key.as_str(),
         &params.shape,
+        params.window,
         resolved,
         suppression,
     )

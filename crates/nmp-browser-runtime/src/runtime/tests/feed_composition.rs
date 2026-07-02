@@ -435,9 +435,7 @@ fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHan
         source: nmp_feed::FeedScope::ActiveUserFollows,
         admission: nmp_feed::FeedAdmission::All,
         order: nmp_feed::FeedOrder::NewestByFeedPosition,
-        window: nmp_feed::FeedWindowPolicy {
-            initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
-        },
+        window: nmp_feed::FeedWindowPolicy::bounded(nmp_feed::DEFAULT_FEED_WINDOW_LIMIT),
         key: nmp_feed::ProjectionKey::app_owned(BROWSER_FEED_KEY).unwrap(),
         item_projection: nmp_feed::FeedItemProjection::FeedRows,
     };

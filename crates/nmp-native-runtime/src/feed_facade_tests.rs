@@ -11,7 +11,7 @@ fn active_follows_params(key: &str) -> FeedParams {
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned(key).unwrap(),
         item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }

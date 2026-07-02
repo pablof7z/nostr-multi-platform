@@ -9,7 +9,7 @@ mod support;
 
 use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::engine::MAX_ATTRIBUTION_PER_ROOT;
-use crate::{FeedRequest, DEFAULT_FEED_WINDOW_LIMIT};
+use crate::{FeedRequest, FeedWindowPolicy, FeedWindowResetPolicy, DEFAULT_FEED_WINDOW_LIMIT};
 use support::{reply_event, repost_event, root_event, Harness, TestCard, TestPayload};
 
 #[test]
@@ -293,6 +293,50 @@ fn perspective_reset_restores_default_window_limit() {
         DEFAULT_FEED_WINDOW_LIMIT,
         "a perspective reset must return paging to the first window"
     );
+}
+
+#[test]
+fn window_policy_drives_root_indexed_initial_grow_and_reset_limits() {
+    let policy = FeedWindowPolicy {
+        initial_limit: 5,
+        page_size: 3,
+        max_visible: 9,
+        reset: FeedWindowResetPolicy::ResetToInitial,
+        ..FeedWindowPolicy::default()
+    };
+    let h = Harness::with_root_admission_and_window_policy(
+        &["alice"],
+        std::sync::Arc::new(|_| true),
+        crate::admit_all_roots(),
+        policy,
+    );
+
+    for i in 0u64..12 {
+        h.ingest(&root_event(
+            &format!("policy{i}"),
+            "alice",
+            1_000 + i,
+            "body",
+        ));
+    }
+
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 5);
+    assert!(h.engine.grow_visible_window());
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 8);
+    assert!(h.engine.grow_visible_window());
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 9);
+    assert!(!h.engine.grow_visible_window());
+
+    h.engine.reset_for_perspective_change();
+    for i in 0u64..12 {
+        h.ingest(&root_event(
+            &format!("after-policy-reset{i}"),
+            "alice",
+            2_000 + i,
+            "body",
+        ));
+    }
+    assert_eq!(h.engine.snapshot_current_window().cards.len(), 5);
 }
 
 #[test]

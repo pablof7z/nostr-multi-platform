@@ -15,8 +15,8 @@ use nmp_planner::InterestShape;
 use serde::Serialize;
 
 use crate::{
-    FeedController, FeedCursor, FeedInterestShape, FeedPage, FeedRequest, RootCard,
-    RootFeedSnapshot, DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
+    FeedController, FeedCursor, FeedInterestShape, FeedPage, FeedRequest, FeedWindowPolicy,
+    RootCard, RootFeedSnapshot,
 };
 
 /// Admission predicate: `true` when an event belongs in this feed.
@@ -74,6 +74,7 @@ pub struct FlatFeed<C> {
     merge: FlatFeedMerge<C>,
     interest: Option<InterestShape>,
     state: Mutex<FlatFeedState<C>>,
+    window_policy: FeedWindowPolicy,
     visible_limit: AtomicUsize,
 }
 
@@ -98,6 +99,24 @@ where
         Self::with_merge(predicate, item_builder, interest, default_merge())
     }
 
+    /// Construct a flat feed with a covered pull interest and explicit window
+    /// policy.
+    #[must_use]
+    pub fn with_interest_and_window_policy(
+        predicate: FlatFeedPredicate,
+        item_builder: FlatFeedItemBuilder<C>,
+        interest: Option<InterestShape>,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
+        Self::with_merge_and_window_policy(
+            predicate,
+            item_builder,
+            interest,
+            default_merge(),
+            window_policy,
+        )
+    }
+
     /// Construct a flat feed with explicit same-identity merge semantics.
     #[must_use]
     pub fn with_merge(
@@ -106,13 +125,34 @@ where
         interest: Option<InterestShape>,
         merge: FlatFeedMerge<C>,
     ) -> Arc<Self> {
+        Self::with_merge_and_window_policy(
+            predicate,
+            item_builder,
+            interest,
+            merge,
+            FeedWindowPolicy::default(),
+        )
+    }
+
+    /// Construct a flat feed with explicit same-identity merge semantics and
+    /// app-declared window policy.
+    #[must_use]
+    pub fn with_merge_and_window_policy(
+        predicate: FlatFeedPredicate,
+        item_builder: FlatFeedItemBuilder<C>,
+        interest: Option<InterestShape>,
+        merge: FlatFeedMerge<C>,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
+        let initial_limit = window_policy.initial_visible_limit();
         Arc::new(Self {
             predicate,
             item_builder,
             merge,
             interest,
             state: Mutex::new(FlatFeedState::default()),
-            visible_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
+            window_policy,
+            visible_limit: AtomicUsize::new(initial_limit),
         })
     }
 
@@ -205,12 +245,12 @@ where
     pub fn grow_visible_window(&self) -> bool {
         let total = self.state.lock().map(|st| st.rows.len()).unwrap_or(0);
         let current = self.visible_limit.load(Ordering::Relaxed);
-        if current >= total || current >= MAX_FEED_WINDOW_LIMIT {
-            return false;
-        }
-        let new_limit = (current + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
-        self.visible_limit.store(new_limit, Ordering::Relaxed);
-        true
+        self.window_policy
+            .next_visible_limit(current, total)
+            .is_some_and(|new_limit| {
+                self.visible_limit.store(new_limit, Ordering::Relaxed);
+                true
+            })
     }
 
     /// Remove an entire canonical row by id.
@@ -302,8 +342,11 @@ where
         };
         let had_rows = !st.rows.is_empty();
         st.rows.clear();
-        self.visible_limit
-            .store(DEFAULT_FEED_WINDOW_LIMIT, Ordering::Relaxed);
+        let current = self.visible_limit.load(Ordering::Relaxed);
+        self.visible_limit.store(
+            self.window_policy.reset_visible_limit(current),
+            Ordering::Relaxed,
+        );
         had_rows
     }
 

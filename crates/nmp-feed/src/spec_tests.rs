@@ -18,7 +18,9 @@ fn feed_spec_builds_canonical_params() {
     assert_eq!(params.primary_kinds, vec![1]);
     assert_eq!(params.source, FeedSourceExpr::ActiveUserFollows);
     assert_eq!(params.shape, FeedShape::Flat);
-    assert_eq!(params.window.initial_limit, 80);
+    assert_eq!(params.window.initial_visible_limit(), 80);
+    assert_eq!(params.window.page_size(), 80);
+    assert_eq!(params.window.source_page_size(), 80);
     assert_eq!(params.item_projection, FeedItemProjection::FeedRows);
 }
 

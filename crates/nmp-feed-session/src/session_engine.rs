@@ -31,7 +31,7 @@ use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
-    FeedShape, PullFeedController, RootAdmission,
+    FeedShape, FeedWindowPolicy, PullFeedController, RootAdmission,
 };
 use nmp_note_feed::OpFeedEngine;
 use nmp_planner::InterestScope;
@@ -63,13 +63,14 @@ pub(super) fn build_scope_session_with_artifacts(
     app: &impl FeedSessionHost,
     key: &str,
     shape: &FeedShape,
+    window: FeedWindowPolicy,
     resolved: ReducedSource,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
     match shape {
-        FeedShape::RootIndexed => build_op_scope_session(app, key, resolved, suppression),
+        FeedShape::RootIndexed => build_op_scope_session(app, key, window, resolved, suppression),
         FeedShape::Flat => {
-            flat_session::build_flat_scope_session(app, key, resolved).map(|build| {
+            flat_session::build_flat_scope_session(app, key, window, resolved).map(|build| {
                 ScopeSessionBuild {
                     build,
                     artifacts: None,
@@ -82,6 +83,7 @@ pub(super) fn build_scope_session_with_artifacts(
 fn build_op_scope_session(
     app: &impl FeedSessionHost,
     key: &str,
+    window: FeedWindowPolicy,
     resolved: ReducedSource,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
@@ -127,11 +129,12 @@ fn build_op_scope_session(
         nmp_core::slots::event_by_id_from_store(&event_store, id)
     });
     let event_lookup_for_observer = event_lookup.clone();
-    let engine = nmp_note_feed::op_feed::register_op_feed_with_admission(
+    let engine = nmp_note_feed::op_feed::register_op_feed_with_admission_and_window_policy(
         viewer,
         follow_predicate,
         root_admission,
         event_lookup,
+        window,
     );
 
     // ── 2. Ingest observer ───────────────────────────────────────────────
@@ -181,7 +184,15 @@ fn build_op_scope_session(
         })
     };
     let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_shape_set(provider, pull, apply, None, Some(reset), advance);
+        PullFeedController::new_with_shape_set_and_window_policy(
+            provider,
+            pull,
+            apply,
+            None,
+            Some(reset),
+            advance,
+            window,
+        );
     app.register_feed(key.to_string(), controller.clone());
 
     // ── 3b. Typed NNFS sidecar + feed-author auto-resolve provider, STRUCTURALLY

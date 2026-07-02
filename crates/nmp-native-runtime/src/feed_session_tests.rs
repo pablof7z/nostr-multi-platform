@@ -61,7 +61,7 @@ fn following_params() -> FeedParams {
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key: ProjectionKey::app_owned("test.feed.following").unwrap(),
         item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }

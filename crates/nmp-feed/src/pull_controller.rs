@@ -36,7 +36,7 @@ use nmp_planner::InterestShape;
 use nmp_store::ScanLogResult;
 
 use crate::pager::{FeedInterestShape, FeedPullPager};
-use crate::FeedController;
+use crate::{FeedController, FeedWindowPolicy};
 
 /// The in-process pull seam: `(scope, after_seq) -> page`. The composition root
 /// builds this over the kernel event store (`nmp_core::pull_page_over`); it is a
@@ -226,6 +226,29 @@ impl PullFeedController {
         reset: Option<FeedReset>,
         advance: FeedAdvance,
     ) -> Arc<Self> {
+        Self::new_with_perspective_and_window_policy(
+            provider,
+            pull,
+            apply,
+            replace,
+            reset,
+            advance,
+            FeedWindowPolicy::default(),
+        )
+    }
+
+    /// Construct a controller with perspective hooks and explicit pull budgets
+    /// from the app-declared feed window policy.
+    #[must_use]
+    pub fn new_with_perspective_and_window_policy(
+        provider: Arc<dyn FeedInterestShape + Send + Sync>,
+        pull: PullFn,
+        apply: FeedApply,
+        replace: Option<FeedReplace>,
+        reset: Option<FeedReset>,
+        advance: FeedAdvance,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
         Self::new_with_provider(
             PullProvider::One(provider),
             pull,
@@ -233,6 +256,7 @@ impl PullFeedController {
             replace,
             reset,
             advance,
+            window_policy,
         )
     }
 
@@ -247,6 +271,29 @@ impl PullFeedController {
         reset: Option<FeedReset>,
         advance: FeedAdvance,
     ) -> Arc<Self> {
+        Self::new_with_shape_set_and_window_policy(
+            provider,
+            pull,
+            apply,
+            replace,
+            reset,
+            advance,
+            FeedWindowPolicy::default(),
+        )
+    }
+
+    /// Construct a multi-shape controller with explicit pull budgets from the
+    /// app-declared feed window policy.
+    #[must_use]
+    pub fn new_with_shape_set_and_window_policy(
+        provider: Arc<dyn FeedInterestShapes + Send + Sync>,
+        pull: PullFn,
+        apply: FeedApply,
+        replace: Option<FeedReplace>,
+        reset: Option<FeedReset>,
+        advance: FeedAdvance,
+        window_policy: FeedWindowPolicy,
+    ) -> Arc<Self> {
         Self::new_with_provider(
             PullProvider::Many(provider),
             pull,
@@ -254,6 +301,7 @@ impl PullFeedController {
             replace,
             reset,
             advance,
+            window_policy,
         )
     }
 
@@ -264,11 +312,15 @@ impl PullFeedController {
         replace: Option<FeedReplace>,
         reset: Option<FeedReset>,
         advance: FeedAdvance,
+        window_policy: FeedWindowPolicy,
     ) -> Arc<Self> {
         // Cursor-only pager — no initial shape check. The live shape is read on
         // every load_older call, so a controller registered before sign-in
         // becomes active as soon as the provider yields a real shape.
-        let pager = FeedPullPager::at_start();
+        let pager = FeedPullPager::at_start().with_budgets(
+            window_policy.source_page_size(),
+            window_policy.source_scan_budget(),
+        );
         Arc::new(Self {
             pager: Mutex::new(pager),
             provider,

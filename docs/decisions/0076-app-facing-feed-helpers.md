@@ -24,8 +24,8 @@ native/browser `feeds().open/load_older/close` facades, native/browser
 default compiler, app-owned dynamic projection keys, separate `FeedParams.key` /
 `FeedParams.item_projection` fields, and the `FeedSpec` builder over
 `FeedParams`. Issue #1626 remains open because generated helper surfaces,
-richer window policy, and explicit pointer-target hydration naming remain open
-API cleanup.
+explicit pointer-target hydration naming, and remaining product helper cleanup
+are still open API cleanup.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -174,7 +174,7 @@ pagination by handle.
 | former `render` field | `shape` | NMP projects row/window shape; hosts render. |
 | former `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
 | `FeedOrder::NewestByFeedPosition` without a target-event alternative | Add explicit target-created-at order if needed | Repost/source position and target event time are different contracts. |
-| `FeedWindowPolicy` with only `initial_limit` | Expanded `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
+| declaration-only window policy | Executable `FeedWindowPolicy` | Initial/page/max visible rows, source pull budgets, and reset/regrow behavior must flow into the runtime engines. |
 | former `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
 | former `CustomPerspectiveId` reused for source/admission/order | `CustomSourceId`, `CustomAdmissionId`, `CustomOrderId` | Source, admission, and order are different contracts. |
 | `PointerTargets` as casual feed source | explicit target-hydration source or meta-timeline helper | Target hydration must never look like ordinary feed acquisition. |

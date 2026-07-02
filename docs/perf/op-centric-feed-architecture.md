@@ -114,7 +114,7 @@ pub fn open_active_follows_op_feed(
         source: FeedSourceExpr::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy { initial_limit: 80 },
+        window: FeedWindowPolicy::bounded(80),
         key,
         item_projection: FeedItemProjection::FeedRows,
     })

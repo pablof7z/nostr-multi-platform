@@ -210,7 +210,8 @@ mod tests {
     fn parity_open_feed_json_valid_params_returns_handle() {
         let app = crate::NmpApp::new();
         // FeedParams JSON: field names match the struct (source, not scope;
-        // FeedAdmission::All, not "Default"; FeedWindowPolicy.initial_limit, not limit).
+        // FeedAdmission::All, not "Default"; FeedWindowPolicy fields such as
+        // initial_limit, not a generic limit).
         let params_json = r#"{
             "primary_kinds": [1],
             "source": "ActiveUserFollows",

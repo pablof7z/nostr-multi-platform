@@ -123,7 +123,7 @@ pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
         source: nmp_native_runtime::FeedSourceExpr::ActiveUserFollows,
         admission: nmp_native_runtime::FeedAdmission::All,
         order: nmp_native_runtime::FeedOrder::NewestByFeedPosition,
-        window: nmp_native_runtime::FeedWindowPolicy { initial_limit: 80 },
+        window: nmp_native_runtime::FeedWindowPolicy::bounded(80),
         key: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
             .expect("starter home timeline projection is app-owned"),
         item_projection: nmp_native_runtime::FeedItemProjection::FeedRows,

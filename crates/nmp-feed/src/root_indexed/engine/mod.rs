@@ -23,8 +23,7 @@ use nmp_threading::ParentResolver;
 
 use crate::root_indexed::attribution::AttributionPayload;
 use crate::root_indexed::card::{RootCard, RootFeedSnapshot};
-use crate::types::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
-use crate::{FeedCursor, FeedPage, FeedRequest};
+use crate::{FeedCursor, FeedPage, FeedRequest, FeedWindowPolicy};
 
 /// The per-event ingest state machine lives in a sibling file to keep both
 /// under the 500-LOC ceiling; it is a continuation `impl` on `RootIndexedFeed`.
@@ -150,6 +149,7 @@ where
     /// `created_at` window-grow `load_older` path anymore — it was deleted in 6B.
     /// Held outside the `Mutex` (a plain monotone counter) so `snapshot_current_window`
     /// can read it without taking the state lock twice.
+    window_policy: FeedWindowPolicy,
     window_limit: AtomicUsize,
 }
 
@@ -180,6 +180,29 @@ where
         event_lookup: EventLookup,
         card_builder: CardBuilder<C>,
     ) -> Self {
+        Self::new_with_window_policy(
+            resolver,
+            follow,
+            root_admission,
+            event_gate,
+            event_lookup,
+            card_builder,
+            FeedWindowPolicy::default(),
+        )
+    }
+
+    /// Construct the engine with an explicit app-declared window policy.
+    #[must_use]
+    pub fn new_with_window_policy(
+        resolver: R,
+        follow: FollowPredicate,
+        root_admission: RootAdmission,
+        event_gate: EventGate,
+        event_lookup: EventLookup,
+        card_builder: CardBuilder<C>,
+        window_policy: FeedWindowPolicy,
+    ) -> Self {
+        let initial_limit = window_policy.initial_visible_limit();
         Self {
             caps: Capabilities {
                 resolver,
@@ -190,7 +213,8 @@ where
                 card_builder,
             },
             state: Mutex::new(EngineState::new()),
-            window_limit: AtomicUsize::new(DEFAULT_FEED_WINDOW_LIMIT),
+            window_policy,
+            window_limit: AtomicUsize::new(initial_limit),
         }
     }
 
@@ -205,8 +229,11 @@ where
             *st = EngineState::new();
         }
 
-        self.window_limit
-            .store(DEFAULT_FEED_WINDOW_LIMIT, Ordering::Relaxed);
+        let current = self.window_limit.load(Ordering::Relaxed);
+        self.window_limit.store(
+            self.window_policy.reset_visible_limit(current),
+            Ordering::Relaxed,
+        );
     }
 
     /// Compatibility alias for older call sites whose only perspective change
@@ -296,12 +323,12 @@ where
     pub fn grow_visible_window(&self) -> bool {
         let total = self.state.lock().map(|st| st.roots.len()).unwrap_or(0);
         let current_limit = self.window_limit.load(Ordering::Relaxed);
-        if current_limit >= total || current_limit >= MAX_FEED_WINDOW_LIMIT {
-            return false;
-        }
-        let new_limit = (current_limit + DEFAULT_FEED_WINDOW_LIMIT).min(MAX_FEED_WINDOW_LIMIT);
-        self.window_limit.store(new_limit, Ordering::Relaxed);
-        true
+        self.window_policy
+            .next_visible_limit(current_limit, total)
+            .is_some_and(|new_limit| {
+                self.window_limit.store(new_limit, Ordering::Relaxed);
+                true
+            })
     }
 
     /// Build the visible-window snapshot using the engine's current render

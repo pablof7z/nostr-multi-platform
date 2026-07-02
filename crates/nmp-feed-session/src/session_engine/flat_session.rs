@@ -5,7 +5,7 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
-    FeedShape, PullFeedController,
+    FeedShape, FeedWindowPolicy, PullFeedController,
 };
 
 use super::{interest_scope_code, visible_flat_payload};
@@ -15,6 +15,7 @@ use crate::trellis_adapter::FeedSessionTrellisAdapter;
 pub(super) fn build_flat_scope_session(
     app: &impl FeedSessionHost,
     key: &str,
+    window: FeedWindowPolicy,
     resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let ReducedSource {
@@ -33,7 +34,7 @@ pub(super) fn build_flat_scope_session(
         active_follow_set: _,
     } = resolved;
 
-    let feed = nmp_note_feed::FlatFeed::new(admission);
+    let feed = nmp_note_feed::FlatFeed::new_with_window_policy(admission, window);
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
     let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
@@ -69,7 +70,15 @@ pub(super) fn build_flat_scope_session(
         Arc::new(move || feed.reset_for_perspective_change())
     };
     let controller: Arc<dyn FeedController> =
-        PullFeedController::new_with_shape_set(provider, pull, apply, None, Some(reset), advance);
+        PullFeedController::new_with_shape_set_and_window_policy(
+            provider,
+            pull,
+            apply,
+            None,
+            Some(reset),
+            advance,
+            window,
+        );
     app.register_feed(key.to_string(), controller.clone());
 
     let feed_for_typed = Arc::clone(&feed);
