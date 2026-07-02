@@ -69,6 +69,19 @@ pub struct ViewerReaction {
     pub reaction_event_id: String,
 }
 
+/// One kind:5 delete target needed to track retractions for a reaction
+/// aggregate.
+///
+/// NIP-09 delete events identify the deleted event id in an `e` tag, and only
+/// the original reaction author may retract that reaction. Runtime
+/// subscriptions use this pair to request bounded kind:5 delete events while
+/// the projection still performs the final author check on ingest.
+#[derive(Clone, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+pub struct ReactionDeleteTarget {
+    pub reaction_event_id: String,
+    pub author_pubkey: String,
+}
+
 /// The aggregated reactions for one target event.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReactionTargetAggregate {
@@ -197,6 +210,28 @@ impl ReactionAggregateProjection {
             .targets
             .into_iter()
             .find(|t| t.target_event_id == target_event_id)
+    }
+
+    /// Return the currently surviving kind:7 reaction ids for `target_event_id`
+    /// with their original authors. A runtime active-read uses these to open a
+    /// bounded kind:5 `#e=<reaction_event_id>` delete observer; delete ingest
+    /// still validates the author before removing anything.
+    #[must_use]
+    pub fn delete_targets_for(&self, target_event_id: &str) -> Vec<ReactionDeleteTarget> {
+        let Ok(entries) = self.entries.lock() else {
+            return Vec::new();
+        };
+        let mut targets = entries
+            .iter()
+            .filter_map(|(reaction_event_id, record)| {
+                (record.target_event_id == target_event_id).then(|| ReactionDeleteTarget {
+                    reaction_event_id: reaction_event_id.clone(),
+                    author_pubkey: record.author_pubkey.clone(),
+                })
+            })
+            .collect::<Vec<_>>();
+        targets.sort();
+        targets
     }
 
     /// Snapshot as a `serde_json::Value` — the generic-fallback shape a host

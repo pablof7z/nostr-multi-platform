@@ -336,6 +336,7 @@ pub fn new_app() -> NmpApp {
         external_signer_driver: Arc::new(Mutex::new(None)),
         search_sessions: Mutex::new(std::collections::HashMap::new()),
         group_feed_sessions: Mutex::new(std::collections::HashMap::new()),
+        reaction_read_sessions: Mutex::new(std::collections::HashMap::new()),
         observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
