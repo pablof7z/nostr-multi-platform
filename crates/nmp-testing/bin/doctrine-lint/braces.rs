@@ -1,5 +1,5 @@
-//! String-aware brace counter shared between the walker (cfg-test tracker)
-//! and the D8 hot-path tracker. Counts `{` / `}` while skipping contents of:
+//! String-aware brace counter shared between the walker (cfg-test tracker),
+//! D14, and D18. Counts `{` / `}` while skipping contents of:
 //!
 //!   - `"..."` strings (honours `\"` and `\\` escapes)
 //!   - `'...'` char literals (distinguished from lifetimes by looking ahead

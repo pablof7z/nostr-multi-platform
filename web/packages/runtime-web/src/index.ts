@@ -4,7 +4,7 @@ export type {
   WorkerEvent,
   RuntimeStatus,
   IdentityRelayPermission,
-  FeedSessionHandle,
+  FeedHandle,
 } from "./protocol";
 export { protocolVersion, eventCorrelationId, labelRuntimeStatus } from "./protocol";
 
@@ -24,7 +24,7 @@ export { GeneratedActionBuilders } from "./actionBuilders.generated";
 
 // #1626 generated typed feed helpers. Field-level sugar that builds canonical
 // FeedParams JSON and targets the `feed_open_json` Worker control; Rust owns the
-// session compiler, source graph, and teardown.
+// feed compiler, source graph, and teardown.
 export type { FeedHelperShape, FeedRuntime } from "./feedHelpers.generated";
 export { GeneratedFeedHelpers } from "./feedHelpers.generated";
 

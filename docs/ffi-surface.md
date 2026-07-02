@@ -97,12 +97,12 @@ close the remaining app-owned-facade gaps:
 
 | Facade need | Reuse, never copy | Notes |
 |---|---|---|
-| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). Every app-owned facade's own feed-session methods delegate to these. |
-| Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
+| Open/close a feed | `open_feed`, `close_feed` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). Every app-owned facade's own feed methods delegate to these. |
+| Rebuild a feed after a perspective change | `reopen_feed` | Idempotent close of the prior handle + open from the retained declaration. For account-pinned feeds only — `ActiveUserFollows` feeds re-seed in place (see below). |
 | React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
 
 These helpers are bridge mechanics below ADR-0076's feed-shaped app helper.
-Product facades should expose generated or app-owned feed-session methods, not
+Product facades should expose generated or app-owned feed methods, not
 compiler selection, raw interest JSON, observer wiring, pull-controller wiring,
 or teardown recipes.
 
@@ -111,9 +111,9 @@ Account-change handling has two layers and a facade picks the lighter one:
 - Account-**reactive** feeds (`FeedSourceExpr::ActiveUserFollows` and friends) re-seed
   **in place** — the native runtime's identity-change wiring clears and
   repopulates the live session. No reopen, no facade glue.
-- Account-**pinned** app-specific sessions (e.g. a NIP-29 joined-groups view
+- Account-**pinned** app-specific feeds (e.g. a NIP-29 joined-groups view
   bound to the active account) observe the change through
-  `register_account_change_sink` and rebuild via `reopen_feed_session` from a
+  `register_account_change_sink` and rebuild via `reopen_feed` from a
   facade method, where the facade already holds `&self.inner`.
 
 ### Safe runtime ownership (no raw `*mut NmpApp`)
@@ -159,7 +159,7 @@ bridge mechanics every facade calls into. It is organized by mechanic:
 |---|---|
 | `lib.rs` | Runtime bridge mechanics: `start_runtime`/`configure_runtime` (clamp policy via `clamp_visible`/`clamp_emit_hz`), `dispatch_action`/`dispatch_action_vec`, `set_update_sink`, `set_capability_callback`/`dispatch_capability_json`, `register_action_result_observer`/`clear_action_result_observer`, `set_lifecycle_callback`, and the shared `is_hex_pubkey` input guard. |
 | `account.rs` | Active-account-change observation (`register_account_change_sink`, `unregister_account_change_sink`) — `Arc`-sink + panic containment over `NmpApp::register_identity_change_observer`. |
-| `sessions.rs` | Feed-session open/close/reopen mechanics (`open_feed_session`, `close_feed_session`, `reopen_feed_session`, `load_older_feed_session`) over `NmpApp::open_feed`/`close_feed`. |
+| `sessions.rs` | Feed open/close/reopen/page mechanics (`open_feed`, `close_feed`, `reopen_feed`, `load_older_feed`) over `NmpApp::open_feed`/`close_feed`/`load_older_feed_status`. |
 | `ownership.rs` | Compiled crate-ownership descriptor for crate-ownership reports. |
 
 Everything a public UniFFI surface actually exports — app lifecycle object,

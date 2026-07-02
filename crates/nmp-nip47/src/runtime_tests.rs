@@ -62,7 +62,6 @@ fn pending(correlation_id: Option<&str>, inserted_at_secs: u64) -> PendingPaymen
 fn make_connection(pending_payments: HashMap<String, PendingPayment>) -> WalletConnection {
     WalletConnection {
         wallet_pubkey_hex: "aaaa".repeat(16),
-        wallet_npub: "npub1test".to_string(),
         relay_url: "wss://test.relay".to_string(),
         client_secret_hex: Zeroizing::new("bb".repeat(32)),
         client_pubkey_hex: "cccc".repeat(16),

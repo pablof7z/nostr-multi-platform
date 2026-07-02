@@ -4,7 +4,8 @@ use std::path::Path;
 
 use crate::rules::{
     action_namespace, d0, d10, d11, d13, d14, d15, d17, d19, d20, d21, d26, d27, d6, d7, d8, d9,
-    deleted_defaults, nip29_kind_blind, no_raw_tap_reintroduction, product_raw_read,
+    deleted_defaults, feed_vocabulary, nip29_kind_blind, no_raw_tap_reintroduction,
+    product_raw_read,
 };
 use crate::{allow, event_flow_gates, report, scope::is_doctrine_lint_source, walker::ScannedLine};
 
@@ -17,11 +18,9 @@ pub(super) fn scan_line(
     sl: &ScannedLine<'_>,
     findings: &mut Vec<report::Finding>,
 ) {
-    let in_marked_fn = state.d8_tracker.in_marked_fn();
-    state.d8_tracker.observe_line(sl.text, false);
     let in_d10_marked_fn = state.d10_tracker.in_marked_fn();
     state.d10_tracker.observe_line(sl.text);
-    let in_nmp_app_extern_fn = state.d11_tracker.in_nmp_app_extern_fn();
+    let in_uniffi_export_scope = state.d11_tracker.in_uniffi_export_scope();
     state.d11_tracker.observe_line(sl.text, false);
     if ctx.d12_in_scope {
         state.d12_line_is_comment.push(sl.is_comment);
@@ -35,7 +34,7 @@ pub(super) fn scan_line(
     }
 
     let d6_hits = d6::check(&mut state.d6_state, sl.text, sl.is_comment, sl.in_test_cfg);
-    if !ctx.workspace_d8 && !ctx.d6_test_file {
+    if !ctx.workspace_d8 && !ctx.d6_test_file && ctx.d6_in_scope {
         for hit in d6_hits {
             emit_unless_allowed(path, sl, d6::ID, hit, allow::line_allows, findings);
         }
@@ -44,12 +43,6 @@ pub(super) fn scan_line(
     if !ctx.workspace_d8 && ctx.d7_in_scope {
         for hit in d7::check(sl.text, sl.is_comment) {
             emit_unless_allowed(path, sl, d7::ID, hit, allow::line_allows, findings);
-        }
-    }
-
-    if !ctx.workspace_d8 && ctx.d8_in_scope {
-        for hit in d8::check_in_scope(sl.text, sl.is_comment, in_marked_fn) {
-            emit_unless_allowed(path, sl, d8::ID, hit, allow::line_allows, findings);
         }
     }
 
@@ -106,7 +99,7 @@ pub(super) fn scan_line(
     }
 
     if !ctx.workspace_d8 && !is_doctrine_lint_source(path) {
-        for hit in d11::check(sl.text, sl.is_comment, in_nmp_app_extern_fn) {
+        for hit in d11::check(sl.text, sl.is_comment, in_uniffi_export_scope) {
             emit_unless_allowed(path, sl, d11::ID, hit, allow::line_allows, findings);
         }
     }
@@ -258,6 +251,24 @@ pub(super) fn scan_line(
                 col,
                 message,
                 suggested,
+                findings,
+            );
+        }
+    }
+
+    if !ctx.workspace_d8
+        && ctx.feed_vocabulary_in_scope
+        && !ctx.d6_test_file
+        && !sl.in_test_cfg
+        && !is_doctrine_lint_source(path)
+    {
+        for hit in feed_vocabulary::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+            emit_unless_allowed(
+                path,
+                sl,
+                feed_vocabulary::ID,
+                hit,
+                allow::line_allows_with_reason,
                 findings,
             );
         }

@@ -1,4 +1,4 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27 plus action_namespace/nip29_kind_blind/product_raw_read.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27 plus action_namespace/nip29_kind_blind/product_raw_read/feed_vocabulary.
 //!
 //! D16 (bare `nip17.`/`nip29.` snapshot-projection keys under `apps/chirp/`)
 //! was deleted along with the rule machinery when Chirp was extracted to its
@@ -8,7 +8,7 @@
 //! tombstone gate that replaced it.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27,action_namespace,nip29_kind_blind,product_raw_read}.rs` for
+//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27,action_namespace,nip29_kind_blind,product_raw_read,feed_vocabulary}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -29,20 +29,38 @@
 //!
 //! # Workspace-wide D18 native shell scan (Swift/Kotlin/Java)
 //! cargo run -p nmp-testing --bin doctrine-lint -- --workspace-native
+//!
+//! # Full-workspace scan — every rule reaches its claimed footprint (#2761)
+//! cargo run -p nmp-testing --bin doctrine-lint -- --workspace-full
 //! ```
 //!
 //! ## `--workspace-d8` mode
 //!
-//! The hot-path-allocation and substrate-purity rules (D0/D6/D7 + the
-//! hot-path half of D8) are deliberately `nmp-core`-scoped. The *no-polling*
-//! half of D8 — `thread::sleep`, `tokio::time::sleep`, and
+//! D0/D7 (substrate-purity rules) are deliberately `nmp-core`-scoped. The
+//! *no-polling* half of D8 — `thread::sleep`, `tokio::time::sleep`, and
 //! `tokio::time::sleep_until` are all busy-waits — is a universally
 //! applicable correctness rule, so `--workspace-d8` runs **only** that check across
 //! every `crates/*/src/` tree in the workspace, plus `crates/nmp-testing/bin/`
 //! (the perf/harness binaries, excluding doctrine-lint itself whose fixtures
 //! contain intentional positive examples). It skips only `nmp-android-ffi`
 //! (its own separate workspace). `#[cfg(test)]` blocks and test-only files stay
-//! exempt, exactly as in the `nmp-core` scan.
+//! exempt, exactly as in the `nmp-core` scan. D8's hot-path-allocation
+//! sub-check was deleted (see `rules/d8/mod.rs`) — the `// hot path` marker
+//! it depended on was used by zero functions.
+//!
+//! ## `--workspace-full` mode
+//!
+//! Walks the same tree as `--workspace-d8` (every `crates/*/src/`,
+//! `crates/nmp-testing/bin/*` excluding doctrine-lint, and every
+//! `apps/*/src/`) but runs the **entire** per-file ruleset instead of only
+//! no-polling — every rule's own `file_in_scope` predicate then decides
+//! whether it fires on a given file, exactly as its docstring and unit tests
+//! claim. This is the authoritative "enforcement surface equals claimed
+//! footprint" mode (#2761): D6 stays bounded to its explicit enforced-crate
+//! set (`rules/d6.rs`) rather than firing everywhere, D0/D7/D8-hot-path-style
+//! checks self-limit via their own scope predicates, and every path-scoped
+//! rule (D10/D19/D20/D21/D26/D27/action_namespace/nip29_kind_blind/…)
+//! finally reaches every crate it claims to cover.
 //!
 //! ## Exit codes
 //!
@@ -145,8 +163,10 @@ fn main() -> ExitCode {
 
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
+    } else if cfg.workspace_full {
+        "A6/D0/D6(bounded)/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults (full workspace)"
     } else {
-        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults/feed_vocabulary"
     };
     report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }

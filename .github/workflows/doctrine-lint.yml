@@ -1,16 +1,25 @@
 name: doctrine-lint
 
-# Enforces the four cardinal-doctrine grep gates:
-#   - D0: no app nouns (NIP-29, group_id, pin_to, ...) in the kernel substrate
-#         (nmp-core only; app-layer crates under apps/ are D0-exempt by design)
-#   - D6: no panic / unwrap / expect / unreachable / todo outside test cfg
-#   - D7: capability traits never name policy-decision verbs (retry, select, ...)
-#   - D8: hot-path-marked fns never allocate per-event (format!, Vec::new, ...)
-#         + no polling — `thread::sleep` is banned in non-test kernel code
+# Enforces doctrine-lint's full ruleset (D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/
+# D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/A6/action_namespace/
+# nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults) with
+# enforcement surface equal to claimed footprint (#2761): `--workspace-full`
+# walks every `crates/*/src/` tree, `crates/nmp-testing/bin/*` (excluding
+# doctrine-lint itself), and every `apps/*/src/` tree, running the entire
+# per-file ruleset. Each rule's own `file_in_scope` predicate — documented
+# and unit-tested in `crates/nmp-testing/bin/doctrine-lint/rules/` — decides
+# whether it fires on a given file, so "the rule claims to cover crate X"
+# and "CI actually scans crate X" are now the same fact.
 #
-# D0/D6/D7 + the hot-path half of D8 are nmp-core-scoped.
-# The no-polling half of D8 is universally applicable; `--workspace-d8`
-# re-runs *only* that check across every production crate AND app crate.
+# D6 (no panic / unwrap / expect / unreachable / todo outside test cfg) is
+# the one rule that stays deliberately bounded rather than reaching every
+# walked file: it is enforced only against `nmp-core`, `nmp-browser-runtime`,
+# and the seven curated protocol crates (see `rules/d6.rs`'s "Scope" doc) —
+# widening it to the whole workspace is a separate, multi-PR campaign, not
+# something this enforcement-surface fix silently does.
+#
+# `--workspace-native` (D18, Swift/Kotlin/Java) and `--workspace-d8`
+# (no-polling only, kept for its own smoke-test coverage) run alongside.
 #
 # Brainstorm item #8 — see docs/perf/parallel-work-brainstorm-2026-05-18.md
 # Per-rule docstrings live in crates/nmp-testing/bin/doctrine-lint/rules/.
@@ -26,7 +35,7 @@ on:
 
 jobs:
   doctrine-lint:
-    name: Doctrine grep gates (D0/D6/D7/D8)
+    name: Doctrine grep gates (full workspace)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,14 +68,8 @@ jobs:
       - name: Warning ratchet - nmp-testing
         run: RUSTFLAGS="-Dwarnings" cargo check -p nmp-testing --bin doctrine-lint --test doctrine_lint_smoke
 
-      - name: Run doctrine-lint against nmp-core
-        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --crate nmp-core
-
-      - name: Run doctrine-lint against nmp-browser-runtime
-        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src
-
-      - name: Run D8 no-polling gate across all production crates and apps
-        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-d8
+      - name: Run doctrine-lint across the full workspace
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-full
 
       - name: Run D18 native doctrine gate across Swift/Kotlin/Java
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-native

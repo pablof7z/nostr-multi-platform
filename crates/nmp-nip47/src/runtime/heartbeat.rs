@@ -207,7 +207,6 @@ pub(super) fn sync_wallet_status(wallet: &WalletRuntime, kernel: &dyn WalletKern
         WalletStatus {
             status: c.status.clone(),
             relay_url: c.relay_url.clone(),
-            wallet_npub: c.wallet_npub.clone(),
             wallet_pubkey_hex: c.wallet_pubkey_hex.clone(),
             balance_msats: c.balance_msats,
             balance_sats,

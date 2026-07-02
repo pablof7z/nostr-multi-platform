@@ -70,7 +70,6 @@ pub(super) fn wallet_disconnect_inner(
         *slot = Some(WalletStatus {
             status: wire.to_string(),
             relay_url: conn.relay_url.clone(),
-            wallet_npub: conn.wallet_npub.clone(),
             wallet_pubkey_hex: conn.wallet_pubkey_hex.clone(),
             balance_msats: conn.balance_msats,
             balance_sats,

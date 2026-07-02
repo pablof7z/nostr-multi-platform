@@ -8,17 +8,17 @@ use std::sync::Arc;
 use super::BrowserRuntimeHandle;
 use crate::feed::{open_browser_feed_session, FeedRuntimeAccess};
 
-/// Borrowed browser feed-session facade.
+/// Borrowed browser feed facade.
 ///
 /// This type owns no state. It delegates to `BrowserRuntimeHandle`'s existing
 /// handle-owned feed lifecycle so browser app code can use the same
 /// `runtime.feeds().open/open_spec/load_older/close` shape without seeing
 /// compiler or registry wiring.
-pub struct BrowserFeedSessions<'a> {
+pub struct BrowserFeeds<'a> {
     handle: &'a mut BrowserRuntimeHandle,
 }
 
-impl<'a> BrowserFeedSessions<'a> {
+impl<'a> BrowserFeeds<'a> {
     fn new(handle: &'a mut BrowserRuntimeHandle) -> Self {
         Self { handle }
     }
@@ -117,10 +117,10 @@ impl<'a> BrowserFeedSessions<'a> {
 }
 
 impl BrowserRuntimeHandle {
-    /// App-facing feed-session facade.
+    /// App-facing feed facade.
     #[must_use]
-    pub fn feeds(&mut self) -> BrowserFeedSessions<'_> {
-        BrowserFeedSessions::new(self)
+    pub fn feeds(&mut self) -> BrowserFeeds<'_> {
+        BrowserFeeds::new(self)
     }
 
     /// Register a CLOSED-DATA custom source definition under an opaque source id.

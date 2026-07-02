@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const USAGE: &str =
     "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
      [--a6-extra-scope <fragment>] \
-     [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
+     [--d6-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
      [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
      [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] \
      [--d15-extra-scope <fragment>] \
@@ -13,7 +13,8 @@ pub(crate) const USAGE: &str =
      [--d25-extra-scope <fragment>] [--d26-extra-scope <fragment>] \
      [--d27-extra-scope <fragment>] \
      [--workspace-d8 [--workspace-d8-root <dir>]] \
-     [--workspace-native [--workspace-native-root <dir>]]";
+     [--workspace-native [--workspace-native-root <dir>]] \
+     [--workspace-full [--workspace-full-root <dir>]]";
 
 #[derive(Default)]
 pub(crate) struct Config {
@@ -21,7 +22,7 @@ pub(crate) struct Config {
     pub(crate) explicit_paths: Vec<PathBuf>,
     pub(crate) allow_findings: bool,
     pub(crate) a6_extra_scopes: Vec<String>,
-    pub(crate) d8_extra_scopes: Vec<String>,
+    pub(crate) d6_extra_scopes: Vec<String>,
     pub(crate) d9_extra_scopes: Vec<String>,
     pub(crate) d10_extra_scopes: Vec<String>,
     pub(crate) d12_extra_scopes: Vec<String>,
@@ -41,6 +42,8 @@ pub(crate) struct Config {
     pub(crate) workspace_d8_root: Option<PathBuf>,
     pub(crate) workspace_native: bool,
     pub(crate) workspace_native_root: Option<PathBuf>,
+    pub(crate) workspace_full: bool,
+    pub(crate) workspace_full_root: Option<PathBuf>,
 }
 
 pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
@@ -67,11 +70,11 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
                 &mut i,
                 "--a6-extra-scope requires a path fragment",
             )?,
-            "--d8-extra-scope" => push_required(
-                &mut cfg.d8_extra_scopes,
+            "--d6-extra-scope" => push_required(
+                &mut cfg.d6_extra_scopes,
                 args,
                 &mut i,
-                "--d8-extra-scope requires a path fragment",
+                "--d6-extra-scope requires a path fragment",
             )?,
             "--d9-extra-scope" => push_required(
                 &mut cfg.d9_extra_scopes,
@@ -181,6 +184,15 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
                     "--workspace-native-root requires a path",
                 )?));
             }
+            "--workspace-full" => cfg.workspace_full = true,
+            "--workspace-full-root" => {
+                i += 1;
+                cfg.workspace_full_root = Some(PathBuf::from(required(
+                    args,
+                    i,
+                    "--workspace-full-root requires a path",
+                )?));
+            }
             "-h" | "--help" => {
                 println!("{}", USAGE);
                 std::process::exit(0);
@@ -190,11 +202,15 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
         i += 1;
     }
 
-    let special_modes = cfg.workspace_d8 as u8 + cfg.workspace_native as u8;
+    let special_modes =
+        cfg.workspace_d8 as u8 + cfg.workspace_native as u8 + cfg.workspace_full as u8;
     if special_modes > 1 {
-        return Err("--workspace-d8 and --workspace-native cannot be combined".to_string());
+        return Err(
+            "--workspace-d8, --workspace-native, and --workspace-full cannot be combined"
+                .to_string(),
+        );
     }
-    if cfg.workspace_d8 || cfg.workspace_native {
+    if cfg.workspace_d8 || cfg.workspace_native || cfg.workspace_full {
         if cfg.crate_name.is_some() || !cfg.explicit_paths.is_empty() {
             return Err("workspace modes cannot be combined with --crate or --path".to_string());
         }
@@ -204,6 +220,9 @@ pub(crate) fn parse_args(args: &[String]) -> Result<Config, String> {
         }
         if cfg.workspace_native_root.is_some() {
             return Err("--workspace-native-root requires --workspace-native".to_string());
+        }
+        if cfg.workspace_full_root.is_some() {
+            return Err("--workspace-full-root requires --workspace-full".to_string());
         }
         if cfg.crate_name.is_none() && cfg.explicit_paths.is_empty() {
             cfg.crate_name = Some("nmp-core".to_string());
@@ -235,6 +254,13 @@ pub(crate) fn resolve_roots(cfg: &Config) -> Result<Vec<PathBuf>, String> {
             .unwrap_or_else(default_workspace_root);
         return workspace_crate_src_roots(&workspace_root);
     }
+    if cfg.workspace_full {
+        let workspace_root = cfg
+            .workspace_full_root
+            .clone()
+            .unwrap_or_else(default_workspace_root);
+        return workspace_crate_src_roots(&workspace_root);
+    }
     if cfg.workspace_native {
         return Ok(vec![cfg
             .workspace_native_root
@@ -261,7 +287,7 @@ pub(crate) fn default_workspace_root() -> PathBuf {
         .unwrap_or(manifest)
 }
 
-const WORKSPACE_D8_SKIP_CRATES: &[&str] = &["nmp-android-ffi"];
+const WORKSPACE_WALK_SKIP_CRATES: &[&str] = &["nmp-android-ffi"];
 
 fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, String> {
     let mut roots = Vec::new();
@@ -275,7 +301,7 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
         }
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if WORKSPACE_D8_SKIP_CRATES.contains(&name.as_ref()) {
+        if WORKSPACE_WALK_SKIP_CRATES.contains(&name.as_ref()) {
             continue;
         }
         let src = entry.path().join("src");

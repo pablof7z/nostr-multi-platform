@@ -91,7 +91,7 @@ fn feed_load_older_unknown_handle_returns_typed_status() {
             "type": "feed_load_older",
             "handle": {
                 "projection_key": "app.web.feed.missing",
-                "session_id": 9999
+                "handle_id": 9999
             },
             "correlation_id": "feed-load-missing"
         })

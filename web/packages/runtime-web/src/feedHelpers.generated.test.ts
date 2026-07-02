@@ -43,7 +43,7 @@ describe("GeneratedFeedHelpers", () => {
           {
             type: "feed_opened",
             correlation_id: "feed-2",
-            handle: { projection_key: "app.web.home", session_id: 7 },
+            handle: { projection_key: "app.web.home", handle_id: 7 },
           },
         ];
       },
@@ -57,7 +57,7 @@ describe("GeneratedFeedHelpers", () => {
     );
 
     expect(calls[0]?.type).toBe("feed_open_json");
-    expect(handle).toEqual({ projection_key: "app.web.home", session_id: 7 });
+    expect(handle).toEqual({ projection_key: "app.web.home", handle_id: 7 });
   });
 
   it("builds the canonical hosted-groups feed request", () => {

@@ -14,8 +14,8 @@
 //! * capture a raw `*mut NmpApp` into the observer closure to act on the change.
 //!
 //! The observer receives only the new active-identity string and forwards it to
-//! the facade's sink. Acting on the change (e.g. [`crate::reopen_feed_session`]
-//! for a pinned session) is done by the facade from one of its own methods,
+//! the facade's sink. Acting on the change (e.g. [`crate::reopen_feed`]
+//! for a pinned feed) is done by the facade from one of its own methods,
 //! where it already holds `&self.inner` — never from inside the observer with a
 //! captured runtime pointer.
 

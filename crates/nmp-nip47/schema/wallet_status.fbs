@@ -60,8 +60,6 @@ table WalletStatus {
   status:string;
   // The NWC relay URL (from the connection URI).
   relay_url:string;
-  // The wallet service pubkey in bech32 npub form.
-  wallet_npub:string;
   // balance_msats: Option<u64>
   has_balance_msats:bool;
   balance_msats:uint64;
@@ -69,8 +67,11 @@ table WalletStatus {
   // formatting when rendering (raw-data doctrine).
   has_balance_sats:bool;
   balance_sats:uint64;
-  // `wallet_npub_short` removed (#1678, D7): shells abbreviate `wallet_npub`
-  // themselves.  Vtable slot reserved to prevent accidental reuse.
+  // `wallet_npub_short` removed (#1678, D7). Vtable slot reserved to prevent
+  // accidental reuse. `wallet_npub` itself (the full bech32 encoding) was a
+  // later leak of the same class (#2762, D27) and was hard-deleted from this
+  // table rather than reserved — shells derive `npub` from
+  // `wallet_pubkey_hex` with their own bech32 helper.
   _reserved_was_wallet_npub_short:string (deprecated);
   // status == "ready"
   is_ready:bool;

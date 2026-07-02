@@ -1,5 +1,6 @@
-//! Smoke tests for D0, D6, D7, D8 (hot-path allocation + no-polling), D9
-//! (kernel-owned time), and the action_namespace prefix rule.
+//! Smoke tests for D0, D6, D7, D8 (no-polling), D9 (kernel-owned time), and
+//! the action_namespace prefix rule, plus the authoritative
+//! `workspace_is_doctrine_clean` full-workspace gate.
 //!
 //! Split out of `tests.rs` (file-size cap). Shared helpers imported from
 //! parent module via `super`.
@@ -67,7 +68,16 @@ fn d6_positive_fixture_fires() {
     std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
 
     let tmp_str = tmp.to_string_lossy().into_owned();
-    let (code, stdout, _stderr) = run_lint(&["--path", &tmp_str]);
+    // D6 is gated by an explicit `file_in_scope` (see `rules/d6.rs`) — a
+    // fixture staged under `target/` outside any real `crates/nmp-*/src/`
+    // layout must opt in via `--d6-extra-scope`, mirroring every other
+    // path-scoped rule's fixture test.
+    let (code, stdout, _stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d6-extra-scope",
+        "doctrine_lint_d6_pos",
+    ]);
     assert_eq!(code, 1, "d6 positive must exit 1; stdout:\n{}", stdout);
     assert!(
         stdout.contains("error[D6]"),
@@ -86,7 +96,12 @@ fn d6_negative_fixture_clean() {
     std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
 
     let tmp_str = tmp.to_string_lossy().into_owned();
-    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d6-extra-scope",
+        "doctrine_lint_d6_neg",
+    ]);
     assert_eq!(
         code, 0,
         "d6 negative must exit 0; stdout:\n{}\nstderr:\n{}",
@@ -134,68 +149,18 @@ fn d7_negative_fixture_clean() {
     );
 }
 
-// ─── D8 ─────────────────────────────────────────────────────────────────────
-
-#[test]
-fn d8_positive_fixture_fires() {
-    let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d8_pos");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
-    let pos_src = workspace.join(fixture_path("d8/pos.rs"));
-    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
-
-    let tmp_str = tmp.to_string_lossy().into_owned();
-    // D8 is path-scoped; the smoke test uses --d8-extra-scope to open the
-    // gate on the temp dir.
-    let (code, stdout, _stderr) = run_lint(&[
-        "--path",
-        &tmp_str,
-        "--d8-extra-scope",
-        "doctrine_lint_d8_pos",
-    ]);
-    assert_eq!(code, 1, "d8 positive must exit 1; stdout:\n{}", stdout);
-    assert!(
-        stdout.contains("error[D8]"),
-        "d8 positive must emit ≥1 D8 finding; stdout:\n{}",
-        stdout
-    );
-}
-
-#[test]
-fn d8_negative_fixture_clean() {
-    let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d8_neg");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
-    let neg_src = workspace.join(fixture_path("d8/neg.rs"));
-    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
-
-    let tmp_str = tmp.to_string_lossy().into_owned();
-    let (code, stdout, stderr) = run_lint(&[
-        "--path",
-        &tmp_str,
-        "--d8-extra-scope",
-        "doctrine_lint_d8_neg",
-    ]);
-    assert_eq!(
-        code, 0,
-        "d8 negative must exit 0; stdout:\n{}\nstderr:\n{}",
-        stdout, stderr
-    );
-    assert!(
-        !stdout.contains("error[D8]"),
-        "d8 negative must produce zero D8 findings; stdout:\n{}",
-        stdout
-    );
-}
-
 // ─── D8 — no polling (thread::sleep / tokio::time::sleep) ────────────────────
+//
+// The hot-path-allocation half of D8 (path-scoped to
+// `crates/nmp-core/src/kernel/ingest/`, opt-in via a `// hot path` marker
+// comment) was deleted (#2761 / #2769): the marker was used by zero
+// functions, so the check measured nothing. See `rules/d8/mod.rs` for the
+// deletion rationale. No-polling is the sole surviving D8 check.
 
 #[test]
 fn d8_sleep_positive_fixture_fires() {
-    // The no-polling check is NOT path-scoped, so no --d8-extra-scope is
-    // needed — pointing --path at the fixture dir is enough.
+    // The no-polling check is NOT path-scoped, so no `--d<N>-extra-scope`
+    // flag is needed — pointing --path at the fixture dir is enough.
     let (code, stdout, stderr) = run_lint(&["--path", &fixture_path("d8_sleep")]);
     assert_eq!(
         code, 1,
@@ -270,7 +235,8 @@ fn d9_positive_fixture_fires() {
     let tmp_str = tmp.to_string_lossy().into_owned();
     // D9 is path-scoped to kernel time-policy paths — the smoke fixture staged
     // under `target/` falls outside that scope, so `--d9-extra-scope` opts it in
-    // (mirrors `--d8-extra-scope`).
+    // (mirrors `--d6-extra-scope` / `--d14-extra-scope` for the other
+    // path-scoped rules).
     let (code, stdout, stderr) = run_lint(&[
         "--path",
         &tmp_str,
@@ -390,70 +356,40 @@ fn action_namespace_negative_fixture_clean() {
     );
 }
 
-/// THE LIVE GUARD: every protocol crate on master must already satisfy
-/// D9 and action_namespace — AND, because `scan_one_file` runs every applicable rule per file,
-/// every other applicable rule too.
+/// THE AUTHORITATIVE GUARD: the enforcement surface must equal the claimed
+/// footprint (#2761). `--workspace-full` walks every `crates/*/src/` tree
+/// (plus the `nmp-testing` harness binaries and every `apps/*/src/` tree) and
+/// runs the full per-file ruleset; each rule's own `file_in_scope` decides
+/// whether it fires on a given file, exactly as its docstring and unit tests
+/// claim. This replaces the old `protocol_crates_are_doctrine_clean` test,
+/// which asserted cleanliness only over a hardcoded 7-NIP-crate allowlist
+/// that omitted `nmp-nip47` (the crate that shipped the #2762 `wallet_npub`
+/// leak) and every non-NIP crate.
 ///
-/// SCOPE — this is a full-doctrine scan (D0/D6/D7/D8/D9 + action_namespace),
-/// not D9-only.
-/// `scan_one_file` has no "only this rule" mode; opening the scan to
-/// every protocol crate's `src/` means D6 (`.unwrap()` / `panic!` outside
-/// `#[cfg(test)]`) and D8's no-polling check now apply to every
-/// `nmp-nipNN` crate as well, not just `nmp-core`.
-///
-/// That is intentional, with one caveat: D6's `.unwrap()` and `panic!`
-/// bans are universal correctness rules, NOT nmp-core-scoped doctrine.
-/// The same goes for D8 no-polling. D0 doesn't fire here because
-/// `d0::file_is_exempt` exempts every non-`nmp-core` crate under
-/// `crates/nmp-*/src/...` (its mandate is the kernel substrate only;
-/// fixing this exemption was part of this PR — see `rules/d0.rs`).
-/// D7 is file-scoped to `nmp-core/src/substrate/capability.rs` and
-/// likewise doesn't reach NIP crates.
-///
-/// Net: a future D6 regression in `nmp-nipNN` will fail THIS test even
-/// though the test name promises D9 cleanliness. That is the right
-/// trade-off — `.unwrap()` in production code is a bug everywhere,
-/// not just in `nmp-core` — but reviewers should know the scope is
-/// broader than the name suggests.
+/// D6 (`.unwrap()`/`.expect()`/`panic!`/…) is the one rule that stays
+/// deliberately bounded rather than reaching every walked file — see
+/// `rules/d6.rs`'s "Scope" doc for why widening it to the whole workspace is
+/// a separate, multi-PR campaign. Every other rule's scope predicate now
+/// actually gets exercised against its claimed crates.
 #[test]
-fn protocol_crates_are_doctrine_clean() {
-    // Scan every protocol crate. The default mode targets `nmp-core`; we
-    // explicitly add the NIP crates by path so the workspace's whole
-    // protocol surface is covered. (App crates under `apps/` are out of
-    // scope by action_namespace design, and by D0 design —
-    // `d0::file_is_exempt` exempts them.)
-    let nip_crates = [
-        "nmp-nip01",
-        "nmp-nip17",
-        "nmp-nip23",
-        "nmp-nip29",
-        "nmp-nip42",
-        "nmp-nip57",
-        "nmp-nip59",
-    ];
-    let mut args: Vec<String> = vec!["--crate".into(), "nmp-core".into()];
-    for c in &nip_crates {
-        args.push("--path".into());
-        args.push(format!("crates/{}/src", c));
-    }
-    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let (code, stdout, stderr) = run_lint(&arg_refs);
+fn workspace_is_doctrine_clean() {
+    let (code, stdout, stderr) = run_lint(&["--workspace-full"]);
     assert_eq!(
         code, 0,
-        "protocol crates must be doctrine-lint clean; stdout:\n{}\nstderr:\n{}",
+        "workspace must be doctrine-lint clean under --workspace-full; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
     );
-    // Spell out D9 and action_namespace specifically. A D6 / D8 hit would
-    // already fail the `code == 0` check above; explicit assertions make the
-    // intent obvious in the test name.
+    // Spell out D9 and action_namespace specifically — carried over from the
+    // predecessor test. Any hit would already fail the `code == 0` check
+    // above; explicit assertions make the intent obvious in the output.
     assert!(
         !stdout.contains("error[D9]"),
-        "protocol crates must not contain D9 findings; stdout:\n{}",
+        "workspace must not contain D9 findings; stdout:\n{}",
         stdout
     );
     assert!(
         !stdout.contains("error[action_namespace]"),
-        "protocol crates must not contain action_namespace findings; stdout:\n{}",
+        "workspace must not contain action_namespace findings; stdout:\n{}",
         stdout
     );
 }

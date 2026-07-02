@@ -40,15 +40,18 @@ pub enum NwcConnectionState {
 /// `projections["wallet"]`.
 ///
 /// RAW-DATA DOCTRINE (aim.md §2 / ADR-0072): every field here is a raw
-/// semantic token. No pre-rendered English label, tone string, or
-/// display-formatted number lives in this projection — the shells render the
-/// status label, semantic tone (colour/icon), and thousands-separated balance
-/// themselves from the raw `status` token + `balance_sats`. The earlier
-/// `status_label` / `status_tone` / `balance_sats_display` precompute was a
-/// presentation regression (#623) removed in the wallet_status sweep (analogous
-/// to the #1580 signer-state sweep). `wallet_npub_short` was a further
-/// presentation regression (#1678, D7) removed similarly — shells abbreviate
-/// `wallet_npub` themselves.
+/// semantic token. No pre-rendered English label, tone string, bech32
+/// encoding, or display-formatted number lives in this projection — the
+/// shells render the status label, semantic tone (colour/icon), bech32
+/// `npub`, and thousands-separated balance themselves from the raw `status`
+/// token + `wallet_pubkey_hex` + `balance_sats`. The earlier `status_label` /
+/// `status_tone` / `balance_sats_display` precompute was a presentation
+/// regression (#623) removed in the wallet_status sweep (analogous to the
+/// #1580 signer-state sweep). `wallet_npub_short` was a further presentation
+/// regression (#1678, D7) removed similarly. `wallet_npub` itself (the full
+/// bech32 encoding, not just the abbreviation) was the same class of leak
+/// (#2762, D27) and was deleted last — shells derive `npub` from
+/// `wallet_pubkey_hex` via their own bech32 helper.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub struct WalletStatus {
     /// Raw NIP-47 status token the shells map to a label/tone themselves:
@@ -56,12 +59,10 @@ pub struct WalletStatus {
     pub status: String,
     /// The NWC relay URL (from the connection URI).
     pub relay_url: String,
-    /// The wallet service pubkey in bech32 npub form.
-    pub wallet_npub: String,
     /// The wallet service pubkey in raw hex form (64 chars). The shell formats
-    /// it for display (bech32 / abbreviation are presentation concerns —
-    /// ADR-0072). Sourced from the same NWC connection the `wallet_npub` is
-    /// derived from (`WalletConnection.wallet_pubkey_hex`).
+    /// it for display (bech32 encoding / abbreviation are presentation
+    /// concerns — ADR-0072); derive `npub` with the shell's own bech32
+    /// helper if needed. Sourced from `WalletConnection.wallet_pubkey_hex`.
     pub wallet_pubkey_hex: String,
     /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
     pub balance_msats: Option<u64>,
