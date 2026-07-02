@@ -4,6 +4,7 @@ mod cli;
 mod cli_action_builders;
 mod cli_action_contract;
 mod cli_builtin;
+mod cli_feed_helpers;
 
 fn main() {
     match run() {
@@ -47,6 +48,10 @@ fn run() -> Result<(), String> {
         // static `--registry` contract; emits the host-facing typed write
         // builders that construct `DispatchEnvelope` bytes for the byte doorway.
         "action-builders" => cli_action_builders::run_gen_action_builders(args, &h),
+        // #1626 — generated app-facing native feed helpers. Writes Swift/Kotlin
+        // helpers over the canonical FeedParams JSON bridge; the helpers call
+        // existing UniFFI openFeedJson bindings and do not introduce a runtime path.
+        "feed-helpers" => cli_feed_helpers::run_gen_feed_helpers(args, &h),
         // #1939 — generated compact Markdown view of ACTION_CONTRACT for PR
         // review. Prints to stdout unless `--out <path>` is provided.
         "action-contract-report" => cli_action_contract::run_gen_action_contract_report(args, &h),
@@ -90,6 +95,7 @@ fn help() -> String {
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin|ts [--registry <path>] [--out <path>] [--check]\n  \
      nmp gen action-builders   --registry <path> --check\n  \
+     nmp gen feed-helpers      --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen action-contract-report [--out <path>]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \

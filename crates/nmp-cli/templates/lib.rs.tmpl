@@ -111,23 +111,28 @@ pub fn starter_builtin_projection_keys() -> [&'static str; 3] {
     ]
 }
 
-/// Typed app-owned feed declaration for the starter read surface.
+/// Typed app-owned feed key for the starter read surface.
+///
+/// Feed output identity is app-owned; NMP owns the source mechanics and session
+/// lifecycle under this key.
+pub fn starter_home_feed_key() -> nmp_native_runtime::FeedKey {
+    nmp_native_runtime::FeedKey::app(HOME_TIMELINE_PROJECTION)
+        .expect("starter home timeline projection is app-owned")
+}
+
+/// Typed app-owned feed spec for the starter read surface.
 ///
 /// A real platform shell opens this feed through the runtime and renders the
 /// emitted projection. The shell does not derive relay policy, parse protocol
 /// wrappers, or keep a domain cache.
-pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
-    nmp_native_runtime::FeedParams {
-        primary_kinds: vec![STARTER_PRIMARY_NOTE_KIND],
-        shape: nmp_native_runtime::FeedShape::RootIndexed,
-        source: nmp_native_runtime::FeedSourceExpr::ActiveUserFollows,
-        admission: nmp_native_runtime::FeedAdmission::All,
-        order: nmp_native_runtime::FeedOrder::NewestByFeedPosition,
-        window: nmp_native_runtime::FeedWindowPolicy::bounded(80),
-        key: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
-            .expect("starter home timeline projection is app-owned"),
-        item_projection: nmp_native_runtime::FeedItemProjection::FeedRows,
-    }
+pub fn starter_home_feed_spec() -> nmp_native_runtime::FeedSpec {
+    nmp_native_runtime::feed::events()
+        .primary_kinds([STARTER_PRIMARY_NOTE_KIND])
+        .from(nmp_native_runtime::source::active_user().follows())
+        .shape(nmp_native_runtime::FeedShape::RootIndexed)
+        .order(nmp_native_runtime::FeedOrder::NewestByFeedPosition)
+        .window(nmp_native_runtime::FeedWindowPolicy::bounded(80))
+        .project(nmp_native_runtime::FeedItemProjection::feed_rows())
 }
 
 /// Opaque handle for the starter home timeline session.
@@ -153,8 +158,10 @@ impl HomeTimelineSession {
 /// receive only the session they need to render and later close.
 pub fn open_home_timeline_session(
     app: &nmp_native_runtime::NmpApp,
-) -> Result<HomeTimelineSession, nmp_native_runtime::FeedOpenError> {
-    let handle = app.open_feed(&starter_home_feed_params())?;
+) -> Result<HomeTimelineSession, nmp_native_runtime::FeedSpecOpenError> {
+    let handle = app
+        .feeds()
+        .open_spec(starter_home_feed_key(), starter_home_feed_spec())?;
     Ok(HomeTimelineSession { handle })
 }
 
@@ -163,7 +170,7 @@ pub fn close_home_timeline_session(
     app: &nmp_native_runtime::NmpApp,
     session: HomeTimelineSession,
 ) -> bool {
-    app.close_feed(&session.handle)
+    app.feeds().close(&session.handle)
 }
 
 /// Host-side typed write builders this starter expects platform shells to use.
@@ -395,13 +402,15 @@ mod tests {
 
     #[test]
     fn starter_home_feed_is_typed() {
-        let feed = starter_home_feed_params();
+        let key = starter_home_feed_key();
+        let feed = starter_home_feed_spec()
+            .into_params(key.clone())
+            .expect("starter feed spec is complete");
 
         assert_eq!(feed.primary_kinds, vec![1]);
         assert_eq!(
             feed.key,
-            nmp_native_runtime::ProjectionKey::app_owned("{{name}}.timeline.home")
-                .expect("starter home timeline projection is app-owned")
+            key
         );
         assert_eq!(
             feed.item_projection,

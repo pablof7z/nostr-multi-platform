@@ -101,6 +101,14 @@ runtime facade also opens typed `FeedParams` directly; the `feed_key` /
 model. Lower-level crate-internal compiler seams are internal/test/composition
 surfaces, not the taught product API.
 
+Generated native helpers are allowed only as a convenience over that same
+descriptor. `nmp gen feed-helpers` emits Swift/Kotlin helpers that construct
+canonical `FeedParams` JSON for active-user-follows feeds with typed
+`RootIndexed`/`Flat` shape selection and call the existing UniFFI `openFeedJson`
+binding. They do not choose a compiler, own feed reactivity, or replace the
+handle-owned session lifecycle. Web/package helper coverage must use the same
+descriptor once `runtime-web` exposes an equivalent feed session door.
+
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item
 projection/schema contract. Protocol wrapper and maintenance kinds are derived

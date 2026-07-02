@@ -384,7 +384,8 @@ fn g3_shell_uses_nmp_app_builder() {
     assert!(
         lib_rs.contains("starter_projection_keys")
             && lib_rs.contains("starter_builtin_projection_keys")
-            && lib_rs.contains("starter_home_feed_params"),
+            && lib_rs.contains("starter_home_feed_key")
+            && lib_rs.contains("starter_home_feed_spec"),
         "G3 DX GAP: starter must separate full projection contract from built-in declarations.\n\
          lib.rs:\n{lib_rs}",
     );
