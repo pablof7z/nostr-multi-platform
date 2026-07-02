@@ -23,12 +23,19 @@
 //!   `on_event_*` / `snapshot` methods are plain inherent methods reached via
 //!   static dispatch; there is no `ViewModule` trait.
 //! * [`EntryActionModule`] — an `ActionModule` that validates and accepts
-//!   input.
+//!   generated typed action bytes from this app's native/web shells.
 //!
 //! Replace `Entry` with your real domain.
 
-use nmp_core::substrate::*;
-use serde::{Deserialize, Serialize};
+use nmp_core::substrate::{ActionModule, ActionRegistrar, AppHost};
+
+pub mod entry_action;
+pub mod entry_view;
+
+pub use entry_action::{AddEntryAction, EntryActionModule};
+pub use entry_view::{
+    EntryDelta, EntryListSpec, EntryListView, EntryRecord, EntryViewModule, EntryViewState,
+};
 
 /// Install the reusable NMP substrate into `app`, then wire this app's own
 /// modules and selected protocol features on top.
@@ -37,7 +44,7 @@ use serde::{Deserialize, Serialize};
 /// `start` — every registration must be visible to the kernel when the first
 /// event arrives (late wiring is dropped silently per D6).
 ///
-pub fn register(app: &mut impl AppHost) {
+pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     // 1. Install the reusable substrate floor: routing, mailbox/profile/contact
     //    caches, parsers, publish resolver, external event forwarding, coverage
     //    gate, and NIP-77 sync hooks. This is correctness plumbing, not product
@@ -68,11 +75,12 @@ pub fn register(app: &mut impl AppHost) {
     let _comment_runtime = nmp_nip22::register_runtime(app);
     nmp_nip23::register_longform_projection(app);
 
-    // 3. Register this app's own modules here, e.g.:
-    //    app.register_action(EntryActionModule);
-    //    (ADR-0052: `register_action` takes the module VALUE — a stateful
-    //    module owns its dependencies, captured here at composition time.
-    //    App modules follow the same `AppHost` seam as the protocol installers.)
+    // 3. Register this app's own modules here. ADR-0052: `register_action`
+    //    takes the module VALUE, so a stateful module owns dependencies
+    //    captured at composition time. The starter action is reached from
+    //    generated host builders, through the DispatchEnvelope byte doorway.
+    ActionRegistrar::register_action(app, EntryActionModule)
+        .expect("starter entry action namespace must be unique");
 }
 
 /// The app module identifier. Namespaces below derive from it.
@@ -174,162 +182,9 @@ pub fn close_home_timeline_session(
 }
 
 /// Host-side typed write builders this starter expects platform shells to use.
-pub fn starter_action_builder_paths() -> [&'static str; 2] {
-    [
-        "GeneratedActionBuilders.publishReply",
-        "GeneratedActionBuilders.publishProfile",
-    ]
+pub fn starter_action_builder_paths() -> [&'static str; 1] {
+    ["GeneratedActionBuilders.addEntry"]
 }
-
-/// An app-owned record. This is a *generic* example — not a social-app
-/// noun. Make it whatever your app stores.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct EntryRecord {
-    pub id: String,
-    pub label: String,
-    pub archived: bool,
-}
-
-// ---------------------------------------------------------------------------
-// View
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct EntryListSpec {
-    pub include_archived: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct EntryListView {
-    pub items: Vec<EntryRecord>,
-    pub active_count: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum EntryDelta {
-    Replaced { payload: EntryListView },
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct EntryViewState {
-    payload: EntryListView,
-}
-
-/// A reactive view over [`EntryRecord`]s. Its methods are plain inherent
-/// methods reached via static dispatch (`EntryViewModule::open(...)`); there
-/// is no kernel-side `ViewModule` trait or registry.
-pub struct EntryViewModule;
-
-impl EntryViewModule {
-    pub const NAMESPACE: &'static str = "{{name}}.entries.view";
-
-    pub fn key(spec: &EntryListSpec) -> bool {
-        spec.include_archived
-    }
-
-    pub fn dependencies(_spec: &EntryListSpec) -> ViewDependencies {
-        ViewDependencies::default()
-    }
-
-    pub fn open(
-        _ctx: &ViewContext,
-        _spec: EntryListSpec,
-    ) -> (EntryViewState, EntryListView) {
-        let payload = EntryListView::default();
-        (
-            EntryViewState {
-                payload: payload.clone(),
-            },
-            payload,
-        )
-    }
-
-    pub fn on_event_inserted(
-        _ctx: &ViewContext,
-        _state: &mut EntryViewState,
-        _event: &KernelEvent,
-    ) -> Option<EntryDelta> {
-        None
-    }
-
-    pub fn on_event_removed(
-        _ctx: &ViewContext,
-        _state: &mut EntryViewState,
-        _id: &EventId,
-    ) -> Option<EntryDelta> {
-        None
-    }
-
-    pub fn on_event_replaced(
-        _ctx: &ViewContext,
-        _state: &mut EntryViewState,
-        _old_id: &EventId,
-        _new_event: &KernelEvent,
-    ) -> Option<EntryDelta> {
-        None
-    }
-
-    pub fn on_projection_changed(
-        _ctx: &ViewContext,
-        state: &mut EntryViewState,
-        _change: &ProjectionChange,
-    ) -> Option<EntryDelta> {
-        Some(EntryDelta::Replaced {
-            payload: state.payload.clone(),
-        })
-    }
-
-    pub fn snapshot(_ctx: &ViewContext, state: &EntryViewState) -> EntryListView {
-        state.payload.clone()
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Action
-// ---------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum Action {
-    Add { id: String, label: String },
-    Archive { id: String },
-}
-
-pub struct EntryActionModule;
-
-impl ActionModule for EntryActionModule {
-    const NAMESPACE: DeclaredActionNamespace =
-        DeclaredActionNamespace::app_owned("{{name}}.entries.action");
-
-    type Action = Action;
-
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        if matches!(&action, Action::Add { label, .. } if label.trim().is_empty()) {
-            return Err(ActionRejection::Invalid("entry label is empty".to_string()));
-        }
-        Ok(())
-    }
-
-    fn execute(
-        &self,
-        _ctx: &ActionContext,
-        _action: Self::Action,
-        _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::actor::ActorCommand),
-    ) -> Result<(), String> {
-        // Scaffold placeholder: send an nmp_core::actor::ActorCommand via
-        // `send(...)` to drive the actor. Register typed outputs through the
-        // AppHost substrate seams in this crate's composition root.
-        Ok(())
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Assembly
-// ---------------------------------------------------------------------------
 
 /// Module namespaces this app contributes.
 pub fn module_namespaces() -> [&'static str; 2] {
@@ -342,6 +197,7 @@ pub fn module_namespaces() -> [&'static str; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::substrate::{ActionContext, ActionRejection};
 
     #[test]
     fn declares_two_distinct_module_namespaces() {
@@ -351,7 +207,7 @@ mod tests {
 
         assert_eq!(namespaces.len(), 2);
         assert!(namespaces.iter().any(|ns| ns.ends_with(".view")));
-        assert!(namespaces.iter().any(|ns| ns.ends_with(".action")));
+        assert!(namespaces.iter().any(|ns| ns.ends_with(".entries.add")));
     }
 
     #[test]
@@ -360,7 +216,7 @@ mod tests {
         // ADR-0052: `start` takes `&self`; call on the (unit) module value.
         let result = EntryActionModule.start(
             &mut ctx,
-            Action::Add {
+            AddEntryAction {
                 id: "1".to_string(),
                 label: "  ".to_string(),
             },
@@ -393,10 +249,7 @@ mod tests {
 
         assert_eq!(
             builders,
-            [
-                "GeneratedActionBuilders.publishReply",
-                "GeneratedActionBuilders.publishProfile",
-            ]
+            ["GeneratedActionBuilders.addEntry"]
         );
     }
 

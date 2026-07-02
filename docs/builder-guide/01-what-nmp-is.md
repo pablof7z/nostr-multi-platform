@@ -86,11 +86,14 @@ negentropy backfill, replaceable-event supersession, multi-account sessions,
 and the reactive snapshot loop are all live. iOS Keychain is the production
 signer path. The Highlighter and NIP-29 modules prove the kernel/extension
 boundary holds for additional protocol surfaces. `nmp init` scaffolds a
-ready-to-build Rust workspace with a thin `<name>-core` crate, explicit Rust
-composition root, and headless `examples/shell.rs`. Native shells consume the
-Rust core through UniFFI bindings; browser shells consume it through the
-wasm-bindgen runtime. Composition is app-owned Rust code using reusable
-installers. Chirp is now an external consumer rather than an in-repo app.
+ready-to-build Rust workspace with a thin `<name>-core` composition crate, a
+`<name>-app` app-owned UniFFI facade, app-local generated action builders, and a
+starter action-to-reactive-view path plus headless `examples/shell.rs`. Native
+shells consume the app facade through UniFFI bindings; browser shells consume
+the wasm-bindgen runtime and generated action bytes. Composition is app-owned
+Rust code using reusable installers, and the scaffold includes checks for both
+action-builder drift and Swift/Kotlin UniFFI binding generation.
+Chirp is now an external consumer rather than an in-repo app.
 
 Coming next: Blossom blob storage, continued browser-runtime hardening, and
 the full multi-platform starter around the same explicit composition model.

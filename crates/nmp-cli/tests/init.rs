@@ -1,7 +1,7 @@
 //! End-to-end: `nmp init` into a tempdir must produce a thin composition-shell
-//! scaffold (ADR-0069) that `cargo check`s green, whose tests pass, and whose
-//! `register` shell installs named NMP substrate/protocol/app pieces — NOT a
-//! generated FFI crate or a hidden production preset.
+//! scaffold (ADR-0069 + #2720) that `cargo check`s green, whose tests pass, and
+//! whose `register` shell installs named NMP substrate/protocol/app pieces plus
+//! one app-owned UniFFI facade and typed action doorway.
 
 mod helpers;
 
@@ -48,16 +48,42 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(root.join("nmp.toml").exists());
+    assert!(root.join("action-builders.json").exists());
+    assert!(root
+        .join("generated/ActionBuilders.generated.swift")
+        .exists());
+    assert!(root.join("generated/ActionBuilders.kt").exists());
+    assert!(root.join("generated/actionBuilders.generated.ts").exists());
     assert!(root.join("crates/demoapp-core/src/lib.rs").exists());
+    assert!(root
+        .join("crates/demoapp-core/src/entry_action.rs")
+        .exists());
+    assert!(root.join("crates/demoapp-core/src/entry_view.rs").exists());
+    assert!(root
+        .join("crates/demoapp-core/schema/add_entry.fbs")
+        .exists());
+    assert!(root.join("crates/demoapp-app/src/lib.rs").exists());
     assert!(root.join("crates/demoapp-core/examples/shell.rs").exists());
+    assert!(root.join("ci/check-uniffi-bindings.sh").exists());
 
     // 2. ADR-0069: production composition is explicit Rust, not a hidden
     //    preset. The scaffolded `register` shell installs the reusable
     //    substrate by name, the headless example drives it through
-    //    `NmpAppBuilder`, and there is NO generated `apps/` FFI tree and NO
-    //    `nmp gen modules` step.
+    //    `NmpAppBuilder`, and the native doorway is exactly one app-owned
+    //    UniFFI facade crate, not raw C symbols or `nmp gen modules` output.
     let lib = std::fs::read_to_string(root.join("crates/demoapp-core/src/lib.rs"))
         .expect("read scaffolded lib.rs");
+    let entry_action =
+        std::fs::read_to_string(root.join("crates/demoapp-core/src/entry_action.rs"))
+            .expect("read scaffolded entry_action.rs");
+    let entry_view = std::fs::read_to_string(root.join("crates/demoapp-core/src/entry_view.rs"))
+        .expect("read scaffolded entry_view.rs");
+    let facade = std::fs::read_to_string(root.join("crates/demoapp-app/src/lib.rs"))
+        .expect("read scaffolded facade lib.rs");
+    let uniffi_check = std::fs::read_to_string(root.join("ci/check-uniffi-bindings.sh"))
+        .expect("read scaffolded UniFFI binding check");
+    let root_cargo_toml = std::fs::read_to_string(root.join("Cargo.toml"))
+        .expect("read scaffolded workspace Cargo.toml");
     let cargo_toml = std::fs::read_to_string(root.join("crates/demoapp-core/Cargo.toml"))
         .expect("read scaffolded Cargo.toml");
     assert_named_installer_sequence(&lib);
@@ -75,8 +101,15 @@ fn init_scaffold_is_a_compiling_composition_shell() {
             && cargo_toml.contains("nmp-nip51")
             && cargo_toml.contains("nmp-nip17")
             && cargo_toml.contains("nmp-nip23")
-            && cargo_toml.contains("nmp-content"),
+            && cargo_toml.contains("nmp-content")
+            && cargo_toml.contains("nmp-signer-iface")
+            && cargo_toml.contains("flatbuffers"),
         "scaffolded Cargo.toml must depend on explicit owner crates, not nmp-defaults:\n{cargo_toml}"
+    );
+    assert!(
+        root_cargo_toml.contains("\"crates/demoapp-core\"")
+            && root_cargo_toml.contains("\"crates/demoapp-app\""),
+        "workspace must include both the core and app-owned UniFFI facade crates:\n{root_cargo_toml}"
     );
     assert!(
         lib.contains("starter_projection_keys")
@@ -98,9 +131,49 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     );
     assert!(
         !lib.contains("GeneratedActionBuilders.publishRaw")
-            && lib.contains("GeneratedActionBuilders.publishReply")
-            && lib.contains("GeneratedActionBuilders.publishProfile"),
-        "scaffolded starter must point shells at typed generated publish builders, not generic publishRaw:\n{lib}"
+            && !lib.contains("GeneratedActionBuilders.publishReply")
+            && !lib.contains("GeneratedActionBuilders.publishProfile")
+            && lib.contains("GeneratedActionBuilders.addEntry"),
+        "scaffolded starter must point shells at the app-local generated builder, not generic publishRaw or built-in publish builders:\n{lib}"
+    );
+    assert!(
+        entry_action.contains("impl ActionPayload for AddEntryAction")
+            && entry_action.contains("fn decode_payload")
+            && entry_action.contains("DeclaredActionNamespace::app_owned(ACTION_NAMESPACE)")
+            && entry_action.contains("ActorCommand::Publish")
+            && entry_action.contains("EVENT_KIND: u32 = 30445"),
+        "scaffolded starter action must decode generated bytes into an app-owned ActionModule:\n{entry_action}"
+    );
+    assert!(
+        lib.contains("pub mod entry_view")
+            && entry_view.contains("pub fn dependencies")
+            && entry_view.contains("kinds: vec![EVENT_KIND]")
+            && entry_view.contains("ENTRY_VIEW_LIMIT")
+            && entry_view.contains("pub fn on_event_inserted")
+            && entry_view.contains("pub fn on_event_replaced")
+            && entry_view.contains("pub fn on_event_removed")
+            && entry_action.contains("published entry event must update the app-owned view"),
+        "scaffolded starter view must react to the app-private event emitted by the action:\nlib.rs:\n{lib}\nentry_view.rs:\n{entry_view}\nentry_action.rs:\n{entry_action}"
+    );
+    assert!(
+        facade.contains("uniffi::setup_scaffolding!()")
+            && facade.contains("struct DemoappApp")
+            && facade.contains("nmp_uniffi_support::dispatch_action_vec")
+            && facade.contains("nmp_uniffi_support::set_update_sink")
+            && facade.contains("nmp_uniffi_support::set_capability_callback")
+            && !facade.contains("#[no_mangle]")
+            && !facade.contains("extern \"C\""),
+        "scaffolded app facade must be app-owned UniFFI over nmp-uniffi-support, not raw C glue:\n{facade}"
+    );
+    assert!(
+        uniffi_check.contains("cargo build -p \"${FACADE_PKG}\"")
+            && uniffi_check.contains("uniffi-bindgen")
+            && uniffi_check.contains("generate --library")
+            && uniffi_check.contains("--language swift")
+            && uniffi_check.contains("--language kotlin")
+            && uniffi_check.contains("FACADE_PKG=\"demoapp-app\"")
+            && uniffi_check.contains("FACADE_CRATE=\"demoapp_app\""),
+        "scaffolded app facade must include a Swift/Kotlin UniFFI binding check:\n{uniffi_check}"
     );
     assert!(
         !lib.contains("open_interest")
@@ -136,7 +209,7 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     assert_no_retired_app_surface(&lib, &shell);
     assert!(
         !root.join("apps").exists(),
-        "ADR-0046: init must not scaffold a generated apps/ FFI tree"
+        "init must not scaffold a generated apps/ tree"
     );
 
     // 3. The scaffold compiles as-is (lib + example + tests). This links
@@ -153,7 +226,7 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         String::from_utf8_lossy(&check.stderr)
     );
 
-    // 4. Skeleton tests pass.
+    // 4. Skeleton tests pass for both the core and facade crates.
     let test = Command::new(env!("CARGO"))
         .args(["test", "-p", "demoapp-core"])
         .current_dir(&root)
@@ -164,8 +237,65 @@ fn init_scaffold_is_a_compiling_composition_shell() {
         "scaffold tests failed:\n{}",
         String::from_utf8_lossy(&test.stderr)
     );
+    let facade_test = Command::new(env!("CARGO"))
+        .args(["test", "-p", "demoapp-app"])
+        .current_dir(&root)
+        .output()
+        .expect("run cargo test");
+    assert!(
+        facade_test.status.success(),
+        "scaffold facade tests failed:\n{}",
+        String::from_utf8_lossy(&facade_test.stderr)
+    );
 
-    // 5. The documented headless shell path runs through start/open/close/stop.
+    // 5. The app-local action-builder registry is already generated and the
+    //    normal NMP codegen drift gate sees it as current.
+    let repo_manifest = repo_root().join("Cargo.toml");
+    let registry_path = root.join("action-builders.json");
+    let drift = Command::new(env!("CARGO"))
+        .args([
+            "run",
+            "--manifest-path",
+            repo_manifest.to_str().unwrap(),
+            "-p",
+            "nmp-codegen",
+            "--",
+            "gen",
+            "action-builders",
+            "--registry",
+            registry_path.to_str().unwrap(),
+            "--check",
+        ])
+        .output()
+        .expect("run app-local action-builder drift gate");
+    assert!(
+        drift.status.success(),
+        "scaffold action-builder drift gate failed:\n{}\nstdout:\n{}",
+        String::from_utf8_lossy(&drift.stderr),
+        String::from_utf8_lossy(&drift.stdout)
+    );
+
+    // 6. The scaffolded app-owned facade can generate real Swift/Kotlin UniFFI
+    //    bindings from its cdylib, proving the native doorway is not just a
+    //    compile-only stub.
+    let bindings = Command::new("bash")
+        .args(["ci/check-uniffi-bindings.sh"])
+        .current_dir(&root)
+        .output()
+        .expect("run scaffold UniFFI binding check");
+    assert!(
+        bindings.status.success(),
+        "scaffold UniFFI binding check failed:\n{}\nstdout:\n{}",
+        String::from_utf8_lossy(&bindings.stderr),
+        String::from_utf8_lossy(&bindings.stdout)
+    );
+    assert!(
+        root.join("generated/uniffi/swift").exists()
+            && root.join("generated/uniffi/kotlin").exists(),
+        "scaffold UniFFI binding check must generate Swift/Kotlin output"
+    );
+
+    // 7. The documented headless shell path runs through start/open/close/stop.
     let run = run_shell_with_timeout(&root, "demoapp-core");
     assert!(
         run.status.success(),
@@ -234,6 +364,15 @@ fn assert_no_retired_app_surface(lib: &str, shell: &str) {
              lib.rs:\n{lib}\nshell.rs:\n{shell}",
         );
     }
+}
+
+fn repo_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates dir")
+        .parent()
+        .expect("repo root")
+        .to_path_buf()
 }
 
 fn run_shell_with_timeout(root: &std::path::Path, pkg: &str) -> Output {

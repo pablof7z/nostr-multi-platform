@@ -1,0 +1,312 @@
+//! App-owned typed action for the starter entry domain.
+//!
+//! The action namespace, FlatBuffers payload schema, Rust payload, validator,
+//! and event construction all live in this app crate. Swift/Kotlin/TypeScript
+//! builders are generated from `action-builders.json`; no app shell spells the
+//! namespace or hand-assembles FlatBuffers bytes.
+
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "entry_action/generated/add_entry_generated.rs"]
+pub mod add_entry_generated;
+
+use nmp_core::actor::{ActorCommand, PublishCommand};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
+};
+use nmp_signer_iface::UnsignedEvent;
+use serde::{Deserialize, Serialize};
+
+use add_entry_generated::app::starter_entries as entry_fb;
+
+pub const ACTION_NAMESPACE: &str = "{{name}}.entries.add";
+pub const EVENT_KIND: u32 = 30445;
+pub const SCHEMA_VERSION: u32 = 1;
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct AddEntryAction {
+    pub id: String,
+    pub label: String,
+}
+
+pub struct EntryActionModule;
+
+#[derive(Debug)]
+struct AddEntryCommand {
+    action: AddEntryAction,
+    correlation_id: String,
+}
+
+impl ActionModule for EntryActionModule {
+    const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
+        nmp_core::substrate::DeclaredActionNamespace::app_owned(ACTION_NAMESPACE);
+
+    type Action = AddEntryAction;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<AddEntryAction as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        validate_action(&action).map_err(ActionRejection::Invalid)
+    }
+
+    fn execute(
+        &self,
+        _ctx: &ActionContext,
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(ActorCommand::Protocol(Box::new(AddEntryCommand {
+            action,
+            correlation_id: correlation_id.to_string(),
+        })));
+        Ok(())
+    }
+}
+
+impl ProtocolCommand for AddEntryCommand {
+    fn run(
+        self: Box<Self>,
+        ctx: &mut ProtocolCommandContext<'_>,
+    ) -> Result<(), ProtocolCommandError> {
+        let event = entry_event(&self.action)
+            .map_err(|err| ProtocolCommandError::new(format!("add_entry: {err}")))?;
+        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
+            event,
+            correlation_id: Some(self.correlation_id),
+            signer_pubkey: None,
+        }));
+        Ok(())
+    }
+}
+
+impl ActionPayload for AddEntryAction {
+    const SCHEMA_ID: &'static str = ACTION_NAMESPACE;
+    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
+
+    fn encode(&self) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let id = fbb.create_string(&self.id);
+        let label = fbb.create_string(&self.label);
+        let payload = entry_fb::AddEntryPayload::create(
+            &mut fbb,
+            &entry_fb::AddEntryPayloadArgs {
+                schema_version: SCHEMA_VERSION,
+                id: Some(id),
+                label: Some(label),
+            },
+        );
+        entry_fb::finish_add_entry_payload_buffer(&mut fbb, payload);
+        fbb.finished_data().to_vec()
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
+        if bytes.len() < 8 || !entry_fb::add_entry_payload_buffer_has_identifier(bytes) {
+            return Err(malformed("missing APPS file identifier"));
+        }
+        let root = entry_fb::root_as_add_entry_payload(bytes)
+            .map_err(|err| malformed(format!("not a valid AddEntryPayload buffer: {err}")))?;
+        let found = root.schema_version();
+        if found != SCHEMA_VERSION {
+            return Err(ActionPayloadDecodeError::SchemaVersionMismatch {
+                found,
+                expected: SCHEMA_VERSION,
+            });
+        }
+        Ok(AddEntryAction {
+            id: root.id().to_string(),
+            label: root.label().to_string(),
+        })
+    }
+}
+
+fn entry_event(action: &AddEntryAction) -> Result<UnsignedEvent, String> {
+    validate_action(action)?;
+    Ok(UnsignedEvent {
+        pubkey: String::new(),
+        kind: EVENT_KIND,
+        tags: vec![
+            vec!["d".to_string(), action.id.trim().to_string()],
+            vec!["alt".to_string(), action.label.trim().to_string()],
+        ],
+        content: action.label.trim().to_string(),
+        created_at: 0,
+    })
+}
+
+fn validate_action(action: &AddEntryAction) -> Result<(), String> {
+    if action.id.trim().is_empty() {
+        return Err("entry id is empty".to_string());
+    }
+    if action.label.trim().is_empty() {
+        return Err("entry label is empty".to_string());
+    }
+    Ok(())
+}
+
+fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
+    ActionPayloadDecodeError::Malformed {
+        reason: reason.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nmp_core::dispatch_envelope::{
+        decode_dispatch_envelope, encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
+    };
+    use nmp_core::substrate::{
+        ActionRegistrar, KernelEvent, NoopActionStageTracker, NoopErrorSurface,
+        NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
+        NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommandContextParts, ViewContext,
+    };
+    use nmp_core::ActionRegistry;
+    use std::cell::RefCell;
+
+    use crate::entry_view::{EntryDelta, EntryListSpec, EntryViewModule};
+
+    fn sample_action() -> AddEntryAction {
+        AddEntryAction {
+            id: "first-entry".to_string(),
+            label: "First entry".to_string(),
+        }
+    }
+
+    #[test]
+    fn generated_builder_envelope_round_trips_through_app_payload_decode() {
+        let action = sample_action();
+        let bytes = encode_dispatch_envelope(
+            "add-entry-cid",
+            ACTION_NAMESPACE,
+            DISPATCH_ENVELOPE_SCHEMA_VERSION,
+            &action.encode(),
+        );
+        let decoded = decode_dispatch_envelope(&bytes).expect("dispatch envelope decodes");
+
+        assert_eq!(decoded.correlation_id, "add-entry-cid");
+        assert_eq!(decoded.action_namespace, ACTION_NAMESPACE);
+        assert_eq!(AddEntryAction::decode(&decoded.payload).unwrap(), action);
+    }
+
+    #[test]
+    fn explicit_composition_registers_app_action_namespace() {
+        let mut registry = ActionRegistry::new();
+        ActionRegistrar::register_action(&mut registry, EntryActionModule)
+            .expect("app action registers explicitly");
+        let mut ctx = ActionContext::default();
+        let correlation_id = registry
+            .start_bytes(&mut ctx, 42, ACTION_NAMESPACE, &sample_action().encode())
+            .expect("registered app action accepts typed bytes");
+        assert_eq!(correlation_id, "000000000000002a0000000000000000");
+    }
+
+    #[test]
+    fn execution_publishes_declared_app_private_event_kind() {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        EntryActionModule
+            .execute(
+                &ActionContext::default(),
+                sample_action(),
+                "add-entry-cid",
+                &|cmd| captured.borrow_mut().push(cmd),
+            )
+            .expect("execute succeeds");
+        let ActorCommand::Protocol(cmd) = captured.into_inner().pop().unwrap() else {
+            panic!("expected protocol command");
+        };
+
+        let published: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        let send = |cmd| published.borrow_mut().push(cmd);
+        let (command_sender, _rx) = std::sync::mpsc::channel::<nmp_core::actor::ActorMail>();
+        let command_sender = nmp_core::CommandSender::new(command_sender);
+        let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
+            send: &send,
+            command_sender,
+            clock: &NoopKernelClock,
+            signers: &NoopLocalSignerAccess,
+            dms: &nmp_core::substrate::EmptyDmInboxRelayLookup,
+            errors: &NoopErrorSurface,
+            stages: &NoopActionStageTracker,
+            recipients: &NoopRecipientRelayLookup,
+            host_op_handler: &NoopHostOpHandlerAccess,
+            wallet_kernel: &NoopWalletKernelAccess,
+            zap_profiles: &NoopZapProfileLookup,
+        });
+        cmd.run(&mut ctx).expect("protocol command runs");
+
+        match published.into_inner().pop().unwrap() {
+            ActorCommand::Publish(PublishCommand::UnsignedEvent {
+                event,
+                correlation_id,
+                signer_pubkey,
+            }) => {
+                assert_eq!(event.kind, EVENT_KIND);
+                assert_eq!(event.content, "First entry");
+                assert_eq!(event.tags[0], vec!["d".to_string(), "first-entry".to_string()]);
+                assert_eq!(correlation_id.as_deref(), Some("add-entry-cid"));
+                assert_eq!(signer_pubkey, None);
+
+                let view_event = KernelEvent {
+                    id: "published-entry-event".to_string(),
+                    author: event.pubkey.clone(),
+                    kind: event.kind,
+                    created_at: event.created_at,
+                    tags: event.tags,
+                    content: event.content,
+                    relay_provenance: vec!["local://publish".to_string()],
+                };
+                let view_ctx = ViewContext::default();
+                let (mut view_state, initial) = EntryViewModule::open(
+                    &view_ctx,
+                    EntryListSpec {
+                        include_archived: false,
+                    },
+                );
+                assert!(initial.items.is_empty());
+                let Some(EntryDelta::Replaced { payload }) =
+                    EntryViewModule::on_event_inserted(&view_ctx, &mut view_state, &view_event)
+                else {
+                    panic!("published entry event must update the app-owned view");
+                };
+                assert_eq!(payload.items.len(), 1);
+                assert_eq!(payload.items[0].id, "first-entry");
+                assert_eq!(payload.items[0].label, "First entry");
+                assert_eq!(EntryViewModule::snapshot(&view_ctx, &view_state), payload);
+            }
+            other => panic!("expected app-private publish, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn payload_decode_rejects_schema_version_drift() {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let id = fbb.create_string("id");
+        let label = fbb.create_string("label");
+        let payload = entry_fb::AddEntryPayload::create(
+            &mut fbb,
+            &entry_fb::AddEntryPayloadArgs {
+                schema_version: SCHEMA_VERSION + 1,
+                id: Some(id),
+                label: Some(label),
+            },
+        );
+        entry_fb::finish_add_entry_payload_buffer(&mut fbb, payload);
+
+        assert!(matches!(
+            AddEntryAction::decode(fbb.finished_data()),
+            Err(ActionPayloadDecodeError::SchemaVersionMismatch { expected: 1, .. })
+        ));
+    }
+}

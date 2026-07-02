@@ -1,0 +1,38 @@
+{
+  "actions": [
+    {
+      "action_namespace": "{{name}}.entries.add",
+      "event_kind": 30445,
+      "dispatch": "publishes_event",
+      "schema": {
+        "schema_path": "crates/{{pkg}}/schema/add_entry.fbs",
+        "root_type": "AddEntryPayload",
+        "file_identifier": "APPS",
+        "schema_id": "{{name}}.entries.add",
+        "schema_version": 1
+      },
+      "builder": {
+        "method": "addEntry",
+        "doc": "Add a starter entry through this app's typed action doorway.",
+        "fields": [
+          { "name": "id", "kind": "string" },
+          { "name": "label", "kind": "string" }
+        ]
+      },
+      "rust": {
+        "rust_crate": "{{pkg}}",
+        "module": "entry_action",
+        "payload_type": "AddEntryAction",
+        "action_module": "EntryActionModule"
+      }
+    }
+  ],
+  "outputs": {
+    "swift": "generated/ActionBuilders.generated.swift",
+    "kotlin": "generated/ActionBuilders.kt",
+    "ts": "generated/actionBuilders.generated.ts"
+  },
+  "drift_checks": [
+    "cargo run --manifest-path {{nmp_codegen_manifest}} -p nmp-codegen -- gen action-builders --registry action-builders.json --check"
+  ]
+}

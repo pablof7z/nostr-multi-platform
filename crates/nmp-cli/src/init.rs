@@ -4,24 +4,33 @@
 //!
 //! ```text
 //! <root>/
-//!   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
+//!   Cargo.toml                 # workspace: core + app-owned UniFFI facade
 //!   nmp.toml                   # app manifest (NMP dependency policy; read by
 //!                              # `nmp upgrade`)
+//!   action-builders.json       # app-local typed action-builder contract
+//!   generated/                 # Swift/Kotlin/TS action builders
+//!   ci/check-uniffi-bindings.sh # app facade binding-generation check
 //!   README.md                  # next steps
 //!   crates/<name>-core/
 //!     Cargo.toml               # depends on owner NMP crates + native runtime + nmp-core
 //!     src/lib.rs               # explicit app composition root
+//!     src/entry_action.rs      # app-owned typed action module
+//!     src/entry_view.rs        # app-owned reactive read model
+//!     schema/add_entry.fbs     # app-owned action payload schema
 //!     examples/shell.rs        # NmpAppBuilder → app register → start
+//!   crates/<name>-app/
+//!     Cargo.toml               # app-owned UniFFI facade cdylib/staticlib/rlib
+//!     src/lib.rs               # setup_scaffolding! + facade-local types
 //! ```
 //!
 //! # ADR-0069 — explicit feature composition
 //!
 //! The scaffolded `<name>-core` crate is a **thin composition shell**: it
 //! depends on explicit owner crates and installs each selected substrate,
-//! protocol, and runtime layer directly before app-owned modules. It does NOT
-//! generate an FFI crate or hide production policy behind a preset. The app Rust
-//! composition root is the readable source of truth for installed substrate,
-//! protocol features, app features, capability contracts, and defaults.
+//! protocol, and runtime layer directly before app-owned modules. The generated
+//! `<name>-app` crate is an app-owned UniFFI facade over that composition; it
+//! owns `NmpApp` by value and delegates runtime mechanics to
+//! `nmp-uniffi-support` instead of hand-rolling a native doorway.
 //!
 //! # Dependency policy
 //!
@@ -37,7 +46,15 @@ use std::path::{Path, PathBuf};
 
 const WORKSPACE_TMPL: &str = include_str!("../templates/workspace_cargo.toml.tmpl");
 const APP_CARGO_TMPL: &str = include_str!("../templates/app_cargo.toml.tmpl");
+const FACADE_CARGO_TMPL: &str = include_str!("../templates/facade_cargo.toml.tmpl");
 const LIB_TMPL: &str = include_str!("../templates/lib.rs.tmpl");
+const ENTRY_ACTION_TMPL: &str = include_str!("../templates/entry_action.rs.tmpl");
+const ENTRY_VIEW_TMPL: &str = include_str!("../templates/entry_view.rs.tmpl");
+const ADD_ENTRY_SCHEMA_TMPL: &str = include_str!("../templates/add_entry.fbs.tmpl");
+const ADD_ENTRY_GENERATED_TMPL: &str = include_str!("../templates/add_entry_generated.rs.tmpl");
+const ACTION_BUILDERS_TMPL: &str = include_str!("../templates/action-builders.json.tmpl");
+const FACADE_LIB_TMPL: &str = include_str!("../templates/facade_lib.rs.tmpl");
+const CHECK_UNIFFI_BINDINGS_TMPL: &str = include_str!("../templates/check-uniffi-bindings.sh.tmpl");
 const NMP_TOML_TMPL: &str = include_str!("../templates/nmp.toml.tmpl");
 const SHELL_TMPL: &str = include_str!("../templates/shell.rs.tmpl");
 const README_TMPL: &str = include_str!("../templates/README.md.tmpl");
@@ -115,9 +132,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let pkg = format!("{name}-core");
     let crate_ident = pkg.replace('-', "_");
     let display = title_case(&name);
+    let facade_pkg = format!("{name}-app");
+    let facade_crate_ident = facade_pkg.replace('-', "_");
+    let facade_struct = format!("{}App", pascal_ident(&name));
     let nmp_dependency = nmp_dependency.unwrap_or(NmpDependency::Path(nmp_checkout_path()?));
     let nmp_core_dep = nmp_crate_dependency(&nmp_dependency, "nmp-core");
     let nmp_native_runtime_dep = nmp_crate_dependency(&nmp_dependency, "nmp-native-runtime");
+    let nmp_uniffi_support_dep = nmp_crate_dependency(&nmp_dependency, "nmp-uniffi-support");
     let nmp_substrate_dep = nmp_crate_dependency(&nmp_dependency, "nmp-substrate");
     let nmp_nip50_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip50");
     let nmp_nip02_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip02");
@@ -132,15 +153,23 @@ pub fn run(args: &[String]) -> Result<(), String> {
     let nmp_nip17_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip17");
     let nmp_nip22_dep = nmp_crate_dependency(&nmp_dependency, "nmp-nip22");
     let nmp_content_dep = nmp_crate_dependency(&nmp_dependency, "nmp-content");
+    let nmp_signer_iface_dep = nmp_crate_dependency(&nmp_dependency, "nmp-signer-iface");
+    let nmp_codegen_manifest = nmp_codegen_manifest(&nmp_dependency)?
+        .to_string_lossy()
+        .to_string();
     let nmp_manifest = nmp_manifest_block(&nmp_dependency);
 
     let render = |tmpl: &str| -> String {
         tmpl.replace("{{name}}", &name)
             .replace("{{pkg}}", &pkg)
+            .replace("{{facade_pkg}}", &facade_pkg)
             .replace("{{crate_ident}}", &crate_ident)
+            .replace("{{facade_crate_ident}}", &facade_crate_ident)
+            .replace("{{facade_struct}}", &facade_struct)
             .replace("{{display}}", &display)
             .replace("{{nmp_core_dep}}", &nmp_core_dep)
             .replace("{{nmp_native_runtime_dep}}", &nmp_native_runtime_dep)
+            .replace("{{nmp_uniffi_support_dep}}", &nmp_uniffi_support_dep)
             .replace("{{nmp_substrate_dep}}", &nmp_substrate_dep)
             .replace("{{nmp_nip50_dep}}", &nmp_nip50_dep)
             .replace("{{nmp_nip02_dep}}", &nmp_nip02_dep)
@@ -155,24 +184,63 @@ pub fn run(args: &[String]) -> Result<(), String> {
             .replace("{{nmp_nip17_dep}}", &nmp_nip17_dep)
             .replace("{{nmp_nip22_dep}}", &nmp_nip22_dep)
             .replace("{{nmp_content_dep}}", &nmp_content_dep)
+            .replace("{{nmp_signer_iface_dep}}", &nmp_signer_iface_dep)
+            .replace("{{nmp_codegen_manifest}}", &nmp_codegen_manifest)
             .replace("{{nmp_manifest}}", &nmp_manifest)
     };
 
     let crate_dir = root.join("crates").join(&pkg);
+    let facade_dir = root.join("crates").join(&facade_pkg);
+    let registry_path = root.join("action-builders.json");
     write(&root.join("Cargo.toml"), &render(WORKSPACE_TMPL))?;
     write(&root.join("nmp.toml"), &render(NMP_TOML_TMPL))?;
+    write(&registry_path, &render(ACTION_BUILDERS_TMPL))?;
     write(&root.join("README.md"), &render(README_TMPL))?;
     write(&crate_dir.join("Cargo.toml"), &render(APP_CARGO_TMPL))?;
     write(&crate_dir.join("src").join("lib.rs"), &render(LIB_TMPL))?;
     write(
+        &crate_dir.join("src").join("entry_action.rs"),
+        &render(ENTRY_ACTION_TMPL),
+    )?;
+    write(
+        &crate_dir.join("src").join("entry_view.rs"),
+        &render(ENTRY_VIEW_TMPL),
+    )?;
+    write(
+        &crate_dir
+            .join("src")
+            .join("entry_action")
+            .join("generated")
+            .join("add_entry_generated.rs"),
+        &render(ADD_ENTRY_GENERATED_TMPL),
+    )?;
+    write(
+        &crate_dir.join("schema").join("add_entry.fbs"),
+        &render(ADD_ENTRY_SCHEMA_TMPL),
+    )?;
+    write(
         &crate_dir.join("examples").join("shell.rs"),
         &render(SHELL_TMPL),
     )?;
+    write(&facade_dir.join("Cargo.toml"), &render(FACADE_CARGO_TMPL))?;
+    write(
+        &facade_dir.join("src").join("lib.rs"),
+        &render(FACADE_LIB_TMPL),
+    )?;
+    write(
+        &root.join("ci").join("check-uniffi-bindings.sh"),
+        &render(CHECK_UNIFFI_BINDINGS_TMPL),
+    )?;
+    generate_action_builders(&registry_path)?;
 
     println!("scaffolded `{name}` at {}", root.display());
     println!("next:");
     println!("  cd {}", root.display());
-    println!("  cargo check                          # the {pkg} shell compiles as-is");
+    println!("  cargo check                          # core + facade compile as-is");
+    println!(
+        "  cargo run --manifest-path {nmp_codegen_manifest} -p nmp-codegen -- gen action-builders --registry action-builders.json --check"
+    );
+    println!("  bash ci/check-uniffi-bindings.sh # generate Swift/Kotlin facade bindings");
     println!("  cargo run --example shell -p {pkg}   # build → app register → start");
     Ok(())
 }
@@ -213,6 +281,19 @@ fn title_case(name: &str) -> String {
         .join(" ")
 }
 
+fn pascal_ident(name: &str) -> String {
+    name.split('-')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut chars = p.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<String>()
+}
+
 /// Absolute path to this checkout, derived from the nmp-cli crate location.
 fn nmp_checkout_path() -> Result<PathBuf, String> {
     let here = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -247,6 +328,13 @@ fn nmp_crate_dependency(dependency: &NmpDependency, krate: &str) -> String {
     }
 }
 
+fn nmp_codegen_manifest(dependency: &NmpDependency) -> Result<PathBuf, String> {
+    match dependency {
+        NmpDependency::Path(path) => Ok(path.join("Cargo.toml")),
+        NmpDependency::Version(_) => Ok(nmp_checkout_path()?.join("Cargo.toml")),
+    }
+}
+
 fn nmp_manifest_block(dependency: &NmpDependency) -> String {
     match dependency {
         NmpDependency::Version(version) => {
@@ -257,6 +345,32 @@ fn nmp_manifest_block(dependency: &NmpDependency) -> String {
             path.to_string_lossy()
         ),
     }
+}
+
+fn generate_action_builders(registry_path: &Path) -> Result<(), String> {
+    let loaded = nmp_codegen::load_app_action_builder_registry(registry_path)?;
+    nmp_codegen::validate_app_action_builder_schema_files(registry_path, &loaded)?;
+    let registry = loaded.as_registry();
+    for platform in [
+        nmp_codegen::ActionBuilderPlatform::Swift,
+        nmp_codegen::ActionBuilderPlatform::Kotlin,
+        nmp_codegen::ActionBuilderPlatform::Ts,
+    ] {
+        let out_path = resolve_registry_path(registry_path, loaded.output_for(platform));
+        nmp_codegen::generate_action_builders_from_registry(platform, &registry, &out_path)
+            .map_err(|e| format!("generate {}: {e}", out_path.display()))?;
+    }
+    Ok(())
+}
+
+fn resolve_registry_path(registry_path: &Path, output: &Path) -> PathBuf {
+    if output.is_absolute() {
+        return output.to_path_buf();
+    }
+    registry_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(output)
 }
 
 fn write(path: &Path, content: &str) -> Result<(), String> {

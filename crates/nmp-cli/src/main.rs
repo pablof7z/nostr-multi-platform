@@ -3,8 +3,8 @@
 //! The commands that make NMP adoptable instead of hand-wired:
 //!
 //! * `nmp init <app-name>` — scaffold a new app: a thin `<app>-core` crate
-//!   that uses `NmpAppBuilder` and an explicit Rust composition root
-//!   (ADR-0069).
+//!   with an explicit Rust composition root (ADR-0069), a `<app>-app`
+//!   UniFFI facade, and one app-local typed action doorway.
 //! * `nmp add component <id>` — copy app-owned native source components from
 //!   the offline NMP registry into an app tree.
 //! * `nmp update component <id>` — refresh installed component sources from
@@ -58,9 +58,9 @@ fn help() -> String {
         "usage:",
         "  nmp init <app-name> [--path DIR] [--nmp-version VERSION | --nmp-path DIR]",
         "      Scaffold a new NMP app. Creates a workspace at DIR (default",
-        "      ./<app-name>) with an nmp.toml manifest and an <app-name>-core",
-        "      crate with an explicit Rust composition root over the reusable",
-        "      NMP installer crates (ADR-0069). It compiles as-is.",
+        "      ./<app-name>) with an nmp.toml manifest, an <app-name>-core",
+        "      crate with an explicit Rust composition root, an <app-name>-app",
+        "      UniFFI facade, and one generated app-local action builder.",
         "      --nmp-version pins the nmp-* git dependencies to a release rev for",
         "      release consumers; --nmp-path writes local checkout dependencies",
         "      for framework development.",

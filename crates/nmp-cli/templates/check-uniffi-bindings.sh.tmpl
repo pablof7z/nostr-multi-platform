@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+NMP_MANIFEST="{{nmp_codegen_manifest}}"
+FACADE_PKG="{{facade_pkg}}"
+FACADE_CRATE="{{facade_crate_ident}}"
+OUT_DIR="${1:-generated/uniffi}"
+
+case "$(uname -s)" in
+  Darwin) FACADE_LIB="target/debug/lib${FACADE_CRATE}.dylib" ;;
+  Linux) FACADE_LIB="target/debug/lib${FACADE_CRATE}.so" ;;
+  *)
+    echo "unsupported platform for UniFFI cdylib discovery: $(uname -s)" >&2
+    exit 1
+    ;;
+esac
+
+cargo build -p "${FACADE_PKG}"
+
+rm -rf "${OUT_DIR}/swift" "${OUT_DIR}/kotlin"
+mkdir -p "${OUT_DIR}/swift" "${OUT_DIR}/kotlin"
+
+cargo run --manifest-path "${NMP_MANIFEST}" -p nmp-uniffi --features bindgen --bin uniffi-bindgen -- \
+  generate --library --crate "${FACADE_CRATE}" --language swift --out-dir "${OUT_DIR}/swift" --no-format "${FACADE_LIB}"
+cargo run --manifest-path "${NMP_MANIFEST}" -p nmp-uniffi --features bindgen --bin uniffi-bindgen -- \
+  generate --library --crate "${FACADE_CRATE}" --language kotlin --out-dir "${OUT_DIR}/kotlin" --no-format "${FACADE_LIB}"

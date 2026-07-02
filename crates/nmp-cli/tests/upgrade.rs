@@ -32,7 +32,7 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
     // ADR-0046: the scaffolded core crate is a thin composition shell whose
     // `nmp-*` dependencies are git-rev pins (consumers pin NMP by git rev).
     // `nmp upgrade` repoints each pin at the new release tag — there is no
-    // `nmp gen modules` step and no generated `apps/` FFI crate.
+    // `nmp gen modules` step and no generated raw `apps/` tree.
     let app_core = fs::read_to_string(root.join("crates/demoapp-core/Cargo.toml")).unwrap();
     assert!(
         app_core.contains("nmp-core = { git = ")

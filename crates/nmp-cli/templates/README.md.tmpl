@@ -7,8 +7,10 @@ Scaffolded by `nmp init {{name}}`.
 `crates/{{pkg}}` is a **thin composition shell** over reusable NMP framework
 installers. Its `register` function installs the substrate floor explicitly,
 then leaves selected protocol features and app-owned modules visible in this app
-root. There is no generated FFI crate, and production policy is not hidden
-behind a preset.
+root. `crates/{{facade_pkg}}` is the app-owned UniFFI facade native shells link;
+it owns the runtime by value and delegates lifecycle, dispatch, and capability
+mechanics to `nmp-uniffi-support`. Production policy is not hidden behind a
+preset or copied into native code.
 
 ## Starter contract
 
@@ -16,11 +18,11 @@ The generated app demonstrates the boring v1 path:
 
 | Surface | Starter shape |
 |------|------|
-| Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. Swift/Kotlin apps should wrap the same native runtime through UniFFI bindings. |
+| Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. Swift/Kotlin apps use `{{facade_struct}}` from `crates/{{facade_pkg}}`. |
 | Timeline/read | `starter_home_feed_key()` + `starter_home_feed_spec()` declare this app's typed home-timeline read surface with `feed::events()` from `source::active_user().follows()`; `open_home_timeline_session()` opens it through `app.feeds().open_spec(...)` so platform shells render Rust/NMP projection output instead of owning subscription or cache policy. |
 | Profile/content | Component hosts read `refs.profile`, authoritative `refs.event`, and derived `refs.event.envelopes`. Do not use pre-v1 whole-map projections. |
 | Component host | Install one app-root provider such as SwiftUI `NmpComponentHost` or Compose `NmpComponentHostProvider`; leaf components render and manage visible claim/release only. |
-| Compose/publish | Platform shells build bytes with typed generated builders such as `GeneratedActionBuilders.publishReply` / `publishProfile`, then dispatch those bytes. Signer choice is a typed selector, explicit relay pins require route provenance, and shells do not spell action namespaces, arbitrary event kinds, or JSON payloads by hand. |
+| Compose/write | Platform shells build bytes with the app-local generated builder `GeneratedActionBuilders.addEntry(...)`, then pass those bytes to `{{facade_struct}}.dispatchAction(...)`. Shells do not spell action namespaces, arbitrary event kinds, or FlatBuffers payloads by hand. |
 | Ownership | Product facts, routing, publish semantics, cache invalidation, and projection derivation stay in Rust/NMP. SwiftUI, Compose, web, or TUI shells render snapshots and execute capabilities only. |
 
 ## Layout
@@ -28,14 +30,23 @@ The generated app demonstrates the boring v1 path:
 | Path | What |
 |------|------|
 | `nmp.toml` | NMP dependency policy (read by `nmp upgrade`). |
+| `action-builders.json` | App-local typed action-builder contract for `{{name}}.entries.add`. |
+| `generated/` | Swift/Kotlin/TypeScript action builders generated from `action-builders.json`. |
 | `crates/{{pkg}}/src/lib.rs` | The composition shell: `register` → explicit substrate/protocol/app composition, plus an example app-owned domain (`EntryRecord`). **App nouns never go in `nmp-core`** (doctrine D0). |
+| `crates/{{pkg}}/src/entry_action.rs` | The app-owned typed action module and `ActionPayload` decoder reached by generated builders. |
+| `crates/{{pkg}}/src/entry_view.rs` | The app-owned reactive read model: declared dependencies, bounded state, event handlers, and snapshot shape. |
+| `crates/{{facade_pkg}}/src/lib.rs` | The app-owned UniFFI facade: `setup_scaffolding!`, facade-local callbacks/records, and delegation to `nmp-uniffi-support`. |
+| `ci/check-uniffi-bindings.sh` | Builds `crates/{{facade_pkg}}` and runs `uniffi-bindgen --library` for Swift/Kotlin bindings. |
 | `crates/{{pkg}}/examples/shell.rs` | Headless shell: `NmpAppBuilder` → `register` → `start`. |
 
 ## Build and run
 
 ```sh
-cargo check                              # the {{pkg}} shell compiles as-is
+cargo check                              # core + app facade compile as-is
 cargo test -p {{pkg}}                    # shell tests pass
+cargo test -p {{facade_pkg}}             # facade tests pass
+cargo run --manifest-path {{nmp_codegen_manifest}} -p nmp-codegen -- gen action-builders --registry action-builders.json --check
+bash ci/check-uniffi-bindings.sh          # Swift/Kotlin facade bindings generate
 cargo run --example shell -p {{pkg}}     # build → app-core register → start
 ```
 
@@ -63,8 +74,10 @@ nmp upgrade --to 0.4.0    # bump the pinned rev + rewrite nmp-* deps
 2. Replace the example `Entry` domain with your real nouns.
 3. Install a component host with fixtures while wiring UI tests, for example
    `nmp add component swiftui/component-host --with fixture`.
-4. Build a platform shell (SwiftUI / Compose / web / TUI) over the public
-   binding for that platform: UniFFI for native Swift/Kotlin, wasm-bindgen for
-   browser Workers, or direct Rust for Rust-native shells.
-5. Read the v1 runtime/component migration guide in the NMP checkout:
+4. Run `bash ci/check-uniffi-bindings.sh` and put the generated UniFFI bindings
+   plus action builders in the host target that dispatches bytes.
+5. Build a platform shell (SwiftUI / Compose / web / TUI) over the public
+   binding for that platform: this app facade for native Swift/Kotlin,
+   wasm-bindgen for browser Workers, or direct Rust for Rust-native shells.
+6. Read the v1 runtime/component migration guide in the NMP checkout:
    `docs/migration.md`.
