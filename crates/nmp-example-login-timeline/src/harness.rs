@@ -42,8 +42,8 @@ use crate::{register, register_following_timeline, render_home_rows, TimelineRow
 
 // `extern "C"` callbacks cannot capture, so the update `Sender` is parked in a
 // process-global slot and a tick is forwarded on every kernel update frame.
-// Mirrors the proven pattern in `nmp-ffi`'s `active_account_handle_tests.rs` and
-// `real_relay_nip17_cold_start_kernel.rs`.
+// Same pattern used by
+// `crates/nmp-testing/tests/real_relay_nip17_cold_start_kernel.rs`.
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
 
 extern "C" fn update_signal_callback(_ctx: *mut c_void, _ptr: *const u8, _len: usize) {
