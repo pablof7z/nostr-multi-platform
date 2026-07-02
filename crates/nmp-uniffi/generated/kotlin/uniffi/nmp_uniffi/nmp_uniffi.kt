@@ -1070,7 +1070,7 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,un
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`sessionId`: Long,uniffi_out_err: UniffiRustCallStatus,
+fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -1086,7 +1086,7 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_init_external_signer(`ptr`: Pointer,uniff
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+fun uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_nostrconnect_uri(`ptr`: Pointer,`callbackScheme`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): RustBuffer.ByValue
@@ -1319,7 +1319,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 28028.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 61839.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 59539.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
@@ -1343,7 +1343,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 39842.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
@@ -1941,13 +1941,14 @@ public interface NmpAppInterface {
      *
      * Tears down the observer, projection, pull-controller, and interests
      * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live session was torn down; `false`
-     * when the `session_id` is unknown or already closed (idempotent — D6).
+     * the registry. Returns `true` when a live matching session was torn down;
+     * `false` when the handle is unknown, mismatched, or already closed
+     * (idempotent — D6).
      *
      * D8: the session's resources are released immediately; the registry entry
-     * is removed so a subsequent close of the same id is always a no-op.
+     * is removed so a subsequent close of the same handle is always a no-op.
      */
-    fun `closeFeedSession`(`sessionId`: kotlin.ULong): kotlin.Boolean
+    fun `closeFeedSession`(`handle`: FeedSessionHandle): kotlin.Boolean
 
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
@@ -2041,13 +2042,13 @@ public interface NmpAppInterface {
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * `key` is the projection key of the
-     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
-     * viewport cursor actually changed; `false` for an unknown key or when
-     * already at the oldest page (D6: always succeeds, never panics).
+     * Uses the full handle returned by `open_feed_json`; a raw projection key
+     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * the viewport cursor actually changed; `false` for an unknown, closed, or
+     * mismatched handle, or when already at the oldest page (D6: always
+     * succeeds, never panics).
      */
-    fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean
+    fun `loadOlderFeed`(`handle`: FeedSessionHandle): kotlin.Boolean
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -2611,17 +2612,18 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      *
      * Tears down the observer, projection, pull-controller, and interests
      * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live session was torn down; `false`
-     * when the `session_id` is unknown or already closed (idempotent — D6).
+     * the registry. Returns `true` when a live matching session was torn down;
+     * `false` when the handle is unknown, mismatched, or already closed
+     * (idempotent — D6).
      *
      * D8: the session's resources are released immediately; the registry entry
-     * is removed so a subsequent close of the same id is always a no-op.
-     */override fun `closeFeedSession`(`sessionId`: kotlin.ULong): kotlin.Boolean {
+     * is removed so a subsequent close of the same handle is always a no-op.
+     */override fun `closeFeedSession`(`handle`: FeedSessionHandle): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(
-        it, FfiConverterULong.lower(`sessionId`),_status)
+        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
 }
     }
     )
@@ -2787,17 +2789,17 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
     /**
      * Advance the feed's viewport to the next older page.
      *
-     * `key` is the projection key of the
-     * feed to page (the same string returned in `FeedSessionHandle.projection_key`
-     * or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
-     * viewport cursor actually changed; `false` for an unknown key or when
-     * already at the oldest page (D6: always succeeds, never panics).
-     */override fun `loadOlderFeed`(`key`: kotlin.String): kotlin.Boolean {
+     * Uses the full handle returned by `open_feed_json`; a raw projection key
+     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * the viewport cursor actually changed; `false` for an unknown, closed, or
+     * mismatched handle, or when already at the oldest page (D6: always
+     * succeeds, never panics).
+     */override fun `loadOlderFeed`(`handle`: FeedSessionHandle): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(
-        it, FfiConverterString.lower(`key`),_status)
+        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
 }
     }
     )
@@ -3540,10 +3542,9 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
  * Opaque handle for a feed session opened via `open_feed_json`.
  *
  * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
- * subscribes to for feed-frame updates. Pass it to `load_older_feed` for
- * viewport paging commands.
- * `session_id` — the numeric session id; pass it to `close_feed_session` for
- * teardown.
+ * subscribes to for feed-frame updates.
+ * `session_id` — the numeric session id. The handle is only valid when this id
+ * still resolves to `projection_key`.
  */
 data class FeedSessionHandle (
     var `projectionKey`: kotlin.String,

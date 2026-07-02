@@ -19,9 +19,9 @@
 //! slice adds first-class feed-session management: `open_feed_json` accepts a
 //! JSON-encoded `FeedParams` and delegates to `NmpApp::open_feed`, which applies
 //! the canonical native feed compiler below the facade boundary.
-//! `close_feed_session` accepts the `session_id` u64 returned by
-//! `open_feed_json`. The viewport command `load_older_feed` mirrors the lone
-//! surviving C-ABI feed symbol.
+//! `load_older_feed` and `close_feed_session` accept the `FeedSessionHandle`
+//! returned by `open_feed_json`, so hosts do not page or tear down sessions by
+//! replaying a raw projection key or raw session id.
 //!
 //! ## Snapshot return
 //!

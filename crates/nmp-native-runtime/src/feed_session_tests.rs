@@ -19,8 +19,8 @@ use std::sync::{
 use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedScope, FeedSessionBuild,
-    FeedSessionRegistry, FeedShape, FeedWindow, ProjectionKey, TeardownAction,
+    FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedScope,
+    FeedSessionBuild, FeedSessionRegistry, FeedShape, FeedWindow, ProjectionKey, TeardownAction,
 };
 
 use crate::feed_session::{FeedOpenError, FeedTeardown};
@@ -145,9 +145,43 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
         // The session produces rows/sidecar via the existing mechanics: the
         // registered controller is reachable.
         assert!(
-            app.load_older_feed("test.feed.following"),
-            "registered controller reachable through the existing feed registry"
+            app.load_older_feed(&handle),
+            "registered controller reachable through the handle-owned session API"
         );
+    }
+}
+
+#[test]
+fn feed_lifecycle_rejects_mismatched_forged_handle() {
+    let app = test_app();
+    {
+        let app = app.as_ref();
+        let feed = StubFeed::new();
+        let handle = app
+            .open_feed_with_compiler(&following_params(), &following_compiler(feed))
+            .expect("opens");
+        let forged = FeedHandle {
+            projection_key: ProjectionKey::app_owned("test.feed.other").unwrap(),
+            session_id: handle.session_id.clone(),
+        };
+
+        assert!(
+            !app.feed_session_is_open(&forged),
+            "session id alone is not a valid handle"
+        );
+        assert!(
+            !app.load_older_feed(&forged),
+            "mismatched handle must not page the live controller"
+        );
+        assert!(
+            !app.close_feed(&forged),
+            "mismatched handle must not close the live session"
+        );
+        assert!(
+            app.feed_session_is_open(&handle),
+            "real handle remains live after forged close attempt"
+        );
+        assert!(app.close_feed(&handle), "real handle still closes");
     }
 }
 
@@ -165,7 +199,7 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         // Before close: controller reachable, session live, and the feed `Arc`
         // is held by BOTH the controller and the observer registry (plus the
         // local `feed` binding) → strong count > 1.
-        assert!(app.load_older_feed("test.feed.following"));
+        assert!(app.load_older_feed(&handle));
         let strong_before = Arc::strong_count(&feed);
         assert!(
             strong_before >= 3,
@@ -185,7 +219,11 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         );
         // 2. the controller is unreachable (registry dropped it).
         assert!(
-            !app.load_older_feed("test.feed.following"),
+            !app.load_older_feed(&handle),
+            "closed handle cannot page after teardown"
+        );
+        assert!(
+            !app.load_older_feed_by_key("test.feed.following"),
             "controller unreachable after close"
         );
         // 3. the observer registry released its `Arc` clone — strong count fell.
@@ -243,7 +281,7 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         // Nothing was registered and no session minted.
         assert_eq!(app.live_feed_session_count(), 0, "no session leaked");
         assert!(
-            !app.load_older_feed("test.feed.following"),
+            !app.load_older_feed_by_key("test.feed.following"),
             "no controller registered for a fail-closed open"
         );
     }

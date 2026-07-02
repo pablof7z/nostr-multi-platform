@@ -5,9 +5,10 @@
 //! declaration, runs the canonical NMP feed compiler, mints a session id +
 //! projection key, records the resulting teardown recipe in the engine-agnostic
 //! [`nmp_feed::FeedSessionRegistry`], and returns a [`nmp_feed::FeedHandle`].
-//! [`NmpApp::close_feed`] looks the session up by the handle's id and tears it
-//! ALL down — observer, projection, pull controller, interests — idempotently,
-//! using the HANDLE (never a re-derived filter).
+//! [`NmpApp::load_older_feed`] and [`NmpApp::close_feed`] look the session up by
+//! the handle's id, verify that id still belongs to the handle's projection key,
+//! and then page or tear it ALL down — observer, projection, pull controller,
+//! interests — idempotently, using the HANDLE (never a re-derived filter/key).
 //!
 //! Tests and internal composition seams may inject a [`FeedCompiler`] through
 //! [`NmpApp::open_feed_with_compiler`]. Normal app/native callers do not choose a
@@ -285,10 +286,11 @@ impl NmpApp {
     /// 3. Record the recipe in the session registry under a freshly minted id.
     /// 4. Return a [`FeedHandle`] pairing the projection key with the session id.
     ///
-    /// The returned handle is the ONLY thing [`Self::close_feed`] needs — close
-    /// never re-derives a filter from the params (D4). On any failure nothing is
-    /// left registered (the compiler fails closed before registering; a registry
-    /// failure runs the just-produced teardown immediately).
+    /// The returned handle is the ONLY thing [`Self::load_older_feed`] and
+    /// [`Self::close_feed`] need — lifecycle commands never re-derive a filter
+    /// or accept a raw projection key from app code (D4). On any failure nothing
+    /// is left registered (the compiler fails closed before registering; a
+    /// registry failure runs the just-produced teardown immediately).
     pub fn open_feed(&self, params: &FeedParams) -> Result<FeedHandle, FeedOpenError> {
         self.open_feed_with_compiler(params, &nmp_feed_session::compile_feed_params)
     }
@@ -350,26 +352,54 @@ impl NmpApp {
         ))
     }
 
-    /// #1740 step 2 — tear down a session opened by [`Self::open_feed`], using
-    /// the HANDLE (not a re-derived filter).
+    /// Page a session opened by [`Self::open_feed`], using the returned HANDLE
+    /// rather than a raw projection key.
     ///
-    /// Looks the session up by `handle.session_id` and runs its recorded
-    /// teardown — observer revoke, projection removal, pull-controller /
-    /// interest teardown — exactly once, in reverse registration order. Returns
-    /// `true` when a live session was torn down.
+    /// The session registry is the authority for whether `handle.session_id` is
+    /// live and which projection key it owns. A stale handle, unknown id, or
+    /// mismatched forged key is a silent no-op returning `false` (D6). Only after
+    /// that registry check do we page the underlying controller by its internal
+    /// key.
+    #[must_use]
+    pub fn load_older_feed(&self, handle: &FeedHandle) -> bool {
+        let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
+            return false;
+        };
+        if projection_key != handle.projection_key {
+            return false;
+        }
+        self.load_older_feed_by_key(projection_key.as_str())
+    }
+
+    /// #1740 step 2 — tear down a session opened by [`Self::open_feed`], using
+    /// the HANDLE (not a re-derived filter or raw session id).
+    ///
+    /// Looks the session up by `handle.session_id`, verifies that the live
+    /// session still owns `handle.projection_key`, and runs its recorded teardown
+    /// — observer revoke, projection removal, pull-controller / interest teardown
+    /// — exactly once, in reverse registration order. Returns `true` when a live
+    /// matching session was torn down.
     ///
     /// Idempotent (D6): closing a handle whose session is already closed (or was
     /// never opened) is a harmless no-op returning `false`. The session entry is
     /// removed from the registry, so its resources are released (D8 — no leak),
     /// proven by the registry no longer reporting the id live.
     pub fn close_feed(&self, handle: &FeedHandle) -> bool {
+        let Some(projection_key) = self.feed_sessions.projection_key(&handle.session_id) else {
+            return false;
+        };
+        if projection_key != handle.projection_key {
+            return false;
+        }
         self.feed_sessions.close(&handle.session_id)
     }
 
     /// Test/diagnostic — whether the session behind `handle` is currently live.
     #[must_use]
     pub fn feed_session_is_open(&self, handle: &FeedHandle) -> bool {
-        self.feed_sessions.is_open(&handle.session_id)
+        self.feed_sessions
+            .projection_key(&handle.session_id)
+            .is_some_and(|projection_key| projection_key == handle.projection_key)
     }
 
     /// Test/diagnostic — count of live feed sessions (proves teardown frees the

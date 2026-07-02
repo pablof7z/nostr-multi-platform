@@ -339,7 +339,7 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(void*_Nonnu
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
-int8_t uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(void*_Nonnull ptr, uint64_t session_id, RustCallStatus *_Nonnull out_status
+int8_t uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CONFIGURE
@@ -379,7 +379,7 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_init_signer_broker(void*_Nonnull ptr, Ru
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_LOAD_OLDER_FEED
 #define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_LOAD_OLDER_FEED
-int8_t uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(void*_Nonnull ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+int8_t uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_NOSTRCONNECT_URI

@@ -22,12 +22,22 @@ use nmp_native_runtime::{
 /// Outcome of opening (or reopening) a feed session.
 ///
 /// `projection_key` is the NMPU snapshot key the host subscribes to for feed
-/// frames; `session_id` is the numeric id passed to [`close_feed_session`] /
-/// [`reopen_feed_session`] for teardown.
+/// frames; the full opened-feed value is passed back to
+/// [`load_older_feed_session`], [`close_feed_session`], and
+/// [`reopen_feed_session`] for lifecycle commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OpenedFeed {
     pub projection_key: String,
     pub session_id: u64,
+}
+
+impl OpenedFeed {
+    fn runtime_handle(&self) -> Option<FeedHandle> {
+        Some(FeedHandle {
+            projection_key: ProjectionKey::app_owned(self.projection_key.clone()).ok()?,
+            session_id: FeedSessionId(self.session_id),
+        })
+    }
 }
 
 /// Why a feed-session open failed.
@@ -66,22 +76,30 @@ pub fn open_feed_session(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, 
         .map_err(|_| FeedSessionError::OpenFailed)
 }
 
+/// Page a feed session opened by [`open_feed_session`], addressed by its full
+/// opened-feed handle.
+///
+/// Idempotent/fail-closed (D6): malformed, stale, unknown, or mismatched
+/// handles are silent no-ops returning `false`.
+#[must_use]
+pub fn load_older_feed_session(app: &NmpApp, opened: &OpenedFeed) -> bool {
+    opened
+        .runtime_handle()
+        .is_some_and(|handle| app.load_older_feed(&handle))
+}
+
 /// Tear down a feed session opened by [`open_feed_session`], addressed by its
-/// numeric session id.
+/// full opened-feed handle.
 ///
 /// Idempotent (D6): closing an already-closed or unknown session is a silent
 /// no-op returning `false`. D8: the session's resources are released
 /// immediately and its registry entry is removed, so a subsequent close of the
-/// same id is always a no-op.
+/// same handle is always a no-op.
 #[must_use]
-pub fn close_feed_session(app: &NmpApp, session_id: u64) -> bool {
-    let handle = FeedHandle {
-        // Only `session_id` is read by `close_feed`; the projection key is not
-        // re-derived (close addresses the recorded teardown by id, not a filter).
-        projection_key: ProjectionKey::app_owned("app.feed.close.placeholder").unwrap(),
-        session_id: FeedSessionId(session_id),
-    };
-    app.close_feed(&handle)
+pub fn close_feed_session(app: &NmpApp, opened: &OpenedFeed) -> bool {
+    opened
+        .runtime_handle()
+        .is_some_and(|handle| app.close_feed(&handle))
 }
 
 /// Reopen a feed session against the CURRENT runtime state, retaining the same
@@ -90,9 +108,9 @@ pub fn close_feed_session(app: &NmpApp, session_id: u64) -> bool {
 /// This is the sanctioned "tear down + reopen" mechanic for sessions an
 /// app-owned facade must rebuild after a perspective change — for example a
 /// session pinned to a specific account that must be recompiled when the
-/// **active account** changes. It closes `old_session_id` (idempotent — a stale
-/// or already-closed id is harmless) and opens a FRESH session from
-/// `params_json`, returning the new [`OpenedFeed`] (a new `session_id`; the
+/// **active account** changes. It closes `old_opened` (idempotent — a stale,
+/// already-closed, or mismatched handle is harmless) and opens a FRESH session
+/// from `params_json`, returning the new [`OpenedFeed`] (a new `session_id`; the
 /// `projection_key` is the same when the declaration's projection is unchanged).
 ///
 /// # When NOT to reopen
@@ -114,10 +132,10 @@ pub fn close_feed_session(app: &NmpApp, session_id: u64) -> bool {
 /// Same as [`open_feed_session`].
 pub fn reopen_feed_session(
     app: &NmpApp,
-    old_session_id: u64,
+    old_opened: &OpenedFeed,
     params_json: &str,
 ) -> Result<OpenedFeed, FeedSessionError> {
-    let _ = close_feed_session(app, old_session_id);
+    let _ = close_feed_session(app, old_opened);
     open_feed_session(app, params_json)
 }
 
@@ -175,11 +193,11 @@ mod tests {
         assert_ne!(opened.session_id, 0);
 
         assert!(
-            close_feed_session(&app, opened.session_id),
+            close_feed_session(&app, &opened),
             "first close tears down live session"
         );
         assert!(
-            !close_feed_session(&app, opened.session_id),
+            !close_feed_session(&app, &opened),
             "second close is a no-op (D6)"
         );
     }
@@ -187,6 +205,10 @@ mod tests {
     #[test]
     fn close_unknown_session_is_noop() {
         let app = nmp_native_runtime::new_app();
-        assert!(!close_feed_session(&app, 99_999));
+        let unknown = OpenedFeed {
+            projection_key: "app.feed.support.unknown".to_string(),
+            session_id: 99_999,
+        };
+        assert!(!close_feed_session(&app, &unknown));
     }
 }

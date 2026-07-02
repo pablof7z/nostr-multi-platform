@@ -290,9 +290,9 @@ mod tests {
             });
 
         // 3. Reopen the session (the flow a facade runs for a pinned session
-        //    after an active-account change). The old session id is torn down
-        //    and a fresh one is minted.
-        let Ok(reopened) = reopen_feed_session(&app, opened.session_id, params) else {
+        //    after an active-account change). The old handle is torn down and a
+        //    fresh one is minted.
+        let Ok(reopened) = reopen_feed_session(&app, &opened, params) else {
             assert!(false, "reopen feed session must succeed");
             return;
         };
@@ -305,12 +305,12 @@ mod tests {
             "reopen mints a fresh session id"
         );
         assert!(
-            !close_feed_session(&app, opened.session_id),
+            !close_feed_session(&app, &opened),
             "the old session was already torn down by reopen (D6)"
         );
 
         // Teardown — all through safe handles.
-        assert!(close_feed_session(&app, reopened.session_id));
+        assert!(close_feed_session(&app, &reopened));
         unregister_account_change_sink(&app, observer_id);
     }
 }
@@ -329,7 +329,8 @@ pub use account::{
     account_change_observer_from_sink, register_account_change_sink, unregister_account_change_sink,
 };
 pub use sessions::{
-    close_feed_session, open_feed_session, reopen_feed_session, FeedSessionError, OpenedFeed,
+    close_feed_session, load_older_feed_session, open_feed_session, reopen_feed_session,
+    FeedSessionError, OpenedFeed,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.

@@ -4,7 +4,7 @@
 //!
 //! | UniFFI method      | C-ABI counterpart                           |
 //! |--------------------|---------------------------------------------|
-//! | `load_older_feed`  | native feed viewport command               |
+//! | `load_older_feed`  | native feed viewport command, now handle-owned |
 //!
 //! `open_feed_json` and `close_feed_session` are NEW UniFFI-only surface: the
 //! C-ABI retired its public open/close feed symbols before M14; the Rust-native
@@ -15,10 +15,11 @@
 //!
 //! `open_feed_json` returns a [`FeedSessionHandle`] containing the projection
 //! key (the NMPU snapshot key the host reads feed frames under) and a `u64`
-//! session id. Pass the `session_id` to `close_feed_session` to tear down.
-//! Teardown is idempotent: closing an already-closed or unknown session is a
-//! silent no-op (D6). The projection key is separate from the session id so the
-//! host can subscribe to NMPU updates before calling `close_feed_session`.
+//! session id. Pass that handle to `load_older_feed` and `close_feed_session`.
+//! Teardown is idempotent: closing an already-closed, unknown, or mismatched
+//! handle is a silent no-op (D6). The projection key is separate from the
+//! session id so the host can subscribe to NMPU updates before calling
+//! `close_feed_session`.
 //!
 //! ## Compiler boundary
 //!
@@ -36,6 +37,7 @@
 
 use nmp_uniffi_support::{
     close_feed_session as support_close_feed_session,
+    load_older_feed_session as support_load_older_feed_session,
     open_feed_session as support_open_feed_session, FeedSessionError,
 };
 
@@ -47,14 +49,20 @@ use crate::NmpApp;
 /// Opaque handle for a feed session opened via `open_feed_json`.
 ///
 /// `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
-///   subscribes to for feed-frame updates. Pass it to `load_older_feed` for
-///   viewport paging commands.
-/// `session_id` — the numeric session id; pass it to `close_feed_session` for
-///   teardown.
+///   subscribes to for feed-frame updates.
+/// `session_id` — the numeric session id. The handle is only valid when this id
+///   still resolves to `projection_key`.
 #[derive(uniffi::Record, Debug, Clone)]
 pub struct FeedSessionHandle {
     pub projection_key: String,
     pub session_id: u64,
+}
+
+fn opened_from_handle(handle: &FeedSessionHandle) -> nmp_uniffi_support::OpenedFeed {
+    nmp_uniffi_support::OpenedFeed {
+        projection_key: handle.projection_key.clone(),
+        session_id: handle.session_id,
+    }
 }
 
 // ── NmpApp methods ────────────────────────────────────────────────────────────
@@ -63,13 +71,13 @@ pub struct FeedSessionHandle {
 impl NmpApp {
     /// Advance the feed's viewport to the next older page.
     ///
-    /// `key` is the projection key of the
-    /// feed to page (the same string returned in `FeedSessionHandle.projection_key`
-    /// or a named app session key like `"microblog.timeline.home"`). Returns `true` when the
-    /// viewport cursor actually changed; `false` for an unknown key or when
-    /// already at the oldest page (D6: always succeeds, never panics).
-    pub fn load_older_feed(&self, key: String) -> bool {
-        self.inner.load_older_feed(&key)
+    /// Uses the full handle returned by `open_feed_json`; a raw projection key
+    /// or raw session id is not sufficient to page a feed. Returns `true` when
+    /// the viewport cursor actually changed; `false` for an unknown, closed, or
+    /// mismatched handle, or when already at the oldest page (D6: always
+    /// succeeds, never panics).
+    pub fn load_older_feed(&self, handle: FeedSessionHandle) -> bool {
+        support_load_older_feed_session(&self.inner, &opened_from_handle(&handle))
     }
 
     /// Open a new feed session from a JSON-encoded `FeedParams` declaration.
@@ -104,13 +112,14 @@ impl NmpApp {
     ///
     /// Tears down the observer, projection, pull-controller, and interests
     /// registered when the session was opened, then removes the session from
-    /// the registry. Returns `true` when a live session was torn down; `false`
-    /// when the `session_id` is unknown or already closed (idempotent — D6).
+    /// the registry. Returns `true` when a live matching session was torn down;
+    /// `false` when the handle is unknown, mismatched, or already closed
+    /// (idempotent — D6).
     ///
     /// D8: the session's resources are released immediately; the registry entry
-    /// is removed so a subsequent close of the same id is always a no-op.
-    pub fn close_feed_session(&self, session_id: u64) -> bool {
-        support_close_feed_session(&self.inner, session_id)
+    /// is removed so a subsequent close of the same handle is always a no-op.
+    pub fn close_feed_session(&self, handle: FeedSessionHandle) -> bool {
+        support_close_feed_session(&self.inner, &opened_from_handle(&handle))
     }
 }
 
@@ -122,20 +131,28 @@ mod tests {
 
     // ── Parity: load_older_feed ───────────────────────────────────────────
 
-    /// Calling with an unknown key must be a silent no-op returning `false` (D6).
+    /// Calling with an unknown handle must be a silent no-op returning `false` (D6).
     #[test]
-    fn parity_load_older_feed_unknown_key_is_noop() {
+    fn parity_load_older_feed_unknown_handle_is_noop() {
         let app = crate::NmpApp::new();
-        let result = app.load_older_feed("nmp.feed.nonexistent".to_string());
-        assert!(!result, "unknown feed key must return false");
+        let handle = FeedSessionHandle {
+            projection_key: "app.feed.nonexistent".to_string(),
+            session_id: 99_999,
+        };
+        let result = app.load_older_feed(handle);
+        assert!(!result, "unknown feed handle must return false");
     }
 
-    /// An empty key must be a silent no-op (D6: invalid input).
+    /// An invalid projection key inside the handle must be a silent no-op (D6).
     #[test]
-    fn parity_load_older_feed_empty_key_is_noop() {
+    fn parity_load_older_feed_invalid_handle_is_noop() {
         let app = crate::NmpApp::new();
-        let result = app.load_older_feed(String::new());
-        assert!(!result, "empty feed key must return false");
+        let handle = FeedSessionHandle {
+            projection_key: String::new(),
+            session_id: 1,
+        };
+        let result = app.load_older_feed(handle);
+        assert!(!result, "invalid feed handle must return false");
     }
 
     // ── Parity: open_feed_json / close_feed_session ───────────────────────
@@ -230,23 +247,55 @@ mod tests {
             .expect("open must succeed");
 
         // First close — session is live.
-        let torn_down = app.close_feed_session(handle.session_id);
+        let torn_down = app.close_feed_session(handle.clone());
         assert!(torn_down, "first close must return true (session was live)");
 
         // Second close — session is already closed.
-        let torn_down_again = app.close_feed_session(handle.session_id);
+        let torn_down_again = app.close_feed_session(handle);
         assert!(
             !torn_down_again,
             "second close must return false (idempotent D6)"
         );
     }
 
-    /// Closing an unknown session id (never opened) must be a silent no-op
+    /// Closing an unknown handle (never opened) must be a silent no-op
     /// returning `false` (D6).
     #[test]
-    fn teardown_close_unknown_session_id_is_noop() {
+    fn teardown_close_unknown_handle_is_noop() {
         let app = crate::NmpApp::new();
-        let result = app.close_feed_session(99999);
-        assert!(!result, "unknown session_id must return false (D6)");
+        let result = app.close_feed_session(FeedSessionHandle {
+            projection_key: "app.feed.unknown".to_string(),
+            session_id: 99_999,
+        });
+        assert!(!result, "unknown handle must return false (D6)");
+    }
+
+    #[test]
+    fn teardown_mismatched_handle_does_not_close_live_session() {
+        let app = crate::NmpApp::new();
+        let params_json = r#"{
+            "primary_kinds": [1],
+            "acquisition": "ActiveUserFollows",
+            "admission": "All",
+            "ranking": "ChronologicalDesc",
+            "window": {"initial_limit": 50},
+            "projection": "app.feed.test.mismatch"
+        }"#;
+        let handle = app
+            .open_feed_json(params_json.to_string())
+            .expect("open must succeed");
+        let forged = FeedSessionHandle {
+            projection_key: "app.feed.test.other".to_string(),
+            session_id: handle.session_id,
+        };
+
+        assert!(
+            !app.close_feed_session(forged),
+            "mismatched handle must not close live session"
+        );
+        assert!(
+            app.close_feed_session(handle),
+            "real handle remains live and closes"
+        );
     }
 }
