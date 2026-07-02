@@ -35,7 +35,7 @@ impl FfiSlot {
 }
 
 /// A second pattern: an `extern "C"`-fn-pointer call. D15 expects this to
-/// be wrapped in `guard_ffi_callback`; the unguarded shape must fire.
+/// be wrapped in `catch_unwind`; the unguarded shape must fire.
 pub fn cabi_unguarded(callback: extern "C" fn(*const u8), payload: *const u8) {
     callback(payload);
 }

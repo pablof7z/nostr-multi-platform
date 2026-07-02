@@ -167,6 +167,9 @@ pub fn run_actor_with_observers(
     external_event_sink_dispatcher.bind_runtime(pool.clone());
     // Bind the dispatcher to the kernel so `persistence.rs` can dispatch
     // frames from the single all-kinds ingest chokepoint.
+    kernel.set_external_event_sink_channel_overflow_drops_handle(
+        external_event_sink_dispatcher.channel_overflow_drops_handle(),
+    );
     kernel.set_external_event_sink_dispatcher(external_event_sink_dispatcher.clone());
     // Raw signed-event forwarding policies are installed through a
     // substrate factory.  The actor contributes only the live kernel

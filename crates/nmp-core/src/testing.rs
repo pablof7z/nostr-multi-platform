@@ -4,9 +4,10 @@
 
 pub use crate::actor::{spawn_test_actor, ActorCommand, TestSupportCommand};
 pub use crate::kernel::{
-    PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED,
-    PROCESS_STORE_LRU_EVICTED,
+    Kernel, PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED,
+    PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED,
 };
+pub use crate::relay::DEFAULT_VISIBLE_LIMIT;
 pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0070 churn
 
 /// NIP golden-tag conformance harness — drives the (crate-private) command

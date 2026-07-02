@@ -114,6 +114,7 @@ table Metrics {
   update_frame_degradations_total:ulong;
   command_drops:ulong;                    // #2767 raw count, no saturation
   relay_backlog_drops:ulong;              // #2767 raw count, no saturation
+  external_event_sink_channel_overflow_drops:ulong; // #2782 raw count, no saturation
 }
 
 // Mirrors nmp_core::kernel::types::RelayStatus (types.rs:324).

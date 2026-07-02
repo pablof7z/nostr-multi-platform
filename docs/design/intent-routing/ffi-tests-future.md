@@ -25,19 +25,19 @@ for await delta in view.deltas {
 
 // Publishing a draft — no app-side relay knowledge.
 kernel.publish(event: draftEvent, target: .auto)
-// Kernel: kind 31234 → EventClass::Draft (Personal family)
-//                    → class_relays_personal(Draft)
+// Kernel: kind 31234 → owner-declared draft class (personal family)
+//                    → class_relays_personal(<draft class>)
 //                    → user's decrypted kind:10013 list
 //                    → subtract blocked_relays() → dispatch.
 
 // Publishing a checkpoint — same class, same routing.
 kernel.publish(event: checkpoint, target: .auto)
-// Kernel: kind 1234 → EventClass::Draft → same kind:10013 relays.
+// Kernel: kind 1234 → owner-declared draft class → same kind:10013 relays.
 
 // Publishing a wiki entry — publisher-keyed routing.
 kernel.publish(event: wikiEvent, target: .auto)
-// Kernel: kind 30818 → EventClass::Wiki (PublisherKeyed family)
-//                    → class_relays_for_author(Wiki, signer.pubkey)
+// Kernel: kind 30818 → owner-declared wiki class (publisher-keyed family)
+//                    → class_relays_for_author(<wiki class>, signer.pubkey)
 //                    → my kind:10102 list (publishing as self)
 //                    → subtract blocked_relays() → dispatch.
 
@@ -63,13 +63,13 @@ The "app authors forget" failure mode the user flagged is closed by:
 
 - **Unit:** `EventClass::from_kind` covers every kind in the codebase's
   `kind` constants. **Checkpoint↔parent class equivalence:**
-  `from_kind(1234) == from_kind(31234) == EventClass::Draft`. Rule 10
+  `from_kind(1234) == from_kind(31234) == <draft class>`. Rule 10
   merge refusal. Blocked-relay subtraction. `RoutingFamily` mapping for
   every variant. NOTE: `EventClass::Search` is no longer a valid variant;
   search tests belong in `nmp-nip50`, not in the core planner test suite.
 - **NIP-44 decryption gating:** kind:10013 surfaces only when a signer
   is attached and self-decrypt succeeds.
-- **Per-author Wiki partition:** interest with `authors=[bob, alice],
+- **Per-author publisher-keyed partition:** interest with `authors=[bob, alice],
   kinds=[30818]` compiles into two distinct sub-shapes, one routed via
   bob's 10102 and one via alice's. Property-test for N authors.
 - **Lazy 10102 lifecycle:** first interest naming `bob` triggers a
@@ -100,10 +100,10 @@ extension points:
 - **NIP-72 communities, NIP-90 DVMs.** Default to `EventClass::Other`
   today. Future ADRs if usage demands.
 - **Good wiki authors (kind:10101).** Author allowlist, not relay
-  routing. Wiki views may consume independently of this design.
+  routing. Publisher-keyed views may consume independently of this design.
 - **Cross-account routing for personal-class lists.** Currently only
-  Wiki uses publisher-keyed routing. If a future NIP defines a
-  per-author Search or Draft list, the trait already supports it —
+  Publisher-keyed classes use publisher-keyed routing. If a future NIP defines
+  a per-author search or personal-class list, the trait already supports it —
   add a new `EventClass` and its `RoutingFamily::PublisherKeyed`
   mapping.
 - **Cache-side full-text inverted index** (issue #1811) — replaces linear

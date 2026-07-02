@@ -658,6 +658,7 @@ pub mod nmp {
             pub const VT_UPDATE_FRAME_DEGRADATIONS_TOTAL: ::flatbuffers::VOffsetT = 88;
             pub const VT_COMMAND_DROPS: ::flatbuffers::VOffsetT = 90;
             pub const VT_RELAY_BACKLOG_DROPS: ::flatbuffers::VOffsetT = 92;
+            pub const VT_EXTERNAL_EVENT_SINK_CHANNEL_OVERFLOW_DROPS: ::flatbuffers::VOffsetT = 94;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -674,6 +675,9 @@ pub mod nmp {
                 args: &'args MetricsArgs,
             ) -> ::flatbuffers::WIPOffset<Metrics<'bldr>> {
                 let mut builder = MetricsBuilder::new(_fbb);
+                builder.add_external_event_sink_channel_overflow_drops(
+                    args.external_event_sink_channel_overflow_drops,
+                );
                 builder.add_relay_backlog_drops(args.relay_backlog_drops);
                 builder.add_command_drops(args.command_drops);
                 builder.add_update_frame_degradations_total(args.update_frame_degradations_total);
@@ -1202,6 +1206,20 @@ pub mod nmp {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn external_event_sink_channel_overflow_drops(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(
+                            Metrics::VT_EXTERNAL_EVENT_SINK_CHANNEL_OVERFLOW_DROPS,
+                            Some(0),
+                        )
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for Metrics<'_> {
@@ -1304,6 +1322,11 @@ pub mod nmp {
                     )?
                     .visit_field::<u64>("command_drops", Self::VT_COMMAND_DROPS, false)?
                     .visit_field::<u64>("relay_backlog_drops", Self::VT_RELAY_BACKLOG_DROPS, false)?
+                    .visit_field::<u64>(
+                        "external_event_sink_channel_overflow_drops",
+                        Self::VT_EXTERNAL_EVENT_SINK_CHANNEL_OVERFLOW_DROPS,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -1354,6 +1377,7 @@ pub mod nmp {
             pub update_frame_degradations_total: u64,
             pub command_drops: u64,
             pub relay_backlog_drops: u64,
+            pub external_event_sink_channel_overflow_drops: u64,
         }
         impl<'a> Default for MetricsArgs {
             #[inline]
@@ -1404,6 +1428,7 @@ pub mod nmp {
                     update_frame_degradations_total: 0,
                     command_drops: 0,
                     relay_backlog_drops: 0,
+                    external_event_sink_channel_overflow_drops: 0,
                 }
             }
         }
@@ -1677,6 +1702,17 @@ pub mod nmp {
                     .push_slot::<u64>(Metrics::VT_RELAY_BACKLOG_DROPS, relay_backlog_drops, 0);
             }
             #[inline]
+            pub fn add_external_event_sink_channel_overflow_drops(
+                &mut self,
+                external_event_sink_channel_overflow_drops: u64,
+            ) {
+                self.fbb_.push_slot::<u64>(
+                    Metrics::VT_EXTERNAL_EVENT_SINK_CHANNEL_OVERFLOW_DROPS,
+                    external_event_sink_channel_overflow_drops,
+                    0,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> MetricsBuilder<'a, 'b, A> {
@@ -1750,6 +1786,10 @@ pub mod nmp {
                 );
                 ds.field("command_drops", &self.command_drops());
                 ds.field("relay_backlog_drops", &self.relay_backlog_drops());
+                ds.field(
+                    "external_event_sink_channel_overflow_drops",
+                    &self.external_event_sink_channel_overflow_drops(),
+                );
                 ds.finish()
             }
         }

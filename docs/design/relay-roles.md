@@ -49,8 +49,7 @@ two layers in v1:
 | `Provenance` | `Content` |
 | `UserConfigured(AccountRead/Write/Debug)` | `Content` |
 | `ClassRouted { class: Search, … }` | `Content` (or a future `Search` lane if NIP-50 fanout cost warrants splitting) |
-| `ClassRouted { class: Draft, … }` | `Content` |
-| `ClassRouted { class: Wiki, … }` | `Content` |
+| `ClassRouted { class: Other(<owner class>), … }` | `Content` |
 | `Indexer` (this ADR) | **`Indexer`** — the existing lane absorbs the new always-on traffic |
 | `AppRelay` (this ADR) | `Content` (v1); a future `AppRelay` worker lane is possible but not v1 |
 

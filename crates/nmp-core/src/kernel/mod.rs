@@ -396,6 +396,10 @@ pub struct Kernel {
     /// `MailScheduler::relay_backlog_drops`, preserved across `Reset` so the
     /// count stays monotonic and host-visible (#2767).
     relay_backlog_drops: Option<Arc<AtomicU64>>,
+    /// External event sink frames shed because the dispatcher's bounded channel
+    /// was full. Shared with `ExternalEventSinkDispatcher`, preserved across
+    /// `Reset` so the count stays monotonic and host-visible (#2782).
+    external_event_sink_channel_overflow_drops: Option<Arc<AtomicU64>>,
     /// Current iOS scenePhase (T118/G3).
     lifecycle_phase: LifecyclePhase,
     /// Declared observed-projection sink slot.

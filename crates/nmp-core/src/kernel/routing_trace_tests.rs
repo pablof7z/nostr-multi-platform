@@ -24,7 +24,7 @@ fn routed_one(url: &str) -> RoutedRelaySet {
     r.add(
         url.into(),
         RoutingSource::ClassRouted {
-            class: EventClass::Wiki,
+            class: EventClass::Other("nip54.wiki".into()),
             via: ClassRoutingPath::Nip51,
         },
     );

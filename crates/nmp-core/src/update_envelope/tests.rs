@@ -89,6 +89,7 @@ fn golden_envelope() -> SnapshotEnvelope {
         // The auxiliary encode_snapshot_frame path writes 0 via MetricsArgs default,
         // so the round-trip of this fixture reads back 0.
         serialize_us: 0,
+        external_event_sink_channel_overflow_drops: 0,
     }
 }
 

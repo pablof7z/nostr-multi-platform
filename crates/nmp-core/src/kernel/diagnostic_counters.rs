@@ -6,10 +6,11 @@
 //! - **Queue-depth counters** — the `queue_depth` handle plumbing
 //!   (`set_queue_depth_handle`, `take_queue_depth_handle_for_reset`,
 //!   `actor_queue_depth`) consumed by `Metrics::actor_queue_depth`.
-//! - **Backpressure drop counters** (#2767) — the `command_drops` and
-//!   `relay_backlog_drops` handle plumbing, mirroring the `queue_depth`
-//!   pattern exactly, consumed by `Metrics::command_drops` /
-//!   `Metrics::relay_backlog_drops`.
+//! - **Backpressure drop counters** (#2767/#2782) — the `command_drops`,
+//!   `relay_backlog_drops`, and `external_event_sink_channel_overflow_drops`
+//!   handle plumbing, mirroring the `queue_depth` pattern exactly, consumed by
+//!   `Metrics::{command_drops, relay_backlog_drops,
+//!   external_event_sink_channel_overflow_drops}`.
 //! - **Claim drop counters** — `claim_drops_total` (+ its `#[cfg(test)]`
 //!   twin) and `lnurl_for_pubkey`, a cached-profile read used by the zap path.
 //! - **`#[cfg(test)]` claim/wire-row accessors** — single-field reads over
@@ -105,6 +106,35 @@ impl Kernel {
     /// process lifetime (no saturation).
     pub(crate) fn relay_backlog_drops(&self) -> u64 {
         self.relay_backlog_drops
+            .as_ref()
+            .map_or(0, |c| c.load(Ordering::Relaxed))
+    }
+
+    /// #2782 — install the external event sink dispatcher's channel-overflow
+    /// counter handle so the diagnostic snapshot surfaces it as
+    /// `external_event_sink_channel_overflow_drops`. Mirrors the command and
+    /// relay backlog drop counter pattern.
+    pub(crate) fn set_external_event_sink_channel_overflow_drops_handle(
+        &mut self,
+        handle: Arc<AtomicU64>,
+    ) {
+        self.external_event_sink_channel_overflow_drops = Some(handle);
+    }
+
+    /// #2782 — extract the dispatcher channel-overflow counter before a
+    /// `Reset` replaces the kernel. The dispatcher is process-lifetime, so the
+    /// reset path moves the same handle onto the fresh kernel.
+    pub(crate) fn take_external_event_sink_channel_overflow_drops_handle_for_reset(
+        &mut self,
+    ) -> Option<Arc<AtomicU64>> {
+        self.external_event_sink_channel_overflow_drops.take()
+    }
+
+    /// #2782 — number of external sink frames shed because the dispatcher's
+    /// bounded inbound channel was full. Returns 0 when the kernel was
+    /// constructed outside the actor and no dispatcher handle is bound.
+    pub(crate) fn external_event_sink_channel_overflow_drops(&self) -> u64 {
+        self.external_event_sink_channel_overflow_drops
             .as_ref()
             .map_or(0, |c| c.load(Ordering::Relaxed))
     }

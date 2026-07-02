@@ -89,6 +89,37 @@ fn relay_backlog_drops_handle_surfaces_on_kernel() {
     );
 }
 
+/// `external_event_sink_channel_overflow_drops()` surfaces real dispatcher
+/// channel-overflow counts in the kernel snapshot, not just the dispatcher's
+/// test-only diagnostics accessor.
+#[test]
+fn external_event_sink_channel_overflow_drops_handle_surfaces_on_kernel() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    assert_eq!(
+        kernel.external_event_sink_channel_overflow_drops(),
+        0,
+        "unbound external-sink drop counter defaults to zero"
+    );
+
+    let handle = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_external_event_sink_channel_overflow_drops_handle(std::sync::Arc::clone(&handle));
+    handle.fetch_add(4, Ordering::Relaxed);
+    assert_eq!(
+        kernel.external_event_sink_channel_overflow_drops(),
+        4,
+        "bound external-sink channel overflow drops must be visible"
+    );
+
+    let extracted = kernel.take_external_event_sink_channel_overflow_drops_handle_for_reset();
+    let mut fresh = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    fresh.set_external_event_sink_channel_overflow_drops_handle(extracted.unwrap());
+    assert_eq!(
+        fresh.external_event_sink_channel_overflow_drops(),
+        4,
+        "same external-sink drop handle must preserve the monotonic count across reset"
+    );
+}
+
 /// Load-bearing observability assertion (#2767): a forced drop on each
 /// counter must be visible in the serialized kernel snapshot, not just via
 /// the raw accessor — this is what makes the drop "host-visible" rather than
@@ -101,10 +132,15 @@ fn drop_counters_observable_in_snapshot() {
     kernel.set_command_drops_handle(std::sync::Arc::clone(&command_drops));
     let relay_backlog_drops = std::sync::Arc::new(AtomicU64::new(0));
     kernel.set_relay_backlog_drops_handle(std::sync::Arc::clone(&relay_backlog_drops));
+    let external_event_sink_channel_overflow_drops = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_external_event_sink_channel_overflow_drops_handle(std::sync::Arc::clone(
+        &external_event_sink_channel_overflow_drops,
+    ));
 
     // Force a drop on each counter, exactly as the production paths would.
     command_drops.fetch_add(2, Ordering::Relaxed);
     relay_backlog_drops.fetch_add(9, Ordering::Relaxed);
+    external_event_sink_channel_overflow_drops.fetch_add(4, Ordering::Relaxed);
 
     let json = kernel.make_update_value_for_test(true);
     assert_eq!(
@@ -114,5 +150,9 @@ fn drop_counters_observable_in_snapshot() {
     assert_eq!(
         json["metrics"]["relay_backlog_drops"], 9,
         "forced relay-backlog drop must be observable in the snapshot"
+    );
+    assert_eq!(
+        json["metrics"]["external_event_sink_channel_overflow_drops"], 4,
+        "forced external-sink channel overflow drop must be observable in the snapshot"
     );
 }

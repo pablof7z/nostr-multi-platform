@@ -90,7 +90,7 @@ fn class_routed_lane_carries_class_and_via() {
         &make_routed(
             "wss://r.example/",
             Src::ClassRouted {
-                class: EventClass::Wiki,
+                class: EventClass::Other("nip54.wiki".into()),
                 via: ClassRoutingPath::Nip51,
             },
         ),
@@ -98,7 +98,10 @@ fn class_routed_lane_carries_class_and_via() {
     let v = projection_to_json(&p);
     let lane = &v["publishes"][0]["urls"][0]["lanes"][0];
     assert_eq!(lane["kind"], "ClassRouted");
-    assert_eq!(lane["class"]["kind"], "Wiki");
+    assert_eq!(
+        lane["class"],
+        json!({ "kind": "Other", "name": "nip54.wiki" })
+    );
     assert_eq!(lane["via"], "Nip51");
 }
 
@@ -125,7 +128,7 @@ fn all_lane_kinds_serialize_with_stable_discriminator() {
         ),
         (
             Src::ClassRouted {
-                class: EventClass::Draft,
+                class: EventClass::Other("example.class".into()),
                 via: ClassRoutingPath::Nip51,
             },
             "ClassRouted",

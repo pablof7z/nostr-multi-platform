@@ -56,7 +56,7 @@
 //! ```
 //!
 //! `kind`-tagged lane objects match the existing pretty-printer's grammar
-//! (`Nip65/Write`, `ClassRouted/Wiki/Nip51`, etc.) — the
+//! (`Nip65/Write`, `ClassRouted/<class>/Nip51`, etc.) — the
 //! routing-trace integration test
 //! (`crates/nmp-testing/tests/routing_trace_real_nostr.rs`, `#[ignore]`'d)
 //! already pins that grammar; the JSON serialisation re-uses the same labels
@@ -240,8 +240,6 @@ fn app_relay_mode_str(m: AppRelayMode) -> &'static str {
 
 fn event_class_to_json(c: &EventClass) -> Value {
     match c {
-        EventClass::Draft => json!({ "kind": "Draft" }),
-        EventClass::Wiki => json!({ "kind": "Wiki" }),
         EventClass::Other(name) => json!({ "kind": "Other", "name": name }),
     }
 }

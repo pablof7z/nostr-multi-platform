@@ -125,6 +125,11 @@ pub(crate) struct Metrics {
     /// preserved across `Reset` via the kernel's `relay_backlog_drops` handle
     /// so a relay flood is host-visible rather than silent.
     pub(super) relay_backlog_drops: u64,
+    /// #2782 — external event sink frames shed because the dispatcher's
+    /// bounded inbound channel was full. Process-lifetime raw count (no
+    /// saturation), preserved across `Reset` via the kernel's dispatcher-drop
+    /// handle so raw forwarding degradation is host-visible rather than silent.
+    pub(super) external_event_sink_channel_overflow_drops: u64,
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────
