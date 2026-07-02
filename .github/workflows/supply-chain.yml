@@ -46,7 +46,11 @@ jobs:
         # REMOVE this --ignore flag as soon as Cargo.lock no longer pulls in
         # libcrux-aead 0.0.7. See docs/perf/supply-chain-baseline.md §Post-
         # baseline advisory: RUSTSEC-2026-0124 for the resolution path.
-        run: cargo audit --ignore RUSTSEC-2026-0124
+        #
+        # RUSTSEC-2026-0194 (quick-xml < 0.41.0) is temporarily ignored under
+        # #2711 because wayland-scanner 0.31.10 is the latest compatible
+        # upstream release and pins quick-xml ^0.39.
+        run: cargo audit --ignore RUSTSEC-2026-0124 --ignore RUSTSEC-2026-0194
 
   deny:
     name: cargo deny (licenses + bans + advisories)
