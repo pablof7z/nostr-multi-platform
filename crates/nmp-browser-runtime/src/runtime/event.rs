@@ -101,6 +101,24 @@ pub enum BrowserRuntimeEvent {
         /// Number of inbound frames dropped since the last pump turn.
         count: u64,
     },
+    /// An outbound frame was evicted from a relay's pre-connect send buffer on
+    /// overflow (#2765). `kind` classifies the frame (`"EVENT"`, `"REQ"`,
+    /// `"CLOSE"`, `"AUTH"`, `"COUNT"`, or `"other"`).
+    ///
+    /// D6-honest — never a silent loss: unlike a `RelaySendFailed` (a frame
+    /// that reached the driver but the underlying `WebSocket.send` threw),
+    /// this frame never reached the socket at all. For `kind == "EVENT"` the
+    /// loss is terminal for the in-flight publish unless retried — the pump
+    /// pairs this event with a call into the kernel's relay-failure path so
+    /// the publish re-dispatches on the relay's next `Connected` rather than
+    /// staying stranded forever in-flight.
+    RelayOutboundDropped {
+        /// The relay URL whose pre-connect buffer evicted the frame.
+        url: String,
+        /// The classified frame kind (`"EVENT"`, `"REQ"`, `"CLOSE"`, `"AUTH"`,
+        /// `"COUNT"`, or `"other"`).
+        kind: String,
+    },
     /// A snapshot frame failed to decode or merge in `BrowserRuntimeHandle::next_frame`.
     ///
     /// The host still receives the previous valid frame (if any) via

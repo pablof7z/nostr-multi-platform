@@ -104,6 +104,7 @@
 //!
 //! Each phase is a separate PR with its own acceptance criteria.
 
+pub mod browser_send_buffer;
 pub mod keepalive;
 pub mod relay_protocol;
 pub mod role;

@@ -1,6 +1,6 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
-use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape, RelayFrame};
+use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape};
 use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
 use nmp_nostr_id::encode_npub;
@@ -130,95 +130,7 @@ fn reduce_garbage_uri_is_rejected_not_a_panic() {
     ));
 }
 
-// ─── V-01 Stage 3 relay-lifecycle surface ────────────────────────────────
-//
-// These tests cover the contracts the wasm32 `BrowserRelayDriver` depends
-// on. They are intentionally narrow — the deep behaviour (replay
-// semantics, AUTH partition, wire-sub eviction) is already covered by the
-// kernel-side tests in `kernel/replay_tests.rs`, `kernel/auth_tests.rs`,
-// and `kernel/retention_tests.rs`. What we pin here is that
-// `KernelReducer` calls the right underlying methods in the right order
-// and never panics across the public surface.
-
 const RELAY: &str = "wss://relay.example";
-
-#[test]
-fn handle_relay_frame_text_does_not_panic_on_garbage() {
-    // D6 invariant: a malformed NIP-01 frame must surface as a no-op
-    // (the kernel silently drops unparseable text). The WASM driver
-    // forwards every onmessage payload verbatim — we cannot assume
-    // well-formedness.
-    let mut r = KernelReducer::new();
-    let out = r.handle_relay_frame(
-        RelayRole::Content,
-        RELAY,
-        RelayFrame::Text("garbage that is not NIP-01".to_string()),
-    );
-    // No registered subs / publish engine state → empty outbound; the
-    // important assertion is the absence of a panic.
-    assert!(
-        out.is_empty(),
-        "garbage text must drop, not produce outbound"
-    );
-}
-
-#[test]
-fn handle_relay_frame_close_does_not_panic() {
-    let mut r = KernelReducer::new();
-    let out = r.handle_relay_frame(
-        RelayRole::Content,
-        RELAY,
-        RelayFrame::Close(Some("server going away".to_string())),
-    );
-    assert!(out.is_empty());
-}
-
-#[test]
-fn handle_relay_frame_binary_and_ping_pong_are_counted_no_outbound() {
-    let mut r = KernelReducer::new();
-    for frame in [
-        RelayFrame::Binary(b"opaque".to_vec()),
-        RelayFrame::Ping,
-        RelayFrame::Pong,
-    ] {
-        let out = r.handle_relay_frame(RelayRole::Indexer, RELAY, frame);
-        assert!(out.is_empty(), "non-text frames must produce no outbound");
-    }
-}
-
-#[test]
-fn handle_relay_connected_first_dial_emits_startup_or_empty() {
-    // First-dial path (`is_reconnect = false`) on a fresh reducer with no
-    // registered interests yields no startup REQs (`startup_requests`
-    // returns empty until lifecycle.tick runs against a coverage plan).
-    // The important contract: no panic and AUTH partition does not strip
-    // legitimate frames.
-    let mut r = KernelReducer::new();
-    let out = r.handle_relay_connected(RelayRole::Content, RELAY, false);
-    // Empty is the correct answer for a kernel with no view-spec interests.
-    assert!(out.is_empty(), "fresh kernel has no startup REQs");
-}
-
-#[test]
-fn handle_relay_connected_is_reconnect_does_not_panic() {
-    let mut r = KernelReducer::new();
-    // First mark the relay closed so we have a valid "reconnect" state.
-    r.handle_relay_closed(RelayRole::Content, RELAY);
-    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, true);
-    // Pass: no panic.
-}
-
-#[test]
-fn handle_relay_failed_and_closed_are_total() {
-    let mut r = KernelReducer::new();
-    r.handle_relay_failed(
-        RelayRole::Content,
-        RELAY,
-        "connection reset by peer".to_string(),
-    );
-    r.handle_relay_closed(RelayRole::Content, RELAY);
-    // Pass: no panic.
-}
 
 #[test]
 fn tick_on_fresh_reducer_is_empty() {

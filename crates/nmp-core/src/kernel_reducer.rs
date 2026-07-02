@@ -21,6 +21,7 @@
 //! [`KernelReducer::handle_relay_frame`],
 //! [`KernelReducer::handle_relay_connected`],
 //! [`KernelReducer::handle_relay_failed`],
+//! [`KernelReducer::handle_relay_outbound_dropped`],
 //! [`KernelReducer::handle_relay_closed`], and [`KernelReducer::tick`] —
 //! that mirror the per-event arms the native `actor::dispatch::handle_relay_event`
 //! handles for each `nmp_network::relay_worker::RelayEvent` variant. The wasm32
@@ -294,6 +295,10 @@ impl Default for KernelReducer {
 #[cfg(test)]
 #[path = "kernel_reducer/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/relay_lifecycle_tests.rs"]
+mod relay_lifecycle_tests;
 
 #[cfg(test)]
 #[path = "kernel_reducer/tests_snapshot_claims.rs"]
