@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 /// (`KeyedRefCache`) for keyed projections (`refs.profile` / `refs.event`).
 /// Driven by `KEYED_PROJECTIONS`; takes no schema stdin. Mirrors
 /// `gen projection-cache`: `--out` required, `--check` diffs on disk.
-/// `--platform ts` (#2722) is the `@nmp/runtime-web` twin.
+/// `--platform ts` (#2722) is the `@nmpis/runtime-web` twin.
 pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), String> {
     let mut platform = "swift".to_string();
     let mut check = false;
@@ -118,7 +118,7 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
 /// `nmp gen projection-contract --platform ts --out <path> [--check]`.
 ///
 /// #2722 — generates the read-side TypeScript `PROJECTION_CONTRACT` table for
-/// `@nmp/runtime-web` from the SAME neutral manifest the Swift typed decoders
+/// `@nmpis/runtime-web` from the SAME neutral manifest the Swift typed decoders
 /// consume via `projection_contract::contract_for`. Takes no schema stdin.
 /// `--platform` is required and currently accepts only `ts` (the only
 /// consumer); the flag is spelled out so a future platform can be added

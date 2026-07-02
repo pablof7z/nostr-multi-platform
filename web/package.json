@@ -1,5 +1,5 @@
 {
-  "name": "@nmp/web-root",
+  "name": "@nmpis/web-root",
   "private": true,
   "workspaces": [
     "packages/*",

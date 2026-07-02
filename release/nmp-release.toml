@@ -9,7 +9,7 @@ version_source = "workspace.package.version"
 tag_pattern = "nmp-v{version}"
 migration_note_pattern = "docs/migration-notes/{tag}.md"
 crates_io_tool = "release-plz"
-npm_cli_package = "@nmp/cli"
+npm_cli_package = "@nmpis/cli"
 npm_publish_mode = "trusted-publishing"
 
 required_gates = [
@@ -23,11 +23,11 @@ required_gates = [
 ]
 
 [[public_npm_packages]]
-name = "@nmp/runtime-web"
+name = "@nmpis/runtime-web"
 path = "web/packages/runtime-web"
 
 [[public_npm_packages]]
-name = "@nmp/components-web"
+name = "@nmpis/components-web"
 path = "web/packages/components-web"
 
 [[public_crates]]

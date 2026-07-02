@@ -237,7 +237,7 @@ profile/embed provider stacks per row.
 
 - SwiftUI: `nmp add component swiftui/component-host`
 - Compose: `nmp add component compose/component-host`
-- Web: use `NmpComponentHostProvider` from `@nmp/components-web`.
+- Web: use `NmpComponentHostProvider` from `@nmpis/components-web`.
 
 ```tsx
 <NmpComponentHostProvider
@@ -270,12 +270,12 @@ Use this when an app lives outside the NMP monorepo, such as Chirp after the
 repository split. The app consumes NMP web packages as dependencies; it does not
 copy `web/packages/*` and does not point TypeScript at a sibling NMP checkout.
 
-- Reusable NMP: publishes `@nmp/runtime-web` and `@nmp/components-web` on the
+- Reusable NMP: publishes `@nmpis/runtime-web` and `@nmpis/components-web` on the
   NMP release train.
 - App Rust core: owns product state and app projections as usual.
 - Shell: depends on exact package versions or NMP-produced tarballs in CI.
-- Runtime/component host: imports `@nmp/runtime-web`, `@nmp/runtime-web/worker`,
-  and `@nmp/components-web` package APIs.
+- Runtime/component host: imports `@nmpis/runtime-web`, `@nmpis/runtime-web/worker`,
+  and `@nmpis/components-web` package APIs.
 - Single writers: the split shell never becomes a second source for shared web
   runtime/component code.
 
@@ -284,8 +284,8 @@ Expected package shape:
 ```json
 {
   "dependencies": {
-    "@nmp/runtime-web": "<nmp-version>",
-    "@nmp/components-web": "<nmp-version>"
+    "@nmpis/runtime-web": "<nmp-version>",
+    "@nmpis/components-web": "<nmp-version>"
   }
 }
 ```
@@ -293,10 +293,10 @@ Expected package shape:
 Expected worker and component imports:
 
 ```ts
-import { protocolVersion } from "@nmp/runtime-web";
-import { NmpComponentHostProvider } from "@nmp/components-web";
+import { protocolVersion } from "@nmpis/runtime-web";
+import { NmpComponentHostProvider } from "@nmpis/components-web";
 
-const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), {
+const worker = new Worker(new URL("@nmpis/runtime-web/worker", import.meta.url), {
   type: "module",
 });
 ```
@@ -306,15 +306,15 @@ Do not add app-local aliases like:
 ```json
 {
   "paths": {
-    "@nmp/runtime-web": ["../packages/runtime-web/src/index.ts"],
-    "@nmp/components-web/src/*": ["../packages/components-web/src/*"]
+    "@nmpis/runtime-web": ["../packages/runtime-web/src/index.ts"],
+    "@nmpis/components-web/src/*": ["../packages/components-web/src/*"]
   }
 }
 ```
 
 The runtime package owns the staged `nmp-browser-runtime` wasm-bindgen artifact;
 apps do not copy it into `public/`. The component package exposes the root API
-and feature subpaths such as `@nmp/components-web/user-avatar`; raw `src/*`
+and feature subpaths such as `@nmpis/components-web/user-avatar`; raw `src/*`
 imports are reserved for NMP's in-repo registry source viewer.
 
 ## Browser Signer And Private-Flow Caveat

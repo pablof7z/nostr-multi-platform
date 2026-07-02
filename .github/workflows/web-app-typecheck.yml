@@ -34,27 +34,27 @@ jobs:
         working-directory: web
 
       - name: Typecheck runtime-web
-        run: npm run typecheck --workspace @nmp/runtime-web
+        run: npm run typecheck --workspace @nmpis/runtime-web
         working-directory: web
 
       - name: Typecheck components-web
-        run: npm run typecheck --workspace @nmp/components-web
+        run: npm run typecheck --workspace @nmpis/components-web
         working-directory: web
 
       - name: Build runtime-web TypeScript package surface
-        run: npm run build:ts --workspace @nmp/runtime-web
+        run: npm run build:ts --workspace @nmpis/runtime-web
         working-directory: web
 
       - name: Build components-web package surface
-        run: npm run build --workspace @nmp/components-web
+        run: npm run build --workspace @nmpis/components-web
         working-directory: web
 
       - name: Typecheck nmp-gallery
-        run: npm run typecheck --workspace @nmp/gallery-web
+        run: npm run typecheck --workspace @nmpis/gallery-web
         working-directory: web
 
       - name: Typecheck registry
-        run: npm run typecheck --workspace @nmp/registry-web
+        run: npm run typecheck --workspace @nmpis/registry-web
         working-directory: web
 
   web-package-consumer-smoke:

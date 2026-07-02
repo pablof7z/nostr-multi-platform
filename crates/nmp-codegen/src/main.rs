@@ -41,7 +41,7 @@ fn run() -> Result<(), String> {
         // `--platform`) from `KEYED_PROJECTIONS`; decodes `RefRowDeltaBatch`.
         "keyed-ref-cache" => cli_read_side::run_gen_keyed_ref_cache(args, &h),
         // #2722 — generated read-side TypeScript `PROJECTION_CONTRACT` table
-        // for `@nmp/runtime-web`, from the same neutral manifest the Swift
+        // for `@nmpis/runtime-web`, from the same neutral manifest the Swift
         // typed decoders consume via `projection_contract::contract_for`.
         "projection-contract" => cli_read_side::run_gen_projection_contract(args, &h),
         // ADR-0071 §3 (#1783) / #2411 — generated typed action-builders.

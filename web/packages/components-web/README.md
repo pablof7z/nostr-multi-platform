@@ -5,14 +5,14 @@ Reusable Solid components and host/provider contracts for NMP web apps.
 Apps should import the stable root API:
 
 ```ts
-import { NmpComponentHostProvider, NostrAvatar } from "@nmp/components-web";
+import { NmpComponentHostProvider, NostrAvatar } from "@nmpis/components-web";
 ```
 
 Feature subpaths are also public:
 
 ```ts
-import { NmpComponentHostProvider } from "@nmp/components-web/component-host";
-import { NostrAvatar } from "@nmp/components-web/user-avatar";
+import { NmpComponentHostProvider } from "@nmpis/components-web/component-host";
+import { NostrAvatar } from "@nmpis/components-web/user-avatar";
 ```
 
 Split app repos must not add `tsconfig.paths` aliases to `../packages/*` or copy

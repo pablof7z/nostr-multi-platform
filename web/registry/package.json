@@ -1,5 +1,5 @@
 {
-  "name": "@nmp/registry-web",
+  "name": "@nmpis/registry-web",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nmp/components-web": "*",
+    "@nmpis/components-web": "*",
     "@solidjs/router": "^0.15.0",
     "solid-js": "^1.9.13"
   },

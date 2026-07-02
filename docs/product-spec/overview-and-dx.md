@@ -236,7 +236,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | `nmp-testing` | Mock relay, factories, simulated time, perf-replay harness | Pure Rust |
 | `nmp-cli` | Scaffolding tool | Binary |
 
-The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
+The CLI is also published to npm as `@nmpis/cli` for non-Rust developers, wrapping the same binary via npx.
 
 Developer guardrails remain a post-v1 aim until a real crate/API exists. v1
 docs and release claims must point at the shipped typed APIs, doctrine gates,
@@ -313,7 +313,7 @@ The architectural foundation stays upstream at `rust-multiplatform/rmp`; we link
 ### 5.1 The path from nothing to a running app
 
 ```
-$ npx @nmp/cli init relay-cat
+$ npx @nmpis/cli init relay-cat
 ? Organization (reverse-DNS): com.example
 ? Platforms: ◉ iOS  ◉ Android  ◉ Desktop  ◉ Web (browser-runtime)
 ? Storage backend (default for non-web): ◉ LMDB  ○ SQLite  ○ nostrdb  ○ In-memory

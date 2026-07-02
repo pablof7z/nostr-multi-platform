@@ -139,7 +139,7 @@ After migration, `nmp-browser-runtime` owns the Worker runtime and the browser
 builder. App writes use a finished `DispatchEnvelope` byte buffer:
 
 ```ts
-import { GeneratedActionBuilders } from "@nmp/runtime-web";
+import { GeneratedActionBuilders } from "@nmpis/runtime-web";
 
 const bytes = GeneratedActionBuilders.sendDm(
   correlationId,
@@ -207,7 +207,7 @@ mirrors and resolvers:
 - Compose installs `NmpComponentHostProvider(...)` once near the app or screen
   root.
 - Web/Solid installs `NmpComponentHostProvider(...)` from
-  `@nmp/components-web` once near the app root.
+  `@nmpis/components-web` once near the app root.
 
 Leaf components render and manage visible claim/release lifecycle only. They do
 not import `nmp-ffi`, `nmp-native-runtime`, `nmp-browser-runtime`, kernel

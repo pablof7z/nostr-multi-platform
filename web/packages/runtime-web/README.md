@@ -41,7 +41,7 @@ The web worker loads this package and instantiates a `WasmBridge` or `DegradedRu
 Split web apps import the worker as a package subpath:
 
 ```ts
-const worker = new Worker(new URL("@nmp/runtime-web/worker", import.meta.url), {
+const worker = new Worker(new URL("@nmpis/runtime-web/worker", import.meta.url), {
   type: "module",
 });
 ```
