@@ -4608,7 +4608,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 60107) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json() != 40688) {

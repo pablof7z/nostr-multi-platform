@@ -1337,7 +1337,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 60107.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json() != 40688.toShort()) {
