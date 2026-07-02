@@ -4,7 +4,7 @@ use std::path::Path;
 
 use crate::rules::{
     action_namespace, d0, d10, d11, d13, d14, d15, d17, d19, d20, d21, d26, d27, d6, d7, d8, d9,
-    deleted_defaults, feed_vocabulary, nip29_kind_blind, no_raw_tap_reintroduction,
+    deleted_defaults, feed_vocabulary, nip29_kind_blind, no_deprecated, no_raw_tap_reintroduction,
     product_raw_read,
 };
 use crate::{allow, event_flow_gates, report, scope::is_doctrine_lint_source, walker::ScannedLine};
@@ -269,6 +269,20 @@ pub(super) fn scan_line(
                 feed_vocabulary::ID,
                 hit,
                 allow::line_allows_with_reason,
+                findings,
+            );
+        }
+    }
+
+    if !ctx.workspace_d8 && ctx.no_deprecated_in_scope && !is_doctrine_lint_source(path) {
+        for (col, message, suggested) in no_deprecated::check(sl.text, sl.is_comment) {
+            emit(
+                path,
+                sl,
+                no_deprecated::ID,
+                col,
+                message,
+                suggested,
                 findings,
             );
         }

@@ -108,9 +108,10 @@ list-members, and relay-set — each with typed `RootIndexed`/`Flat` shape
 selection, constructing canonical `FeedParams` JSON and calling the platform
 feed-session door (`openFeedJson` on native bindings, `feed_open_json` in
 `runtime-web`). They do not choose a compiler, own feed reactivity, or replace
-the handle-owned session lifecycle. `NmpApp::open_observed_feed_source`
-predates this facade and is `#[deprecated]`; new app code opens typed feed rows
-through `app.feeds()` or a generated helper instead.
+the handle-owned session lifecycle. There is no public raw observed-feed-source
+doorway; app-owned row projection must land as a named typed read/session
+contract or an app/protocol-owned recipe, not as a retained raw
+event-sink escape hatch.
 
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item

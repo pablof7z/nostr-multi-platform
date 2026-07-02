@@ -31,6 +31,7 @@
 //! | `product_raw_read_tests.rs`| product raw-read/session ratchet      |
 //! | `deleted_defaults_tests.rs`| deleted nmp-defaults ratchet          |
 //! | `feed_vocabulary_tests.rs`| feed-facade "session" vocabulary ratchet (#2508/#2783) |
+//! | `no_deprecated_tests.rs`  | no deprecated-attribute compatibility ratchet (#2770) |
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
@@ -54,6 +55,7 @@ mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
 mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
 mod native_runtime_boundary_gates; // Native runtime / C-ABI split boundary gates.
 mod nip29_kind_blind_tests; // nip29 kind-blind transport ratchet (#2509/#2513) — sibling module.
+mod no_deprecated_tests; // Deprecated compatibility attribute ratchet (#2770).
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod ownership_contract_gates; // Compiled positive ownership descriptor gates.
 mod product_raw_read_tests; // Product raw-read/session ratchet smoke tests.

@@ -1,4 +1,4 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27 plus action_namespace/nip29_kind_blind/product_raw_read/feed_vocabulary.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27 plus action_namespace/nip29_kind_blind/product_raw_read/feed_vocabulary/no_deprecated.
 //!
 //! D16 (bare `nip17.`/`nip29.` snapshot-projection keys under `apps/chirp/`)
 //! was deleted along with the rule machinery when Chirp was extracted to its
@@ -8,7 +8,7 @@
 //! tombstone gate that replaced it.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27,action_namespace,nip29_kind_blind,product_raw_read,feed_vocabulary}.rs` for
+//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27,action_namespace,nip29_kind_blind,product_raw_read,feed_vocabulary,no_deprecated}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -164,9 +164,9 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else if cfg.workspace_full {
-        "A6/D0/D6(bounded)/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults (full workspace)"
+        "A6/D0/D6(bounded)/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults/feed_vocabulary/no_deprecated (full workspace)"
     } else {
-        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults/feed_vocabulary"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/nip29_kind_blind/no_raw_tap/product_raw_read/deleted_defaults/feed_vocabulary/no_deprecated"
     };
     report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
