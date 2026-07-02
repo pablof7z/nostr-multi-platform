@@ -136,9 +136,11 @@ pub(crate) fn ts_param_type(field: &PayloadField) -> String {
         // RelayListEntry vector: array of {url, role} objects.
         (FieldKind::RelayListEntryVec, _) => "Array<{ url: string; role: string }>".to_string(),
         // Ubyte scalar (u8) — used for FlatBuffers ubyte enum discriminants.
-        (FieldKind::Ubyte, _) => "number".to_string(),
+        (FieldKind::Ubyte, false) => "number".to_string(),
+        (FieldKind::Ubyte, true) => "number | null".to_string(),
         // Sbyte scalar (i8) — used for FlatBuffers byte enum discriminants.
-        (FieldKind::Sbyte, _) => "number".to_string(),
+        (FieldKind::Sbyte, false) => "number".to_string(),
+        (FieldKind::Sbyte, true) => "number | null".to_string(),
         // GroupRef nested table.
         (FieldKind::GroupRef, _) => "{ hostRelayUrl: string; localId: string }".to_string(),
         // StringTagVec — vector of tag rows.

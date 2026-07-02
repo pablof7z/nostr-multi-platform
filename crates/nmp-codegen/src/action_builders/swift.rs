@@ -33,6 +33,7 @@ use crate::action_builders::ActionBuilderRegistry;
 use super::swift_nip51::{
     is_bookmark_builder, is_bookmark_set_builder, render_bookmark_update, swift_param_type,
 };
+use super::swift_scalars::render_scalar_field;
 
 const BUILTIN_HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -395,57 +396,11 @@ fn render_one(builder: &ActionBuilder, registry: &ActionBuilderRegistry<'_>, out
                     ));
                 }
             }
-            FieldKind::Uint => {
-                out.push_str(&format!(
-                    "        fbb.add(element: UInt32({n}), def: UInt32(0), at: {vt}) // slot {slot}: {n}\n",
-                    n = field.name,
-                    vt = vtoffset
-                ));
-            }
-            FieldKind::Ulong => {
-                if field.optional {
-                    out.push_str(&format!(
-                        "        if let {n}Val = {n} {{ fbb.add(element: {n}Val, def: UInt64(0), at: {vt}) }} // slot {slot}: {n}\n",
-                        n = field.name,
-                        vt = vtoffset
-                    ));
-                } else {
-                    out.push_str(&format!(
-                        "        fbb.add(element: {n}, def: UInt64(0), at: {vt}) // slot {slot}: {n}\n",
-                        n = field.name,
-                        vt = vtoffset
-                    ));
-                }
-            }
-            FieldKind::UlongWithPresenceFlag { flag_name } => {
-                let vt_flag = vtoffset + 2; // flag is the next slot
-                out.push_str(&format!(
-                    "        if let {n}Val = {n} {{\n\
-                     \x20           fbb.add(element: {n}Val, def: UInt64(0), at: {vt}) // slot {slot}: {n}\n\
-                     \x20           fbb.add(element: true, def: false, at: {vt_flag}) // slot {slot_flag}: {flag}\n\
-                     \x20       }}\n",
-                    n = field.name,
-                    vt = vtoffset,
-                    vt_flag = vt_flag,
-                    slot = slot,
-                    slot_flag = slot + 1,
-                    flag = flag_name,
-                ));
-            }
-            FieldKind::Ubyte => {
-                out.push_str(&format!(
-                    "        fbb.add(element: {n}, def: UInt8(0), at: {vt}) // slot {slot}: {n}\n",
-                    n = field.name,
-                    vt = vtoffset
-                ));
-            }
-            FieldKind::Sbyte => {
-                out.push_str(&format!(
-                    "        fbb.add(element: {n}, def: Int8(0), at: {vt}) // slot {slot}: {n}\n",
-                    n = field.name,
-                    vt = vtoffset
-                ));
-            }
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => render_scalar_field(field, slot, vtoffset, out),
             FieldKind::GroupRef | FieldKind::StringTagVec => {
                 if field.optional {
                     out.push_str(&format!(
