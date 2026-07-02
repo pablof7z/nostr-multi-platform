@@ -1,4 +1,12 @@
 use super::*;
+// Stage 1 / Stage 2 leaf helpers live in dedicated emitter submodules (split
+// out of `swift.rs` to stay under the file-size ceiling); `super::*` only
+// re-exports what `swift.rs` itself calls (`render_type`,
+// `render_snapshot_projections`), so the helpers exercised only by these
+// tests are pulled in explicitly.
+use super::flat_record_emit::{map_integer_format, snake_to_camel};
+use super::snapshot_projections_emit::post_convert_from_snake_case;
+use crate::swift_projections_registry::SnapshotProjectionEntry;
 
 /// Minimal one-type document — covers the "no nested objects, mixed
 /// optional/required, snake↔camel transform" case.
