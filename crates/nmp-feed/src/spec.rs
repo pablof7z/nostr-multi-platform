@@ -235,14 +235,18 @@ pub mod source {
         }
     }
 
-    /// Pointer-target hydration source. The type name remains explicit so this
-    /// cannot be mistaken for ordinary primary feed acquisition.
+    /// Explicit target hydration from pointer events.
+    ///
+    /// This helper first watches pointer events from `pointers`, then hydrates
+    /// only target events whose kind is one of the feed's primary kinds. It is
+    /// intentionally named as hydration so app code does not mistake it for
+    /// ordinary primary feed acquisition or a full-screen dependency planner.
     #[must_use]
-    pub fn pointer_targets<I>(pointers: FeedSourceExpr, pointer_kinds: I) -> FeedSourceExpr
+    pub fn pointer_target_hydration<I>(pointers: FeedSourceExpr, pointer_kinds: I) -> FeedSourceExpr
     where
         I: IntoIterator<Item = u32>,
     {
-        FeedSourceExpr::PointerTargets {
+        FeedSourceExpr::PointerTargetHydration {
             pointers: Box::new(pointers),
             pointer_kinds: pointer_kinds.into_iter().collect(),
         }

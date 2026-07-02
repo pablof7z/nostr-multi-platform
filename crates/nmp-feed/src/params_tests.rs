@@ -38,7 +38,7 @@ fn feed_source_expr_variants_construct() {
     let referrer = FeedScope::Referrer {
         event_id: "abc123".into(),
     };
-    let pointer_targets = FeedScope::PointerTargets {
+    let pointer_target_hydration = FeedScope::PointerTargetHydration {
         pointers: Box::new(FeedScope::ActiveUserFollows),
         pointer_kinds: vec![7, 1111],
     };
@@ -59,7 +59,7 @@ fn feed_source_expr_variants_construct() {
         relays,
         tag,
         referrer,
-        pointer_targets,
+        pointer_target_hydration,
         hosted_groups,
         custom,
         union,
@@ -82,7 +82,7 @@ fn describe(expr: &FeedSourceExpr) -> &'static str {
         FeedSourceExpr::RelaySet { .. } => "relay-set",
         FeedSourceExpr::Tag { .. } => "tag",
         FeedSourceExpr::Referrer { .. } => "referrer",
-        FeedSourceExpr::PointerTargets { .. } => "pointer-targets",
+        FeedSourceExpr::PointerTargetHydration { .. } => "pointer-target-hydration",
         FeedSourceExpr::ActiveUserHostedGroups => "active-user-hosted-groups",
         FeedSourceExpr::Union(..) => "union",
         FeedSourceExpr::Intersection(..) => "intersection",
@@ -102,14 +102,16 @@ fn hosted_group_source_is_not_a_pubkey_list() {
 }
 
 #[test]
-fn pointer_targets_scope_names_pointer_authors_and_kinds() {
-    let scope = FeedScope::PointerTargets {
+fn pointer_target_hydration_scope_names_pointer_authors_and_kinds() {
+    let scope = FeedScope::PointerTargetHydration {
         pointers: Box::new(FeedScope::ActiveUserFollows),
         pointer_kinds: vec![7, 1111],
     };
-    assert_eq!(describe(&scope), "pointer-targets");
+    assert_eq!(describe(&scope), "pointer-target-hydration");
 
     let json = serde_json::to_string(&scope).expect("serialize");
+    assert!(json.contains("PointerTargetHydration"));
+    assert!(!json.contains("PointerTargets"));
     let back: FeedScope = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(scope, back);
 }

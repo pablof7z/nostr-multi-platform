@@ -64,10 +64,15 @@ pub(super) fn resolve_scope(
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
         S::Tag { term } => Ok(super::resolve_static::resolve_tag(&term.0, kinds)),
         S::Referrer { event_id } => super::resolve_static::resolve_referrer(event_id, kinds),
-        S::PointerTargets {
+        S::PointerTargetHydration {
             pointers,
             pointer_kinds,
-        } => super::pointer_targets::resolve_pointer_targets(app, pointers, pointer_kinds, kinds),
+        } => super::pointer_target_hydration::resolve_pointer_target_hydration(
+            app,
+            pointers,
+            pointer_kinds,
+            kinds,
+        ),
         S::RelaySet { .. } => Err(not_supported("RelaySet")),
         S::Union(l, r) => super::set_algebra::resolve_set_op(app, SetOp::Union, l, r, kinds),
         S::Intersection(l, r) => {
