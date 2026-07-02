@@ -34,6 +34,30 @@
 //! `accept_welcome` flow is fully exercised in-crate.
 //!
 //! `openmls` is NEVER imported directly — only `mdk_core::prelude` re-exports.
+//!
+//! ## Internal module split (#962)
+//!
+//! This orchestration file owns the `MarmotService` struct and its `impl`
+//! (constructors, KeyPackage cache, group lifecycle, Welcome, messages). The
+//! protocol/domain helpers it calls into live in sibling submodules and are
+//! re-exported here to keep `crate::service::*` paths stable:
+//! - [`error`] — [`MarmotError`] / [`Result`].
+//! - [`key_package`] — [`KeyPackagePublication`].
+//! - [`pending_commit`] — [`PendingGroupChange`] / [`CreateGroupPending`].
+//!
+//! Read-projection methods (`get_groups` / `get_group` / `get_members` /
+//! `group_relays` / `group_leaf_map` / `get_messages` /
+//! `groups_needing_self_update`) live in the sibling `service_reads` module —
+//! same `impl MarmotService`, same public API — to keep this file under the
+//! size cap.
+
+mod error;
+mod key_package;
+mod pending_commit;
+
+pub use error::{MarmotError, Result};
+pub use key_package::KeyPackagePublication;
+pub use pending_commit::{CreateGroupPending, PendingGroupChange};
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -54,161 +78,6 @@ use zeroize::Zeroizing;
 // (via `crate::interest`). `Kind::Custom` wants a `u16`, so the build site
 // casts at the call; the single source of truth is the registry, not a literal.
 use crate::interest::KIND_MARMOT_KEY_PACKAGE;
-
-/// Errors surfaced by the service. Wraps `mdk_core::Error` (kept opaque as a
-/// string so the error type does not leak MLS types across the protocol
-/// boundary) plus service-level validation.
-#[derive(Debug)]
-pub enum MarmotError {
-    /// An underlying MDK / MLS error (stringified to keep MLS types in-crate).
-    Mdk(String),
-    /// A Nostr event construction / signing error.
-    Nostr(String),
-    /// A NIP-59 gift-wrap / unwrap error.
-    GiftWrap(String),
-    /// Service-level invariant violation.
-    Invariant(String),
-    /// A `PendingGroupChange` was dropped without being committed or cleared.
-    ///
-    /// The pending commit was defensively cleared in `Drop`, but the
-    /// kind:445/commit event was never published to the relay — local MLS
-    /// state and the relay-published epoch have diverged. The host must block
-    /// further group sends until the operator resolves the divergence (e.g.
-    /// via a `self_update` re-sync or by rejoining the group).
-    OrphanedCommit {
-        /// Hex-encoded MLS group id the orphaned commit belongs to.
-        group_id_hex: String,
-    },
-}
-
-impl std::fmt::Display for MarmotError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Mdk(s) => write!(f, "mdk error: {s}"),
-            Self::Nostr(s) => write!(f, "nostr error: {s}"),
-            Self::GiftWrap(s) => write!(f, "nip59 error: {s}"),
-            Self::Invariant(s) => write!(f, "invariant violation: {s}"),
-            Self::OrphanedCommit { group_id_hex } => write!(
-                f,
-                "orphaned MLS commit for group {group_id_hex}: \
-                 PendingGroupChange dropped without commit/clear; \
-                 local state may have diverged from the relay-published epoch"
-            ),
-        }
-    }
-}
-impl std::error::Error for MarmotError {}
-
-impl From<mdk_core::Error> for MarmotError {
-    fn from(e: mdk_core::Error) -> Self {
-        Self::Mdk(e.to_string())
-    }
-}
-impl From<nmp_nip59::Nip59Error> for MarmotError {
-    fn from(e: nmp_nip59::Nip59Error) -> Self {
-        Self::GiftWrap(e.to_string())
-    }
-}
-
-pub type Result<T> = std::result::Result<T, MarmotError>;
-
-/// The signed Nostr event to publish for one KeyPackage publication.
-/// Published exclusively as kind:30443 (NIP-33 addressable). `d_tag`
-/// and `hash_ref` are surfaced for the rotation lifecycle (plan §Step 3).
-///
-/// The legacy kind:443 dual-publish was retired 2026-05-31 per the deadline
-/// in the original MDK spec. Only kind:30443 is published and subscribed.
-#[derive(Debug)]
-pub struct KeyPackagePublication {
-    /// Signed kind:30443 event (current spec, NIP-33 addressable).
-    pub event_30443: Event,
-    /// The `d` tag value — store and reuse on rotation for relay replacement.
-    pub d_tag: String,
-    /// postcard-serialized `KeyPackageRef` bytes for consumption tracking.
-    pub hash_ref: Vec<u8>,
-}
-
-/// A group state change that produced an MLS pending commit which MUST be
-/// resolved exactly once: [`commit`](Self::commit) on relay-publish success,
-/// or [`clear`](Self::clear) on relay-publish failure (mdk-api.md §7.7).
-///
-/// `evolution_event` is the signed kind:445 event the caller publishes to the
-/// group relay. `welcome_rumors` (if any) are kind:444 rumors the caller
-/// gift-wraps (NIP-59) and delivers to invitees — use
-/// [`MarmotService::wrap_welcome`].
-#[must_use = "a PendingGroupChange must be commit()'d on publish-success or clear()'d on failure"]
-pub struct PendingGroupChange<'a> {
-    service: &'a MarmotService,
-    group_id: GroupId,
-    /// `true` for SelfRemove (`leave_group`): a peer commits it, so this
-    /// handle's `commit()` is a no-op (NO `merge_pending_commit`).
-    self_remove: bool,
-    resolved: bool,
-    /// Shared counter from the owning `MarmotService`. Incremented in
-    /// `Drop` when the handle is dropped unresolved (V-61 diagnostic).
-    orphaned_commit_count: Arc<AtomicU32>,
-    pub evolution_event: Event,
-    pub welcome_rumors: Vec<UnsignedEvent>,
-}
-
-impl<'a> PendingGroupChange<'a> {
-    /// Call after the `evolution_event` was successfully published to the
-    /// group relay. Performs `merge_pending_commit` (except SelfRemove).
-    #[must_use]
-    pub fn commit(mut self) -> Result<()> {
-        self.resolved = true;
-        if self.self_remove {
-            // SelfRemove (leave_group): a peer auto-commits; we do NOT merge.
-            return Ok(());
-        }
-        self.service
-            .mdk
-            .merge_pending_commit(&self.group_id)
-            .map_err(MarmotError::from)
-    }
-
-    /// Call if the `evolution_event` failed to publish. Clears the MLS
-    /// pending commit so future group ops are not blocked (mdk-api.md §7.7).
-    #[must_use]
-    pub fn clear(mut self) -> Result<()> {
-        self.resolved = true;
-        if self.self_remove {
-            // No pending commit was created for SelfRemove.
-            return Ok(());
-        }
-        self.service
-            .mdk
-            .clear_pending_commit(&self.group_id)
-            .map_err(MarmotError::from)
-    }
-
-    /// The MLS group id this change applies to (hex).
-    pub fn group_id_hex(&self) -> String {
-        hex_encode(self.group_id.as_slice())
-    }
-}
-
-impl<'a> Drop for PendingGroupChange<'a> {
-    fn drop(&mut self) {
-        // Defensive: if a caller drops the handle without resolving it (e.g.
-        // a panic / early return), clear the pending commit so the group is
-        // not wedged. A correct caller always commit()'s or clear()'s.
-        if !self.resolved && !self.self_remove {
-            let _ = self.service.mdk.clear_pending_commit(&self.group_id);
-            // V-61: record the orphaned commit so the host can observe the
-            // divergence. The pending commit was cleared (group is not wedged),
-            // but the kind:445/commit event was never published — local MLS
-            // state and the relay-published epoch may have diverged.
-            let group_id_hex = hex_encode(self.group_id.as_slice());
-            self.orphaned_commit_count.fetch_add(1, Ordering::Relaxed);
-            // Surface the error as a typed `MarmotError::OrphanedCommit` via
-            // stderr so it is never silently swallowed. The projection also
-            // reads `orphaned_commit_count` and surfaces it in the snapshot.
-            let err = MarmotError::OrphanedCommit { group_id_hex };
-            eprintln!("nmp-marmot: {err}");
-        }
-    }
-}
 
 /// The Marmot service. Owns an `MDK<MdkSqliteStorage>` (its dedicated SQLite
 /// MLS-state file is an implementation detail no other crate sees) plus the
@@ -407,13 +276,12 @@ impl MarmotService {
         let group_id = result.group.mls_group_id.clone();
         Ok((
             result.group,
-            CreateGroupPending {
-                service: self,
+            CreateGroupPending::new(
+                self,
                 group_id,
-                resolved: false,
-                orphaned_commit_count: Arc::clone(&self.orphaned_commit_count),
-                welcome_rumors: result.welcome_rumors,
-            },
+                Arc::clone(&self.orphaned_commit_count),
+                result.welcome_rumors,
+            ),
         ))
     }
 
@@ -466,15 +334,14 @@ impl MarmotService {
         r: UpdateGroupResult,
         self_remove: bool,
     ) -> PendingGroupChange<'_> {
-        PendingGroupChange {
-            service: self,
+        PendingGroupChange::new(
+            self,
             group_id,
             self_remove,
-            resolved: false,
-            orphaned_commit_count: Arc::clone(&self.orphaned_commit_count),
-            evolution_event: r.evolution_event,
-            welcome_rumors: r.welcome_rumors.unwrap_or_default(),
-        }
+            Arc::clone(&self.orphaned_commit_count),
+            r.evolution_event,
+            r.welcome_rumors.unwrap_or_default(),
+        )
     }
 
     // ── Welcome (NIP-59 gift-wrap / unwrap + MDK processing) ─────────────────
@@ -566,75 +433,4 @@ impl MarmotService {
     // group_relays / group_leaf_map / get_messages / groups_needing_self_update)
     // live in the sibling `service_reads` module — same `impl MarmotService`,
     // same public API — to keep this file under the size cap.
-}
-
-/// The pending-commit handle returned by [`MarmotService::create_group`].
-/// `create_group` produces no evolution_event, so this is a distinct type
-/// from [`PendingGroupChange`] (which carries one) but enforces the same
-/// commit/clear discipline.
-#[must_use = "a CreateGroupPending must be commit()'d on welcome-publish success or clear()'d on failure"]
-pub struct CreateGroupPending<'a> {
-    service: &'a MarmotService,
-    group_id: GroupId,
-    resolved: bool,
-    /// Shared counter from the owning `MarmotService`. Incremented in
-    /// `Drop` when the handle is dropped unresolved (V-61 diagnostic).
-    orphaned_commit_count: Arc<AtomicU32>,
-    pub welcome_rumors: Vec<UnsignedEvent>,
-}
-
-impl<'a> CreateGroupPending<'a> {
-    /// Call after the kind:444 welcome rumors were delivered. Performs the
-    /// mandatory `merge_pending_commit` (mdk-api.md §7.3).
-    #[must_use]
-    pub fn commit(mut self) -> Result<()> {
-        self.resolved = true;
-        self.service
-            .mdk
-            .merge_pending_commit(&self.group_id)
-            .map_err(MarmotError::from)
-    }
-
-    /// Call if welcome delivery failed; clears the pending commit.
-    #[must_use]
-    pub fn clear(mut self) -> Result<()> {
-        self.resolved = true;
-        self.service
-            .mdk
-            .clear_pending_commit(&self.group_id)
-            .map_err(MarmotError::from)
-    }
-
-    /// The created group's MLS id.
-    #[must_use]
-    pub fn group_id(&self) -> &GroupId {
-        &self.group_id
-    }
-
-    /// The created group's MLS id, hex-encoded.
-    #[must_use]
-    pub fn group_id_hex(&self) -> String {
-        hex_encode(self.group_id.as_slice())
-    }
-}
-impl<'a> Drop for CreateGroupPending<'a> {
-    fn drop(&mut self) {
-        if !self.resolved {
-            let _ = self.service.mdk.clear_pending_commit(&self.group_id);
-            // V-61: record the orphaned commit (see `PendingGroupChange::drop`).
-            let group_id_hex = hex_encode(self.group_id.as_slice());
-            self.orphaned_commit_count.fetch_add(1, Ordering::Relaxed);
-            let err = MarmotError::OrphanedCommit { group_id_hex };
-            eprintln!("nmp-marmot: {err}");
-        }
-    }
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut s = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        let _ = write!(s, "{b:02x}");
-    }
-    s
 }
