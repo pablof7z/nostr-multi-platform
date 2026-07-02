@@ -10,13 +10,15 @@ the app-facing direction is now the current architecture.
 #2723 froze this surface for external consumer pinning ahead of the #2690
 release train: generated helper coverage now spans active-user-follows,
 hosted-groups, list-members, and relay-set source families across
-Swift/Kotlin/TypeScript, `FeedOrder::OldestByFeedPosition` was wired-or-deleted
-(deleted, in #2705 — no caller ever constructed it), and the pre-facade
-`open_observed_feed_source` doorway now carries a `#[deprecated]` steering
-signal toward `app.feeds()`. Downstream apps (29er, hl) should pin against this
-surface as-is; the next breaking change to `FeedParams`/`FeedSourceExpr`/the
-generated helper family list requires a fresh ADR-0076 revision, not a silent
-drift.
+Swift/Kotlin/TypeScript; the never-implemented oldest-by-feed-position
+`FeedOrder` variant flagged in #1626's reopen comments was already
+wired-or-deleted (removed in #2705 — no caller ever constructed it; see
+`crates/nmp-testing/tests/feed_public_surface_retired.rs` for the retirement
+gate); and the pre-facade `open_observed_feed_source` doorway now carries a
+`#[deprecated]` steering signal toward `app.feeds()`. Downstream apps (29er,
+hl) should pin against this surface as-is; the next breaking change to
+`FeedParams`/`FeedSourceExpr`/the generated helper family list requires a
+fresh ADR-0076 revision, not a silent drift.
 
 ## Context
 
