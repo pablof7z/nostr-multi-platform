@@ -181,12 +181,11 @@ impl SearchScopeRegistry {
     }
 }
 
-/// The registry is itself a [`SearchScopeRegistrar`]: a protocol crate's
-/// `register_search_scopes(host: &impl SearchScopeRegistrar)` helper can be
-/// driven directly against a bare `SearchScopeRegistry` (composition roots /
-/// integration harnesses that hold the registry without an `AppHost`). The
-/// `AppHost`/FFI shell forwards to the same `register` method, so the
-/// ADR-0069 yield semantics are identical on both paths.
+/// The registry is itself a [`SearchScopeRegistrar`]: protocol crate internals
+/// and integration harnesses can drive the same narrow registrar surface
+/// directly against a bare `SearchScopeRegistry` without an `AppHost`. The
+/// `AppHost`/FFI shell forwards to the same `register` method, so the ADR-0069
+/// yield semantics are identical on both paths.
 impl SearchScopeRegistrar for SearchScopeRegistry {
     fn register_search_scope(&self, provider: Arc<dyn SearchScopeProvider>) {
         let _ = self.register(provider);

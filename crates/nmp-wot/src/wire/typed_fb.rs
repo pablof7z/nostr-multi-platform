@@ -1,8 +1,8 @@
 //! Typed FlatBuffers wire codec for [`crate::runtime::WotBootstrapSnapshot`].
 //!
 //! The authoritative FFI shape of the `nmp.wot.bootstrap` projection is the
-//! serde JSON of [`WotBootstrapSnapshot`] (registered via
-//! `register_snapshot_projection` in `crate::runtime::register_runtime`). This
+//! serde JSON of [`WotBootstrapSnapshot`] (registered by the crate-level
+//! [`crate::register`] installer via `register_snapshot_projection`). This
 //! module adds a **typed FlatBuffers** encoding of the same struct — a
 //! self-describing, schema-versioned, language-neutral binary the host
 //! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors

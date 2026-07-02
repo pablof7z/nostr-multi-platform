@@ -14,7 +14,7 @@
 
 /// Build a fresh `ActionRegistry` with the two nip17 action modules wired.
 ///
-/// The full `register_actions` entry point also installs a `DmRelayCache` and
+/// The full crate-level `register` installer also installs a `DmRelayCache` and
 /// `Kind10050Parser` which require additional traits (`DmInboxRelayRegistrar` +
 /// `IngestParserRegistrar`) that `ActionRegistry` does not implement. The
 /// registry-level payload tests only need the two action modules; the extra

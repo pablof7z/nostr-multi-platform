@@ -7,8 +7,9 @@
 //! - bootstrap that graph by pushing one exact, replaceable-kind interest for
 //!   the active account's follow set.
 //!
-//! `register_runtime` is wired by `explicit composition`, so apps such as Chirp get
-//! the bootstrap through the normal `explicit owner composition` path.
+//! The crate-level `register` installer is wired by explicit owner composition,
+//! so apps get the bootstrap through the same one-call protocol path as other
+//! reusable NMP protocol crates.
 
 mod installer;
 pub mod interest;

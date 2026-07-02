@@ -11,10 +11,10 @@ impl NmpApp {
     /// the actor binds onto the kernel, so a registration is visible to
     /// the ingest path immediately (no actor round-trip needed).
     ///
-    /// Per-NIP crates call this through their `register_actions` entry
-    /// point (today: `nmp_nip17::register_actions` registers the
-    /// `Kind10050Parser`). MUST be called before `nmp_app_start` so the
-    /// kernel sees the parser when the first event of `kind` arrives.
+    /// Per-NIP crates call this through their crate-level installer (for
+    /// example, `nmp_nip17::register(...)` installs the `Kind10050Parser`).
+    /// MUST be called before `nmp_app_start` so the kernel sees the parser when
+    /// the first event of `kind` arrives.
     ///
     /// D6 — a poisoned dispatcher lock is a silent no-op (the
     /// registration is dropped; existing registrations are preserved).
@@ -112,11 +112,10 @@ impl NmpApp {
     }
 
     /// V-40 — install the kernel's [`nmp_core::substrate::DmInboxRelayLookup`]
-    /// handle. The per-app crate (today `nmp-nip17::register_actions`)
-    /// hands in a concrete `DmRelayCache`; the same `Arc` is the writer
-    /// side fed by the kind:10050 parser registered above + the reader
-    /// side the kernel exposes through `recipient_dm_relays` and the
-    /// planner-side `KernelMailboxes` adapter.
+    /// handle. The NIP-17 crate-level installer hands in a concrete
+    /// `DmRelayCache`; the same `Arc` is the writer side fed by the kind:10050
+    /// parser registered above + the reader side the kernel exposes through
+    /// `recipient_dm_relays` and the planner-side `KernelMailboxes` adapter.
     ///
     /// MUST be called before `nmp_app_start` AND before any kind:10050
     /// event is ingested (the caches are independent stores; a late swap

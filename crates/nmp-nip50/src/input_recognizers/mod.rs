@@ -12,7 +12,7 @@
 //! `text_candidate()` builds the correct `SearchRequest` and returns a
 //! `TextQuery` carrying the opaque JSON.
 //!
-//! Registration entry-point: [`register_input_scopes`].
+//! The crate-level `register` installer wires these recognizers.
 
 use std::sync::Arc;
 
@@ -191,7 +191,7 @@ impl InputScopeRecognizer for LongFormInputRecognizer {
 /// Register the three NIP-50 input-scope recognizers (profiles, notes,
 /// long-form) against `host`. Narrow surface (D6): takes `&impl
 /// InputScopeRegistrar`, never the whole `AppHost`. Called from the
-/// composition root after [`crate::scopes::register_search_scopes`].
+/// crate-level [`crate::register`] installer after search-scope registration.
 pub(crate) fn register_input_scopes(host: &impl InputScopeRegistrar) {
     host.register_input_scope(Arc::new(ProfilesInputRecognizer::new()));
     host.register_input_scope(Arc::new(NotesInputRecognizer::new()));
