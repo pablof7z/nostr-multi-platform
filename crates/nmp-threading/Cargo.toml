@@ -8,7 +8,9 @@ description = "Reply-convention-agnostic timeline grouping algorithm. Owns Threa
 
 [dependencies]
 nmp-ownership = { workspace = true }
+flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-planner = { path = "../nmp-planner", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

@@ -76,8 +76,9 @@ use crate::kinds::h_tag_value;
 /// NIP-29 is kind-blind transport (issue #2517): it carries the `h` / `previous`
 /// / host-pin envelope only and does **not** interpret NIP-10 reply/thread
 /// (`e`-tag root/reply/mention) markers — that foreign-protocol concept is owned
-/// by `nmp-threading`. So a row exposes no `reply_to` / `root` thread edges; a
-/// threading read model resolves those from the same `e` tags downstream.
+/// by `nmp-threading`. So a row exposes no `reply_to` / `root` thread edges;
+/// consumers open `nmp_threading::open_threading_read_model` over the same event
+/// scope and join the `nmp.threading.graph.*` typed sidecar by event id.
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
 pub struct GroupEvent {
     /// Event id (hex). Also the dedupe key inside the projection.
