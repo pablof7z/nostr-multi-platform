@@ -38,8 +38,6 @@ pub fn run(args: &[String]) -> Result<(), String> {
     rewrite_app_module_dependencies(&manifest, &parsed, &version)?;
 
     println!("upgraded {} to NMP {version}", manifest.display());
-    println!("next:");
-    println!("  nmp doctor --manifest {}", manifest.display());
     Ok(())
 }
 

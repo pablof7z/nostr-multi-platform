@@ -27,7 +27,7 @@ The generated app demonstrates the boring v1 path:
 
 | Path | What |
 |------|------|
-| `nmp.toml` | NMP dependency policy (read by `nmp doctor` / `nmp upgrade`). |
+| `nmp.toml` | NMP dependency policy (read by `nmp upgrade`). |
 | `crates/{{pkg}}/src/lib.rs` | The composition shell: `register` → explicit substrate/protocol/app composition, plus an example app-owned domain (`EntryRecord`). **App nouns never go in `nmp-core`** (doctrine D0). |
 | `crates/{{pkg}}/examples/shell.rs` | Headless shell: `NmpAppBuilder` → `register` → `start`. |
 
@@ -54,7 +54,6 @@ The scaffold pins NMP one of two ways (see `crates/{{pkg}}/Cargo.toml`):
 
 ```sh
 nmp upgrade --to 0.4.0    # bump the pinned rev + rewrite nmp-* deps
-nmp doctor                # confirm the dependency policy
 ```
 
 ## Next steps

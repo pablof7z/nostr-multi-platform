@@ -9,14 +9,12 @@
 //!   the offline NMP registry into an app tree.
 //! * `nmp update component <id>` — refresh installed component sources from
 //!   the registry while preserving locally edited files (conflict report).
-//! * `nmp doctor` / `nmp upgrade` — inspect / bump the app's `nmp.toml` NMP
-//!   dependency policy.
+//! * `nmp upgrade` — bump the app's `nmp.toml` NMP dependency policy.
 //!
 //! The scaffold compiles immediately after `nmp init`. See `docs/cli.md`.
 
 mod component;
 mod crate_ownership;
-mod doctor;
 mod export;
 mod init;
 mod manifest_edit;
@@ -38,7 +36,6 @@ fn run() -> Result<(), String> {
     let args = env::args().skip(1).collect::<Vec<_>>();
     match args.first().map(String::as_str) {
         Some("init") => init::run(&args[1..]),
-        Some("doctor") => doctor::run(&args[1..]),
         Some("crate-ownership") => crate_ownership::run(&args[1..]),
         Some("upgrade") => upgrade::run(&args[1..]),
         Some("add") => component::run_add(&args[1..]),
@@ -81,10 +78,6 @@ fn help() -> String {
         "  nmp upgrade --to VERSION [--manifest nmp.toml]",
         "      Move the app manifest to a pinned NMP release and rewrite the",
         "      app crate's nmp-* dependencies to that version.",
-        "",
-        "  nmp doctor [--manifest nmp.toml]",
-        "      Validate the app's NMP dependency policy and report the release",
-        "      or local checkout baseline in use.",
         "",
         "  nmp crate-ownership [--format human|tsv|json]",
         "      Report positive ownership descriptors declared by active workspace",

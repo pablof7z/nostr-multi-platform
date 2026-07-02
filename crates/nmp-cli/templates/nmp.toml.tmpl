@@ -3,10 +3,9 @@ name = "{{name}}"
 display_name = "{{display}}"
 
 {{nmp_manifest}}
-# Records this app's NMP dependency policy. Read by `nmp doctor` (inspect) and
-# `nmp upgrade` (bump the pinned NMP rev + rewrite the app crate's nmp-*
-# dependencies). The `app` list names the local crate(s) `nmp upgrade`
-# rewrites.
+# Records this app's NMP dependency policy. Read by `nmp upgrade` to bump the
+# pinned NMP rev and rewrite the app crate's nmp-* dependencies. The `app` list
+# names the local crate(s) `nmp upgrade` rewrites.
 [modules]
 kernel = "nmp-core"
 protocol = []

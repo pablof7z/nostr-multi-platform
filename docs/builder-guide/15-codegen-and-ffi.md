@@ -20,12 +20,12 @@ The full multi-platform starter remains M16.
 ## The `nmp.toml` manifest
 
 The manifest parser in `crates/nmp-codegen/src/manifest.rs` survives only for
-`nmp doctor` / `nmp upgrade` (dependency-policy commands). It is no longer used
-to generate a per-app FFI crate. The parser recognises `[app]` and `[modules]`
-sections; `[platforms]` keys are accepted but ignored.
+`nmp upgrade` dependency-policy rewrites. It is no longer used to generate a
+per-app FFI crate. The parser recognises `[app]` and `[modules]` sections;
+`[platforms]` keys are accepted but ignored.
 
 ```toml
-# Example manifest — used today for `nmp doctor` / `nmp upgrade`
+# Example manifest — used today for `nmp upgrade`
 [app]
 name         = "microblog"
 display_name = "Microblog"

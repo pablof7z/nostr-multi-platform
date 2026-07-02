@@ -6,7 +6,7 @@
 //! <root>/
 //!   Cargo.toml                 # workspace: members = ["crates/<name>-core"]
 //!   nmp.toml                   # app manifest (NMP dependency policy; read by
-//!                              # `nmp doctor` / `nmp upgrade`)
+//!                              # `nmp upgrade`)
 //!   README.md                  # next steps
 //!   crates/<name>-core/
 //!     Cargo.toml               # depends on owner NMP crates + native runtime + nmp-core
