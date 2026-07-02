@@ -2,244 +2,316 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod replies {
+    #[allow(unused_imports, dead_code)]
+    pub mod replies {
 
+        pub enum ReplySummarySnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum ReplySummarySnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct ReplySummarySnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct ReplySummarySnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for ReplySummarySnapshot<'a> {
+            type Inner = ReplySummarySnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for ReplySummarySnapshot<'a> {
-  type Inner = ReplySummarySnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> ReplySummarySnapshot<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TARGET_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_COUNT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REPLY_EVENT_IDS: ::flatbuffers::VOffsetT = 10;
 
-impl<'a> ReplySummarySnapshot<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_TARGET_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_COUNT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_REPLY_EVENT_IDS: ::flatbuffers::VOffsetT = 10;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ReplySummarySnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ReplySummarySnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ReplySummarySnapshot<'bldr>> {
+                let mut builder = ReplySummarySnapshotBuilder::new(_fbb);
+                builder.add_count(args.count);
+                if let Some(x) = args.reply_event_ids {
+                    builder.add_reply_event_ids(x);
+                }
+                if let Some(x) = args.target_id {
+                    builder.add_target_id(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ReplySummarySnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ReplySummarySnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ReplySummarySnapshot<'bldr>> {
-    let mut builder = ReplySummarySnapshotBuilder::new(_fbb);
-    builder.add_count(args.count);
-    if let Some(x) = args.reply_event_ids { builder.add_reply_event_ids(x); }
-    if let Some(x) = args.target_id { builder.add_target_id(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(ReplySummarySnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn target_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ReplySummarySnapshot::VT_TARGET_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(ReplySummarySnapshot::VT_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reply_event_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ReplySummarySnapshot::VT_REPLY_EVENT_IDS, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for ReplySummarySnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "target_id",
+                        Self::VT_TARGET_ID,
+                        false,
+                    )?
+                    .visit_field::<u64>("count", Self::VT_COUNT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("reply_event_ids", Self::VT_REPLY_EVENT_IDS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ReplySummarySnapshotArgs<'a> {
+            pub schema_version: u32,
+            pub target_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub count: u64,
+            pub reply_event_ids: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for ReplySummarySnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ReplySummarySnapshotArgs {
+                    schema_version: 1,
+                    target_id: None,
+                    count: 0,
+                    reply_event_ids: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(ReplySummarySnapshot::VT_SCHEMA_VERSION, Some(1)).unwrap()}
-  }
-  #[inline]
-  pub fn target_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ReplySummarySnapshot::VT_TARGET_ID, None)}
-  }
-  #[inline]
-  pub fn count(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(ReplySummarySnapshot::VT_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn reply_event_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(ReplySummarySnapshot::VT_REPLY_EVENT_IDS, None)}
-  }
-}
+        pub struct ReplySummarySnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ReplySummarySnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    ReplySummarySnapshot::VT_SCHEMA_VERSION,
+                    schema_version,
+                    1,
+                );
+            }
+            #[inline]
+            pub fn add_target_id(&mut self, target_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ReplySummarySnapshot::VT_TARGET_ID,
+                    target_id,
+                );
+            }
+            #[inline]
+            pub fn add_count(&mut self, count: u64) {
+                self.fbb_
+                    .push_slot::<u64>(ReplySummarySnapshot::VT_COUNT, count, 0);
+            }
+            #[inline]
+            pub fn add_reply_event_ids(
+                &mut self,
+                reply_event_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ReplySummarySnapshot::VT_REPLY_EVENT_IDS,
+                    reply_event_ids,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ReplySummarySnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ReplySummarySnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for ReplySummarySnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target_id", Self::VT_TARGET_ID, false)?
-     .visit_field::<u64>("count", Self::VT_COUNT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("reply_event_ids", Self::VT_REPLY_EVENT_IDS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ReplySummarySnapshotArgs<'a> {
-    pub schema_version: u32,
-    pub target_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub count: u64,
-    pub reply_event_ids: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for ReplySummarySnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ReplySummarySnapshotArgs {
-      schema_version: 1,
-      target_id: None,
-      count: 0,
-      reply_event_ids: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for ReplySummarySnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ReplySummarySnapshot");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("target_id", &self.target_id());
+                ds.field("count", &self.count());
+                ds.field("reply_event_ids", &self.reply_event_ids());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `ReplySummarySnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_reply_summary_snapshot_unchecked`.
+        pub fn root_as_reply_summary_snapshot(
+            buf: &[u8],
+        ) -> Result<ReplySummarySnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<ReplySummarySnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `ReplySummarySnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_reply_summary_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_reply_summary_snapshot(
+            buf: &[u8],
+        ) -> Result<ReplySummarySnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<ReplySummarySnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `ReplySummarySnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_reply_summary_snapshot_unchecked`.
+        pub fn root_as_reply_summary_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ReplySummarySnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<ReplySummarySnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `ReplySummarySnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_reply_summary_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_reply_summary_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ReplySummarySnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<ReplySummarySnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a ReplySummarySnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `ReplySummarySnapshot`.
+        pub unsafe fn root_as_reply_summary_snapshot_unchecked(
+            buf: &[u8],
+        ) -> ReplySummarySnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<ReplySummarySnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed ReplySummarySnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `ReplySummarySnapshot`.
+        pub unsafe fn size_prefixed_root_as_reply_summary_snapshot_unchecked(
+            buf: &[u8],
+        ) -> ReplySummarySnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ReplySummarySnapshot>(buf) }
+        }
+        pub const REPLY_SUMMARY_SNAPSHOT_IDENTIFIER: &str = "NRSM";
 
-pub struct ReplySummarySnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ReplySummarySnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(ReplySummarySnapshot::VT_SCHEMA_VERSION, schema_version, 1);
-  }
-  #[inline]
-  pub fn add_target_id(&mut self, target_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ReplySummarySnapshot::VT_TARGET_ID, target_id);
-  }
-  #[inline]
-  pub fn add_count(&mut self, count: u64) {
-    self.fbb_.push_slot::<u64>(ReplySummarySnapshot::VT_COUNT, count, 0);
-  }
-  #[inline]
-  pub fn add_reply_event_ids(&mut self, reply_event_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ReplySummarySnapshot::VT_REPLY_EVENT_IDS, reply_event_ids);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ReplySummarySnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ReplySummarySnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn reply_summary_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, REPLY_SUMMARY_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for ReplySummarySnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ReplySummarySnapshot");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("target_id", &self.target_id());
-      ds.field("count", &self.count());
-      ds.field("reply_event_ids", &self.reply_event_ids());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `ReplySummarySnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_reply_summary_snapshot_unchecked`.
-pub fn root_as_reply_summary_snapshot(buf: &[u8]) -> Result<ReplySummarySnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<ReplySummarySnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `ReplySummarySnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_reply_summary_snapshot_unchecked`.
-pub fn size_prefixed_root_as_reply_summary_snapshot(buf: &[u8]) -> Result<ReplySummarySnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<ReplySummarySnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `ReplySummarySnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_reply_summary_snapshot_unchecked`.
-pub fn root_as_reply_summary_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ReplySummarySnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<ReplySummarySnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `ReplySummarySnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_reply_summary_snapshot_unchecked`.
-pub fn size_prefixed_root_as_reply_summary_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ReplySummarySnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<ReplySummarySnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a ReplySummarySnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `ReplySummarySnapshot`.
-pub unsafe fn root_as_reply_summary_snapshot_unchecked(buf: &[u8]) -> ReplySummarySnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<ReplySummarySnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed ReplySummarySnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `ReplySummarySnapshot`.
-pub unsafe fn size_prefixed_root_as_reply_summary_snapshot_unchecked(buf: &[u8]) -> ReplySummarySnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ReplySummarySnapshot>(buf) }
-}
-pub const REPLY_SUMMARY_SNAPSHOT_IDENTIFIER: &str = "NRSM";
+        #[inline]
+        pub fn reply_summary_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, REPLY_SUMMARY_SNAPSHOT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn reply_summary_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, REPLY_SUMMARY_SNAPSHOT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_reply_summary_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(REPLY_SUMMARY_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn reply_summary_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, REPLY_SUMMARY_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_reply_summary_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>>) {
-  fbb.finish(root, Some(REPLY_SUMMARY_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_reply_summary_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(REPLY_SUMMARY_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod replies
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_reply_summary_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ReplySummarySnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(REPLY_SUMMARY_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod replies
+} // pub mod nmp
