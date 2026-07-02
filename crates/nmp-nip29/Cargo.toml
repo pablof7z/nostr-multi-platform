@@ -9,6 +9,9 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind tr
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+# Layer-0 relay-URL vocabulary (dependency-free — no layering inversion). Owns
+# the canonical `RelayUrl` alias re-exported below.
+nmp-relay-url = { path = "../nmp-relay-url" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is

@@ -32,6 +32,9 @@ test-support = []
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-kinds = { path = "../nmp-kinds" }
+# Layer-0 relay-URL vocabulary (dependency-free — no layering inversion). Owns
+# the canonical `RelayUrl` alias re-exported below.
+nmp-relay-url = { path = "../nmp-relay-url" }
 nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

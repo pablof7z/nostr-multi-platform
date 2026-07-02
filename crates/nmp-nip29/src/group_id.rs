@@ -14,9 +14,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Re-export of the kernel's `RelayUrl` alias to keep the crate's surface
-/// self-describing while avoiding a circular dep on `nmp-core` types.
-pub type RelayUrl = String;
+/// Re-export of the single workspace `RelayUrl` authority, owned at Layer 0 by
+/// [`nmp_relay_url::RelayUrl`].
+pub use nmp_relay_url::RelayUrl;
 
 /// NIP-29 group identity: the host relay URL plus the in-relay local id.
 ///

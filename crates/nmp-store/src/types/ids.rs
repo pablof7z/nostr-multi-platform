@@ -7,13 +7,11 @@
 pub type EventId = [u8; 32];
 pub type PubKey = [u8; 32];
 
-/// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string form.
-///
-/// Transparent `String` alias (grep-able, swappable). The same alias lives in
-/// `nmp_core::relay::RelayUrl` and `nmp_planner::RelayUrl`; the three are
-/// definitionally identical (`pub type RelayUrl = String`) so a value produced
-/// in one crate flows into the others without conversion.
-pub type RelayUrl = String;
+/// Re-export of the single workspace `RelayUrl` authority, owned at Layer 0 by
+/// [`nmp_relay_url::RelayUrl`]. `nmp_core` and `nmp_planner` re-export the same
+/// one source, so a value produced in one crate flows into the others without
+/// conversion.
+pub use nmp_relay_url::RelayUrl;
 
 // ─── #1518 relay×kind privacy gate ───────────────────────────────────────────
 

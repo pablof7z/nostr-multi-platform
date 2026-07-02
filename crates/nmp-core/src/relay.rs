@@ -24,21 +24,12 @@ pub const DEFAULT_EMIT_HZ: u32 = 4;
 // The shared follow-set extraction recipe (which `p` tags count) lives in
 // `crate::tags::contact_follows`, uncapped.
 
-/// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
-/// form.
-///
-/// This is the single definition of the `RelayUrl` alias for the whole crate.
-/// `planner`, `publish`, and `store` each re-export it (`pub use
-/// crate::relay::RelayUrl`) so their existing import paths are unchanged —
-/// previously each of the three module families defined its own identical
-/// `pub type RelayUrl = String`, which made a "what is a `RelayUrl`" search
-/// return three competing answers.
-///
-/// It stays a transparent `String` alias (grep-able, swappable): the routing
-/// keys that need the canonicalization *invariant* use [`CanonicalRelayUrl`]
-/// instead — that is the type to reach for when a value indexes the transport
-/// pool or the kernel's `wire_subs` / `persistent_subs` maps.
-pub type RelayUrl = String;
+/// Re-export of the single workspace `RelayUrl` authority (owned at Layer 0 by
+/// [`nmp_relay_url::RelayUrl`]). Routing keys that need the canonicalization
+/// *invariant* use [`CanonicalRelayUrl`] instead — reach for that when a value
+/// indexes the transport pool or the kernel's `wire_subs` / `persistent_subs`
+/// maps.
+pub use nmp_relay_url::RelayUrl;
 
 /// Fallback relay URLs retained ONLY for the test/test-support surface.
 ///
