@@ -46,6 +46,29 @@ pub struct RefRowPayload {
     /// per-key accessors — byte-for-byte semantically identical to the Swift
     /// typed path, with NO public raw `ByteArray?` surface.
     pub kotlin: Option<KotlinRefRowPayload>,
+    /// The TypeScript row-payload typed-decode descriptor (#2722), or `None`
+    /// when no hand-written TS glue decoder is wired for this namespace yet.
+    ///
+    /// Same feasibility gate as [`Self::kotlin`]: the `flatc --ts` reader for
+    /// the row payload buffer must be checked into
+    /// `web/packages/runtime-web/src/generated/` (see `ci/check-ts-flatc-drift.sh`)
+    /// before a namespace can carry `Some(..)`. Only `refs.profile` ships today —
+    /// `refs.event` stays `None` (raw-bytes only via `payload()`/`snapshot()`)
+    /// until a TS `ClaimedEventsSnapshot` consumer is scoped.
+    pub ts: Option<TsRefRowPayload>,
+}
+
+/// The TypeScript-side typed row-payload descriptor (present only once the
+/// hand-written glue decoder ships). See [`RefRowPayload::ts`].
+pub struct TsRefRowPayload {
+    /// The generated `flatc --ts` reader class for the row payload buffer,
+    /// e.g. `ProfileSnapshot` (imported from `./generated/nmp/kernel`).
+    pub reader_type: &'static str,
+    /// The TS domain type the typed accessor returns.
+    pub domain_type: &'static str,
+    /// The hand-written glue function (in `refRowDecoders.ts`) that maps the
+    /// reader → domain value.
+    pub glue: &'static str,
 }
 
 /// The Kotlin-side typed row-payload descriptor (present only once the
@@ -125,6 +148,17 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
                 domain_type: "ProfileCard",
                 glue: "refRowProfile",
             }),
+            // #2722: the `flatc --ts` `ProfileSnapshot` reader is checked into
+            // `web/packages/runtime-web/src/generated/nmp/kernel/` (scoped tree,
+            // see `ci/check-ts-flatc-drift.sh`), so the TS generator emits a
+            // TYPED `profile(pubkey) -> ProfileWire | undefined` accessor —
+            // the web twin of the Swift/Kotlin typed path. Glue lives in the
+            // hand-written `refRowDecoders.ts`.
+            ts: Some(TsRefRowPayload {
+                reader_type: "ProfileSnapshot",
+                domain_type: "ProfileWire",
+                glue: "refRowProfile",
+            }),
         },
     },
     KeyedProjectionEntry {
@@ -153,6 +187,11 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
                 domain_type: "ClaimedEventDto",
                 glue: "refRowEvent",
             }),
+            // #2722: no `flatc --ts` `ClaimedEventsSnapshot` reader is checked
+            // into runtime-web yet (scope limited to the profile cluster this
+            // pass) — stays raw-bytes-only via `KeyedRefCache.payload()` /
+            // `.snapshot()` until a TS event-embed consumer is scoped.
+            ts: None,
         },
     },
 ];

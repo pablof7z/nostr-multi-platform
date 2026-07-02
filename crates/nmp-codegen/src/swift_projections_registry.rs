@@ -59,7 +59,7 @@
 #[path = "keyed_projection_row_payload.rs"]
 mod keyed_projection_row_payload;
 pub use keyed_projection_row_payload::{
-    KeyedProjectionEntry, KotlinRefRowPayload, RefRowPayload, KEYED_PROJECTIONS,
+    KeyedProjectionEntry, KotlinRefRowPayload, RefRowPayload, TsRefRowPayload, KEYED_PROJECTIONS,
 };
 
 /// One entry in the dotted-projection-key registry.

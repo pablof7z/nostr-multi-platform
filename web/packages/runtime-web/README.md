@@ -13,6 +13,23 @@ This package provides generic TypeScript glue for the worker-based ABI surface:
 - **Worker shim** — postMessage client that routes requests/responses between main thread and worker.
 - **Packaged wasm asset** — the `nmp-browser-runtime` wasm-bindgen output staged
   into `dist/wasm` during package build.
+- **NIP-07 sign broker** (`fulfilSignRequestViaExtension` / `installNip07SignBroker`)
+  — the main-thread fulfiller for the `begin_sign` / `sign_request` round-trip
+  (Web Workers have no `window.nostr`).
+- **`decodeUpdateFrame`** — read-side decode of the `NMPU` `update_bytes` wire
+  into the declared projection-key set plus a typed-sidecar lookup, verified
+  against the GENERATED `PROJECTION_CONTRACT`.
+- **`KeyedRefCache`** — the keyed per-row reference cache (`refs.profile` /
+  `refs.event`), GENERATED from the same registry as the Swift/Kotlin
+  `KeyedRefCache` twins (see `crates/nmp-codegen/src/ts_keyed_cache.rs`), with
+  a typed `profile(pubkey)` / `profiles()` accessor.
+
+The keyed-cache and projection-contract modules are GENERATED — regenerate via
+`cargo run -p nmp-codegen -- gen keyed-ref-cache --platform ts --out
+web/packages/runtime-web/src/keyedRefCache.generated.ts` and `cargo run -p
+nmp-codegen -- gen projection-contract --platform ts --out
+web/packages/runtime-web/src/projectionContract.generated.ts`. Never edit
+`*.generated.ts` by hand.
 
 No Nostr protocol, signing, or routing policy is implemented here. All such
 logic lives in Rust (`nmp-browser-runtime` and lower NMP crates).
