@@ -16,6 +16,16 @@ impl NmpApp {
     /// [`Self::open_feed`]. The app crate owns row/schema projection meaning;
     /// native shells only consume the typed snapshot the app crate registers
     /// under `params.key`.
+    ///
+    /// Prefer [`Self::feeds`] (the [`crate::FeedSessions`] facade,
+    /// `app.feeds().open(...)` / `.open_spec(...)`) for ordinary typed feed
+    /// rows. This method predates that facade and remains the correct doorway
+    /// only when a caller needs a raw `ObservedProjectionSink` hook — an
+    /// app-owned projection that observes admitted kernel events directly
+    /// instead of consuming the generic feed-row snapshot.
+    #[deprecated(
+        note = "predates the FeedSessions facade (`app.feeds()`); prefer `app.feeds().open(...)` / `.open_spec(...)` unless you need a raw ObservedProjectionSink hook — see #2723"
+    )]
     pub fn open_observed_feed_source(
         &self,
         params: &FeedParams,
@@ -37,6 +47,7 @@ impl NmpApp {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // exercising the deprecated method itself, see #2723
 mod tests {
     use std::sync::Arc;
 

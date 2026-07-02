@@ -247,8 +247,9 @@ teardown recipes through a product facade.
 
 Use `nmp gen feed-helpers --platform swift|kotlin|ts --out <path>` when a host
 binding wants checked generated helper code over that JSON bridge. The generated
-helpers build canonical `FeedParams` JSON for active-user-follows feeds with
-typed `RootIndexed`/`Flat` shape selection and call the platform feed-session
+helpers cover four source families — active-user-follows, active-user-hosted-groups,
+list-members, and relay-set — each building canonical `FeedParams` JSON with
+typed `RootIndexed`/`Flat` shape selection and calling the platform feed-session
 door (`openFeedJson` on native bindings, `feed_open_json` in `runtime-web`);
 they do not create a second runtime path. Rust app crates should prefer the
 typed shape directly:

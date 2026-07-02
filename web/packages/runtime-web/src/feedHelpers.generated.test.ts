@@ -59,4 +59,51 @@ describe("GeneratedFeedHelpers", () => {
     expect(calls[0]?.type).toBe("feed_open_json");
     expect(handle).toEqual({ projection_key: "app.web.home", session_id: 7 });
   });
+
+  it("builds the canonical hosted-groups feed request", () => {
+    const request = GeneratedFeedHelpers.openHostedGroupsFeedRequest(
+      "feed-3",
+      "app.web.groups",
+      [9],
+    );
+    if (request.type !== "feed_open_json") throw new Error("expected feed_open_json request");
+    const params = JSON.parse(request.params_json) as Record<string, unknown>;
+    expect(params).toMatchObject({
+      primary_kinds: [9],
+      source: "ActiveUserHostedGroups",
+      key: "app.web.groups",
+    });
+  });
+
+  it("builds the canonical list-members feed request", () => {
+    const request = GeneratedFeedHelpers.openListMembersFeedRequest(
+      "feed-4",
+      "app.web.list",
+      [1],
+      "fiatjaf:10000",
+    );
+    if (request.type !== "feed_open_json") throw new Error("expected feed_open_json request");
+    const params = JSON.parse(request.params_json) as Record<string, unknown>;
+    expect(params).toMatchObject({
+      primary_kinds: [1],
+      source: { ListMembers: { list: "fiatjaf:10000" } },
+      key: "app.web.list",
+    });
+  });
+
+  it("builds the canonical relay-set feed request", () => {
+    const request = GeneratedFeedHelpers.openRelaySetFeedRequest(
+      "feed-5",
+      "app.web.relayset",
+      [30023],
+      "network-relays",
+    );
+    if (request.type !== "feed_open_json") throw new Error("expected feed_open_json request");
+    const params = JSON.parse(request.params_json) as Record<string, unknown>;
+    expect(params).toMatchObject({
+      primary_kinds: [30023],
+      source: { RelaySet: { relays: "network-relays" } },
+      key: "app.web.relayset",
+    });
+  });
 });

@@ -7,6 +7,17 @@ typed read-session helpers over `FeedParams`, not raw interest/compiler wiring.
 Issue #1626 remains open for broader product adoption and helper coverage, but
 the app-facing direction is now the current architecture.
 
+#2723 froze this surface for external consumer pinning ahead of the #2690
+release train: generated helper coverage now spans active-user-follows,
+hosted-groups, list-members, and relay-set source families across
+Swift/Kotlin/TypeScript, `FeedOrder::OldestByFeedPosition` was wired-or-deleted
+(deleted, in #2705 — no caller ever constructed it), and the pre-facade
+`open_observed_feed_source` doorway now carries a `#[deprecated]` steering
+signal toward `app.feeds()`. Downstream apps (29er, hl) should pin against this
+surface as-is; the next breaking change to `FeedParams`/`FeedSourceExpr`/the
+generated helper family list requires a fresh ADR-0076 revision, not a silent
+drift.
+
 ## Context
 
 ADR-0070 made typed read sessions the app-visible owner of product reads:
@@ -54,11 +65,16 @@ Rust facade uses `open_spec` alongside `open(&FeedParams)` so the canonical
 serializable descriptor remains directly available.
 
 Generated Swift/Kotlin/TypeScript feed helpers are binding conveniences over the
-same descriptor. The first generated helper family builds an active-user-follows
-feed descriptor with typed `RootIndexed`/`Flat` shape selection and calls the
+same descriptor. Four generated helper families exist: active-user-follows,
+active-user-hosted-groups, list-members (by app/defaults-registered list id),
+and relay-set (by app-registered relay-set id). Each builds a `FeedParams`
+descriptor with typed `RootIndexed`/`Flat` shape selection and calls the
 platform feed-session door (`openFeedJson` on native bindings,
-`feed_open_json` in `runtime-web`); it does not choose a compiler, register
-observers, own source reduction, or add a second runtime path.
+`feed_open_json` in `runtime-web`); none of them chooses a compiler, registers
+observers, owns source reduction, or adds a second runtime path. List-scoped
+and relay-set-scoped helpers take the list/relay-set id as an explicit
+parameter — the framework still treats the id as opaque (D0); it does not
+interpret what the list or relay set means.
 
 The helper uses the standard NMP feed compiler. App, native, browser, TUI, and
 generated helper code do not pass a `FeedCompiler`, observer registrar,
@@ -238,6 +254,10 @@ policy, expand source sets, or own feed teardown.
   projection key.
 - Public docs use `FeedSourceExpr`, `FeedSource`, or `SourceExpr` for source
   algebra and do not teach the former pubkey-set name for non-pubkey sources.
+- `NmpApp::open_observed_feed_source` carries a `#[deprecated]` attribute
+  steering ordinary typed-row consumers to `app.feeds()`; it remains the
+  correct doorway only for callers that need a raw `ObservedProjectionSink`
+  hook, not for feed rows the generated/`FeedSpec` helpers already cover.
 - No Trellis types appear in app/native/browser feed APIs.
 - Feed declarations do not include profile fetching, reply counts, target
   hydration, thread hydration, media loading, or component-specific claims.
@@ -247,6 +267,8 @@ policy, expand source sets, or own feed teardown.
 
 - #1626: app-facing declared-feed north star.
 - #1740: typed feed/session implementation work.
+- #2723: generated helper coverage tail, deprecation signal, and surface
+  freeze for #2690 external consumer pinning.
 - #2611 / #2625: active hosted groups source proof.
 - #2626 / ADR-0075: Trellis private reconciliation substrate.
 - ADR-0070: typed read sessions own app-visible read lifecycles.
