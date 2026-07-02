@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use nmp_core::WireProjectionState;
 use nmp_feed::{
-    FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedShape, FeedWindow, ListId, ProjectionKey,
+    FeedAdmission, FeedOrder, FeedParams, FeedScope, FeedShape, FeedWindowPolicy, ListId,
+    ProjectionKey,
 };
 use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
@@ -192,10 +193,10 @@ pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::RootIndexed,
-        acquisition: FeedScope::ActiveUserFollows,
+        source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow { initial_limit: 80 },
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
         projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
@@ -204,10 +205,10 @@ pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
-        acquisition: FeedScope::ActiveUserFollows,
+        source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow { initial_limit: 80 },
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
         projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
@@ -216,12 +217,12 @@ pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
-        acquisition: FeedScope::ListMembers {
+        source: FeedScope::ListMembers {
             list: ListId(nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID.to_string()),
         },
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow { initial_limit: 80 },
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
         projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }
@@ -230,12 +231,12 @@ pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
-        acquisition: FeedScope::ListMembers {
+        source: FeedScope::ListMembers {
             list: ListId(list_id.to_string()),
         },
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow { initial_limit: 80 },
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
         projection: ProjectionKey::app_owned(projection).unwrap(),
     }
 }

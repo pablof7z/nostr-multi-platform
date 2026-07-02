@@ -145,9 +145,9 @@ mod tests {
 
     const ACTIVE_FOLLOWS_KIND1: &str = r#"{
         "primary_kinds": [1],
-        "acquisition": "ActiveUserFollows",
+        "source": "ActiveUserFollows",
         "admission": "All",
-        "ranking": "ChronologicalDesc",
+        "order": "NewestByFeedPosition",
         "window": {"initial_limit": 50},
         "projection": "app.feed.support.test"
     }"#;
@@ -167,9 +167,9 @@ mod tests {
         // kind:6 is a repost wrapper; invalid as a primary kind.
         let json = r#"{
             "primary_kinds": [6],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.support.invalid"
         }"#;

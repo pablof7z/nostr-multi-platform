@@ -44,7 +44,7 @@ mod tests {
     use nmp_core::substrate::KernelEvent;
     use nmp_core::TypedProjectionData;
     use nmp_feed::{
-        FeedAdmission, FeedRanking, FeedScope, FeedShape, FeedWindow, ProjectionKey, TagTerm,
+        FeedAdmission, FeedOrder, FeedScope, FeedShape, FeedWindowPolicy, ProjectionKey, TagTerm,
     };
 
     #[derive(Default)]
@@ -58,12 +58,12 @@ mod tests {
         FeedParams {
             primary_kinds: vec![1],
             shape: FeedShape::Flat,
-            acquisition: FeedScope::Tag {
+            source: FeedScope::Tag {
                 term: TagTerm("rust".to_string()),
             },
             admission: FeedAdmission::All,
-            ranking: FeedRanking::ChronologicalDesc,
-            window: FeedWindow { initial_limit: 20 },
+            order: FeedOrder::NewestByFeedPosition,
+            window: FeedWindowPolicy { initial_limit: 20 },
             projection: ProjectionKey::app_owned("test.observed.rust").unwrap(),
         }
     }

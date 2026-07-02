@@ -19,8 +19,8 @@ use std::sync::{
 use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedScope,
-    FeedSessionBuild, FeedSessionRegistry, FeedShape, FeedWindow, ProjectionKey, TeardownAction,
+    FeedAdmission, FeedController, FeedHandle, FeedOrder, FeedParams, FeedScope, FeedSessionBuild,
+    FeedSessionRegistry, FeedShape, FeedWindowPolicy, ProjectionKey, TeardownAction,
 };
 
 use crate::feed_session::{FeedOpenError, FeedTeardown};
@@ -58,10 +58,10 @@ fn following_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::RootIndexed,
-        acquisition: FeedScope::ActiveUserFollows,
+        source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow { initial_limit: 80 },
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
         projection: ProjectionKey::app_owned("test.feed.following").unwrap(),
     }
 }
@@ -83,7 +83,7 @@ fn following_compiler(
         // active-follows scope is wired by the compiler used in this
         // runtime-level test; anything else fails closed (mirrors the real
         // native-runtime compiler's contract).
-        if params.acquisition != FeedScope::ActiveUserFollows {
+        if params.source != FeedScope::ActiveUserFollows {
             return Err(FeedOpenError::ScopeNotSupportedYet {
                 scope: "test-only-compiler",
             });
@@ -267,7 +267,7 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         let feed = StubFeed::new();
         // A scope the compiler does not wire (e.g. a hashtag firehose).
         let mut params = following_params();
-        params.acquisition = FeedScope::Tag {
+        params.source = FeedScope::Tag {
             term: nmp_feed::TagTerm("nostr".into()),
         };
 

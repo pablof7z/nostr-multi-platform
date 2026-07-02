@@ -64,7 +64,7 @@ open article feed:
   source:
     direct authors are people the active user follows
     OR target article was reacted to/commented on by a followed user
-  ranking: chronological
+  order: newest by feed position
   projection key: app.feed.articles
 ```
 

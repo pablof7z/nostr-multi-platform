@@ -92,7 +92,7 @@ fn same_interest_shape_custom_policies_are_independent() {
             .map(|row| row.card.as_str())
             .collect::<Vec<_>>(),
         vec!["longform article with strong local score"],
-        "same acquisition shape must not force a shared admission/ranking policy"
+        "same acquisition shape must not force a shared admission/order policy"
     );
     assert_eq!(
         photo_feed

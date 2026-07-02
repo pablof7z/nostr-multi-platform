@@ -3,7 +3,7 @@
 //! A [`nmp_feed::FeedScope`] resolver reduces framework/protocol state into this
 //! substrate output: admission, typed dependent acquisition, pull shape, reset
 //! hooks, and observer teardown ids. The session engine consumes this product;
-//! it does not know how a follow set, list, tag, thread, or ranking source was
+//! it does not know how a follow set, list, tag, thread, or order source was
 //! reduced.
 
 use std::sync::Arc;

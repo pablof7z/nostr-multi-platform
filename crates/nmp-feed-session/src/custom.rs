@@ -2,7 +2,7 @@
 //!
 //! Step 3 left every `Custom` reference fail-closed; this module resolves a
 //! `Custom` reference back to its REGISTERED [`nmp_feed::CustomPerspectiveDef`]
-//! (a CLOSED `FeedScope` + ranking — pure data, registered out-of-band by the
+//! (a CLOSED `FeedScope` + order — pure data, registered out-of-band by the
 //! host runtime) and compiles it through the SAME step-3
 //! resolver. There is NO second resolver and NO closure crosses the boundary:
 //! the registry stores data, this module looks it up and calls
@@ -16,13 +16,13 @@
 //!   semantics of `Intersection(acquisition, gate)`. The gate's DEPENDENCY +
 //!   row acquisition is KEPT (so its predicate goes live on a cold open); the
 //!   AND keeps the result faithful (gate-only rows are filtered out).
-//! * `FeedRanking::Custom(id)` (order) → use the registered ranking, which must
+//! * `FeedOrder::Custom(id)` (order) → use the registered order, which must
 //!   itself be engine-honorable or the open fails closed.
 //!
 //! Fail-closed (D6) at every step: an UNREGISTERED id has no definition →
 //! [`FeedOpenError::ScopeNotSupportedYet`], and any already-registered resolver
 //! observers from a partially-resolved composite are revoked so nothing leaks
-//! (D8). A registered-but-unhonorable ranking also fails closed (never silently
+//! (D8). A registered-but-unhonorable order also fails closed (never silently
 //! mis-orders).
 
 use std::collections::BTreeSet;
@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
-use nmp_feed::{CustomPerspectiveId, FeedRanking, FeedScope, RootAdmission};
+use nmp_feed::{CustomPerspectiveId, FeedOrder, FeedScope, RootAdmission};
 use nmp_planner::InterestShape;
 
 use super::resolve::resolve_scope;
@@ -40,32 +40,32 @@ fn not_supported(scope: &'static str) -> FeedOpenError {
     FeedOpenError::ScopeNotSupportedYet { scope }
 }
 
-/// Validate the requested ranking compiles to an engine-honorable order.
+/// Validate the requested order compiles to an engine-honorable order.
 ///
-/// The session engine sorts roots newest-first (`ChronologicalDesc`) ONLY.
-/// `ChronologicalAsc` is not wired. `Custom(id)` resolves to the registered
-/// perspective's ranking, which is itself validated the same way — an
-/// unregistered id, or a registered ranking the engine cannot honor, fails
+/// The session engine sorts roots newest-first (`NewestByFeedPosition`) ONLY.
+/// `OldestByFeedPosition` is not wired. `Custom(id)` resolves to the registered
+/// perspective's order, which is itself validated the same way — an
+/// unregistered id, or a registered order the engine cannot honor, fails
 /// closed rather than silently mis-ordering (D6).
-pub(super) fn resolve_ranking(
+pub(super) fn resolve_order(
     app: &impl FeedSessionHost,
-    ranking: &FeedRanking,
+    order: &FeedOrder,
 ) -> Result<(), FeedOpenError> {
-    match ranking {
-        FeedRanking::ChronologicalDesc => Ok(()),
-        FeedRanking::ChronologicalAsc => Err(not_supported("custom-ranking")),
-        FeedRanking::Custom(id) => {
+    match order {
+        FeedOrder::NewestByFeedPosition => Ok(()),
+        FeedOrder::OldestByFeedPosition => Err(not_supported("custom-order")),
+        FeedOrder::Custom(id) => {
             let def = app
                 .custom_perspective(id)
-                .ok_or_else(|| not_supported("custom-ranking"))?;
-            // The registered ranking must itself be engine-honorable. A custom id
-            // is NOT allowed to nest another `Custom` ranking (that would be an
+                .ok_or_else(|| not_supported("custom-order"))?;
+            // The registered order must itself be engine-honorable. A custom id
+            // is NOT allowed to nest another `Custom` order (that would be an
             // unbounded indirection with no concrete order) — only the two
             // concrete chronological orders resolve, and only `Desc` is wired.
-            match def.ranking {
-                FeedRanking::ChronologicalDesc => Ok(()),
-                FeedRanking::ChronologicalAsc | FeedRanking::Custom(_) => {
-                    Err(not_supported("custom-ranking"))
+            match def.order {
+                FeedOrder::NewestByFeedPosition => Ok(()),
+                FeedOrder::OldestByFeedPosition | FeedOrder::Custom(_) => {
+                    Err(not_supported("custom-order"))
                 }
             }
         }
@@ -94,7 +94,7 @@ pub(super) fn resolve_acquisition(
             // unbounded indirection) — resolve its concrete scope directly. A
             // registered `ActiveUserFollows` / nested `CustomPerspectiveId` is not
             // a session-engine scope → `resolve_scope` fails it closed.
-            resolve_scope(app, &def.acquisition, kinds)
+            resolve_scope(app, &def.source, kinds)
         }
         other => resolve_scope(app, other, kinds),
     }
@@ -139,7 +139,7 @@ pub(super) fn apply_custom_admission(
 
     // Resolve the admission perspective's scope through the SAME step-3 compiler.
     // If it fails, revoke the acquisition's observers too (fail closed, no leak).
-    let gate = match resolve_scope(app, &def.acquisition, kinds) {
+    let gate = match resolve_scope(app, &def.source, kinds) {
         Ok(gate) => gate,
         Err(e) => {
             revoke_resolved(app, acquisition);

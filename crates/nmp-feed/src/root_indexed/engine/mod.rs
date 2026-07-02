@@ -196,7 +196,7 @@ where
 
     /// Tear down all state owned by the current feed perspective.
     ///
-    /// A perspective is the caller-supplied admission/ranking source: active
+    /// A perspective is the caller-supplied admission/order source: active
     /// account, follow set, mute/block policy, relay set, WoT filter, or any
     /// equivalent app-defined view. When it changes, old rows must disappear
     /// immediately instead of aging out naturally.

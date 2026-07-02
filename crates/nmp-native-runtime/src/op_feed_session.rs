@@ -111,8 +111,8 @@ use std::sync::Arc;
 use crate::{FeedOpenError, NmpApp};
 use nmp_core::substrate::{empty_suppression_lookup, SuppressionLookup};
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedHandle, FeedParams, FeedRanking, FeedScope, FeedShape,
-    FeedWindow, ProjectionKey,
+    FeedAdmission, FeedController, FeedHandle, FeedOrder, FeedParams, FeedScope, FeedShape,
+    FeedWindowPolicy, ProjectionKey,
 };
 use nmp_nip02::{ActiveFollowSet, LatestKind3FollowSet};
 use nmp_nip51::MuteListProjection;
@@ -261,10 +261,10 @@ pub fn active_follows_op_feed_params(
     FeedParams {
         primary_kinds: primary_feed_kinds,
         shape: FeedShape::RootIndexed,
-        acquisition: FeedScope::ActiveUserFollows,
+        source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow {
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
         projection,

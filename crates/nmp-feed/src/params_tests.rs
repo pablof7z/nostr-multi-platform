@@ -117,15 +117,15 @@ fn custom_perspective_id_is_an_opaque_string_no_trait_no_closure() {
     // The only way app policy enters is via an opaque id — there is no trait to
     // implement and no closure to pass. This test documents that contract.
     let admission = FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()));
-    let ranking = FeedRanking::Custom(CustomPerspectiveId("engagement".into()));
+    let order = FeedOrder::Custom(CustomPerspectiveId("engagement".into()));
     let scope = FeedScope::CustomPerspectiveId(CustomPerspectiveId("for-you".into()));
     assert_eq!(
         admission,
         FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()))
     );
     assert_eq!(
-        ranking,
-        FeedRanking::Custom(CustomPerspectiveId("engagement".into()))
+        order,
+        FeedOrder::Custom(CustomPerspectiveId("engagement".into()))
     );
     assert_eq!(
         scope,
@@ -169,17 +169,17 @@ fn authors_scope_is_a_static_set_distinct_from_contact_list() {
 #[test]
 fn feed_window_clamps_into_bounds() {
     assert_eq!(
-        FeedWindow { initial_limit: 0 }.bounded_limit(),
+        FeedWindowPolicy { initial_limit: 0 }.bounded_limit(),
         DEFAULT_FEED_WINDOW_LIMIT
     );
     assert_eq!(
-        FeedWindow {
+        FeedWindowPolicy {
             initial_limit: MAX_FEED_WINDOW_LIMIT + 1000
         }
         .bounded_limit(),
         MAX_FEED_WINDOW_LIMIT
     );
-    assert_eq!(FeedWindow { initial_limit: 25 }.bounded_limit(), 25);
+    assert_eq!(FeedWindowPolicy { initial_limit: 25 }.bounded_limit(), 25);
 }
 
 #[test]
@@ -206,10 +206,10 @@ fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
     FeedParams {
         primary_kinds,
         shape: FeedShape::RootIndexed,
-        acquisition: FeedScope::ActiveUserFollows,
+        source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
-        ranking: FeedRanking::ChronologicalDesc,
-        window: FeedWindow::default(),
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy::default(),
         projection: ProjectionKey::app_owned("test.feed.following").unwrap(),
     }
 }

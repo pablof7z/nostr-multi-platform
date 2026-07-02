@@ -18,12 +18,12 @@ projection declaration output transport, and ADR-0062 made replay-before-live
 private session machinery.
 
 The feed implementation now has useful lower-level pieces: `FeedParams`,
-`FeedSourceExpr` / `FeedScope`, `FeedHandle`, feed-session compilation,
+`FeedSourceExpr`, `FeedHandle`, feed-session compilation,
 browser runtime feed opening, UniFFI support helpers that call the default
 compiler, and app-owned dynamic projection keys. Issue #1626 remains open
 because the normal app-facing shape is still too close to executor wiring:
-some current names such as `ChronologicalDesc`, `FeedWindow`, `projection`, and
-`CustomPerspectiveId` hide important ownership distinctions.
+some current names such as `projection` and `CustomPerspectiveId` still hide
+important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -55,7 +55,7 @@ contains:
 - primary content kinds only;
 - a typed source expression;
 - an admission policy;
-- an order/ranking policy;
+- an order policy;
 - a bounded window policy;
 - an item projection/output contract.
 
@@ -130,8 +130,9 @@ let handle = app.feeds().open(
 ```
 
 The target serializable descriptor behind that helper should converge to this
-shape. Current implementation still uses the lower-level field names listed in
-the naming ratchet until the migration lands:
+shape. Current implementation has landed `source`, `shape`, `order`, and
+`FeedWindowPolicy`; the remaining naming ratchet below tracks fields whose
+ownership boundaries are still not explicit enough:
 
 ```rust
 pub struct FeedParams {
@@ -168,10 +169,10 @@ pagination by handle.
 | former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | former `render` field | `shape` | NMP projects row/window shape; hosts render. |
 | former `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
-| `FeedRanking::ChronologicalDesc` | `FeedOrder::NewestByFeedPosition` or `NewestByEventCreatedAt` | Repost/source position and target event time are different contracts. |
-| `FeedWindow` with only `initial_limit` | `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
+| `FeedOrder::NewestByFeedPosition` without a target-event alternative | Add explicit target-created-at order if needed | Repost/source position and target event time are different contracts. |
+| `FeedWindowPolicy` with only `initial_limit` | Expanded `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
 | `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
-| `CustomPerspectiveId` reused for source/admission/ranking | phase-specific ids or a policy id with declared capabilities | Source, admission, and ranking are different contracts. |
+| `CustomPerspectiveId` reused for source/admission/order | phase-specific ids or a policy id with declared capabilities | Source, admission, and order are different contracts. |
 | `PointerTargets` as casual feed source | explicit target-hydration source or meta-timeline helper | Target hydration must never look like ordinary feed acquisition. |
 
 ## Boundaries

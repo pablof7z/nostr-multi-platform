@@ -16,7 +16,7 @@
 //!
 //! Step 4 adds `CustomPerspectiveId` RESOLUTION over the same compiler: an app
 //! registers a CLOSED [`nmp_feed::CustomPerspectiveDef`] (a `FeedScope` +
-//! ranking) under an id; a `Custom`
+//! order) under an id; a `Custom`
 //! reference in [`FeedParams`] looks the id up and compiles the registered scope
 //! through `resolve_scope`/`build_scope_session` — NO second resolver. An
 //! UNREGISTERED id still fails CLOSED (no leak). See `custom.rs`.
@@ -179,18 +179,18 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<session_engine::ScopeSessionBuild, FeedOpenError> {
     // RANKING (#1740 step 4). The session engine sorts roots newest-first
-    // (`ChronologicalDesc`) only. `ChronologicalAsc` is not wired. A
-    // `FeedRanking::Custom(id)` resolves to a REGISTERED perspective's ranking —
-    // which must itself be engine-honorable (`ChronologicalDesc`) or the open
+    // (`NewestByFeedPosition`) only. `OldestByFeedPosition` is not wired. A
+    // `FeedOrder::Custom(id)` resolves to a REGISTERED perspective's order —
+    // which must itself be engine-honorable (`NewestByFeedPosition`) or the open
     // fails closed. Anything the engine cannot honor would silently mis-order, so
     // reject before registering anything (D6). An UNREGISTERED id also fails
-    // closed (no leak). `custom::resolve_ranking` returns the engine-honored
+    // closed (no leak). `custom::resolve_order` returns the engine-honored
     // order or a typed error.
-    custom::resolve_ranking(app, &params.ranking)?;
+    custom::resolve_order(app, &params.order)?;
 
     // ── Resolve the ACQUISITION scope (step 3 compiler; custom id → registered
     //    definition's scope). An unregistered `CustomPerspectiveId` fails closed.
-    let mut resolved = custom::resolve_acquisition(app, &params.acquisition, acquisition_kinds)?;
+    let mut resolved = custom::resolve_acquisition(app, &params.source, acquisition_kinds)?;
 
     // ── ADMISSION. `All` keeps the acquisition's own admission gate; `Custom(id)`
     //    intersects the registered perspective's compiled admission ON TOP (a

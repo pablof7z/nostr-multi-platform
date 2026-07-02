@@ -12,8 +12,8 @@
 /// `nmp-feed` engine (D0). The validation transform itself is the single
 /// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
 pub use nmp_feed::{
-    FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope, FeedSessionId, FeedShape,
-    FeedSourceExpr, FeedWindow, ProjectionKey,
+    FeedAdmission, FeedHandle, FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape,
+    FeedSourceExpr, FeedWindowPolicy, ProjectionKey,
 };
 
 use nmp_nip18::PrimaryKindError;
@@ -104,10 +104,10 @@ mod primary_kind_validation_tests {
         FeedParams {
             primary_kinds,
             shape: FeedShape::RootIndexed,
-            acquisition: FeedScope::ActiveUserFollows,
+            source: FeedScope::ActiveUserFollows,
             admission: FeedAdmission::All,
-            ranking: FeedRanking::ChronologicalDesc,
-            window: FeedWindow::default(),
+            order: FeedOrder::NewestByFeedPosition,
+            window: FeedWindowPolicy::default(),
             projection: ProjectionKey::app_owned("app.feed.following").unwrap(),
         }
     }
@@ -121,9 +121,9 @@ mod feed_params_decode_tests {
         format!(
             r#"{{
               "primary_kinds": {primary_kinds},
-              "acquisition": "ActiveUserFollows",
+              "source": "ActiveUserFollows",
               "admission": "All",
-              "ranking": "ChronologicalDesc",
+              "order": "NewestByFeedPosition",
               "window": {{ "initial_limit": 80 }},
               "projection": "app.feed.following"
             }}"#
@@ -136,7 +136,7 @@ mod feed_params_decode_tests {
             decode_and_validate_feed_params(&params_json("[1]")).expect("[1] is valid");
         assert_eq!(params.primary_kinds, vec![1]);
         assert!(kinds.contains(&1) && kinds.contains(&6));
-        assert_eq!(params.acquisition, FeedSourceExpr::ActiveUserFollows);
+        assert_eq!(params.source, FeedSourceExpr::ActiveUserFollows);
     }
 
     #[test]

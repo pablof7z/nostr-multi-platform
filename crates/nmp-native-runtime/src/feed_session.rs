@@ -411,14 +411,14 @@ impl NmpApp {
 
     /// #1740 step 4 — register a CLOSED-DATA custom-perspective definition under
     /// an opaque id, for a Rust app crate to declare app-defined
-    /// admission/ranking WITHOUT a `Perspective` trait or a native closure
+    /// admission/order WITHOUT a `Perspective` trait or a native closure
     /// crossing FFI.
     ///
     /// `def` is pure data — a [`nmp_feed::FeedScope`] acquisition + a
-    /// [`nmp_feed::FeedRanking`]. After registration a [`FeedParams`] may
+    /// [`nmp_feed::FeedOrder`]. After registration a [`FeedParams`] may
     /// reference `id` via `FeedScope::CustomPerspectiveId(id)` (acquisition),
-    /// `FeedAdmission::Custom(id)` (admission gate), or `FeedRanking::Custom(id)`
-    /// (ranking); the perspective compiler resolves the id back to this
+    /// `FeedAdmission::Custom(id)` (admission gate), or `FeedOrder::Custom(id)`
+    /// (order); the perspective compiler resolves the id back to this
     /// definition and compiles it through the SAME step-3 resolver. An
     /// UNREGISTERED id still fails closed at open.
     ///

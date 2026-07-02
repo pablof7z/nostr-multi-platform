@@ -29,7 +29,7 @@ pub struct ObservedFeedSourceOptions {
 /// Compile a [`FeedParams`] source into observed delivery for an app projection.
 ///
 /// The params' primary kinds, acquisition source, admission policy, and
-/// projection key are honored. Render/ranking/window remain meaningful for the
+/// projection key are honored. Render/order/window remain meaningful for the
 /// generic feed sidecar path; this source-only path uses `replay_limit` for
 /// replay bounds and leaves row/schema meaning to the app-owned projection.
 pub fn compile_observed_feed_source<H: FeedSessionHost>(
@@ -38,8 +38,7 @@ pub fn compile_observed_feed_source<H: FeedSessionHost>(
     acquisition_kinds: &std::collections::BTreeSet<u32>,
     options: ObservedFeedSourceOptions,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    let mut resolved =
-        crate::custom::resolve_acquisition(app, &params.acquisition, acquisition_kinds)?;
+    let mut resolved = crate::custom::resolve_acquisition(app, &params.source, acquisition_kinds)?;
 
     if let FeedAdmission::Custom(id) = &params.admission {
         resolved = crate::custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;

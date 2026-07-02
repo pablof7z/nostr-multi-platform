@@ -41,7 +41,7 @@ the session explicitly declares a fallback source.
 - The follow-set source remains a reusable input to feeds, refs, search, groups,
   and other protocol reads.
 - `nmp-core` still does not own a built-in product timeline shape.
-- App Rust crates own primary content kinds, ranking, admission, and app policy.
+- App Rust crates own primary content kinds, order, admission, and app policy.
 - Native/web shells render typed output and execute capabilities only.
 - `ReducedSource`-named APIs should move inward or be classified as migration
   surfaces with an owner and deletion/formalization trigger.

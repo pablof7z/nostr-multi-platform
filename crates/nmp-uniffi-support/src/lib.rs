@@ -266,9 +266,9 @@ mod tests {
 
         let params = r#"{
             "primary_kinds": [1],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.support.reopen"
         }"#;
