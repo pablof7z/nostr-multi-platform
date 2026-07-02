@@ -27,6 +27,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 # source backed by the active account's kind:10007 projection.
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-store = { path = "../nmp-store" }
+trellis-core = "0.1.2"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Typed FlatBuffers sidecar (ADR-0037) for the `nmp.nip51.mute_list` projection.

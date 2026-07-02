@@ -3,10 +3,10 @@
 //!
 //! The perspective compiler's `ListMembers { list }` scope resolves a list id
 //! to its member pubkeys through this projection. The projection owns the
-//! reactive source graph for `(active account, replaceable NIP-51 list store)`
-//! and emits source effects when visible list membership changes. Feed sessions
-//! consume those effects to replace dependent acquisition, reset the window,
-//! and replay the already-open feed without app-side cache invalidation.
+//! Trellis-backed source graph for `(active account, replaceable NIP-51 list
+//! store)` and emits source effects when visible list membership changes. Feed
+//! sessions consume those effects to replace dependent acquisition, reset the
+//! window, and replay the already-open feed without app-side cache invalidation.
 //!
 //! Public `p` tags are the v1 source. Private encrypted NIP-51 members remain
 //! out of scope because this read-only projection crate has no signer/decrypt
