@@ -19,6 +19,8 @@ ignore = [
     "RUSTSEC-2026-0173",
     # ttf-parser is unmaintained (RUSTSEC-2026-0192); transitively required by iced font/layout stack.
     "RUSTSEC-2026-0192",
+    # quick-xml <0.41.0 (RUSTSEC-2026-0194) is pinned by latest wayland-scanner 0.31.10; staged removal in #2711.
+    "RUSTSEC-2026-0194",
 ]
 
 [licenses]
