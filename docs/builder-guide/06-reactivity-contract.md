@@ -96,6 +96,29 @@ patch rather than a per-view scan (`view-deltas-and-projections.md:110-164`).
 > distinct from typed `ViewBatch` payloads and from feed/dependent-interest
 > acquisition — see [15 — How to add a snapshot projection](15-codegen-and-ffi.md).
 
+## Threading graph sidecars
+
+Threading is a cross-cutting reactive read model, not a responsibility of group,
+feed, or app shells. A consumer that renders reply state opens two Rust-owned
+read models over the same `InterestShape`:
+
+- the content projection, such as NIP-29 group events, which yields flat event
+  rows keyed by event id;
+- `nmp_threading::open_threading_read_model`, which registers an observed
+  projection plus a typed `nmp.threading.graph.<session>` snapshot sidecar.
+
+The threading sidecar is kind-blind: it interprets `e`-tag thread grammar and
+emits edge rows, grouped timeline blocks, and missing ancestor ids. Apps do not
+parse tags, scan the event store, or poll for thread state. Native and web
+hosts decode the typed sidecar and join by event id when rendering rows.
+
+Session ids are caller-stable, 128-byte ASCII suffixes under the
+framework-owned `nmp.threading.graph.*` projection family. The session's event
+scope bounds memory and replay work; closing the read model removes both the
+observer and the snapshot projection. If a product needs a different
+presentation, compose over the typed snapshot in Rust rather than adding
+app-side NIP-10 parsing.
+
 ## reactivity-bench validation (run 002, report 1779051783)
 
 Run 002 passed all ADR-0001..0004 gates. Harness:

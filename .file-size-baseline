@@ -12,4 +12,3 @@
 # cleanup issue owns the remaining split. It never permits sub-500 entries.
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
-crates/nmp-core/src/subs/lifecycle_tests.rs	963

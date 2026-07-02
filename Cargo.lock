@@ -4754,8 +4754,10 @@ dependencies = [
 name = "nmp-threading"
 version = "0.8.4"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-ownership",
+ "nmp-planner",
  "serde",
  "serde_json",
 ]

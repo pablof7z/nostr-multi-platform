@@ -1,0 +1,65 @@
+namespace nmp.threading;
+
+// Typed FlatBuffers wire for the reactive threading graph projection family
+// (`nmp.threading.graph.*`). The producer owns no event-kind policy: callers
+// supply the event scope, and the projection interprets only e-tag
+// root/reply grammar.
+//
+// Regenerate the Rust bindings with:
+//
+//   flatc --rust -o crates/nmp-threading/src/wire/generated \
+//         crates/nmp-threading/schema/threading_graph.fbs
+
+enum ThreadPointerKind:ubyte {
+  Event = 0,
+  Address = 1,
+  External = 2,
+}
+
+table ThreadPointer {
+  kind:ThreadPointerKind;
+  id:string;
+  coord:string;
+  uri:string;
+  relay:string;
+  has_kind_num:bool;
+  kind_num:uint32;
+}
+
+table ThreadEdge {
+  event_id:string;
+  author_pubkey:string;
+  kind:uint32;
+  created_at:uint64;
+  parent:ThreadPointer;
+  root:ThreadPointer;
+  parent_author_pubkey:string;
+}
+
+enum TimelineBlockKind:ubyte {
+  Standalone = 0,
+  Module = 1,
+}
+
+table BlockEventId {
+  id:string;
+}
+
+table TimelineBlockEntry {
+  kind:TimelineBlockKind;
+  standalone_id:string;
+  standalone_root:ThreadPointer;
+  module_event_ids:[BlockEventId];
+  module_has_gap:bool;
+  module_root:ThreadPointer;
+}
+
+table ThreadingSnapshot {
+  schema_version:uint32 = 1;
+  edges:[ThreadEdge];
+  blocks:[TimelineBlockEntry];
+  pending_ancestor_ids:[BlockEventId];
+}
+
+root_type ThreadingSnapshot;
+file_identifier "NTHR";
