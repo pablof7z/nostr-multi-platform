@@ -16,9 +16,11 @@
 //! raw `u32` `NmpConfigStatus` code. Mapping:
 //! - `NmpConfigStatus::Ok`           → `Ok(())`
 //! - `NmpConfigStatus::AlreadyStarted` → `Err(NmpError::AlreadyStarted)`
-//! - `NmpConfigStatus::NullApp`      → cannot occur (UniFFI `self` is non-null `Arc`)
-//! - `NmpConfigStatus::Unavailable`  → treated as Ok (no hook slot to fail; init is
-//!                                      idempotent first-writer-wins per the impl)
+//! - `NmpConfigStatus::NullApp`      → `Err(NmpError::RegistryUnavailable)` (should not
+//!                                      occur — UniFFI `self` is a non-null `Arc` — but
+//!                                      is not swallowed as `Ok` if it ever did)
+//! - `NmpConfigStatus::Unavailable`  → `Err(NmpError::RegistryUnavailable)`, mirroring
+//!                                      the same mapping used by `runtime::config`
 
 use nmp_native_runtime::NmpConfigStatus;
 
@@ -41,9 +43,12 @@ impl NmpApp {
         match self.inner.init_signer_broker() {
             NmpConfigStatus::Ok => Ok(()),
             NmpConfigStatus::AlreadyStarted => Err(NmpError::AlreadyStarted),
-            // NullApp cannot occur (Arc is non-null).
-            // Unavailable is treated as Ok — broker is idempotent.
-            NmpConfigStatus::NullApp | NmpConfigStatus::Unavailable => Ok(()),
+            // NullApp cannot occur (Arc is non-null) and Unavailable means the
+            // registry could not be reached — neither is a successful init, so
+            // callers must be able to distinguish them from `Ok`.
+            NmpConfigStatus::NullApp | NmpConfigStatus::Unavailable => {
+                Err(NmpError::RegistryUnavailable)
+            }
         }
     }
 
