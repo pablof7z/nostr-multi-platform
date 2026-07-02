@@ -2,8 +2,11 @@
 //!
 //! Proves the architectural property the user named on 2026-05-24:
 //! **"Chirp doesn't lift a finger"** — the kernel's substrate routes a
-//! subscription for a real author to that author's *declared* NIP-65 read
-//! relays, with no app-level intervention. The test:
+//! subscription for a real author to that author's *declared* NIP-65
+//! WRITE/outbox relays, with no app-level intervention. NIP-65 semantics:
+//! you fetch an author's notes from where they WRITE, not where they READ
+//! (#2773 fixed `GenericOutboxRouter::route_subscription`'s lane 1 to
+//! consult `write_relays`, mirroring `route_publish`). The test:
 //!
 //! 1. Constructs the production routing impls in place:
 //!    [`nmp_router::GenericOutboxRouter`] + [`nmp_router::InMemoryMailboxCache`].
@@ -19,9 +22,10 @@
 //! 5. Routes a subscription for `pablof7z` via
 //!    `OutboxRouter::route_subscription` and reads the projection's
 //!    `snapshot_subscriptions()` ring.
-//! 6. **Asserts**: every resolved URL carries the `Nip65 { Read }` lane,
+//! 6. **Asserts**: every resolved URL carries the `Nip65 { Write }` lane,
 //!    none carry `AppRelay { Fallback }` (lane 7), and the resolved set
-//!    equals pablo's *declared* read-relay set.
+//!    equals pablo's *declared* write-relay set (marker `"write"` or
+//!    unmarked — NIP-65: unmarked relays are both read and write).
 //!
 //! This is the smallest e2e proof that the routing architecture works
 //! against real network data; no NmpApp instance is required because the
@@ -104,10 +108,10 @@ fn parse_kind10002(text: &str, sub_id: &str, author_hex: &str) -> Option<Value> 
     }
 }
 
-/// Extract pablo's *declared* read-relay set from the live kind:10002. Used
+/// Extract pablo's *declared* write-relay set from the live kind:10002. Used
 /// as the ground-truth oracle for the lane-attribution assertion. Mirrors
-/// the `nmp_router::Kind10002Parser` rules (unmarked ⇒ both ⇒ read).
-fn declared_read_relays(ev: &Value) -> BTreeSet<String> {
+/// the `nmp_router::Kind10002Parser` rules (unmarked ⇒ both ⇒ write).
+fn declared_write_relays(ev: &Value) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     let Some(tags) = ev.get("tags").and_then(Value::as_array) else {
         return out;
@@ -129,11 +133,11 @@ fn declared_read_relays(ev: &Value) -> BTreeSet<String> {
             continue;
         };
         match parts.get(2).and_then(Value::as_str) {
-            // unmarked or "read" lands in the read set
-            None | Some("") | Some("read") => {
+            // unmarked or "write" lands in the write set
+            None | Some("") | Some("write") => {
                 out.insert(url);
             }
-            Some("write") => {}
+            Some("read") => {}
             // unknown markers — `Kind10002Parser` drops them; mirror that
             Some(_) => {}
         }
@@ -204,7 +208,7 @@ fn interest_for_pablo() -> LogicalInterest {
 
 #[test]
 #[ignore = "real-relay (run with --ignored)"]
-fn routing_trace_real_nostr_pablo_nip65_read_set() {
+fn routing_trace_real_nostr_pablo_nip65_write_set() {
     let Some((relay_used, event_json)) = fetch_pablo_kind10002() else {
         eprintln!(
             "SKIP: pablof7z's kind:10002 was not returned by any of {RELAYS:?} within \
@@ -231,27 +235,27 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     let parser = Kind10002Parser::new(Arc::clone(&cache));
     parser.parse_event(&verified);
 
-    // 3. Extract declared read-set for the ground-truth comparison.
+    // 3. Extract declared write-set for the ground-truth comparison.
     let event_value: Value = serde_json::from_str(&event_json).expect("re-parse for tags read");
-    let declared_reads = declared_read_relays(&event_value);
+    let declared_writes = declared_write_relays(&event_value);
     assert!(
-        !declared_reads.is_empty(),
-        "pablo's kind:10002 must have at least one read or both `r`-tag for this test to mean anything",
+        !declared_writes.is_empty(),
+        "pablo's kind:10002 must have at least one write or both `r`-tag for this test to mean anything",
     );
     eprintln!(
-        "[v51p4] pablo's declared read-relays ({}): {declared_reads:?}",
-        declared_reads.len()
+        "[v51p4] pablo's declared write-relays ({}): {declared_writes:?}",
+        declared_writes.len()
     );
 
-    // 4. Confirm the cache returns the declared set on the read lane.
-    let cache_reads: BTreeSet<String> = cache
-        .read_relays(&PABLO_HEX.to_string())
+    // 4. Confirm the cache returns the declared set on the write lane.
+    let cache_writes: BTreeSet<String> = cache
+        .write_relays(&PABLO_HEX.to_string())
         .expect("cache must hold pablo after parse")
         .into_iter()
         .collect();
     assert_eq!(
-        cache_reads, declared_reads,
-        "Kind10002Parser must seed the cache with pablo's declared read-relay set"
+        cache_writes, declared_writes,
+        "Kind10002Parser must seed the cache with pablo's declared write-relay set"
     );
 
     // 5. Route a subscription for pablo via the production router.
@@ -273,7 +277,7 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     let interest = interest_for_pablo();
     let routed = router
         .route_subscription(&interest, &ctx)
-        .expect("router must resolve a real NIP-65 read set");
+        .expect("router must resolve a real NIP-65 write set");
 
     // 6. Read the projection ring buffer — the observer fired on the
     //    successful route call.
@@ -288,23 +292,25 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     assert_eq!(entry.trace.authors_count, 1);
 
     // 7. The actual property: every resolved URL is attributed to the
-    //    Nip65/Read lane, and none to AppRelay/Fallback.
+    //    Nip65/Write lane, and none to AppRelay/Fallback. NIP-65: you fetch
+    //    an author's notes from their WRITE/outbox relays, not their READ
+    //    relays.
     let resolved_urls: BTreeSet<String> = entry.urls.iter().map(|(u, _)| u.clone()).collect();
     assert_eq!(
-        resolved_urls, declared_reads,
-        "router must resolve to pablo's exact declared NIP-65 read-relay set; \
-         got {resolved_urls:?} declared {declared_reads:?}"
+        resolved_urls, declared_writes,
+        "router must resolve to pablo's exact declared NIP-65 write-relay set; \
+         got {resolved_urls:?} declared {declared_writes:?}"
     );
 
     let mut any_lane7_seen = false;
     for (url, sources) in &entry.urls {
-        let mut has_nip65_read = false;
+        let mut has_nip65_write = false;
         for source in sources {
             match source {
                 RoutingSource::Nip65 {
-                    direction: Direction::Read,
+                    direction: Direction::Write,
                 } => {
-                    has_nip65_read = true;
+                    has_nip65_write = true;
                 }
                 RoutingSource::AppRelay { .. } => {
                     any_lane7_seen = true;
@@ -314,8 +320,8 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
             }
         }
         assert!(
-            has_nip65_read,
-            "URL {url} resolved but was not attributed to Nip65/Read: {sources:?}"
+            has_nip65_write,
+            "URL {url} resolved but was not attributed to Nip65/Write: {sources:?}"
         );
     }
     assert!(
@@ -329,12 +335,12 @@ fn routing_trace_real_nostr_pablo_nip65_read_set() {
     //    like chirp-repl's routing-trace subcommand and any inspector UI).
     let routed_urls: BTreeSet<String> = routed.urls().cloned().collect();
     assert_eq!(
-        routed_urls, declared_reads,
-        "routed set must equal declared read set (cache + router are consistent with the projection)"
+        routed_urls, declared_writes,
+        "routed set must equal declared write set (cache + router are consistent with the projection)"
     );
 
     eprintln!(
-        "[v51p4] PASS — pablo's subscription routed to {} relay(s) via Nip65/Read; \
+        "[v51p4] PASS — pablo's subscription routed to {} relay(s) via Nip65/Write; \
          AppRelay/Fallback NOT used. Lanes attributed by URL:",
         entry.urls.len()
     );
