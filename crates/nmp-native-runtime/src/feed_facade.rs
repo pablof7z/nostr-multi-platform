@@ -3,9 +3,12 @@
 //! `NmpApp::open_feed` is already the canonical implementation seam: it hides
 //! compiler selection, validates `FeedParams`, opens the session, and returns a
 //! handle-owned lifecycle token. This facade gives app Rust code the north-star
-//! `app.feeds().open(...)` shape without introducing a second feed engine.
+//! `app.feeds().open_spec(feed_key, feed_spec)` shape without introducing a
+//! second feed engine.
 
-use crate::{FeedHandle, FeedOpenError, FeedParams, NmpApp};
+use std::fmt;
+
+use crate::{FeedHandle, FeedKey, FeedOpenError, FeedParams, FeedSpec, FeedSpecError, NmpApp};
 
 /// Borrowed app-facing feed-session API.
 ///
@@ -30,6 +33,18 @@ impl<'a> FeedSessions<'a> {
         self.app.open_feed(params)
     }
 
+    /// Open an ergonomic feed spec through the standard NMP feed compiler.
+    ///
+    /// The spec is first compiled into canonical [`FeedParams`]. The session
+    /// then follows the same compiler, registry, projection, pagination, and
+    /// teardown path as [`Self::open`].
+    pub fn open_spec(&self, key: FeedKey, spec: FeedSpec) -> Result<FeedHandle, FeedSpecOpenError> {
+        let params = spec
+            .into_params(key)
+            .map_err(FeedSpecOpenError::InvalidSpec)?;
+        self.open(&params).map_err(FeedSpecOpenError::OpenFailed)
+    }
+
     /// Page an open feed by its returned handle.
     #[must_use]
     pub fn load_older(&self, handle: &FeedHandle) -> bool {
@@ -40,6 +55,24 @@ impl<'a> FeedSessions<'a> {
     #[must_use]
     pub fn close(&self, handle: &FeedHandle) -> bool {
         self.app.close_feed(handle)
+    }
+}
+
+/// Typed failure for [`FeedSessions::open_spec`].
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FeedSpecOpenError {
+    /// The ergonomic spec did not contain enough app intent to build params.
+    InvalidSpec(FeedSpecError),
+    /// The canonical feed compiler rejected the built params or runtime wiring.
+    OpenFailed(FeedOpenError),
+}
+
+impl fmt::Display for FeedSpecOpenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FeedSpecOpenError::InvalidSpec(err) => write!(f, "{err}"),
+            FeedSpecOpenError::OpenFailed(err) => write!(f, "{err:?}"),
+        }
     }
 }
 

@@ -22,6 +22,7 @@ mod pull_controller;
 mod registry;
 mod root_indexed;
 mod session;
+mod spec;
 pub mod typed_wire;
 mod types;
 mod window;
@@ -34,9 +35,9 @@ pub use pager::{
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
 pub use params::{
-    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedItemProjection, FeedOrder, FeedParams,
-    FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedWindowPolicy, ListId, ProjectionKey,
-    RelaySetId, TagTerm, WotRulesId, WotSeed,
+    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder,
+    FeedParams, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedWindowPolicy, ListId,
+    ProjectionKey, RelaySetId, TagTerm, WotRulesId, WotSeed,
 };
 pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
@@ -50,6 +51,7 @@ pub use root_indexed::{
     RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use session::{FeedSessionBuild, FeedSessionRegistry, TeardownAction};
+pub use spec::{feed, source, FeedSpec, FeedSpecError};
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,
     FEED_WINDOW_SCHEMA_ID, FEED_WINDOW_SCHEMA_VERSION,

@@ -91,14 +91,15 @@ surfaces, but their durable contract is ADR-0070's typed-session lifecycle.
 surface for profile and event refs.
 
 Feed-shaped product reads follow ADR-0076. The normal app-facing API is a
-helper over typed sessions, for example `app.feeds().open(feed_key, feed_spec)`
-returning a `FeedHandle`. The helper compiles through the standard NMP feed
-compiler and hides raw interests, observer registration, source-effect hooks,
-projection registrars, pull controllers, and teardown recipes from app/native
-callers. The current Rust runtime facade opens typed `FeedParams` directly;
-the two-argument `feed_key`/`feed_spec` builder shape is ergonomic sugar over
-that descriptor, not a second model. Lower-level crate-internal compiler seams
-are internal/test/composition surfaces, not the taught product API.
+helper over typed sessions, for example
+`app.feeds().open_spec(feed_key, feed_spec)` returning a `FeedHandle`. The
+helper compiles through the standard NMP feed compiler and hides raw interests,
+observer registration, source-effect hooks, projection registrars, pull
+controllers, and teardown recipes from app/native callers. The current Rust
+runtime facade also opens typed `FeedParams` directly; the `feed_key` /
+`feed_spec` builder shape is ergonomic sugar over that descriptor, not a second
+model. Lower-level crate-internal compiler seams are internal/test/composition
+surfaces, not the taught product API.
 
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item

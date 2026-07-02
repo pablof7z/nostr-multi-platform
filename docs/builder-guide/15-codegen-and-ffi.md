@@ -239,7 +239,7 @@ your facade.
 
 Feed-session helpers are bridge mechanics below ADR-0076's app-facing helper
 shape. Generated or app-owned facades should teach product code to open
-feed-shaped typed sessions, for example `app.feeds().open(feed_key, feed_spec)`,
+feed-shaped typed sessions, for example `app.feeds().open_spec(feed_key, feed_spec)`,
 while reusing `open_feed_session` / `close_feed_session` internally where JSON
 descriptor bridging is still the local binding shape. Do not expose compiler
 selection, observer registration, raw interest JSON, pull-controller wiring, or

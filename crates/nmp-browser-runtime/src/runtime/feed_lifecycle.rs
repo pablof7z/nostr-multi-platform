@@ -12,8 +12,8 @@ use crate::feed::{open_browser_feed_session, FeedRuntimeAccess};
 ///
 /// This type owns no state. It delegates to `BrowserRuntimeHandle`'s existing
 /// handle-owned feed lifecycle so browser app code can use the same
-/// `runtime.feeds().open/load_older/close` shape without seeing compiler or
-/// registry wiring.
+/// `runtime.feeds().open/open_spec/load_older/close` shape without seeing
+/// compiler or registry wiring.
 pub struct BrowserFeedSessions<'a> {
     handle: &'a mut BrowserRuntimeHandle,
 }
@@ -27,6 +27,20 @@ impl<'a> BrowserFeedSessions<'a> {
     /// compiler.
     pub fn open(&mut self, params: nmp_feed::FeedParams) -> Option<nmp_feed::FeedHandle> {
         self.handle.open_feed(params)
+    }
+
+    /// Open an ergonomic feed spec through the standard NMP feed compiler.
+    ///
+    /// The spec is first compiled into canonical [`nmp_feed::FeedParams`].
+    /// Invalid specs and compiler failures both return `None`, matching the
+    /// existing browser lifecycle style.
+    pub fn open_spec(
+        &mut self,
+        key: nmp_feed::FeedKey,
+        spec: nmp_feed::FeedSpec,
+    ) -> Option<nmp_feed::FeedHandle> {
+        let params = spec.into_params(key).ok()?;
+        self.open(params)
     }
 
     /// Page an open browser feed by its returned handle.
@@ -77,6 +91,16 @@ impl BrowserRuntimeHandle {
         self.feed_session_runtimes
             .insert(handle.session_id.clone(), opened);
         Some(handle)
+    }
+
+    /// Open a caller-owned browser feed spec.
+    pub fn open_feed_spec(
+        &mut self,
+        key: nmp_feed::FeedKey,
+        spec: nmp_feed::FeedSpec,
+    ) -> Option<nmp_feed::FeedHandle> {
+        let params = spec.into_params(key).ok()?;
+        self.open_feed(params)
     }
 
     /// Page a browser feed session opened by [`Self::open_feed`].
