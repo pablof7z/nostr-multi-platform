@@ -1,11 +1,15 @@
 # Native Binding Surface Reference
 
-> **Reviewed:** 2026-07-02 after #2763.
+> **Reviewed:** 2026-07-02 after #2763 (`nmp-uniffi` deleted).
 >
 > **Current public native target:** UniFFI for iOS, Android, and desktop native
-> hosts. NMP no longer ships a stock consumable UniFFI facade crate. Each
-> native app owns one UniFFI facade over `nmp-native-runtime` plus the shared
-> Rust mechanics in `nmp-uniffi-support`.
+> hosts. There is no stock, consumable UniFFI facade crate. Every native app
+> owns exactly one UniFFI facade crate composed over `nmp-native-runtime` and
+> `nmp-uniffi-support` (shared bridge mechanics: dispatch, update-sink wiring,
+> panic containment, quiescence, clamps). `apps/nmp-gallery/crates/nmp-app-gallery`
+> (`GalleryApp`) is the in-repo reference facade; the `nmp init` scaffold
+> (`crates/nmp-cli/templates/facade_lib.rs.tmpl`) is the reference starting
+> point for new apps.
 >
 > **Browser target:** `wasm-bindgen` through `nmp-browser-runtime`; browser/wasm
 > is not part of the native ABI collapse.
@@ -22,28 +26,42 @@ exception behind the UniFFI API.
 
 ## Public Native Surface
 
-Native app shells use generated UniFFI bindings owned by the app facade crate.
-NMP provides the reusable Rust runtime surface (`nmp-native-runtime`) and
-facade-helper mechanics (`nmp-uniffi-support`); it does not provide a shared
-generated Swift/Kotlin namespace.
+Native app shells use generated UniFFI bindings. There is no stock, consumable
+framework binding crate — `nmp-uniffi` was deleted in #2763 after shipping with
+zero real consumers (every shipped native app — gallery, 29er, Chirp,
+podcast-player — built its own facade over `nmp-uniffi-support` instead). The
+canonical *mechanics* (dispatch, update-sink wiring, capability callbacks,
+panic containment, quiescence, feed-session open/close/reopen, account-change
+observation, clamp policy) live in `nmp-uniffi-support` (+ `nmp-native-runtime`).
+The canonical *surface* is per-app: each native app owns exactly one UniFFI
+facade crate that calls `uniffi::setup_scaffolding!()` once and exports its own
+records/objects/callback interfaces into its own generated Swift/Kotlin
+namespace. `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`) is the
+in-repo reference facade; the `nmp init` scaffold's generated facade crate
+(`crates/nmp-cli/templates/facade_lib.rs.tmpl`) is the reference starting point
+for new apps. Each app-owned facade's generated Swift/Kotlin bindings are
+guarded per-app by its own `ci/check-uniffi-bindings.sh` (emitted by `nmp
+init`), not by a shared framework-level drift gate.
 
 This is the native binding lane for public onboarding. Starter native apps
-should construct and configure an app-owned UniFFI object model over
-`nmp-native-runtime`. Retained low-level native symbols, where they still exist,
-are app-owned delivery glue or test support and are not starter requirements.
-Browser starter apps use the separate `nmp-browser-runtime` wasm-bindgen lane.
+should construct and configure the UniFFI object model over
+`nmp-native-runtime` inside their own facade; retained low-level native
+symbols, where they still exist during #2125 migration, are
+internal/transitional/test-support and are not starter requirements. Browser
+starter apps use the separate `nmp-browser-runtime` wasm-bindgen lane.
 
-The public native app object is facade-local, e.g. a generated `GalleryApp` or
-app-specific `NmpApp`, backed by `nmp-native-runtime::NmpApp`. Its core
+The public native app object is the facade's own `uniffi::Object` (e.g.
+`GalleryApp`, or the scaffold's `{{facade_struct}}`), which owns
+`nmp-native-runtime::NmpApp` by value inside its own `Arc<Facade>`. Its core
 lifecycle is:
 
-1. construct `NmpApp`;
-2. apply pre-start configuration and feature/capability wiring exposed by
-   UniFFI;
+1. construct the facade object (`GalleryApp::new()` / `{{facade_struct}}::new()`);
+2. apply pre-start configuration and feature/capability wiring exposed by the
+   facade's own UniFFI methods;
 3. register an update sink;
 4. start the runtime;
 5. dispatch actions/open sessions/render emitted state;
-6. stop/reset/shutdown through UniFFI lifecycle methods.
+6. stop/reset/shutdown through the facade's UniFFI lifecycle methods.
 
 The native shell renders and executes raw capabilities. Rust/NMP owns protocol
 policy, relay routing, signing policy, durable state, retries, publish status,
@@ -79,7 +97,7 @@ close the remaining app-owned-facade gaps:
 
 | Facade need | Reuse, never copy | Notes |
 |---|---|---|
-| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). The `nmp init` scaffold delegates to these rather than copying session policy. |
+| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). Every app-owned facade's own feed-session methods delegate to these. |
 | Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
 | React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
 
@@ -131,26 +149,30 @@ The UniFFI layer owns object lifetimes, callbacks, typed records/errors, and
 host-language generation. It does not own the action/update schemas. Schema and
 payload evolution remain owned by the FlatBuffers/codegen crates.
 
-## Current UniFFI Areas
+## `nmp-uniffi-support` Areas
 
-App-owned facades should expose only the native seams their product needs while
-delegating reusable mechanics to NMP support crates. The in-repo gallery facade
-and `nmp init` scaffold are the reference shape:
+`nmp-uniffi-support` does not call `uniffi::setup_scaffolding!()` and exports no
+UniFFI records/objects/callback interfaces itself; it only shares the Rust-side
+bridge mechanics every facade calls into. It is organized by mechanic:
 
-| Area | Public native shape |
+| Module | Shared mechanics |
 |---|---|
-| App lifecycle | facade `new`, `start`, `configure`, `stop`, `reset`, `shutdown`, `set_update_sink` |
-| Action doorway | `dispatch_action(Vec<u8>) -> DispatchOutcome` |
-| Stateless helpers | app-needed NIP-19/NIP-21/content/intent helpers over Rust-owned parsers |
-| Identity/signer/relay | account registration, local signer, NIP-46, external signer, relay edits where the app exposes them |
-| Reference resolution | profile/event/ref resolve and release helpers |
-| Capability/action/publish control | capability sink, action-result observer, retry/cancel publish controls |
-| Sessions | feed, search, and URI-routing sessions/helpers |
-| Runtime config/diagnostics/lifecycle | storage/projection config, lifecycle callback, liveness, debug info, intent dispatch |
-| Mirror pull | app-owned method returning typed mirror result data where that app exposes mirror reads |
+| `lib.rs` | Runtime bridge mechanics: `start_runtime`/`configure_runtime` (clamp policy via `clamp_visible`/`clamp_emit_hz`), `dispatch_action`/`dispatch_action_vec`, `set_update_sink`, `set_capability_callback`/`dispatch_capability_json`, `register_action_result_observer`/`clear_action_result_observer`, `set_lifecycle_callback`, and the shared `is_hex_pubkey` input guard. |
+| `account.rs` | Active-account-change observation (`register_account_change_sink`, `unregister_account_change_sink`) — `Arc`-sink + panic containment over `NmpApp::register_identity_change_observer`. |
+| `sessions.rs` | Feed-session open/close/reopen mechanics (`open_feed_session`, `close_feed_session`, `reopen_feed_session`, `load_older_feed_session`) over `NmpApp::open_feed`/`close_feed`. |
+| `ownership.rs` | Compiled crate-ownership descriptor for crate-ownership reports. |
 
-Reusable Nostr mechanisms still belong in NMP protocol/runtime crates. The
-facade owns marshalling and app-specific verbs, not protocol policy.
+Everything a public UniFFI surface actually exports — app lifecycle object,
+action doorway, stateless helpers (NIP-19/21/content/intent), identity/signer/
+relay verbs, reference resolution, capability/action/publish control,
+feed/search/URI sessions, runtime config/diagnostics, mirror pull — is
+facade-local: each app-owned facade composes these from `nmp-native-runtime`
+and NMP protocol crates and exports them in its own generated namespace,
+delegating the bridge mechanics above to `nmp-uniffi-support` rather than
+reimplementing them. `apps/nmp-gallery/crates/nmp-app-gallery` (`facade.rs`,
+`composition.rs`, `event_ref.rs`, `registry.rs`, `showcase.rs`) is the in-repo
+reference for how one facade organizes these areas; the `nmp init` scaffold
+(`facade_lib.rs.tmpl`) is the reference starting point for a new one.
 
 Browser hosts use the separate `nmp-browser-runtime` `wasm-bindgen` surface. Do
 not route browser guidance through UniFFI and do not use browser/wasm as a reason
@@ -195,8 +217,10 @@ thresholds, retest date, and delete trigger.
 - Native public documentation names UniFFI first.
 - Browser public documentation names `wasm-bindgen`.
 - FlatBuffers remain action/update payload bytes across both binding families.
-- `nmp-native-runtime` owns runtime lifecycle; app-owned UniFFI facades expose
-  the lifecycle to native hosts.
+- `nmp-native-runtime` owns runtime lifecycle; each app-owned UniFFI facade
+  exposes it to its own generated native namespace, delegating bridge
+  mechanics to `nmp-uniffi-support`. There is no shared framework facade
+  crate.
 - App-owned UniFFI facades may expose app-specific verbs, but exported UniFFI
   records/callback traits live in the owning facade namespace and shared NMP
   bridge mechanics live in `nmp-uniffi-support`.
@@ -208,12 +232,16 @@ thresholds, retest date, and delete trigger.
 
 - `rg -n "pub extern \"C\" fn" apps crates` shows any remaining app-owned raw
   delivery glue.
-- `rg -n "uniffi::export|uniffi::Object|callback_interface" apps crates`
-  shows the current native public surfaces.
+- `rg -n "uniffi::export|uniffi::Object|callback_interface" crates/nmp-uniffi-support/src`
+  shows the shared bridge mechanics (no `setup_scaffolding!()`, no exported
+  records/objects — confirms the crate is mechanics-only).
+- `rg -n "uniffi::export|uniffi::Object|callback_interface" apps/nmp-gallery/crates/nmp-app-gallery/src`
+  shows the in-repo reference facade's exported native surface.
 - App facade proofs should run `uniffi-bindgen generate --library` for Swift and
   Kotlin against the app cdylib, because Rust compile alone does not prove the
   generated native namespace.
-- App-owned binding drift scripts verify generated native bindings when their
-  UniFFI interfaces change.
+- `bash ci/check-uniffi-bindings.sh` (per-app, emitted by `nmp init`) verifies
+  generated native binding drift for that app's own facade when its UniFFI
+  interfaces change.
 - `cargo run -p nmp-testing --bin ffi-transport-bench --release -- --standard --fail-on-gate`
   verifies the UniFFI update-byte transport performance signal.

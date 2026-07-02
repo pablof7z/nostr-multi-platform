@@ -9,13 +9,15 @@ capability sockets, typed projection registration, and one write doorway. Relay
 routing, cache invalidation, subscription lifecycle, signing orchestration, and
 store admission stay inside Rust.
 
-Native app bindings target an app-owned UniFFI facade over
-`crates/nmp-native-runtime::NmpAppBuilder` plus `nmp-uniffi-support` mechanics.
-Browser bindings target `nmp-browser-runtime` wasm-bindgen exports. Hot
-Rust-to-host updates are binary `nmp.transport.UpdateFrame` frames. The frame
-carries a `SnapshotEnvelope` plus typed projection payloads; production hosts
-decode typed frame data. Generated Swift/Kotlin/TypeScript helpers decode those
-typed frames, but they do not define a second runtime transport.
+Native app bindings target an app-owned UniFFI facade crate (there is no
+stock, consumable framework facade — `nmp-uniffi` was deleted in #2763) over
+`crates/nmp-uniffi-support` and `crates/nmp-native-runtime::NmpAppBuilder`.
+Browser bindings target
+`nmp-browser-runtime` wasm-bindgen exports. Hot Rust-to-host updates are binary
+`nmp.transport.UpdateFrame` frames. The frame carries a `SnapshotEnvelope` plus
+typed projection payloads; production hosts decode typed frame data. Generated
+Swift/Kotlin/TypeScript helpers decode those typed frames, but they do not define
+a second runtime transport.
 
 External interface policy: every public surface must earn its place before v1.
 binding methods, wasm wire tags, FlatBuffers fields, projection keys, action
