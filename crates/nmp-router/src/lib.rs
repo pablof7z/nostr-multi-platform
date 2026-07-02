@@ -1,4 +1,4 @@
-//! `nmp-router` — Layer-2 routing (`docs/architecture/crate-boundaries.md` §3).
+//! `nmp-router` — Layer-2 routing (`docs/architecture/crate-boundaries.md` §4).
 //!
 //! Seven responsibilities:
 //!
@@ -10,7 +10,7 @@
 //!    delegates tag decoding to `nmp-nip65-types` and upserts into the cache.
 //! 3. [`GenericOutboxRouter`] — the single generic
 //!    [`nmp_core::substrate::OutboxRouter`] impl. Ships the generic
-//!    algorithm (NIP-65 write/read sets, hints, provenance,
+//!    algorithm (NIP-65 write (outbox) sets, hints, provenance,
 //!    user-configured relays, indexers, and AppRelay fallback).
 //! 4. [`publish_relay_list::PublishRelayListAction`] — the
 //!    `nmp.nip65.publish_relay_list` action module. Routing owns kind:10002

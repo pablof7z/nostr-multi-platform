@@ -61,14 +61,14 @@ fn subscribe_lane7_fallback_traces_empty_lanes_then_app_relay_fallback() {
     }
 }
 
-/// Subscribe: Lane 1 (NIP-65 read) match means AppRelayFallback does NOT appear.
+/// Subscribe: Lane 1 (NIP-65 write) match means AppRelayFallback does NOT appear.
 #[test]
 fn subscribe_lane1_match_no_app_relay_fallback_attempt() {
     let cache = Arc::new(InMemoryMailboxCache::new());
     cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
-            read: vec!["wss://r.example".into()],
+            write: vec!["wss://r.example".into()],
             ..ParsedRelayList::default()
         },
     );
