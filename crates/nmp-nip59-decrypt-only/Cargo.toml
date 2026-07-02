@@ -5,6 +5,12 @@
 #   cargo build --manifest-path crates/nmp-nip59-decrypt-only/Cargo.toml
 # Remove from exclude and add back to [workspace] members when #2289 is wired up.
 #
+# PARKED != UNMONITORED: .github/workflows/parked-crates.yml runs
+# `cargo check --all-targets` against this manifest on every push to master
+# and on any PR touching crates/nmp-nip59* paths, so nmp-nip59 API drift fails
+# CI here instead of rotting silently while the crate sits out of the
+# workspace (decision recorded on #2769).
+#
 # This empty `[workspace]` table makes the parked crate its OWN workspace root.
 # Without it, Cargo's workspace auto-discovery walks UP the directory tree and
 # binds this crate to the monorepo root manifest — which `exclude`s it —
