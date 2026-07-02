@@ -35,7 +35,6 @@ crates/nmp-marmot/src/service.rs	640
 crates/nmp-marmot/src/tests.rs	748
 crates/nmp-network/src/pool/tests.rs	554
 crates/nmp-network/src/relay_worker/tests.rs	741
-crates/nmp-nip60/src/nip60_wallet.rs	714
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-planner/src/interest.rs	579
