@@ -33,7 +33,8 @@ pub use request::{
 };
 pub use scopes::{
     register_search_scopes, LongFormSearchScope, NoteSearchScope, ProfileSearchScope,
-    SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES,
+    SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES, SCOPE_NAME_LONGFORM,
+    SCOPE_NAME_NOTES, SCOPE_NAME_PROFILES,
 };
 pub use search::{
     install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,

@@ -7,7 +7,10 @@
 //! nmp-nip50). Pure — no IO.
 
 use nmp_core::substrate::{InputIntentTarget, InputScopeId, TextSearchTargets};
-use nmp_nip50::{SearchRequest, SearchScope, SearchTargets};
+use nmp_nip50::{
+    SearchRequest, SearchScope, SearchTargets, SCOPE_NAME_LONGFORM, SCOPE_NAME_NOTES,
+    SCOPE_NAME_PROFILES,
+};
 
 use super::NIP50_NAMESPACE;
 
@@ -39,15 +42,20 @@ pub(super) fn serves_builtin_scope(scope: &InputScopeId) -> bool {
 
 fn search_scope_for(name: &str) -> Option<SearchScope> {
     Some(match name {
-        "profiles" => SearchScope::Users,
-        "longform" => SearchScope::LongForm,
-        "notes" => SearchScope::Kinds(std::collections::BTreeSet::from([KIND_SHORT_TEXT_NOTE])),
+        SCOPE_NAME_PROFILES => SearchScope::Users,
+        SCOPE_NAME_LONGFORM => SearchScope::LongForm,
+        SCOPE_NAME_NOTES => {
+            SearchScope::Kinds(std::collections::BTreeSet::from([KIND_SHORT_TEXT_NOTE]))
+        }
         _ => return None,
     })
 }
 
 fn search_scope_name_known(name: &str) -> bool {
-    matches!(name, "profiles" | "notes" | "longform")
+    matches!(
+        name,
+        SCOPE_NAME_PROFILES | SCOPE_NAME_NOTES | SCOPE_NAME_LONGFORM
+    )
 }
 
 /// Translate the noun-free [`TextSearchTargets`] into the NIP-50
