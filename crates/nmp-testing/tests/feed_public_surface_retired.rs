@@ -85,6 +85,27 @@ fn git_tracked_surface_files(root: &Path, subdirs: &[&str], out: &mut Vec<PathBu
     }
 }
 
+fn git_tracked_native_lib_files(root: &Path, subdirs: &[&str], out: &mut Vec<PathBuf>) {
+    let mut cmd = Command::new("git");
+    cmd.arg("ls-files")
+        .arg("--")
+        .args(subdirs)
+        .current_dir(root);
+    let output = cmd
+        .output()
+        .expect("git ls-files must succeed for native-lib surface scan");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    for line in stdout.lines() {
+        let rel: &Path = Path::new(line);
+        if rel
+            .extension()
+            .is_some_and(|ext| matches!(ext.to_str(), Some("a" | "dylib" | "so")))
+        {
+            out.push(root.join(rel));
+        }
+    }
+}
+
 fn binary_contains(bytes: &[u8], needle: &[u8]) -> bool {
     bytes.windows(needle.len()).any(|window| window == needle)
 }
@@ -101,10 +122,11 @@ fn code_only(line: &str) -> &str {
 
 #[test]
 fn checked_in_native_libs_do_not_export_contact_feed_symbols() {
-    // The source scan below is not enough: the gallery Android JNI library is
-    // tracked as a prebuilt `.so`, and a stale binary can keep exporting a
-    // deleted public symbol. Scan bytes directly so the gate does not depend on
-    // platform-specific `nm` availability.
+    // The source scan below is not enough: any checked-in native library can
+    // keep exporting a deleted public symbol. Scan bytes directly so the gate
+    // does not depend on platform-specific `nm` availability. If a migration
+    // deletes the last prebuilt native library, the discovered set is empty and
+    // this retirement gate is satisfied.
     const RETIRED_C_SYMBOLS: &[&str] = &[
         "nmp_app_open_contact_feed",
         "nmp_app_close_contact_feed",
@@ -112,9 +134,8 @@ fn checked_in_native_libs_do_not_export_contact_feed_symbols() {
     ];
 
     let root = repo_root();
-    let libs =
-        [root
-            .join("apps/nmp-gallery/android/app/src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so")];
+    let mut libs = Vec::new();
+    git_tracked_native_lib_files(&root, &["apps", "crates"], &mut libs);
 
     let mut violations = Vec::new();
     for lib in libs {
