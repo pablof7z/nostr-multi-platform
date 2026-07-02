@@ -28,7 +28,6 @@ crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-marmot/src/tests.rs	748
 crates/nmp-network/src/pool/tests.rs	554
 crates/nmp-network/src/relay_worker/tests.rs	741
-crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567
 crates/nmp-router/src/nip65_resolver/tests.rs	535
 crates/nmp-router/src/router/tests_v75.rs	509
