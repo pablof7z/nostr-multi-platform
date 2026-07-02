@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire codec for the `"nmp.nip17.dm_relay_list"` projection.
 //!
 //! The producer is the typed projection closure installed by
-//! [`crate::register_runtime`]. This module encodes the `typed_projections`
+//! [`crate::register`]. This module encodes the `typed_projections`
 //! sidecar payload for that runtime (ADR-0072).
 //!
 //! [`DmRelayList`] is the single read model the runtime and this codec share.

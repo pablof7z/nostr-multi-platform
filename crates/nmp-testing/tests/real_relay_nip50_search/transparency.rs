@@ -13,7 +13,7 @@
 //!      its read relay R (the proven path that also fetches kind:0/3/10002/10006),
 //!   3. R returns the kind:10007, the `SearchRelayListProjection` ingests it,
 //!   4. the auto-wired default search-relay source (installed by
-//!      `nmp_nip51::register_search_relay_runtime_with_fallbacks` now
+//!      `nmp_nip51::register` now
 //!      resolves `UserPreferred` to `wss://nostr.wine`.
 //!
 //! Then we call ONLY `open_search("bitcoin", Users, UserPreferred, ..)` and

@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire codec for [`crate::inbox::DmInboxSnapshot`].
 //!
 //! The `"nmp.nip17.dm_inbox"` projection is emitted by
-//! [`crate::register_runtime`]. This module encodes the typed FlatBuffers
+//! [`crate::register`]. This module encodes the typed FlatBuffers
 //! sidecar payload carried in `typed_projections` (ADR-0072,
 //! `crates/nmp-core/schema/nmp_update.fbs`).
 //!

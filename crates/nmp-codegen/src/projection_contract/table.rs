@@ -414,7 +414,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `nmp_nip51::register_mute_runtime` under this key.
+        // Registered by `nmp_nip51::register` under this key.
         // Was missing from the contract — a real Tier-1 projection key, not an
         // internal wire type (the earlier #1723 investigation misclassified it).
         key: "nmp.nip51.mute_list",
