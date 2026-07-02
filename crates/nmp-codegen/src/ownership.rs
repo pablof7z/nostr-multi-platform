@@ -32,6 +32,19 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "mechanism",
+            id: "codegen.read_model_contract",
+            exclusive: true,
+            scope: {
+                kind: "registry",
+                value: "READ_MODEL_CONTRACT",
+                context: "",
+            },
+            owns: [
+                "read-model ownership contract registry",
+            ],
+        },
+        {
+            claim_type: "mechanism",
             id: "codegen.projection_contract",
             exclusive: true,
             scope: {

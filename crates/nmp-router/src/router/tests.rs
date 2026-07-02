@@ -86,7 +86,7 @@ fn interest_for_kinds(authors: &[&str], kinds: &[u32]) -> LogicalInterest {
 #[test]
 fn publish_uses_nip65_write_set() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://w.example".into()],
@@ -152,7 +152,7 @@ fn publish_unroutable_when_no_nip65_and_no_app_relay() {
 #[test]
 fn publish_drops_blocked_relays() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://blocked.example".into(), "wss://ok.example".into()],
@@ -173,14 +173,14 @@ fn publish_drops_blocked_relays() {
 #[test]
 fn subscribe_uses_nip65_read_set_for_each_author() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
             read: vec!["wss://alice-r.example".into()],
             ..ParsedRelayList::default()
         },
     );
-    cache.upsert(
+    cache.fixture_upsert(
         "bob".into(),
         ParsedRelayList {
             both: vec!["wss://bob-b.example".into()],
@@ -246,7 +246,7 @@ fn trace_observer_fires_on_success_and_skips_unroutable() {
     // successful call (with the right trace payload), and NOT at all when
     // the router returns Unroutable.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://w.example".into()],
@@ -355,7 +355,7 @@ fn route_subscription_stacks_indexer_on_top_of_stale_nip65_kind_10002() {
     // RoutingSource::Indexer — so a newer kind:10002 published on a
     // different relay is structurally reachable.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
             read: vec!["wss://stale.example".into()],
@@ -399,7 +399,7 @@ fn route_publish_includes_indexer_lane_for_discovery_kinds() {
     // kind:3, etc.) hits the indexer in addition to the author's
     // NIP-65 write set.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://w.example".into()],

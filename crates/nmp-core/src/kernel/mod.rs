@@ -272,6 +272,9 @@ pub struct Kernel {
     pending_backoff_hints: Vec<(String, BackoffHint)>,
     /// NIP-65 kind:10002 mailbox cache substrate (see crate-boundaries.md §3).
     mailbox_cache: Arc<dyn MailboxCache>,
+    /// Test-only concrete mailbox cache handle for fixture seeding.
+    #[cfg(any(test, feature = "test-support"))]
+    test_mailbox_cache: Arc<TestInMemoryMailboxCache>,
     /// Outbox router substrate (see crate-boundaries.md §3).
     outbox_router: Arc<dyn OutboxRouter>,
     /// Injected content parser (D0 — no NIP noun in `nmp-core`).

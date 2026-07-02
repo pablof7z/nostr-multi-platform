@@ -28,9 +28,10 @@
 use std::sync::Arc;
 
 use nmp_core::kinds::KIND_RELAY_LIST;
-use nmp_core::substrate::{IngestParser, MailboxCache, ParsedRelayList};
+use nmp_core::substrate::{IngestParser, ParsedRelayList};
 use nmp_store::VerifiedEvent;
 
+use crate::cache::KIND10002_WRITER;
 use crate::InMemoryMailboxCache;
 
 /// The kind:10002 ingest parser. Constructed with a shared
@@ -61,9 +62,11 @@ impl Kind10002Parser {
         }
         let parsed = to_core_relay_list(nmp_nip65_types::parse_relay_list_tags(&raw.tags));
         if parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty() {
-            self.cache.remove(&raw.pubkey);
+            self.cache
+                .remove_kind10002_entry(KIND10002_WRITER, &raw.pubkey);
         } else {
-            self.cache.upsert(raw.pubkey.clone(), parsed);
+            self.cache
+                .apply_kind10002_update(KIND10002_WRITER, raw.pubkey.clone(), parsed);
         }
     }
 }
@@ -85,6 +88,7 @@ fn to_core_relay_list(parsed: nmp_nip65_types::Nip65RelayList) -> ParsedRelayLis
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::substrate::MailboxCache;
     use nmp_store::RawEvent;
 
     fn evt(pubkey: &str, kind: u32, tags: Vec<Vec<String>>) -> VerifiedEvent {

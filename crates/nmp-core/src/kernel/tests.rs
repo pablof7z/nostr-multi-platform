@@ -5,7 +5,7 @@ use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY};
 use crate::store::InsertOutcome;
 
 struct Kind10002ProjectionProbe {
-    cache: std::sync::Arc<dyn crate::substrate::MailboxCache>,
+    cache: std::sync::Arc<crate::substrate::TestInMemoryMailboxCache>,
 }
 
 impl crate::substrate::IngestParser for Kind10002ProjectionProbe {
@@ -15,9 +15,9 @@ impl crate::substrate::IngestParser for Kind10002ProjectionProbe {
             return;
         }
         if raw.tags.is_empty() {
-            self.cache.remove(&raw.pubkey);
+            self.cache.fixture_remove(&raw.pubkey);
         } else {
-            self.cache.upsert(
+            self.cache.fixture_upsert(
                 raw.pubkey.clone(),
                 crate::substrate::ParsedRelayList {
                     read: vec![format!("event:{}", raw.id)],
@@ -33,7 +33,7 @@ fn install_kind10002_projection_probe(kernel: &mut Kernel) {
     kernel.register_ingest_parser(
         10002,
         std::sync::Arc::new(Kind10002ProjectionProbe {
-            cache: kernel.mailbox_cache_arc(),
+            cache: kernel.test_mailbox_cache_arc(),
         }),
     );
 }

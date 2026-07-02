@@ -174,7 +174,7 @@ fn publish_lane7_fallback_traces_empty_lanes_then_app_relay_fallback() {
 #[test]
 fn publish_lane1_match_no_app_relay_fallback_attempt() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://w.example".into()],
@@ -224,7 +224,7 @@ fn publish_no_observer_no_attempts_accumulated() {
     // without the router allocating or storing attempts anywhere.
     // We do NOT install an observer; the router must still work correctly.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://w.example".into()],
@@ -295,7 +295,7 @@ fn subscribe_lane7_fallback_traces_empty_lanes_then_app_relay_fallback() {
 #[test]
 fn subscribe_lane1_match_no_app_relay_fallback_attempt() {
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         "alice".into(),
         ParsedRelayList {
             read: vec!["wss://r.example".into()],
@@ -444,7 +444,7 @@ fn publish_no_active_account_means_no_user_configured_attempt() {
 fn publish_hint_lane_reports_matched_even_when_relay_already_in_nip65() {
     // Seed NIP-65 write set with the same URL that will also appear as a hint.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://shared.example".into()],

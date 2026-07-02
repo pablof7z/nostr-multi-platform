@@ -16,11 +16,10 @@
 //!   immediately swaps this for `nmp_router::GenericOutboxRouter` via
 //!   [`crate::NmpApp::set_routing_substrate`]; tests that exercise real
 //!   routing call `Kernel::set_routing` with a real router.
-//! - [`EmptyMailboxCache`]: every read returns `None`; `upsert` / `remove`
-//!   are silent no-ops. Production composition swaps in
-//!   `nmp_router::InMemoryMailboxCache`. Tests that need a real backing
-//!   cache (the kind:10002 ingest tests, the planner-side compiler tests
-//!   in this crate) use [`TestInMemoryMailboxCache`] under
+//! - [`EmptyMailboxCache`]: every read returns `None`. Production composition
+//!   swaps in `nmp_router::InMemoryMailboxCache`. Tests that need a real backing
+//!   cache (the kind:10002 ingest tests, the planner-side compiler tests in
+//!   this crate) use [`TestInMemoryMailboxCache`] under
 //!   `cfg(any(test, feature = "test-support"))`.
 //!
 //! ## Why an Empty default at all?
@@ -86,9 +85,8 @@ impl OutboxRouter for EmptyOutboxRouter {
 
 // ─── EmptyMailboxCache ───────────────────────────────────────────────────────
 
-/// Trait-shape-only [`MailboxCache`]. Every read returns `None`; writes are
-/// silent no-ops. Production composition swaps in
-/// `nmp_router::InMemoryMailboxCache`.
+/// Trait-shape-only [`MailboxCache`]. Every read returns `None`. Production
+/// composition swaps in `nmp_router::InMemoryMailboxCache`.
 #[derive(Default)]
 pub struct EmptyMailboxCache;
 
@@ -115,10 +113,6 @@ impl MailboxCache for EmptyMailboxCache {
     fn snapshot_all(&self) -> Vec<(Pubkey, ParsedRelayList)> {
         Vec::new()
     }
-
-    fn remove(&self, _author: &Pubkey) {}
-
-    fn upsert(&self, _author: Pubkey, _list: ParsedRelayList) {}
 }
 
 // ─── TestInMemoryMailboxCache (test/test-support only) ───────────────────────
@@ -163,6 +157,20 @@ impl TestInMemoryMailboxCache {
     pub fn new_arc() -> Arc<dyn MailboxCache> {
         Arc::new(Self::default())
     }
+
+    /// Test fixture seed path for parsed kind:10002 facts.
+    pub fn fixture_upsert(&self, author: Pubkey, list: ParsedRelayList) {
+        if let Ok(mut g) = self.inner.write() {
+            g.insert(author, list);
+        }
+    }
+
+    /// Test fixture clear path for parsed kind:10002 facts.
+    pub fn fixture_remove(&self, author: &Pubkey) {
+        if let Ok(mut g) = self.inner.write() {
+            g.remove(author);
+        }
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -190,18 +198,6 @@ impl MailboxCache for TestInMemoryMailboxCache {
             .read()
             .map(|g| g.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default()
-    }
-
-    fn remove(&self, author: &Pubkey) {
-        if let Ok(mut g) = self.inner.write() {
-            g.remove(author);
-        }
-    }
-
-    fn upsert(&self, author: Pubkey, list: ParsedRelayList) {
-        if let Ok(mut g) = self.inner.write() {
-            g.insert(author, list);
-        }
     }
 }
 
@@ -286,16 +282,6 @@ mod tests {
         assert!(cache.snapshot(&alice).is_none());
         assert!(cache.snapshot_all().is_empty());
         assert!(!cache.known(&alice));
-        // upsert + remove are silent no-ops on the empty cache.
-        cache.upsert(
-            alice.clone(),
-            ParsedRelayList {
-                read: vec!["wss://r.example".into()],
-                ..ParsedRelayList::default()
-            },
-        );
-        assert!(!cache.known(&alice));
-        cache.remove(&alice);
     }
 
     #[test]
@@ -303,7 +289,7 @@ mod tests {
         let cache = TestInMemoryMailboxCache::new();
         let alice: Pubkey = "alice".into();
         assert!(!cache.known(&alice));
-        cache.upsert(
+        cache.fixture_upsert(
             alice.clone(),
             ParsedRelayList {
                 read: vec!["wss://r.example".into()],
@@ -316,7 +302,7 @@ mod tests {
         assert_eq!(snap.read, vec!["wss://r.example"]);
         assert_eq!(snap.write, vec!["wss://w.example"]);
         assert_eq!(snap.both, vec!["wss://b.example"]);
-        cache.remove(&alice);
+        cache.fixture_remove(&alice);
         assert!(!cache.known(&alice));
     }
 }

@@ -180,7 +180,10 @@ impl Kernel {
         let content_parser: Arc<dyn crate::substrate::ContentParser> =
             Arc::new(crate::substrate::NoopContentParser::new());
         #[cfg(any(test, feature = "test-support"))]
-        let mailbox_cache: Arc<dyn MailboxCache> = Arc::new(TestInMemoryMailboxCache::new());
+        let test_mailbox_cache = Arc::new(TestInMemoryMailboxCache::new());
+        #[cfg(any(test, feature = "test-support"))]
+        let mailbox_cache: Arc<dyn MailboxCache> =
+            Arc::clone(&test_mailbox_cache) as Arc<dyn MailboxCache>;
         #[cfg(not(any(test, feature = "test-support")))]
         let mailbox_cache: Arc<dyn MailboxCache> = Arc::new(EmptyMailboxCache::new());
 
@@ -255,6 +258,8 @@ impl Kernel {
             deferred_outbound: VecDeque::new(),
             pending_backoff_hints: Vec::new(),
             mailbox_cache,
+            #[cfg(any(test, feature = "test-support"))]
+            test_mailbox_cache,
             outbox_router,
             content_parser,
             routing_trace,
