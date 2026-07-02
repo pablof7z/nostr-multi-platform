@@ -25,12 +25,31 @@ rows are ordinary Nostr content.
 
 - Reusable NMP: `nmp-feed`, NIP modules, routing, repost/delete acquisition,
   cache, and replaceable supersession.
-- App Rust core: declares `FeedParams`: output key, primary content kinds,
-  typed source expression, admission, order, window policy, and item projection.
+- App Rust core: declares a typed feed spec: app-owned output key, primary
+  content kinds, typed source expression, admission, order, window policy, and
+  item projection. The helper builds canonical `FeedParams` underneath.
 - Shell: opens/closes the feed by handle and renders the pushed projection.
 - Runtime/host: transports the handle and installs component providers.
 - Single writers: NMP writes event facts; the feed session/app projection writes
   projection facts; the shell writes no feed or protocol facts.
+
+Normal app Rust code opens the feed through the app-facing helper:
+
+```rust
+let handle = app.feeds().open_spec(
+    FeedKey::app("myapp.timeline.home")?,
+    feed::events()
+        .primary_kinds([KIND_NOTE])
+        .from(source::active_user().follows())
+        .shape(FeedShape::RootIndexed)
+        .order(FeedOrder::NewestByFeedPosition)
+        .window(FeedWindowPolicy::bounded(80))
+        .project(FeedItemProjection::feed_rows()),
+)?;
+```
+
+The equivalent canonical `FeedParams` JSON is what host helpers and web workers
+transport; it is not a second app programming model:
 
 ```json
 {

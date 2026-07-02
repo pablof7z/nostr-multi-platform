@@ -106,18 +106,18 @@ active account author and switches that projection on account changes.
 pub fn open_active_follows_op_feed(
     app: &NmpApp,
     primary_kinds: Vec<u32>,
-    key: ProjectionKey,
-) -> Result<FeedHandle, FeedOpenError> {
-    app.open_feed(&FeedParams {
-        primary_kinds,
-        shape: FeedShape::RootIndexed,
-        source: FeedSourceExpr::ActiveUserFollows,
-        admission: FeedAdmission::All,
-        order: FeedOrder::NewestByFeedPosition,
-        window: FeedWindowPolicy::bounded(80),
+    key: FeedKey,
+) -> Result<FeedHandle, FeedSpecOpenError> {
+    app.feeds().open_spec(
         key,
-        item_projection: FeedItemProjection::FeedRows,
-    })
+        feed::events()
+            .primary_kinds(primary_kinds)
+            .from(source::active_user().follows())
+            .shape(FeedShape::RootIndexed)
+            .order(FeedOrder::NewestByFeedPosition)
+            .window(FeedWindowPolicy::bounded(80))
+            .project(FeedItemProjection::feed_rows()),
+    )
 }
 ```
 
