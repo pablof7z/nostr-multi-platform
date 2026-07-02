@@ -14,12 +14,11 @@
 //! caller's unique output key. Set algebra (`Union`/`Intersection`/
 //! `Difference`) composes child compilations in `set_algebra`.
 //!
-//! Step 4 adds `CustomPerspectiveId` RESOLUTION over the same compiler: an app
-//! registers a CLOSED [`nmp_feed::CustomPerspectiveDef`] (a `FeedScope` +
-//! order) under an id; a `Custom`
-//! reference in [`FeedParams`] looks the id up and compiles the registered scope
-//! through `resolve_scope`/`build_scope_session` — NO second resolver. An
-//! UNREGISTERED id still fails CLOSED (no leak). See `custom.rs`.
+//! Step 4 adds custom feed-policy id resolution over the same compiler: an app
+//! registers closed source, admission, or order definitions under phase-specific
+//! ids; a `Custom` reference in [`FeedParams`] looks up that phase's definition
+//! and compiles through `resolve_scope`/`build_scope_session` — NO second
+//! resolver. An UNREGISTERED id still fails CLOSED (no leak). See `custom.rs`.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -30,8 +29,9 @@ use nmp_core::substrate::{
 };
 use nmp_core::{CommandSender, TypedProjectionData};
 use nmp_feed::{
-    CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedAuthorRefs, FeedController,
-    FeedItemProjection, FeedParams, FeedSessionBuild, FeedWindowSource, PullFn, TeardownAction,
+    CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
+    CustomSourceId, FeedAdmission, FeedAuthorRefs, FeedController, FeedItemProjection, FeedParams,
+    FeedSessionBuild, FeedWindowSource, PullFn, TeardownAction,
 };
 
 mod active_shape;
@@ -115,7 +115,9 @@ pub trait FeedSessionHost {
     ) where
         S: FeedAuthorRefs + Send + Sync + 'static,
         F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static;
-    fn custom_perspective(&self, id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef>;
+    fn custom_source(&self, id: &CustomSourceId) -> Option<CustomSourceDef>;
+    fn custom_admission(&self, id: &CustomAdmissionId) -> Option<CustomAdmissionDef>;
+    fn custom_order(&self, id: &CustomOrderId) -> Option<CustomOrderDef>;
     fn unregister_feed_action(&self, key: String) -> TeardownAction;
     fn remove_projection_action(&self, key: String) -> TeardownAction;
     fn mark_changed_action(&self) -> TeardownAction;
@@ -152,8 +154,7 @@ pub trait FeedSessionHost {
 ///   children.
 /// * `ActiveUserHostedGroups` → the active account's kind:10009 NIP-51 list,
 ///   reduced into one host-pinned NIP-29 `#h` source per relay.
-/// * `RelaySet` and `CustomPerspectiveId` stay fail-closed (no resolver / step
-///   4 respectively).
+/// * `RelaySet` stays fail-closed (no resolver).
 pub fn compile_feed_params<H: FeedSessionHost>(
     app: &H,
     params: &FeedParams,
@@ -184,7 +185,7 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
 
     // RANKING (#1740 step 4). The session engine sorts roots newest-first
     // (`NewestByFeedPosition`) only. `OldestByFeedPosition` is not wired. A
-    // `FeedOrder::Custom(id)` resolves to a REGISTERED perspective's order —
+    // `FeedOrder::Custom(id)` resolves to a REGISTERED custom order —
     // which must itself be engine-honorable (`NewestByFeedPosition`) or the open
     // fails closed. Anything the engine cannot honor would silently mis-order, so
     // reject before registering anything (D6). An UNREGISTERED id also fails
@@ -192,14 +193,13 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
     // order or a typed error.
     custom::resolve_order(app, &params.order)?;
 
-    // ── Resolve the ACQUISITION scope (step 3 compiler; custom id → registered
-    //    definition's scope). An unregistered `CustomPerspectiveId` fails closed.
+    // ── Resolve the ACQUISITION scope (step 3 compiler; custom source id →
+    //    registered source expression). An unregistered id fails closed.
     let mut resolved = custom::resolve_acquisition(app, &params.source, acquisition_kinds)?;
 
     // ── ADMISSION. `All` keeps the acquisition's own admission gate; `Custom(id)`
-    //    intersects the registered perspective's compiled admission ON TOP (a
-    //    pure filter — it adds no row source, like `Difference`'s right side). An
-    //    unregistered id fails closed; the acquisition's already-registered
+    //    intersects the registered admission gate's compiled admission ON TOP.
+    //    An unregistered id fails closed; the acquisition's already-registered
     //    resolver observers are revoked so nothing leaks.
     if let FeedAdmission::Custom(id) = &params.admission {
         resolved = custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;

@@ -62,7 +62,8 @@ pub use builder::{
 };
 pub use debug_info::{empty_debug_info_json, DOMAIN_COMPOSITION, DOMAIN_MERGED, DOMAIN_ROUTING};
 pub use feed::{
-    decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle,
+    decode_and_validate_feed_params, validate_feed_params, CustomAdmissionDef, CustomAdmissionId,
+    CustomOrderDef, CustomOrderId, CustomSourceDef, CustomSourceId, FeedAdmission, FeedHandle,
     FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedParamsDecodeError, FeedScope,
     FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy,
     ProjectionKey,

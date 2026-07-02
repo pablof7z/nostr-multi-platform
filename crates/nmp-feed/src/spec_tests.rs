@@ -85,4 +85,8 @@ fn source_helpers_build_closed_source_expressions() {
             pointer_kinds: vec![7, 1111],
         }
     );
+    assert_eq!(
+        source::custom("for-you"),
+        FeedSourceExpr::CustomSource(CustomSourceId("for-you".into())),
+    );
 }

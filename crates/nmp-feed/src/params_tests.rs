@@ -41,7 +41,7 @@ fn feed_source_expr_variants_construct() {
         pointer_kinds: vec![7, 1111],
     };
     let hosted_groups = FeedScope::ActiveUserHostedGroups;
-    let custom = FeedScope::CustomPerspectiveId(CustomPerspectiveId("trending".into()));
+    let custom = FeedScope::CustomSource(CustomSourceId("trending".into()));
 
     let union = FeedScope::Union(Box::new(follows.clone()), Box::new(list.clone()));
     let inter = FeedScope::Intersection(Box::new(contacts.clone()), Box::new(wot.clone()));
@@ -85,7 +85,7 @@ fn describe(expr: &FeedSourceExpr) -> &'static str {
         FeedSourceExpr::Union(..) => "union",
         FeedSourceExpr::Intersection(..) => "intersection",
         FeedSourceExpr::Difference(..) => "difference",
-        FeedSourceExpr::CustomPerspectiveId(..) => "custom-perspective",
+        FeedSourceExpr::CustomSource(..) => "custom-source",
     }
 }
 
@@ -113,23 +113,21 @@ fn pointer_targets_scope_names_pointer_authors_and_kinds() {
 }
 
 #[test]
-fn custom_perspective_id_is_an_opaque_string_no_trait_no_closure() {
-    // The only way app policy enters is via an opaque id — there is no trait to
-    // implement and no closure to pass. This test documents that contract.
-    let admission = FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()));
-    let order = FeedOrder::Custom(CustomPerspectiveId("engagement".into()));
-    let scope = FeedScope::CustomPerspectiveId(CustomPerspectiveId("for-you".into()));
+fn custom_policy_ids_are_phase_specific_opaque_strings() {
+    // App policy enters via opaque ids only — there is no trait to implement and
+    // no closure to pass. The id types are phase-specific so a source cannot be
+    // accidentally reused as an admission gate or order policy.
+    let admission = FeedAdmission::Custom(CustomAdmissionId("nsfw-filter".into()));
+    let order = FeedOrder::Custom(CustomOrderId("engagement".into()));
+    let scope = FeedScope::CustomSource(CustomSourceId("for-you".into()));
     assert_eq!(
         admission,
-        FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()))
+        FeedAdmission::Custom(CustomAdmissionId("nsfw-filter".into()))
     );
-    assert_eq!(
-        order,
-        FeedOrder::Custom(CustomPerspectiveId("engagement".into()))
-    );
+    assert_eq!(order, FeedOrder::Custom(CustomOrderId("engagement".into())));
     assert_eq!(
         scope,
-        FeedScope::CustomPerspectiveId(CustomPerspectiveId("for-you".into()))
+        FeedScope::CustomSource(CustomSourceId("for-you".into()))
     );
 }
 

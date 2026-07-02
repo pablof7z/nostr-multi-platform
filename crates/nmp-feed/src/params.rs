@@ -16,8 +16,8 @@
 //! - D8: window limits ride on the typed [`FeedWindowPolicy`].
 //!
 //! `open_feed` consumes this declaration through the standard feed-session
-//! compiler. No native closure crosses FFI — app-defined admission/order is
-//! referenced by an opaque [`CustomPerspectiveId`].
+//! compiler. No native closure crosses FFI — app-defined source, admission, and
+//! order policies are referenced by phase-specific opaque ids.
 
 use serde::{Deserialize, Serialize};
 
@@ -36,14 +36,30 @@ use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ListId(pub String);
 
-/// Opaque identifier for an app-defined admission/order perspective.
+/// Opaque identifier for an app-registered custom acquisition source.
 ///
-/// This is how app-defined policy enters the model **without** a `Perspective`
-/// trait and **without** a native closure crossing FFI. The app registers its
-/// admission/order logic out-of-band and names it here by id; the kernel sees
-/// only the opaque id and dispatches the compiled, pre-registered predicate.
+/// The framework treats this as a source-phase capability only: resolving it
+/// yields another closed [`FeedSourceExpr`] tree. Admission and ordering use
+/// their own id types so a source capability cannot be accidentally used as a
+/// gate or ranker contract.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
-pub struct CustomPerspectiveId(pub String);
+pub struct CustomSourceId(pub String);
+
+/// Opaque identifier for an app-registered custom admission gate.
+///
+/// Resolving this id yields a closed source expression used as an event-aware
+/// admission gate. It is deliberately not interchangeable with a custom source
+/// or order id.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct CustomAdmissionId(pub String);
+
+/// Opaque identifier for an app-registered custom ordering policy.
+///
+/// Resolving this id yields a concrete order that the current feed engine must
+/// be able to honor. It is deliberately not interchangeable with source or
+/// admission ids.
+#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
+pub struct CustomOrderId(pub String);
 
 /// A web-of-trust seed pubkey (lowercase hex).
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -133,9 +149,9 @@ pub enum FeedSourceExpr {
     Intersection(Box<FeedSourceExpr>, Box<FeedSourceExpr>),
     /// Set difference: members of `0` that are not in `1`.
     Difference(Box<FeedSourceExpr>, Box<FeedSourceExpr>),
-    /// An app-defined acquisition perspective referenced by opaque registered
-    /// id (no trait, no native closure).
-    CustomPerspectiveId(CustomPerspectiveId),
+    /// An app-defined acquisition source referenced by opaque registered id
+    /// (no trait, no native closure).
+    CustomSource(CustomSourceId),
 }
 
 /// Alias: the acquisition phase of a [`FeedParams`] is a [`FeedSourceExpr`].
@@ -171,15 +187,15 @@ impl Default for FeedShape {
 
 /// (b) ADMISSION policy — which acquired rows are allowed to render.
 ///
-/// App-defined admission enters as an opaque [`CustomPerspectiveId`], never a
+/// App-defined admission enters as an opaque [`CustomAdmissionId`], never a
 /// native closure or trait object.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum FeedAdmission {
     /// Admit every acquired primary-kind row (mute/block/delete suppression is
     /// applied by the kernel regardless).
     All,
-    /// Admit per an app-registered admission perspective (opaque id).
-    Custom(CustomPerspectiveId),
+    /// Admit per an app-registered admission gate (opaque id).
+    Custom(CustomAdmissionId),
 }
 
 /// (c) ORDER — how admitted rows are ordered in the window.
@@ -194,7 +210,7 @@ pub enum FeedOrder {
     /// Oldest-first by feed position.
     OldestByFeedPosition,
     /// Ordered per an app-registered order perspective (opaque id).
-    Custom(CustomPerspectiveId),
+    Custom(CustomOrderId),
 }
 
 /// (d) WINDOW — the bounded viewport over admitted, ordered rows (D8).

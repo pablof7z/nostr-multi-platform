@@ -6,8 +6,8 @@ use crate::NmpApp;
 use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::{CommandSender, TypedProjectionData};
 use nmp_feed::{
-    CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedWindowSource,
-    PullFn, TeardownAction,
+    CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
+    CustomSourceId, FeedAuthorRefs, FeedController, FeedWindowSource, PullFn, TeardownAction,
 };
 use nmp_feed_session::{FeedSessionHost, IdentityChangeObserverId};
 
@@ -66,8 +66,16 @@ impl FeedSessionHost for NmpApp {
         NmpApp::register_feed_window_source(self, feed_key, source, encode);
     }
 
-    fn custom_perspective(&self, id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {
-        NmpApp::custom_perspective(self, id)
+    fn custom_source(&self, id: &CustomSourceId) -> Option<CustomSourceDef> {
+        NmpApp::custom_source(self, id)
+    }
+
+    fn custom_admission(&self, id: &CustomAdmissionId) -> Option<CustomAdmissionDef> {
+        NmpApp::custom_admission(self, id)
+    }
+
+    fn custom_order(&self, id: &CustomOrderId) -> Option<CustomOrderDef> {
+        NmpApp::custom_order(self, id)
     }
 
     fn unregister_feed_action(&self, key: String) -> TeardownAction {

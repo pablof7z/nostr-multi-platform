@@ -9,8 +9,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use crate::params::{
-    CustomPerspectiveId, FeedAdmission, FeedItemProjection, FeedKey, FeedOrder, FeedParams,
-    FeedShape, FeedSourceExpr, FeedWindowPolicy, ListId, RelaySetId, TagTerm, WotRulesId, WotSeed,
+    CustomSourceId, FeedAdmission, FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedShape,
+    FeedSourceExpr, FeedWindowPolicy, ListId, RelaySetId, TagTerm, WotRulesId, WotSeed,
 };
 
 /// Builder-style feed descriptor used by app code before compiling to
@@ -257,10 +257,10 @@ pub mod source {
         }
     }
 
-    /// Custom registered source/perspective.
+    /// Custom registered source.
     #[must_use]
     pub fn custom(id: impl Into<String>) -> FeedSourceExpr {
-        FeedSourceExpr::CustomPerspectiveId(CustomPerspectiveId(id.into()))
+        FeedSourceExpr::CustomSource(CustomSourceId(id.into()))
     }
 
     /// Source union.

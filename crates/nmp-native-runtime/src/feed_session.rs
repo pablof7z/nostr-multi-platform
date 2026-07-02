@@ -409,57 +409,70 @@ impl NmpApp {
         self.feed_sessions.live_count()
     }
 
-    /// #1740 step 4 — register a CLOSED-DATA custom-perspective definition under
-    /// an opaque id, for a Rust app crate to declare app-defined
-    /// admission/order WITHOUT a `Perspective` trait or a native closure
-    /// crossing FFI.
-    ///
-    /// `def` is pure data — a [`nmp_feed::FeedScope`] acquisition + a
-    /// [`nmp_feed::FeedOrder`]. After registration a [`FeedParams`] may
-    /// reference `id` via `FeedScope::CustomPerspectiveId(id)` (acquisition),
-    /// `FeedAdmission::Custom(id)` (admission gate), or `FeedOrder::Custom(id)`
-    /// (order); the perspective compiler resolves the id back to this
-    /// definition and compiles it through the SAME step-3 resolver. An
-    /// UNREGISTERED id still fails closed at open.
+    /// Register a CLOSED-DATA custom source definition under an opaque source id.
     ///
     /// Register-ONCE: returns `true` if `id` was newly registered, `false` if it
-    /// was already registered (the EXISTING definition stands — see below) or the
-    /// registry lock is poisoned. Definitions are IMMUTABLE and not individually
-    /// retractable; the registry lives for the life of the app (process-lifetime
-    /// in practice).
-    ///
-    /// Immutability is a fail-CLOSED safety property: a live feed session
-    /// captured the COMPILED admission of the definition that existed when it
-    /// opened. Allowing an overwrite to a narrower gate would leave already-open
-    /// feeds admitting under the stale WIDER policy — a fail-OPEN leak. So a
-    /// definition never changes underneath a running session.
-    ///
-    /// FFI note: this is the Rust-side registration only. A C-ABI / wasm
-    /// surface for app-defined perspectives is deferred to a later #1740 step;
-    /// the closed-data definition is exactly what such a surface would carry, so
-    /// no closure ever needs to cross the boundary.
-    pub fn register_custom_perspective(
+    /// already existed or the registry lock is poisoned.
+    pub fn register_custom_source(
         &self,
-        id: nmp_feed::CustomPerspectiveId,
-        def: nmp_feed::CustomPerspectiveDef,
+        id: nmp_feed::CustomSourceId,
+        def: nmp_feed::CustomSourceDef,
     ) -> bool {
-        self.custom_perspectives.register(id, def)
+        self.custom_feed_policies.register_source(id, def)
     }
 
-    /// #1740 step 4 — the definition registered under `id`, or `None` if
-    /// unregistered. The perspective compiler keys on `None` to fail closed.
-    #[must_use]
-    pub fn custom_perspective(
+    /// Register a CLOSED-DATA custom admission-gate definition.
+    ///
+    /// Register-ONCE: returns `true` if `id` was newly registered, `false` if it
+    /// already existed or the registry lock is poisoned.
+    pub fn register_custom_admission(
         &self,
-        id: &nmp_feed::CustomPerspectiveId,
-    ) -> Option<nmp_feed::CustomPerspectiveDef> {
-        self.custom_perspectives.get(id)
+        id: nmp_feed::CustomAdmissionId,
+        def: nmp_feed::CustomAdmissionDef,
+    ) -> bool {
+        self.custom_feed_policies.register_admission(id, def)
     }
 
-    /// Test/diagnostic — count of registered custom perspectives.
+    /// Register a CLOSED-DATA custom order definition.
+    ///
+    /// Register-ONCE: returns `true` if `id` was newly registered, `false` if it
+    /// already existed or the registry lock is poisoned.
+    pub fn register_custom_order(
+        &self,
+        id: nmp_feed::CustomOrderId,
+        def: nmp_feed::CustomOrderDef,
+    ) -> bool {
+        self.custom_feed_policies.register_order(id, def)
+    }
+
+    /// The custom source definition registered under `id`, or `None`.
     #[must_use]
-    pub fn custom_perspective_count(&self) -> usize {
-        self.custom_perspectives.len()
+    pub fn custom_source(
+        &self,
+        id: &nmp_feed::CustomSourceId,
+    ) -> Option<nmp_feed::CustomSourceDef> {
+        self.custom_feed_policies.get_source(id)
+    }
+
+    /// The custom admission-gate definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_admission(
+        &self,
+        id: &nmp_feed::CustomAdmissionId,
+    ) -> Option<nmp_feed::CustomAdmissionDef> {
+        self.custom_feed_policies.get_admission(id)
+    }
+
+    /// The custom order definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_order(&self, id: &nmp_feed::CustomOrderId) -> Option<nmp_feed::CustomOrderDef> {
+        self.custom_feed_policies.get_order(id)
+    }
+
+    /// Test/diagnostic — count of registered custom feed policies.
+    #[must_use]
+    pub fn custom_feed_policy_count(&self) -> usize {
+        self.custom_feed_policies.len()
     }
 }
 

@@ -1,23 +1,20 @@
-//! `CustomPerspectiveId` RESOLUTION (#1740 step 4).
+//! Custom feed-policy id resolution.
 //!
 //! Step 3 left every `Custom` reference fail-closed; this module resolves a
-//! `Custom` reference back to its REGISTERED [`nmp_feed::CustomPerspectiveDef`]
-//! (a CLOSED `FeedScope` + order — pure data, registered out-of-band by the
-//! host runtime) and compiles it through the SAME step-3
-//! resolver. There is NO second resolver and NO closure crosses the boundary:
-//! the registry stores data, this module looks it up and calls
-//! [`super::resolve::resolve_scope`].
+//! `Custom` reference back to phase-specific registered closed data and
+//! compiles it through the SAME step-3 resolver. There is NO second resolver
+//! and NO closure crosses the boundary.
 //!
-//! Three reference points, all keyed by the same registry look-up:
-//! * `FeedScope::CustomPerspectiveId(id)` (acquisition) → resolve the registered
-//!   scope as the acquisition source.
-//! * `FeedAdmission::Custom(id)` (admission gate) → AND the registered scope's
-//!   compiled admission predicate ON TOP of the acquisition's — the admission
+//! Three reference points:
+//! * `FeedScope::CustomSource(id)` (acquisition) → resolve the registered
+//!   source expression as the acquisition source.
+//! * `FeedAdmission::Custom(id)` (admission gate) → AND the registered gate
+//!   expression's compiled admission predicate ON TOP of the acquisition — the admission
 //!   semantics of `Intersection(acquisition, gate)`. The gate's DEPENDENCY +
 //!   row acquisition is KEPT (so its predicate goes live on a cold open); the
 //!   AND keeps the result faithful (gate-only rows are filtered out).
-//! * `FeedOrder::Custom(id)` (order) → use the registered order, which must
-//!   itself be engine-honorable or the open fails closed.
+//! * `FeedOrder::Custom(id)` (order) → use the registered concrete order, which
+//!   must itself be engine-honorable or the open fails closed.
 //!
 //! Fail-closed (D6) at every step: an UNREGISTERED id has no definition →
 //! [`FeedOpenError::ScopeNotSupportedYet`], and any already-registered resolver
@@ -30,7 +27,7 @@ use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
-use nmp_feed::{CustomPerspectiveId, FeedOrder, FeedScope, RootAdmission};
+use nmp_feed::{CustomAdmissionId, FeedOrder, FeedScope, RootAdmission};
 use nmp_planner::InterestShape;
 
 use super::resolve::resolve_scope;
@@ -44,7 +41,7 @@ fn not_supported(scope: &'static str) -> FeedOpenError {
 ///
 /// The session engine sorts roots newest-first (`NewestByFeedPosition`) ONLY.
 /// `OldestByFeedPosition` is not wired. `Custom(id)` resolves to the registered
-/// perspective's order, which is itself validated the same way — an
+/// custom order definition, which is itself validated the same way — an
 /// unregistered id, or a registered order the engine cannot honor, fails
 /// closed rather than silently mis-ordering (D6).
 pub(super) fn resolve_order(
@@ -56,12 +53,10 @@ pub(super) fn resolve_order(
         FeedOrder::OldestByFeedPosition => Err(not_supported("custom-order")),
         FeedOrder::Custom(id) => {
             let def = app
-                .custom_perspective(id)
+                .custom_order(id)
                 .ok_or_else(|| not_supported("custom-order"))?;
-            // The registered order must itself be engine-honorable. A custom id
-            // is NOT allowed to nest another `Custom` order (that would be an
-            // unbounded indirection with no concrete order) — only the two
-            // concrete chronological orders resolve, and only `Desc` is wired.
+            // A custom order id is not allowed to nest another custom order:
+            // that would be unbounded indirection with no concrete order.
             match def.order {
                 FeedOrder::NewestByFeedPosition => Ok(()),
                 FeedOrder::OldestByFeedPosition | FeedOrder::Custom(_) => {
@@ -72,11 +67,11 @@ pub(super) fn resolve_order(
     }
 }
 
-/// Resolve the acquisition scope, expanding a `CustomPerspectiveId` to its
-/// registered definition's scope.
+/// Resolve the acquisition scope, expanding a `CustomSourceId` to its
+/// registered source expression.
 ///
 /// A non-custom scope delegates straight to [`resolve_scope`] (the step-3
-/// compiler). A `CustomPerspectiveId(id)` looks the id up; an unregistered id
+/// compiler). A `CustomSource(id)` looks the id up; an unregistered id
 /// fails closed. The registered scope is then resolved through the SAME step-3
 /// compiler — so set algebra (e.g. a registered `Intersection(Tag, ContactList)`)
 /// composes exactly as a directly-declared scope would.
@@ -86,14 +81,12 @@ pub(super) fn resolve_acquisition(
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
     match scope {
-        FeedScope::CustomPerspectiveId(id) => {
+        FeedScope::CustomSource(id) => {
             let def = app
-                .custom_perspective(id)
-                .ok_or_else(|| not_supported("CustomPerspectiveId"))?;
-            // A registered acquisition must NOT itself be a custom id (no
-            // unbounded indirection) — resolve its concrete scope directly. A
-            // registered `ActiveUserFollows` / nested `CustomPerspectiveId` is not
-            // a session-engine scope → `resolve_scope` fails it closed.
+                .custom_source(id)
+                .ok_or_else(|| not_supported("custom-source"))?;
+            // A registered source must not resolve to another custom id. The
+            // lower resolver rejects that path fail-closed.
             resolve_scope(app, &def.source, kinds)
         }
         other => resolve_scope(app, other, kinds),
@@ -127,19 +120,19 @@ pub(super) fn resolve_acquisition(
 pub(super) fn apply_custom_admission(
     app: &impl FeedSessionHost,
     acquisition: ReducedSource,
-    id: &CustomPerspectiveId,
+    id: &CustomAdmissionId,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
-    let Some(def) = app.custom_perspective(id) else {
+    let Some(def) = app.custom_admission(id) else {
         // Unregistered → fail closed, revoking the acquisition's observers so the
         // partially-resolved open leaks nothing.
         revoke_resolved(app, acquisition);
         return Err(not_supported("custom-admission"));
     };
 
-    // Resolve the admission perspective's scope through the SAME step-3 compiler.
+    // Resolve the admission gate's scope through the SAME step-3 compiler.
     // If it fails, revoke the acquisition's observers too (fail closed, no leak).
-    let gate = match resolve_scope(app, &def.source, kinds) {
+    let gate = match resolve_scope(app, &def.gate, kinds) {
         Ok(gate) => gate,
         Err(e) => {
             revoke_resolved(app, acquisition);

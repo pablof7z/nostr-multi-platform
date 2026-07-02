@@ -24,8 +24,8 @@ native/browser `feeds().open/load_older/close` facades, native/browser
 default compiler, app-owned dynamic projection keys, separate `FeedParams.key` /
 `FeedParams.item_projection` fields, and the `FeedSpec` builder over
 `FeedParams`. Issue #1626 remains open because generated helper surfaces,
-richer window policy, explicit pointer-target hydration naming, and names such
-as `CustomPerspectiveId` still hide important ownership distinctions.
+richer window policy, and explicit pointer-target hydration naming remain open
+API cleanup.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -136,10 +136,7 @@ let handle = app.feeds().open_spec(
 )?;
 ```
 
-The target serializable descriptor behind that helper should converge to this
-shape. Current implementation has landed `source`, `shape`, `order`, and
-`FeedWindowPolicy`; the remaining naming ratchet below tracks fields whose
-ownership boundaries are still not explicit enough:
+The serializable descriptor behind that helper has this shape:
 
 ```rust
 pub struct FeedParams {
@@ -179,7 +176,7 @@ pagination by handle.
 | `FeedOrder::NewestByFeedPosition` without a target-event alternative | Add explicit target-created-at order if needed | Repost/source position and target event time are different contracts. |
 | `FeedWindowPolicy` with only `initial_limit` | Expanded `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
 | former `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
-| `CustomPerspectiveId` reused for source/admission/order | phase-specific ids or a policy id with declared capabilities | Source, admission, and order are different contracts. |
+| former `CustomPerspectiveId` reused for source/admission/order | `CustomSourceId`, `CustomAdmissionId`, `CustomOrderId` | Source, admission, and order are different contracts. |
 | `PointerTargets` as casual feed source | explicit target-hydration source or meta-timeline helper | Target hydration must never look like ordinary feed acquisition. |
 
 ## Boundaries
