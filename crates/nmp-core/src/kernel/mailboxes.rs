@@ -104,12 +104,11 @@ impl Kernel {
 /// Discriminator for the cold-start bootstrap seed passed into
 /// `app_relays` at the [`RoutingContext`] construction site.
 ///
-/// `Discovery` is the combined indexer + content seed (used for
-/// content-direction REQs: timeline kind:1/6, hashtag firehose, thread
-/// hydration). `IndexerOnly` is the indexer-lane seed (used for
-/// discovery-direction REQs: kind:0 profile claims, kind:10002 NIP-65
-/// probes). The router's lane 7 fires identically in both cases — only
-/// the cold-start URL set differs.
+/// `Discovery` is the combined indexer + content seed (used for both
+/// content-direction REQs — timeline kind:1/6, hashtag firehose, thread
+/// hydration — and discovery-direction REQs — kind:0 profile claims,
+/// kind:10002 NIP-65 probes). It is currently the only variant; the
+/// router's lane 7 fallback consumes it identically for every direction.
 #[derive(Clone, Copy)]
 pub(crate) enum BootstrapSeed {
     /// Indexer + content seeds combined (matches the historical
