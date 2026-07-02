@@ -89,8 +89,8 @@ has exactly one URL-keyed transport pool: `Start` spawns workers for the
 app-declared bootstrap relay set, and later outbound messages spawn additional
 workers on demand for their resolved target URL. `RelayRole::all()` enumerates
 transport/diagnostic lanes only; production relay URLs do not live in
-`nmp-core`. Chirp's default production relay set is leaf-app policy in
-`apps/chirp/crates/nmp-chirp-config`, while `crates/nmp-core/src/relay.rs`
+`nmp-core`. Default production relay sets are leaf-app policy owned by the
+app's Rust config or operator-provided config, while `crates/nmp-core/src/relay.rs`
 retains only test/test-support fallback URLs.
 
 ## NIP-42: challenge → response → re-emit

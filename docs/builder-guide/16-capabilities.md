@@ -87,7 +87,7 @@ Before a capability bridge is accepted, verify:
 - [ ] **`stop`/`cancel` after `stop`/`cancel` is a no-op.** No straggler
       events arrive after `Cancelled` (the M10.5 stress harness asserts this).
 - [ ] **Restart-safe N times.** 1000-cycle start/stop/restart leaves zero
-      retained-by-cycle leaks (the `ffi-stress` instrument, §K).
+      retained-by-cycle leaks (the native stress instrument, §K).
 - [ ] **Bounded native state.** The bridge holds only OS handles
       (`AVPlayer?`, `timeObserver?`, weak sink). **No queue, no history, no
       preferences, no derived state, no policy.** "Skip the ad" is decided in

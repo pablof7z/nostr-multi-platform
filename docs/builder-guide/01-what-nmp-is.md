@@ -80,17 +80,17 @@ composition is the project.
 
 ## What ships today, what's coming
 
-NMP ships an iOS social client (Chirp) on a working Rust kernel: outbox
-routing, active-user follow source tracking, NIP-46 remote signing, NIP-77 negentropy
-backfill, replaceable-event supersession, multi-account sessions, and the
-reactive snapshot loop are all live. iOS Keychain is the production signer
-path. The Highlighter and NIP-29 modules prove the kernel/extension
-boundary holds for a second protocol surface. `nmp init` scaffolds a
+NMP ships a working Rust kernel consumed by native and browser shells: outbox
+routing, active-user follow source tracking, NIP-46 remote signing, NIP-77
+negentropy backfill, replaceable-event supersession, multi-account sessions,
+and the reactive snapshot loop are all live. iOS Keychain is the production
+signer path. The Highlighter and NIP-29 modules prove the kernel/extension
+boundary holds for additional protocol surfaces. `nmp init` scaffolds a
 ready-to-build Rust workspace with a thin `<name>-core` crate, explicit Rust
 composition root, and headless `examples/shell.rs`. Native shells consume the
 Rust core through UniFFI bindings; browser shells consume it through the
 wasm-bindgen runtime. Composition is app-owned Rust code using reusable
-installers.
+installers. Chirp is now an external consumer rather than an in-repo app.
 
 Coming next: Blossom blob storage, continued browser-runtime hardening, and
 the full multi-platform starter around the same explicit composition model.

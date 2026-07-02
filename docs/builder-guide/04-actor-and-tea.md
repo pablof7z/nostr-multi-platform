@@ -136,8 +136,8 @@ comment states the rationale verbatim: *"Test-support only (D0: not part of
 production FFI surface)."*
 
 **Why this matters for you:** `testing::spawn_actor` (`lib.rs:51-56`) and the
-legacy native re-exports (`lib.rs:23-29`) exist for benches and the ffi-stress
-harness — they let Rust-side test code drive the actor directly.
+test-support native re-exports exist for benches and stress harnesses — they
+let Rust-side test code drive the actor directly.
 They are not an app API. Production code that depends on `spawn_actor` will
 fail to compile without the feature, and turning the feature on in a shipped
 app is a D0 violation: you would be reaching past the generated FFI surface
