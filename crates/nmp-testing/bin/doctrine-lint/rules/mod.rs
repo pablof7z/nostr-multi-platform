@@ -31,6 +31,7 @@ pub mod d9;
 pub mod deleted_defaults;
 pub mod feed_vocabulary;
 pub mod nip29_kind_blind;
+pub mod no_deprecated;
 pub mod no_raw_tap_reintroduction;
 pub mod product_raw_read;
 pub mod split_call;
