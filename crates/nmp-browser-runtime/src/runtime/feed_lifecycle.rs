@@ -43,6 +43,60 @@ impl<'a> BrowserFeedSessions<'a> {
         self.open(params)
     }
 
+    /// Register a custom source definition for browser feed declarations.
+    #[must_use]
+    pub fn register_custom_source(
+        &self,
+        id: nmp_feed::CustomSourceId,
+        def: nmp_feed::CustomSourceDef,
+    ) -> bool {
+        self.handle.register_custom_source(id, def)
+    }
+
+    /// Register a custom admission-gate definition for browser feed declarations.
+    #[must_use]
+    pub fn register_custom_admission(
+        &self,
+        id: nmp_feed::CustomAdmissionId,
+        def: nmp_feed::CustomAdmissionDef,
+    ) -> bool {
+        self.handle.register_custom_admission(id, def)
+    }
+
+    /// Register a custom order definition for browser feed declarations.
+    #[must_use]
+    pub fn register_custom_order(
+        &self,
+        id: nmp_feed::CustomOrderId,
+        def: nmp_feed::CustomOrderDef,
+    ) -> bool {
+        self.handle.register_custom_order(id, def)
+    }
+
+    /// The custom source definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_source(
+        &self,
+        id: &nmp_feed::CustomSourceId,
+    ) -> Option<nmp_feed::CustomSourceDef> {
+        self.handle.custom_source(id)
+    }
+
+    /// The custom admission-gate definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_admission(
+        &self,
+        id: &nmp_feed::CustomAdmissionId,
+    ) -> Option<nmp_feed::CustomAdmissionDef> {
+        self.handle.custom_admission(id)
+    }
+
+    /// The custom order definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_order(&self, id: &nmp_feed::CustomOrderId) -> Option<nmp_feed::CustomOrderDef> {
+        self.handle.custom_order(id)
+    }
+
     /// Page an open browser feed by its returned handle.
     #[must_use]
     pub fn load_older(&mut self, handle: &nmp_feed::FeedHandle) -> bool {
@@ -63,6 +117,69 @@ impl BrowserRuntimeHandle {
         BrowserFeedSessions::new(self)
     }
 
+    /// Register a CLOSED-DATA custom source definition under an opaque source id.
+    ///
+    /// Register-once: returns `true` when newly registered, `false` if the id
+    /// already existed or the registry lock is poisoned.
+    #[must_use]
+    pub fn register_custom_source(
+        &self,
+        id: nmp_feed::CustomSourceId,
+        def: nmp_feed::CustomSourceDef,
+    ) -> bool {
+        self.custom_feed_policies.register_source(id, def)
+    }
+
+    /// Register a CLOSED-DATA custom admission-gate definition.
+    #[must_use]
+    pub fn register_custom_admission(
+        &self,
+        id: nmp_feed::CustomAdmissionId,
+        def: nmp_feed::CustomAdmissionDef,
+    ) -> bool {
+        self.custom_feed_policies.register_admission(id, def)
+    }
+
+    /// Register a CLOSED-DATA custom order definition.
+    #[must_use]
+    pub fn register_custom_order(
+        &self,
+        id: nmp_feed::CustomOrderId,
+        def: nmp_feed::CustomOrderDef,
+    ) -> bool {
+        self.custom_feed_policies.register_order(id, def)
+    }
+
+    /// The custom source definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_source(
+        &self,
+        id: &nmp_feed::CustomSourceId,
+    ) -> Option<nmp_feed::CustomSourceDef> {
+        self.custom_feed_policies.get_source(id)
+    }
+
+    /// The custom admission-gate definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_admission(
+        &self,
+        id: &nmp_feed::CustomAdmissionId,
+    ) -> Option<nmp_feed::CustomAdmissionDef> {
+        self.custom_feed_policies.get_admission(id)
+    }
+
+    /// The custom order definition registered under `id`, or `None`.
+    #[must_use]
+    pub fn custom_order(&self, id: &nmp_feed::CustomOrderId) -> Option<nmp_feed::CustomOrderDef> {
+        self.custom_feed_policies.get_order(id)
+    }
+
+    /// Test/diagnostic — count of registered custom feed policies.
+    #[must_use]
+    pub fn custom_feed_policy_count(&self) -> usize {
+        self.custom_feed_policies.len()
+    }
+
     /// Open a caller-owned browser feed session.
     ///
     /// The caller supplies the full [`nmp_feed::FeedParams`], including the
@@ -73,6 +190,7 @@ impl BrowserRuntimeHandle {
         let observed_projection_registrar = self.observed_projection_registrar.clone();
         let command_sender = self.command_sender();
         let feed_registry = Arc::clone(&self.feed_registry);
+        let custom_feed_policies = Arc::clone(&self.custom_feed_policies);
         let identity_observers = Arc::clone(&self.runtime.identity_change_observers);
         let identity_observer_next_id = Arc::clone(&self.identity_observer_next_id);
         let opened = open_browser_feed_session(
@@ -82,6 +200,7 @@ impl BrowserRuntimeHandle {
                 observed_projection_registrar,
                 command_sender,
                 feed_registry,
+                custom_feed_policies,
                 identity_observers,
                 identity_observer_next_id,
             ),

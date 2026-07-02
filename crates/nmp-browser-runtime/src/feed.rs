@@ -29,6 +29,7 @@ pub(crate) struct FeedRuntimeAccess<'a> {
     pub(crate) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(crate) command_sender: CommandSender,
     pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
+    pub(crate) custom_feed_policies: Arc<nmp_feed::CustomFeedPolicyRegistry>,
     pub(crate) identity_observers: BrowserIdentityObserverSlot,
     pub(crate) identity_observer_next_id: Arc<AtomicU64>,
     event_store_slot: nmp_core::slots::EventStoreSlot,
@@ -40,6 +41,7 @@ impl<'a> FeedRuntimeAccess<'a> {
         observed_projection_registrar: ObservedProjectionCommandHandle,
         command_sender: CommandSender,
         feed_registry: nmp_feed::FeedRegistrySlot,
+        custom_feed_policies: Arc<nmp_feed::CustomFeedPolicyRegistry>,
         identity_observers: BrowserIdentityObserverSlot,
         identity_observer_next_id: Arc<AtomicU64>,
     ) -> Self {
@@ -52,6 +54,7 @@ impl<'a> FeedRuntimeAccess<'a> {
             observed_projection_registrar,
             command_sender,
             feed_registry,
+            custom_feed_policies,
             identity_observers,
             identity_observer_next_id,
             event_store_slot,
@@ -182,16 +185,16 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
         register_feed_window_source(self.reducer, feed_key, source, encode);
     }
 
-    fn custom_source(&self, _id: &CustomSourceId) -> Option<CustomSourceDef> {
-        None
+    fn custom_source(&self, id: &CustomSourceId) -> Option<CustomSourceDef> {
+        self.custom_feed_policies.get_source(id)
     }
 
-    fn custom_admission(&self, _id: &CustomAdmissionId) -> Option<CustomAdmissionDef> {
-        None
+    fn custom_admission(&self, id: &CustomAdmissionId) -> Option<CustomAdmissionDef> {
+        self.custom_feed_policies.get_admission(id)
     }
 
-    fn custom_order(&self, _id: &CustomOrderId) -> Option<CustomOrderDef> {
-        None
+    fn custom_order(&self, id: &CustomOrderId) -> Option<CustomOrderDef> {
+        self.custom_feed_policies.get_order(id)
     }
 
     fn unregister_feed_action(&self, key: String) -> TeardownAction {
