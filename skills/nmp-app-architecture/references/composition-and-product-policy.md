@@ -15,21 +15,22 @@ see, without opening any other file:
    without it `PublishTarget::Auto` fail-closes and all routing returns `Unroutable`. This is
    generic Nostr-client infrastructure, not product policy. No hidden preset is provided.
 
-2. **Reusable Nostr protocol features** — named installers from the owning protocol crates:
-   - `nmp_nip50::register_search_scopes(app)` and `register_input_scopes(app)`.
-   - `nmp_nip02::register_follow_actions(app)`.
-   - `nmp_replies::register_actions(app)`.
-   - `ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app)`.
-   - `ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app)`.
-   - `ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app)`.
-   - `nmp_nip29::register_input_scopes(app)`.
-   - `nmp_wot::register_runtime(app)`.
-   - `nmp_nip51::{register_mute_runtime, register_bookmark_runtime,
-     register_bookmark_set_runtime, register_web_bookmark_runtime,
-     register_search_relay_runtime_with_fallbacks}`.
-   - `nmp_nip17::{register_actions, register_runtime}`.
-   - `nmp_nip22::register_runtime(app)`.
-   - `nmp_content::register_longform_projection(app)`.
+2. **Reusable Nostr protocol features** — one public installer from each owning
+   protocol crate. Every protocol crate exposes `Config`, `Handles`, and
+   `register(app, config) -> Result<Handles, RegistrationError>`. The installer
+   takes only the narrow registrar traits it needs, never `AppHost`.
+   - `nmp_nip50::register(app, nmp_nip50::Config::default())`.
+   - `nmp_nip02::register(app, nmp_nip02::Config::default())`.
+   - `nmp_replies::register(app, nmp_replies::Config::default())`.
+   - `nmp_nip25::register(app, nmp_nip25::Config::default())`.
+   - `nmp_nip18::register(app, nmp_nip18::Config::default())`.
+   - `nmp_nip84::register(app, nmp_nip84::Config::default())`.
+   - `nmp_nip29::register(app, nmp_nip29::Config::default())`.
+   - `nmp_wot::register(app, nmp_wot::Config::default())`.
+   - `nmp_nip51::register(app, nmp_nip51::Config { ... })`.
+   - `nmp_nip17::register(app, nmp_nip17::Config::default())`.
+   - `nmp_nip22::register(app, nmp_nip22::Config::default())`.
+   - `nmp_nip23::register(app, nmp_nip23::Config::default())`.
    Non-social apps call the substrate installer plus only the protocol/runtime installers they
    actually need.
 
@@ -45,32 +46,40 @@ see, without opening any other file:
 Canonical template (`nmp-cli/templates/lib.rs.tmpl`):
 
 ```rust
-pub fn register(app: &mut impl AppHost) {
+pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     // 1. Substrate floor — correctness, not preference.
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
     // 2. Named protocol installers — pick what this app needs.
-    nmp_nip50::register_search_scopes(app);
-    nmp_nip50::register_input_scopes(app);
-    nmp_nip02::register_follow_actions(app);
-    nmp_replies::register_actions(app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);
-    nmp_nip29::register_input_scopes(app);
-    let _wot = nmp_wot::register_runtime(app);
-    let _mute = nmp_nip51::register_mute_runtime(app);
-    let _bookmarks = nmp_nip51::register_bookmark_runtime(app);
-    nmp_nip51::register_bookmark_set_runtime(app);
-    nmp_nip51::register_web_bookmark_runtime(app);
-    let _search_relays = nmp_nip51::register_search_relay_runtime_with_fallbacks(
+    let _nip50 = nmp_nip50::register(app, nmp_nip50::Config::default())
+        .expect("nmp-nip50 registration must not collide");
+    let _nip02 = nmp_nip02::register(app, nmp_nip02::Config::default())
+        .expect("nmp-nip02 registration must not collide");
+    let _replies = nmp_replies::register(app, nmp_replies::Config::default())
+        .expect("nmp-replies registration must not collide");
+    let _nip25 = nmp_nip25::register(app, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
+    let _nip18 = nmp_nip18::register(app, nmp_nip18::Config::default())
+        .expect("nmp-nip18 registration must not collide");
+    let _nip84 = nmp_nip84::register(app, nmp_nip84::Config::default())
+        .expect("nmp-nip84 registration must not collide");
+    let _nip29 = nmp_nip29::register(app, nmp_nip29::Config::default())
+        .expect("nmp-nip29 registration must not collide");
+    let _wot = nmp_wot::register(app, nmp_wot::Config::default())
+        .expect("nmp-wot registration must not collide");
+    let _nip51 = nmp_nip51::register(
         app,
-        nmp_nip50::SearchFallbackRelays::default(),
-    );
-    nmp_nip17::register_actions(app);
-    nmp_nip17::register_runtime(app);
-    let _comments = nmp_nip22::register_runtime(app);
-    nmp_content::register_longform_projection(app);
+        nmp_nip51::Config {
+            search_fallback_relays: nmp_nip50::SearchFallbackRelays::default(),
+        },
+    )
+    .expect("nmp-nip51 registration must not collide");
+    let _nip17 = nmp_nip17::register(app, nmp_nip17::Config::default())
+        .expect("nmp-nip17 registration must not collide");
+    let _nip22 = nmp_nip22::register(app, nmp_nip22::Config::default())
+        .expect("nmp-nip22 registration must not collide");
+    let _nip23 = nmp_nip23::register(app, nmp_nip23::Config::default())
+        .expect("nmp-nip23 registration must not collide");
 
     // 3. App-owned modules — app nouns stay here, never in nmp-core (D0).
     app.register_action(MyActionModule);
@@ -140,6 +149,11 @@ Block the change when:
 - A production app root calls `register_defaults()` or recreates the deleted defaults bundle.
 - The composition root is absent (all wiring hidden inside a helper that is not the NMP
   owner-local substrate/protocol installer call list).
+- A reusable protocol crate exposes public split installers such as
+  `register_actions`, `register_runtime`, or `register_*_scopes` instead of the
+  canonical `register(app, Config)` entry point.
+- A reusable protocol installer takes `AppHost` instead of the exact narrow
+  registrar traits it needs.
 - App product policy (relay URLs, seed follows, onboarding, signer perm defaults) lives in an
   NMP crate instead of the app crate.
 - A new NMP crate is created to hold features specific to one downstream app.
