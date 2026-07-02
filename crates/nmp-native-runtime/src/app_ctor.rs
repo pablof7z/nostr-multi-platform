@@ -323,8 +323,8 @@ pub fn new_app() -> NmpApp {
         feed_registry,
         // #1740 step 2 — empty until the first `open_feed`.
         feed_sessions,
-        // #1740 step 4 — empty until the first `register_custom_perspective`.
-        custom_perspectives: Arc::new(nmp_feed::PerspectiveRegistry::default()),
+        // #1740 step 4 — empty until custom feed policy registration.
+        custom_feed_policies: Arc::new(nmp_feed::CustomFeedPolicyRegistry::default()),
         queue_depth,
         #[cfg(any(test, feature = "test-support"))]
         send_cmd_count: AtomicU64::new(0),

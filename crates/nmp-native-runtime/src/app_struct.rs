@@ -230,8 +230,8 @@ pub struct NmpApp {
     pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
     /// #1740 step 2 — the feed-SESSION registry.
     pub(crate) feed_sessions: Arc<nmp_feed::FeedSessionRegistry>,
-    /// #1740 step 4 — app-registered custom-perspective definitions.
-    pub(crate) custom_perspectives: Arc<nmp_feed::PerspectiveRegistry>,
+    /// #1740 step 4 — app-registered custom feed policy definitions.
+    pub(crate) custom_feed_policies: Arc<nmp_feed::CustomFeedPolicyRegistry>,
     /// G-S4 — straddle counter for the actor command channel depth.
     pub(crate) queue_depth: Arc<AtomicU64>,
     /// Test-only monotone send counter.

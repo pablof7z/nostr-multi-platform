@@ -1,6 +1,7 @@
 use crate::{
-    new_app, FeedAdmission, FeedHandle, FeedKey, FeedOrder, FeedParams, FeedScope, FeedShape,
-    FeedSpecOpenError, FeedWindowPolicy, ProjectionKey,
+    new_app, CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
+    CustomSourceId, FeedAdmission, FeedHandle, FeedKey, FeedOrder, FeedParams, FeedScope,
+    FeedShape, FeedSpecOpenError, FeedWindowPolicy, ProjectionKey,
 };
 
 fn active_follows_params(key: &str) -> FeedParams {
@@ -94,4 +95,41 @@ fn feeds_facade_pages_and_closes_only_matching_handles() {
     assert!(app.feed_session_is_open(&handle));
 
     assert!(app.feeds().close(&handle));
+}
+
+#[test]
+fn custom_feed_policy_registry_is_phase_specific() {
+    let app = new_app();
+    let source_id = CustomSourceId("test.source".into());
+    let admission_id = CustomAdmissionId("test.admission".into());
+    let order_id = CustomOrderId("test.order".into());
+
+    assert!(app.register_custom_source(
+        source_id.clone(),
+        CustomSourceDef::new(FeedScope::Tag {
+            term: nmp_feed::TagTerm("rust".into()),
+        }),
+    ));
+    assert!(app.register_custom_admission(
+        admission_id.clone(),
+        CustomAdmissionDef::new(FeedScope::Tag {
+            term: nmp_feed::TagTerm("safe".into()),
+        }),
+    ));
+    assert!(app.register_custom_order(
+        order_id.clone(),
+        CustomOrderDef::new(FeedOrder::NewestByFeedPosition),
+    ));
+
+    assert!(app.custom_source(&source_id).is_some());
+    assert!(app.custom_admission(&admission_id).is_some());
+    assert!(app.custom_order(&order_id).is_some());
+    assert_eq!(app.custom_feed_policy_count(), 3);
+    assert!(
+        !app.register_custom_source(
+            source_id,
+            CustomSourceDef::new(FeedScope::ActiveUserFollows),
+        ),
+        "custom policy ids are immutable once registered"
+    );
 }

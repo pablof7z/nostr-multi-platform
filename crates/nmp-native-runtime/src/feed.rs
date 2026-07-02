@@ -12,8 +12,9 @@
 /// `nmp-feed` engine (D0). The validation transform itself is the single
 /// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
 pub use nmp_feed::{
-    FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedScope,
-    FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy,
+    CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
+    CustomSourceId, FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder, FeedParams,
+    FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy,
     ProjectionKey,
 };
 

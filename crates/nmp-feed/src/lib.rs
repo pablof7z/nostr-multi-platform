@@ -14,10 +14,10 @@
 //!   own those dependencies.
 
 mod admit;
+mod custom_policy;
 mod flat;
 mod pager;
 mod params;
-mod perspective;
 mod pull_controller;
 mod registry;
 mod root_indexed;
@@ -29,17 +29,20 @@ mod window;
 mod window_source;
 
 pub use admit::AdmitExpr;
+pub use custom_policy::{
+    CustomAdmissionDef, CustomFeedPolicyRegistry, CustomOrderDef, CustomSourceDef,
+};
 pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
 pub use params::{
-    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder,
-    FeedParams, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedWindowPolicy, ListId,
-    ProjectionKey, RelaySetId, TagTerm, WotRulesId, WotSeed,
+    CustomAdmissionId, CustomOrderId, CustomSourceId, FeedAdmission, FeedHandle,
+    FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape,
+    FeedSourceExpr, FeedWindowPolicy, ListId, ProjectionKey, RelaySetId, TagTerm, WotRulesId,
+    WotSeed,
 };
-pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
     ClosureInterestShape, ClosureInterestShapes, FeedAdvance, FeedApply, FeedInterestShapes,
     FeedReplace, FeedReset, PullFeedController, PullFn,

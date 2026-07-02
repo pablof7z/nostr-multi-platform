@@ -12,8 +12,9 @@ use std::sync::Arc;
 use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::{CommandSender, KernelReducer, TypedProjectionData};
 use nmp_feed::{
-    CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedHandle,
-    FeedParams, FeedSessionRegistry, FeedWindowSource, PullFn, TeardownAction,
+    CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef,
+    CustomSourceId, FeedAuthorRefs, FeedController, FeedHandle, FeedParams, FeedSessionRegistry,
+    FeedWindowSource, PullFn, TeardownAction,
 };
 use nmp_feed_session::{FeedSessionHost, IdentityChangeObserverId};
 use nmp_store::{PullPage, ScanLogResult};
@@ -181,7 +182,15 @@ impl FeedSessionHost for FeedRuntimeAccess<'_> {
         register_feed_window_source(self.reducer, feed_key, source, encode);
     }
 
-    fn custom_perspective(&self, _id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {
+    fn custom_source(&self, _id: &CustomSourceId) -> Option<CustomSourceDef> {
+        None
+    }
+
+    fn custom_admission(&self, _id: &CustomAdmissionId) -> Option<CustomAdmissionDef> {
+        None
+    }
+
+    fn custom_order(&self, _id: &CustomOrderId) -> Option<CustomOrderDef> {
         None
     }
 

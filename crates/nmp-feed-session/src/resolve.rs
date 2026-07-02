@@ -25,7 +25,7 @@
 //! * `ContactList { owner }` for a FOREIGN owner — only the active viewer's
 //!   kind:3 has a framework resolver; an arbitrary owner's contact list has no
 //!   single-source projection. The active-owner case resolves via the follow set.
-//! * `CustomPerspectiveId` — step 4 (the registration mechanism).
+//! * `CustomSource` — step 4 (the registration mechanism).
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ use super::wot_graph::SessionWotGraph;
 const KIND_CONTACT_LIST: u32 = 3;
 
 /// Resolve a non-set-algebra scope. Set algebra is handled by
-/// [`super::set_algebra`]; `CustomPerspectiveId` is handled in `custom.rs`.
+/// [`super::set_algebra`]; `CustomSource` is handled in `custom.rs`.
 pub(super) fn resolve_scope(
     app: &impl FeedSessionHost,
     scope: &nmp_feed::FeedScope,
@@ -76,7 +76,7 @@ pub(super) fn resolve_scope(
         S::Difference(l, r) => {
             super::set_algebra::resolve_set_op(app, SetOp::Difference, l, r, kinds)
         }
-        S::CustomPerspectiveId(_) => {
+        S::CustomSource(_) => {
             // Handled by the dispatcher; unreachable here. Fail closed.
             Err(not_supported("scope-routing"))
         }
