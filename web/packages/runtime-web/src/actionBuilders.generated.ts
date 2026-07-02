@@ -787,8 +787,8 @@ export const GeneratedActionBuilders = {
     name: string | null,
     about: string | null,
     picture: string | null,
-    visibility: number,
-    access: number,
+    visibility: number | null,
+    access: number | null,
   ): Uint8Array {
     const fbb = new flatbuffers.Builder(64);
     const groupHostRelayUrlOffset = fbb.createString(group.hostRelayUrl);
@@ -806,8 +806,8 @@ export const GeneratedActionBuilders = {
     if (nameOffset !== 0) fbb.addFieldOffset(2, nameOffset, 0); // slot 2: name
     if (aboutOffset !== 0) fbb.addFieldOffset(3, aboutOffset, 0); // slot 3: about
     if (pictureOffset !== 0) fbb.addFieldOffset(4, pictureOffset, 0); // slot 4: picture
-    fbb.addFieldInt8(5, visibility, 0); // slot 5: visibility
-    fbb.addFieldInt8(6, access, 0); // slot 6: access
+    if (visibility !== null) fbb.addFieldInt8(5, visibility, 0); // slot 5: visibility
+    if (access !== null) fbb.addFieldInt8(6, access, 0); // slot 6: access
     const payloadRoot = fbb.endObject();
     fbb.finish(payloadRoot, "N29E");
     const payload = fbb.asUint8Array();

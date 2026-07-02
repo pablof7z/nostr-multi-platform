@@ -169,6 +169,91 @@ fn optional_field_is_guarded_in_both() {
 }
 
 #[test]
+fn optional_sbyte_fields_are_guarded_in_default_builders() {
+    // `editGroupMetadata` exposes optional tri-state byte enums. Swift/Kotlin
+    // must unwrap before calling FlatBuffers, and TS must keep the nullable API.
+    let swift = render(Platform::Swift);
+    assert!(swift.contains("visibility: Int8?"));
+    assert!(swift.contains(
+        "if let visibilityVal = visibility { fbb.add(element: visibilityVal, def: Int8(0), at: 14) } // slot 5: visibility"
+    ));
+
+    let kotlin = render(Platform::Kotlin);
+    assert!(kotlin.contains("visibility: Byte?"));
+    assert!(kotlin
+        .contains("if (visibility != null) fbb.addByte(5, visibility, 0) // slot 5: visibility"));
+
+    let ts = render(Platform::Ts);
+    assert!(ts.contains("visibility: number | null"));
+    assert!(ts.contains(
+        "if (visibility !== null) fbb.addFieldInt8(5, visibility, 0); // slot 5: visibility"
+    ));
+}
+
+#[test]
+fn optional_scalar_fields_are_guarded_for_app_local_registries() {
+    const FIELDS: &[PayloadField] = &[
+        PayloadField {
+            name: "count",
+            kind: FieldKind::Uint,
+            optional: true,
+        },
+        PayloadField {
+            name: "flag",
+            kind: FieldKind::Ubyte,
+            optional: true,
+        },
+        PayloadField {
+            name: "mode",
+            kind: FieldKind::Sbyte,
+            optional: true,
+        },
+    ];
+    const BUILDERS: &[ActionBuilder] = &[ActionBuilder {
+        namespace: "app.test.optional_scalars",
+        method: "optionalScalars",
+        fields: FIELDS,
+        doc: "Exercise optional scalar emission.",
+    }];
+    const CONTRACTS: &[AppActionBuilderWireContract] = &[AppActionBuilderWireContract {
+        namespace: "app.test.optional_scalars",
+        contract: ActionBuilderWireContract {
+            schema_version: 7,
+            file_identifier: "TST1",
+        },
+    }];
+    let registry = ActionBuilderRegistry::app_local(BUILDERS, CONTRACTS);
+
+    let swift = render_from_registry(Platform::Swift, &registry);
+    assert!(swift.contains("count: UInt32?"));
+    assert!(swift.contains(
+        "if let countVal = count { fbb.add(element: UInt32(countVal), def: UInt32(0), at: 6) } // slot 1: count"
+    ));
+    assert!(swift.contains(
+        "if let flagVal = flag { fbb.add(element: flagVal, def: UInt8(0), at: 8) } // slot 2: flag"
+    ));
+    assert!(swift.contains(
+        "if let modeVal = mode { fbb.add(element: modeVal, def: Int8(0), at: 10) } // slot 3: mode"
+    ));
+
+    let kotlin = render_from_registry(Platform::Kotlin, &registry);
+    assert!(kotlin.contains("count: Int?"));
+    assert!(kotlin.contains("flag: Byte?"));
+    assert!(kotlin.contains("mode: Byte?"));
+    assert!(kotlin.contains("if (count != null) fbb.addInt(1, count, 0) // slot 1: count"));
+    assert!(kotlin.contains("if (flag != null) fbb.addByte(2, flag, 0) // slot 2: flag"));
+    assert!(kotlin.contains("if (mode != null) fbb.addByte(3, mode, 0) // slot 3: mode"));
+
+    let ts = render_from_registry(Platform::Ts, &registry);
+    assert!(ts.contains("count: number | null"));
+    assert!(ts.contains("flag: number | null"));
+    assert!(ts.contains("mode: number | null"));
+    assert!(ts.contains("if (count !== null) fbb.addFieldInt32(1, count, 0); // slot 1: count"));
+    assert!(ts.contains("if (flag !== null) fbb.addFieldInt8(2, flag, 0); // slot 2: flag"));
+    assert!(ts.contains("if (mode !== null) fbb.addFieldInt8(3, mode, 0); // slot 3: mode"));
+}
+
+#[test]
 fn check_reports_missing_file_as_stale() {
     let tmp = std::env::temp_dir().join(format!(
         "nmp-action-builders-missing-{}.swift",

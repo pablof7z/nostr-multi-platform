@@ -33,6 +33,7 @@ use crate::action_builders::ActionBuilderRegistry;
 use super::kotlin_nip51::{
     is_bookmark_builder, is_bookmark_set_builder, kotlin_param_type, render_bookmark_update,
 };
+use super::kotlin_scalars::render_scalar_field;
 
 const BUILTIN_HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,50 +416,11 @@ fn render_one(builder: &ActionBuilder, registry: &ActionBuilderRegistry<'_>, out
                     ));
                 }
             }
-            FieldKind::Uint => {
-                out.push_str(&format!(
-                    "        fbb.addInt({slot}, {n}, 0) // slot {slot}: {n}\n",
-                    n = field.name
-                ));
-            }
-            FieldKind::Ulong => {
-                if field.optional {
-                    out.push_str(&format!(
-                        "        if ({n} != null) fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n",
-                        n = field.name
-                    ));
-                } else {
-                    out.push_str(&format!(
-                        "        fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n",
-                        n = field.name
-                    ));
-                }
-            }
-            FieldKind::UlongWithPresenceFlag { flag_name } => {
-                let slot_flag = slot + 1;
-                out.push_str(&format!(
-                    "        if ({n} != null) {{\n\
-                     \x20           fbb.addLong({slot}, {n}, 0L) // slot {slot}: {n}\n\
-                     \x20           fbb.addBoolean({slot_flag}, true, false) // slot {slot_flag}: {flag}\n\
-                     \x20       }}\n",
-                    n = field.name,
-                    slot = slot,
-                    slot_flag = slot_flag,
-                    flag = flag_name,
-                ));
-            }
-            FieldKind::Ubyte => {
-                out.push_str(&format!(
-                    "        fbb.addByte({slot}, {n}, 0) // slot {slot}: {n}\n",
-                    n = field.name
-                ));
-            }
-            FieldKind::Sbyte => {
-                out.push_str(&format!(
-                    "        fbb.addByte({slot}, {n}, 0) // slot {slot}: {n}\n",
-                    n = field.name
-                ));
-            }
+            FieldKind::Uint
+            | FieldKind::Ulong
+            | FieldKind::UlongWithPresenceFlag { .. }
+            | FieldKind::Ubyte
+            | FieldKind::Sbyte => render_scalar_field(field, slot, out),
             FieldKind::GroupRef | FieldKind::StringTagVec => {
                 if field.optional {
                     out.push_str(&format!(
