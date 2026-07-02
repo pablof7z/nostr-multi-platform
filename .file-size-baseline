@@ -12,8 +12,3 @@
 # cleanup issue owns the remaining split. It never permits sub-500 entries.
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
-crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
-crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576
-crates/nmp-core/src/kernel/discovery_tests.rs	602
-crates/nmp-core/src/kernel/retention_tests.rs	530
-crates/nmp-core/src/kernel/state_projection_tests.rs	584
