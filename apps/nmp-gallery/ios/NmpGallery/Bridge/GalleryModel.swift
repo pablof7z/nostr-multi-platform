@@ -7,9 +7,8 @@ private let gmLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryModel
 /// Shared real Nostr references for every NmpGallery host.
 ///
 /// The source of truth is `apps/nmp-gallery/showcase-references.json`, embedded
-/// by `nmp-app-gallery` and exposed here through
-/// `nmp_app_gallery_showcase_references_json`. Swift does not duplicate these
-/// pubkeys, URIs, event ids, or relay roles.
+/// by `nmp-app-gallery` and exposed here through the app-owned UniFFI facade.
+/// Swift does not duplicate these pubkeys, URIs, event ids, or relay roles.
 struct GalleryShowcaseReferences: Decodable, Sendable {
     let schema: String
     let profile: GalleryShowcaseProfile
@@ -19,10 +18,7 @@ struct GalleryShowcaseReferences: Decodable, Sendable {
     let relays: [GalleryShowcaseRelay]
 
     static func loadFromRust() -> GalleryShowcaseReferences {
-        guard let ptr = nmp_app_gallery_showcase_references_json() else {
-            fatalError("nmp_app_gallery_showcase_references_json returned null")
-        }
-        let json = String(cString: ptr)
+        let json = galleryShowcaseReferencesJson()
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
@@ -76,11 +72,11 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
 /// ADR-0063 (#1671): the map is sourced from the kernel's `refs.profile`
-/// row-delta projection (the resolve_ref output), merged host-side into the
-/// `GalleryRefStores` and materialised under the `refs.profile` JSON key by
-/// `nmp_app_gallery_snapshot_json_from_update_frame`. The app JSON adapter
-/// derives a bech32 `npub` from the raw pubkey for this gallery-only view. The
-/// extra `lnurl` field the card carries is ignored here.
+/// row-delta projection (the resolve_ref output), materialised under the
+/// `refs.profile` JSON key by the app-owned UniFFI snapshot decoder.
+/// The app JSON adapter derives a
+/// bech32 `npub` from the raw pubkey for this gallery-only view. The extra
+/// `lnurl` field the card carries is ignored here.
 private struct RefProfileWire: Decodable, Sendable {
     let pubkey: String
     let npub: String
@@ -329,8 +325,7 @@ final class GalleryModel: NostrProfileHost {
     /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
     /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
-        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(
-            from: frame, stores: kernel.refStores) else {
+        guard let data = kernel.snapshotJSONData(from: frame) else {
             return
         }
         let decoder = JSONDecoder()

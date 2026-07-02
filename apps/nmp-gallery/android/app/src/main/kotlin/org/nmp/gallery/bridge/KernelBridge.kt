@@ -1,21 +1,14 @@
 package org.nmp.gallery.bridge
 
-import com.sun.jna.Pointer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import uniffi.nmp_uniffi.CapabilitySink
-import uniffi.nmp_uniffi.NmpApp
-import uniffi.nmp_uniffi.ProfileShape
-import uniffi.nmp_uniffi.RefLiveness
-import uniffi.nmp_uniffi.RefNamespace
-import uniffi.nmp_uniffi.RefShape
-import uniffi.nmp_uniffi.ResolveMetadata
-import uniffi.nmp_uniffi.UpdateSink
+import uniffi.nmp_app_gallery.GalleryApp
+import uniffi.nmp_app_gallery.GalleryCapabilitySink
+import uniffi.nmp_app_gallery.GalleryUpdateSink
 
 /**
  * Push callback for kernel update frames (issue #614 - D8 no-polling).
@@ -43,20 +36,15 @@ fun interface KernelSignerRequestListener {
 }
 
 /**
- * Thin Android facade over the generated UniFFI `NmpApp` binding.
- *
- * Migrated framework lifecycle, update, capability, sign-in, and ref APIs use
- * UniFFI. Retained JNI calls are gallery-owned adapters only: bridge-private
- * composition registration, static showcase/registry JSON, snapshot decoding,
- * and URI decoding.
+ * Thin Android facade over the app-owned generated UniFFI [GalleryApp] binding.
  */
 class KernelBridge {
-    private var app: NmpApp? = null
+    private var app: GalleryApp? = null
     private var signerRequestListener: KernelSignerRequestListener? = null
 
     init {
         ensureLoaded()
-        app = NmpApp()
+        app = GalleryApp()
     }
 
     /**
@@ -69,22 +57,26 @@ class KernelBridge {
      */
     @Suppress("UNUSED_PARAMETER")
     fun start(eventsPerSec: Int = 0, visibleLimit: Int = 80, emitHz: Int = 4) {
-        val current = app ?: return
-        current.start(visibleLimit.toUInt(), emitHz.toUInt())
+        app?.start(visibleLimit.toUInt(), emitHz.toUInt())
     }
 
     fun stop() {
         app?.stop()
     }
 
-    /** Register the gallery-specific projection on the kernel actor. */
-    fun galleryRegister() {
-        app?.withBridgePrivateRegistrationPointer { nativeGalleryRegisterUniffi(it) }
-    }
+    /**
+     * Compatibility hook retained for existing startup order.
+     *
+     * [GalleryApp] installs the gallery composition root in its constructor, so
+     * callers no longer need a bridge-private registration pointer.
+     */
+    fun galleryRegister() = Unit
 
-    fun showcaseReferencesJson(): String = nativeShowcaseReferencesJson()
+    fun showcaseReferencesJson(): String =
+        app?.galleryShowcaseReferencesJson().orEmpty()
 
-    fun registryJson(): String = nativeRegistryJson()
+    fun registryJson(): String =
+        app?.galleryRegistryJson().orEmpty()
 
     /**
      * ADR-0063 (#1671) - resolve a visible profile reference. Idempotent per
@@ -96,29 +88,25 @@ class KernelBridge {
     }
 
     fun resolveProfileCard(pubkey: String, consumerId: String) {
-        app?.resolveRef(
-            RefNamespace.PROFILE,
-            pubkey,
-            consumerId,
-            RefShape.Profile(ProfileShape.CARD),
-            RefLiveness.CACHE_OK,
-        )
+        app?.resolveProfileCard(pubkey, consumerId)
     }
 
     fun releaseProfileRef(pubkey: String, consumerId: String) {
         app?.releaseProfileRef(pubkey, consumerId)
     }
 
-    /** App-local URI adapter: JNI decodes [uri], UniFFI resolves the raw key. */
+    /** App-local URI adapter: Rust decodes [uri], then resolves the raw key. */
     fun resolveEventRef(uri: String, consumerId: String) {
-        val eventRef = eventRefFromUri(uri) ?: return
-        app?.resolveEventEmbedWithMetadata(eventRef.key, consumerId, eventRef.metadata)
+        val current = app ?: return
+        val eventRef = current.eventRefFromUri(uri) ?: return
+        current.resolveEventEmbedWithMetadata(eventRef.key, consumerId, eventRef.metadata)
     }
 
-    /** App-local URI adapter: JNI decodes [uri], UniFFI releases the raw key. */
+    /** App-local URI adapter: Rust decodes [uri], then releases the raw key. */
     fun releaseEventRef(uri: String, consumerId: String) {
-        val eventRef = eventRefFromUri(uri) ?: return
-        app?.releaseEventRef(eventRef.key, consumerId)
+        val current = app ?: return
+        val eventRef = current.eventRefFromUri(uri) ?: return
+        current.releaseEventRef(eventRef.key, consumerId)
     }
 
     /**
@@ -126,7 +114,7 @@ class KernelBridge {
      * no-polling).
      */
     fun setUpdateListener(listener: KernelUpdateListener) {
-        app?.setUpdateSink(object : UpdateSink {
+        app?.setUpdateSink(object : GalleryUpdateSink {
             override fun onUpdate(frame: ByteArray) {
                 listener.onUpdate(frame)
             }
@@ -152,7 +140,7 @@ class KernelBridge {
      */
     fun setSignerRequestListener(listener: KernelSignerRequestListener) {
         signerRequestListener = listener
-        app?.setCapabilityCallback(object : CapabilitySink {
+        app?.setCapabilityCallback(object : GalleryCapabilitySink {
             override fun onCapabilityRequest(requestJson: String): String =
                 handleCapabilityRequest(requestJson)
         })
@@ -184,7 +172,8 @@ class KernelBridge {
      * ADR-0063 (#1671) - decode one FlatBuffers snapshot frame to the gallery
      * JSON shape. Returns null on decode failure (D6).
      */
-    fun decodeSnapshotJson(frame: ByteArray): String? = nativeDecodeSnapshotJson(frame)
+    fun decodeSnapshotJson(frame: ByteArray): String? =
+        app?.decodeSnapshotJson(frame)
 
     private fun handleCapabilityRequest(requestJson: String): String {
         val parsed = runCatching { Json.parseToJsonElement(requestJson).jsonObject }.getOrNull()
@@ -218,47 +207,10 @@ class KernelBridge {
             put("result_json", resultJson)
         }.toString()
 
-    private fun eventRefFromUri(uri: String): EventRefFromUri? {
-        val raw = nativeEventRefFromUri(uri) ?: return null
-        val parsed = runCatching { Json.parseToJsonElement(raw).jsonObject }.getOrNull()
-            ?: return null
-        val key = parsed["key"]?.jsonPrimitive?.contentOrNull ?: return null
-        val metadataJson = parsed["metadata_json"]?.jsonPrimitive?.contentOrNull.orEmpty()
-        return EventRefFromUri(key, parseResolveMetadata(metadataJson))
-    }
-
-    private fun parseResolveMetadata(metadataJson: String): ResolveMetadata {
-        val parsed = runCatching { Json.parseToJsonElement(metadataJson).jsonObject }.getOrNull()
-        val hints = runCatching {
-            parsed?.get("hints")
-                ?.jsonArray
-                ?.mapNotNull { it.jsonPrimitive.contentOrNull }
-        }.getOrNull().orEmpty()
-        val author = parsed?.get("author")?.jsonPrimitive?.contentOrNull
-        return ResolveMetadata(hints, author)
-    }
-
-    /**
-     * Retained bridge-private seam for one-shot app composition registration.
-     * All lifecycle, storage, dispatch, and ref operations use typed UniFFI.
-     */
-    private fun NmpApp.withBridgePrivateRegistrationPointer(block: (Long) -> Unit) {
-        val pointer = uniffiClonePointer()
-        block(Pointer.nativeValue(pointer))
-    }
-
-    private external fun nativeGalleryRegisterUniffi(arcPtr: Long)
-    private external fun nativeShowcaseReferencesJson(): String
-    private external fun nativeRegistryJson(): String
-    private external fun nativeEventRefFromUri(uri: String): String?
-
     companion object {
-        @JvmStatic
-        private external fun nativeDecodeSnapshotJson(frame: ByteArray): String?
-
         private val loaded: Boolean = run {
+            System.setProperty("uniffi.component.nmp_app_gallery.libraryOverride", "nmp_app_gallery")
             System.loadLibrary("nmp_app_gallery")
-            System.setProperty("uniffi.component.nmp_uniffi.libraryOverride", "nmp_app_gallery")
             true
         }
 
@@ -267,8 +219,3 @@ class KernelBridge {
         }
     }
 }
-
-private data class EventRefFromUri(
-    val key: String,
-    val metadata: ResolveMetadata,
-)

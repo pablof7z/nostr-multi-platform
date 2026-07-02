@@ -2,16 +2,15 @@
 //!
 //! The gallery must present a consistent catalog of components across all
 //! platforms (iOS, Android, TUI, Desktop). This module embeds
-//! `apps/nmp-gallery/registry.json` as the single source of truth;
-//! Rust hosts read the typed value directly, iOS reads the same JSON through a
-//! C ABI accessor, and Android reads it through JNI.
+//! `apps/nmp-gallery/registry.json` as the single source of truth; Rust hosts
+//! read the typed value directly, and native shells read the same JSON through
+//! the UniFFI facade's `gallery_registry_json` method.
 
-use std::{ffi::c_char, sync::OnceLock};
+use std::sync::OnceLock;
 
 use serde::Deserialize;
 
 const RAW_JSON: &str = include_str!("../../../registry.json");
-const RAW_JSON_C: &str = concat!(include_str!("../../../registry.json"), "\0");
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct GalleryRegistry {
@@ -41,14 +40,6 @@ pub fn registry() -> &'static GalleryRegistry {
     static REGISTRY: OnceLock<GalleryRegistry> = OnceLock::new();
     REGISTRY
         .get_or_init(|| serde_json::from_str(RAW_JSON).expect("registry.json must match schema"))
-}
-
-/// Borrowed pointer to the same JSON used by Rust hosts.
-///
-/// The pointer is process-static and must not be freed by the caller.
-#[no_mangle]
-pub extern "C" fn nmp_app_gallery_registry_json() -> *const c_char {
-    RAW_JSON_C.as_ptr().cast()
 }
 
 #[cfg(test)]

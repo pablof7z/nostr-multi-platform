@@ -12,8 +12,6 @@
 # cleanup issue owns the remaining split. It never permits sub-500 entries.
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
-apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	599
-crates/nmp-component-registry/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/auth_tests.rs	762
 crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576

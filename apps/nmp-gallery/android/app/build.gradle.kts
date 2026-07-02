@@ -1,9 +1,7 @@
-// App module for the standalone NMP Gallery. Links against the prebuilt
-// `libnmp_app_gallery.so` placed in `src/main/jniLibs/<abi>/` by
-// `cargo ndk build --target arm64-v8a -p nmp-app-gallery --features android-ffi`.
-// Runtime lifecycle and migrated framework APIs go through generated UniFFI
-// bindings; JNI is retained only for gallery-owned adapters that UniFFI does
-// not model (static showcase JSON, snapshot decode, URI-to-ref helpers).
+// App module for the standalone NMP Gallery. Links against the generated
+// `libnmp_app_gallery.so` placed in `src/main/jniLibs/<abi>/` by `cargo ndk`.
+// Runtime lifecycle, snapshot decode, static gallery JSON, and ref adapters all
+// go through the app-owned UniFFI binding generated from `nmp-app-gallery`.
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -38,19 +36,15 @@ android {
     buildFeatures { compose = true }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
-    // Pre-built .so files live in `src/main/jniLibs/<abi>/`. Produced by:
+    // Pre-built .so files live in `src/main/jniLibs/<abi>/`. Produced locally by:
     //   cargo ndk -t arm64-v8a -o apps/nmp-gallery/android/app/src/main/jniLibs \
-    //       build --release -p nmp-app-gallery --features android-ffi
-    // `--features android-ffi` is REQUIRED — it enables the retained
-    // `Java_org_nmp_gallery_*` gallery adapter JNI exports. Verify after building:
-    //   nm -D src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so \
-    //       | grep Java_org_nmp_gallery_bridge_KernelBridge_nativeGalleryRegisterUniffi
+    //       build --release -p nmp-app-gallery
     sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
 
     // Kotlin sources live in `src/main/kotlin` rather than `src/main/java`.
     sourceSets["main"].java.srcDirs(
         "src/main/kotlin",
-        "../../../../crates/nmp-uniffi/generated/kotlin",
+        "../../crates/nmp-app-gallery/generated/kotlin",
     )
     sourceSets["test"].java.srcDirs("src/test/kotlin")
 

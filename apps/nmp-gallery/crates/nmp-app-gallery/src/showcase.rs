@@ -3,15 +3,14 @@
 //! The gallery must prove component-owned reactivity with real Nostr
 //! references, and every host must use the same references. This module embeds
 //! `apps/nmp-gallery/showcase-references.json` as the single source of truth;
-//! Rust hosts read the typed value directly, iOS reads the same JSON through a
-//! C ABI accessor, and Android reads it through JNI.
+//! Rust hosts read the typed value directly, and native shells read the same
+//! JSON through the UniFFI facade's `gallery_showcase_references_json` method.
 
-use std::{ffi::c_char, sync::OnceLock};
+use std::sync::OnceLock;
 
 use serde::Deserialize;
 
 const RAW_JSON: &str = include_str!("../../../showcase-references.json");
-const RAW_JSON_C: &str = concat!(include_str!("../../../showcase-references.json"), "\0");
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 pub struct GalleryShowcaseReferences {
@@ -86,14 +85,6 @@ pub fn highlight_uri() -> &'static str {
 
 pub fn highlight_primary_id() -> &'static str {
     &references().highlight.primary_id
-}
-
-/// Borrowed pointer to the same JSON used by Rust hosts.
-///
-/// The pointer is process-static and must not be freed by the caller.
-#[no_mangle]
-pub extern "C" fn nmp_app_gallery_showcase_references_json() -> *const c_char {
-    RAW_JSON_C.as_ptr().cast()
 }
 
 #[cfg(test)]
