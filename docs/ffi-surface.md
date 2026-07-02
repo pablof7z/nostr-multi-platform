@@ -31,7 +31,7 @@ framework binding crate — `nmp-uniffi` was deleted in #2763 after shipping wit
 zero real consumers (every shipped native app — gallery, 29er, Chirp,
 podcast-player — built its own facade over `nmp-uniffi-support` instead). The
 canonical *mechanics* (dispatch, update-sink wiring, capability callbacks,
-panic containment, quiescence, feed-session open/close/reopen, account-change
+panic containment, quiescence, feed open/close/reopen, account-change
 observation, clamp policy) live in `nmp-uniffi-support` (+ `nmp-native-runtime`).
 The canonical *surface* is per-app: each native app owns exactly one UniFFI
 facade crate that calls `uniffi::setup_scaffolding!()` once and exports its own
