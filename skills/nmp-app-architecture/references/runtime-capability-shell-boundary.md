@@ -43,10 +43,12 @@ pub struct CapabilityEnvelope { namespace, correlation_id, result_json }
 ```
 
 ### Registration
-UniFFI is the sole native binding surface (M14 complete; the legacy `nmp-ffi` C-ABI crate and
-its function-pointer trampoline are deleted). `NmpApp::set_capability_callback` (`crates/nmp-uniffi/src/capability/capability.rs`)
-takes a `CapabilitySink::on_capability_request(String) -> String` callback-interface object
-(`crates/nmp-uniffi/src/capability/mod.rs`) and delegates to `nmp_uniffi_support::set_capability_callback`,
+UniFFI is the sole native binding surface (M14 complete; the legacy `nmp-ffi` C-ABI crate, its
+function-pointer trampoline, and the `nmp-uniffi` reference facade are all deleted — #2763).
+Each app-owned facade exposes a `set_capability_callback` method (in-repo reference:
+`apps/nmp-gallery/crates/nmp-app-gallery/src/facade.rs`) that takes the facade-local
+`CapabilitySink`-style `on_capability_request(String) -> String` callback-interface object
+and delegates to `nmp_uniffi_support::set_capability_callback`,
 which wraps it as an `Arc<dyn Fn(String) -> String + Send + Sync>` closure and installs it via
 `CapabilityCallbackGate::set_native_handler` (`crates/nmp-core/src/capability_socket.rs`) — a
 Rust-native closure/`Arc`-sink registration, not a C symbol. The gate's `in_flight + Condvar`
