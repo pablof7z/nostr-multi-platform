@@ -94,7 +94,7 @@ pub fn register(
     config: Config,
 ) -> Result<Handles, RegistrationError> {
     // Register actions, parsers, projections, runtimes, and observers owned by this crate.
-    // Do not expose public register_actions/register_runtime aliases.
+    // Do not expose public split-installer aliases.
     Ok(Handles::default())
 }
 ```
@@ -132,9 +132,9 @@ pub fn register(
     app: &mut (impl ActionRegistrar + InputScopeRegistrar + SearchScopeRegistrar),
     _config: Config,
 ) -> Result<Handles, RegistrationError> {
-    action_registration::register_actions(app)?;
-    input_scope::register_input_scopes(app);
-    search::register_search_scopes(app);
+    actions::install(app)?;
+    input_scopes::install(app);
+    search_scopes::install(app);
     Ok(Handles)
 }
 ```

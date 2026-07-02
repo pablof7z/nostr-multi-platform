@@ -7,6 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[path = "clean_break_docs_ratchet/adr_references.rs"]
+mod adr_references;
 #[path = "clean_break_docs_ratchet/cli_templates.rs"]
 mod cli_templates;
 #[path = "clean_break_docs_ratchet/raw_abi.rs"]

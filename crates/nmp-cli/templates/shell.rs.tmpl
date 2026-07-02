@@ -22,15 +22,16 @@ fn main() {
     //    protocol features, and this app's modules.
     {{crate_ident}}::register(&mut builder);
 
-    // 3. Commit the storage choice, declare the kernel built-in projections,
-    //    decide the initial relay set, and start the kernel. `.in_memory()`
-    //    advances to `StorageSet`; `.declare_consumed_projections(...)` makes
-    //    the ADR-0070 decision for built-ins: profile rows (`refs.profile`),
+    // 3. Commit the storage choice, declare the kernel built-in outputs, decide
+    //    the initial relay set, and start the kernel. `.in_memory()` advances
+    //    to `StorageSet`; `.declare_consumed_projections(...)` is narrow
+    //    runtime plumbing for built-in outputs: profile rows (`refs.profile`),
     //    authoritative event refs (`refs.event`), and publish feedback
-    //    (`publish_outbox`). Tier-1 starter projections such as this app's
-    //    home timeline and `refs.event.envelopes` self-gate by registration, so
-    //    they are named in `starter_projection_keys()` but not declared through
-    //    this kernel built-in gate. `.without_initial_relays()` makes
+    //    (`publish_outbox`). Starter-owned outputs such as this app's home
+    //    timeline and `refs.event.envelopes` are installed by owner
+    //    registration, so they are named in `starter_projection_keys()` but not
+    //    declared through this kernel built-in gate.
+    //    `.without_initial_relays()` makes
     //    the #1493 relay decision (this app ships no built-in relays — add
     //    your own with
     //    `.with_relays([("wss://your.relay", "both")])`) and advances to

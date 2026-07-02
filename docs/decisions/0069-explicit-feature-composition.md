@@ -35,6 +35,10 @@ Reusable protocol installers take only the narrow registrar traits they need.
 They do not take a broad app host trait to smuggle unrelated policy into the
 framework.
 
+Protocol crates may delegate from `register` to crate-private seam modules.
+Those helpers are implementation detail, not app composition APIs, and must not
+be re-exported as protocol installers.
+
 App-specific nouns live in app Rust crates unless they are reusable Nostr
 mechanisms. A downstream need is evidence for a generic mechanism; it is not
 permission to add app policy or product defaults to shared NMP crates.

@@ -228,7 +228,9 @@ impl Kernel {
             visible_limit,
             // ADR-0070 Rung 1: default (all counters 0, epoch 0); free on Reset.
             projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
-            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0070/0053 glue
+            // ADR-0070 owns typed read output delivery; the ref-row tracker is
+            // current glue for that path.
+            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(),
             ref_row_last_identity: None,
             ref_row_last_permits: (false, false),
             #[cfg(any(test, feature = "test-support"))]

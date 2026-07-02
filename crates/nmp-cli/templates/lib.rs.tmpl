@@ -113,12 +113,11 @@ pub fn starter_projection_keys() -> [&'static str; 5] {
     ]
 }
 
-/// Kernel built-in projection keys declared through ADR-0070 before `start()`.
+/// Kernel built-in output keys declared through ADR-0070 before `start()`.
 ///
-/// Tier-1 projections such as [`HOME_TIMELINE_PROJECTION`] and
-/// [`EVENT_ENVELOPES_PROJECTION`] are runtime/protocol projections that
-/// self-gate by registration. Only kernel built-ins are passed to
-/// `declare_consumed_projections`.
+/// This starter keeps builtin output declarations as runtime plumbing.
+/// Production screens should open typed read sessions or feed helpers instead
+/// of hand-authoring reducer, source, or projection-declaration machinery.
 pub fn starter_builtin_projection_keys() -> [&'static str; 3] {
     [
         PROFILE_REF_PROJECTION,
