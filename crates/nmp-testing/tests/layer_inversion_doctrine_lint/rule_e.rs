@@ -46,7 +46,8 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         | "nmp-intent"
         | "nmp-note-feed"
         | "nmp-nwc"
-        | "nmp-replies" => Some(CrateClass::Layer(4)),
+        | "nmp-replies"
+        | "nmp-reposts" => Some(CrateClass::Layer(4)),
         // L5 — app/runtime composition floor.
         "nmp-substrate" => Some(CrateClass::Layer(5)),
         // L6 — platform runtimes / bindings.
