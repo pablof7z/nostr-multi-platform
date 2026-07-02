@@ -21,11 +21,11 @@ fn sample_status() -> WalletStatus {
     WalletStatus {
         status: "ready".to_string(),
         relay_url: "wss://relay.example/nwc".to_string(),
-        wallet_npub: "npub1walletservicepubkeybech32".to_string(),
         wallet_pubkey_hex: "ab".repeat(32),
         balance_msats: Some(7_000_000),
         balance_sats: Some(7_000),
-        // `wallet_npub_short` removed (#1678, D7) — shells abbreviate.
+        // `wallet_npub_short` removed (#1678, D7); `wallet_npub` itself
+        // removed (#2762, D27) — shells derive `npub` from `wallet_pubkey_hex`.
         is_ready: true,
         is_connected: true,
         connection_state: Some(NwcConnectionState::Connected),

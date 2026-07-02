@@ -360,6 +360,13 @@ pub struct FeedHandle {
     /// The projection key whose snapshots this session emits.
     pub projection_key: ProjectionKey,
     /// Opaque session id (kernel-minted).
+    ///
+    /// The Rust field keeps the internal-runtime `session_id` name (#2508:
+    /// "session" is legitimate runtime-bookkeeping vocabulary), but the wire
+    /// serialization is `handle_id` — "session" is not public/FFI vocabulary
+    /// (#2783). Every FFI-facing surface (UniFFI records, the browser wasm
+    /// JSON wire, TypeScript) sees `handle_id`.
+    #[serde(rename = "handle_id")]
     pub session_id: FeedSessionId,
 }
 

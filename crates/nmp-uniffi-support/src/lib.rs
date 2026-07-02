@@ -274,13 +274,13 @@ mod tests {
             "item_projection": "FeedRows"
         }"#;
 
-        // 1. Projection/feed-session registration through the shared mechanic.
-        let Ok(opened) = open_feed_session(&app, params) else {
-            assert!(false, "open feed session must succeed");
+        // 1. Feed registration through the shared mechanic.
+        let Ok(opened) = open_feed(&app, params) else {
+            assert!(false, "open feed must succeed");
             return;
         };
         assert!(!opened.projection_key.is_empty());
-        assert_ne!(opened.session_id, 0);
+        assert_ne!(opened.handle_id, 0);
 
         // 2. Observe active-account changes without capturing the runtime: the
         //    sink only records the new identity.
@@ -290,11 +290,11 @@ mod tests {
                 seen.lock().unwrap().push(id);
             });
 
-        // 3. Reopen the session (the flow a facade runs for a pinned session
+        // 3. Reopen the feed (the flow a facade runs for a pinned feed
         //    after an active-account change). The old handle is torn down and a
         //    fresh one is minted.
-        let Ok(reopened) = reopen_feed_session(&app, &opened, params) else {
-            assert!(false, "reopen feed session must succeed");
+        let Ok(reopened) = reopen_feed(&app, &opened, params) else {
+            assert!(false, "reopen feed must succeed");
             return;
         };
         assert_eq!(
@@ -302,16 +302,16 @@ mod tests {
             "same projection key for the same declaration"
         );
         assert_ne!(
-            reopened.session_id, opened.session_id,
-            "reopen mints a fresh session id"
+            reopened.handle_id, opened.handle_id,
+            "reopen mints a fresh handle id"
         );
         assert!(
-            !close_feed_session(&app, &opened),
-            "the old session was already torn down by reopen (D6)"
+            !close_feed(&app, &opened),
+            "the old feed was already torn down by reopen (D6)"
         );
 
         // Teardown — all through safe handles.
-        assert!(close_feed_session(&app, &reopened));
+        assert!(close_feed(&app, &reopened));
         unregister_account_change_sink(&app, observer_id);
     }
 }
@@ -323,15 +323,15 @@ mod tests {
 /// Active-account-change observation (shared Arc-sink + panic containment over
 /// `NmpApp::register_identity_change_observer`).
 pub mod account;
-/// Feed-session open/close/reopen mechanics over `NmpApp::open_feed`/`close_feed`.
+/// Feed open/close/reopen mechanics over `NmpApp::open_feed`/`close_feed`.
 pub mod sessions;
 
 pub use account::{
     account_change_observer_from_sink, register_account_change_sink, unregister_account_change_sink,
 };
 pub use sessions::{
-    close_feed_session, load_older_feed_session, load_older_feed_session_status, open_feed_session,
-    reopen_feed_session, FeedSessionError, OpenedFeed,
+    close_feed, load_older_feed, load_older_feed_status, open_feed, reopen_feed, FeedError,
+    OpenedFeed,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.

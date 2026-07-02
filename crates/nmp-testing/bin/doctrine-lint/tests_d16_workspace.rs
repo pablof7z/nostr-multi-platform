@@ -179,9 +179,10 @@ fn workspace_d8_exempts_cfg_test_tokio_sleep() {
 #[test]
 fn workspace_d8_runs_only_d8_not_d0_d6_d7() {
     // The workspace scan must NOT flood D0/D6/D7 findings for legitimate
-    // app-crate code. This fixture has an `.unwrap()` (a D6 violation in
-    // nmp-core, but D6 is intentionally nmp-core-scoped) and no sleep —
-    // workspace-d8 must report it clean.
+    // app-crate code. This fixture has an `.unwrap()` — D6 is bounded to an
+    // explicit enforced-crate set (see `rules/d6.rs`'s "Scope" doc), not
+    // universal, and `--workspace-d8` additionally runs no-polling only —
+    // and no sleep, so workspace-d8 must report it clean.
     let root = build_fake_workspace(
         "doctrine_lint_ws_d8_only",
         &[(

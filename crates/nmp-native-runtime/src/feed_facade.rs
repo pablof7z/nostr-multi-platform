@@ -1,10 +1,13 @@
-//! App-facing feed-session facade.
+//! App-facing feed facade.
 //!
 //! `NmpApp::open_feed` is already the canonical implementation seam: it hides
-//! compiler selection, validates `FeedParams`, opens the session, and returns a
+//! compiler selection, validates `FeedParams`, opens the feed, and returns a
 //! handle-owned lifecycle token. This facade gives app Rust code the north-star
 //! `app.feeds().open_spec(feed_key, feed_spec)` shape without introducing a
 //! second feed engine.
+//!
+//! "Session" is internal runtime bookkeeping (#2508), not public vocabulary
+//! (#2783) — this facade and the [`FeedHandle`] it hands back never spell it.
 
 use std::fmt;
 
@@ -12,16 +15,16 @@ use crate::{
     FeedHandle, FeedKey, FeedLoadStatus, FeedOpenError, FeedParams, FeedSpec, FeedSpecError, NmpApp,
 };
 
-/// Borrowed app-facing feed-session API.
+/// Borrowed app-facing feed API.
 ///
 /// This type owns no state. Every method delegates to the existing
 /// handle-owned `NmpApp` feed lifecycle, so close/pagination continue to be
 /// authorized by the returned [`FeedHandle`], not by replaying keys or params.
-pub struct FeedSessions<'a> {
+pub struct Feeds<'a> {
     app: &'a NmpApp,
 }
 
-impl<'a> FeedSessions<'a> {
+impl<'a> Feeds<'a> {
     pub(crate) fn new(app: &'a NmpApp) -> Self {
         Self { app }
     }
@@ -66,7 +69,7 @@ impl<'a> FeedSessions<'a> {
     }
 }
 
-/// Typed failure for [`FeedSessions::open_spec`].
+/// Typed failure for [`Feeds::open_spec`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FeedSpecOpenError {
     /// The ergonomic spec did not contain enough app intent to build params.
@@ -85,13 +88,13 @@ impl fmt::Display for FeedSpecOpenError {
 }
 
 impl NmpApp {
-    /// App-facing feed-session facade.
+    /// App-facing feed facade.
     ///
-    /// This is the normal Rust app doorway for feed-shaped typed sessions:
-    /// open typed params, page by returned handle, close by returned handle.
+    /// This is the normal Rust app doorway for feed reads: open typed params,
+    /// page by returned handle, close by returned handle.
     #[must_use]
-    pub fn feeds(&self) -> FeedSessions<'_> {
-        FeedSessions::new(self)
+    pub fn feeds(&self) -> Feeds<'_> {
+        Feeds::new(self)
     }
 }
 

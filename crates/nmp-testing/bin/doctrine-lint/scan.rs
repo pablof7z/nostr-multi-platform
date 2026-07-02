@@ -13,14 +13,14 @@ use crate::cli::Config;
 use crate::event_flow_gates;
 use crate::report;
 use crate::rules::{
-    d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, deleted_defaults, nip29_kind_blind,
-    no_raw_tap_reintroduction, product_raw_read,
+    d0, d10, d11, d12, d13, d14, d15, d6, d7, deleted_defaults, feed_vocabulary,
+    nip29_kind_blind, no_raw_tap_reintroduction, product_raw_read,
 };
 use crate::scope::{
     action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d17_file_in_scope, d19_file_in_scope, d20_file_in_scope,
     d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope, d27_file_in_scope,
-    d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
+    d6_file_in_scope, d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
 };
 use crate::{allow, walker};
 
@@ -61,14 +61,15 @@ pub(super) struct FileContext {
     workspace_d8: bool,
     d0_exempt: bool,
     d6_test_file: bool,
+    d6_in_scope: bool,
     d8_test_file: bool,
     no_raw_tap_in_scope: bool,
     product_raw_read_in_scope: bool,
     deleted_defaults_in_scope: bool,
+    feed_vocabulary_in_scope: bool,
     action_namespace_in_scope: bool,
     nip29_kind_blind_in_scope: bool,
     d7_in_scope: bool,
-    d8_in_scope: bool,
     d9_in_scope: bool,
     d10_in_scope: bool,
     d12_in_scope: bool,
@@ -103,14 +104,15 @@ impl FileContext {
             workspace_d8: cfg.workspace_d8,
             d0_exempt: d0::file_is_exempt(path),
             d6_test_file,
+            d6_in_scope: d6_file_in_scope(path, &cfg.d6_extra_scopes),
             d8_test_file: d6_test_file && !(cfg.workspace_d8 && is_nmp_testing_harness_bin(path)),
             no_raw_tap_in_scope: no_raw_tap_reintroduction::file_in_scope(path),
             product_raw_read_in_scope: product_raw_read::file_in_scope(path),
             deleted_defaults_in_scope: deleted_defaults::file_in_scope(path),
+            feed_vocabulary_in_scope: feed_vocabulary::file_in_scope(path),
             action_namespace_in_scope: action_namespace_file_in_scope(path),
             nip29_kind_blind_in_scope: nip29_kind_blind::file_in_scope(path),
             d7_in_scope: d7::file_in_scope(path),
-            d8_in_scope: d8::file_in_scope(path, &cfg.d8_extra_scopes),
             d9_in_scope: d9_file_in_scope(path, &cfg.d9_extra_scopes),
             d10_in_scope: d10_file_in_scope(path, &cfg.d10_extra_scopes),
             d12_in_scope: d12_file_in_scope(path, &cfg.d12_extra_scopes),
@@ -139,7 +141,6 @@ impl FileContext {
 pub(super) struct FileState {
     ef_state: event_flow_gates::ScanState,
     d6_state: d6::State,
-    d8_tracker: d8::HotPathTracker,
     d10_tracker: d10::PrivatePublishTracker,
     d11_tracker: d11::FnTracker,
     d14_tracker: d14::StructTracker,

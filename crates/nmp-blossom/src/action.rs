@@ -98,7 +98,14 @@ impl ActionModule for UploadAction {
     /// Settles asynchronously — `execute` enqueues the protocol command and
     /// returns; the worker posts the terminal (`RecordActionSuccess` with the
     /// descriptor, or `RecordActionFailure`) against `correlation_id`.
-    fn is_async_completing() -> bool {
+    /// Recording sites are cross-file/cross-crate: `upload/mod.rs` builds the
+    /// `RecordActionSuccess`/`RecordActionFailure` `HostOp`s, which
+    /// `nmp-core`'s `actor/dispatch/cmd_protocol.rs` dispatches into
+    /// `kernel/publish_cmd.rs`'s `record_action_failure` /
+    /// `record_action_stage` (the same shape as `nmp-core`'s own
+    /// `PublishModule`).
+    #[rustfmt::skip]
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites in upload/mod.rs (HostOp) + nmp-core actor/dispatch/cmd_protocol.rs + kernel/publish_cmd.rs
         true
     }
 

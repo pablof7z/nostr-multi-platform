@@ -1,8 +1,26 @@
 //! D6 — errors never cross FFI as exceptions; no panics outside test.
 //!
 //! Operational failures must surface as `toast` / `busy` state fields, not
-//! as Rust panics or `Result` types crossing the FFI seam. Inside `nmp-core`
-//! production code:
+//! as Rust panics or `Result` types crossing the FFI seam.
+//!
+//! ## Scope — explicit enforced set, not universal
+//!
+//! `.unwrap()`/`.expect()`/`panic!`/`unreachable!`/`unimplemented!`/`todo!`
+//! outside test code are a correctness bug everywhere in principle, but D6
+//! is enforced only against [`D6_ENFORCED_CRATES`]: `nmp-core`,
+//! `nmp-browser-runtime`, and the seven curated protocol crates
+//! (`nmp-nip{01,17,23,29,42,57,59}`). Those crates were hand-kept D6-clean;
+//! every other production crate carries hundreds of legitimate `.unwrap()` /
+//! `.expect()` call sites that have never been audited against this rule
+//! (`nmp-store`, `nmp-uniffi`, `nmp-signers`, `nmp-content`, `nmp-planner`,
+//! `nmp-nip51`, `nmp-nip47`, `nmp-router`, `nmp-native-runtime`, …).
+//! Widening D6 to the full workspace is a real, multi-PR campaign — not
+//! something a scope-boundary change can silently do. `--workspace-full`
+//! therefore reaches every crate for the OTHER rules, but D6 itself stays
+//! bounded by [`file_in_scope`] (with the usual `--d6-extra-scope` opt-in
+//! hook for the fixture smoke test).
+//!
+//! Inside an enforced-scope file, production code:
 //!
 //! - `panic!`, `unreachable!`, `unimplemented!`, `todo!` are banned
 //! - `.unwrap()` and `.expect(...)` are banned
@@ -101,6 +119,33 @@ pub fn file_is_test_only(path: &Path) -> bool {
         return true;
     }
     s.contains("/nmp-content-fixtures/") || s.starts_with("crates/nmp-content-fixtures/")
+}
+
+/// The explicit set of crates D6 is enforced against. See the module-level
+/// "Scope" doc above for why this is not the whole workspace.
+const D6_ENFORCED_CRATES: &[&str] = &[
+    "nmp-core",
+    "nmp-browser-runtime",
+    "nmp-nip01",
+    "nmp-nip17",
+    "nmp-nip23",
+    "nmp-nip29",
+    "nmp-nip42",
+    "nmp-nip57",
+    "nmp-nip59",
+];
+
+/// True iff `path` falls inside one of [`D6_ENFORCED_CRATES`]'s `src/` trees.
+/// Doctrine-lint's own source is excluded (its rule files and fixtures
+/// contain the banned tokens as string constants — meta-false-positives).
+pub fn file_in_scope(path: &Path) -> bool {
+    let s = path.to_string_lossy().replace('\\', "/");
+    if s.contains("/bin/doctrine-lint/") || s.starts_with("bin/doctrine-lint/") {
+        return false;
+    }
+    D6_ENFORCED_CRATES
+        .iter()
+        .any(|c| s.contains(&format!("crates/{}/src/", c)))
 }
 
 const BANNED_PATTERNS: &[(&str, &str)] = &[
@@ -405,6 +450,38 @@ mod tests {
         // NOT be exempted, otherwise the linter's own conformance tests break.
         assert!(!file_is_test_only(Path::new(
             "crates/nmp-testing/bin/doctrine-lint/fixtures/d6/violates_panic.rs"
+        )));
+    }
+
+    #[test]
+    fn file_in_scope_covers_enforced_crates() {
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel/mod.rs"
+        )));
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-browser-runtime/src/pump.rs"
+        )));
+        assert!(file_in_scope(Path::new("crates/nmp-nip17/src/lib.rs")));
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-nip59/src/gift_wrap.rs"
+        )));
+    }
+
+    #[test]
+    fn file_in_scope_excludes_unenforced_crates() {
+        // D6 is NOT universal — these crates carry unaudited `.unwrap()`s.
+        assert!(!file_in_scope(Path::new("crates/nmp-store/src/lmdb.rs")));
+        assert!(!file_in_scope(Path::new("crates/nmp-uniffi/src/lib.rs")));
+        assert!(!file_in_scope(Path::new("crates/nmp-nip47/src/status.rs")));
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-signers/src/broker.rs"
+        )));
+    }
+
+    #[test]
+    fn file_in_scope_excludes_doctrine_lint_source() {
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-testing/bin/doctrine-lint/rules/d6.rs"
         )));
     }
 
