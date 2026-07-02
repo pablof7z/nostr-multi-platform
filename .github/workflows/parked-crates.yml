@@ -1,0 +1,60 @@
+name: parked-crates
+
+# Rot-protection for deliberately-parked, out-of-workspace crates.
+#
+# nmp-nip59-decrypt-only (#2289, decision recorded on #2769) is a 109-LOC thin
+# adapter over nmp-nip59/rust-nostr, built as a staticlib for a future iOS
+# Notification Service Extension to decrypt gift-wrap push payloads without
+# linking the full kernel. It is intentionally excluded from the top-level
+# [workspace] (see crates/nmp-nip59-decrypt-only/Cargo.toml), so none of the
+# other CI workflows (test.yml, doctrine-lint.yml, ...) ever touch it — it has
+# zero coverage otherwise, and nmp-nip59 API changes would rot it silently.
+#
+# This is that crate's sole CI coverage: `cargo check --all-targets` against
+# its own manifest. `--all-targets` also type-checks the crate's #[cfg(test)]
+# module (built against the dev-dependency's `wrap` feature), which is the
+# surface most likely to break on an nmp-nip59 API change. Check-only (not
+# `cargo test`) keeps the job cheap while still catching drift.
+#
+# Triggers are intentionally asymmetric:
+#   - push to master: runs unconditionally, no paths filter. Changes to
+#     nmp-nip59 that land on master are exactly what can rot this parked
+#     crate, and paths filters do not apply to push-to-master gating here on
+#     purpose — we want every master push to double check.
+#   - pull_request: paths-scoped so unrelated PRs never pay for this job.
+#
+# If this job goes red, the fix is to re-adapt
+# crates/nmp-nip59-decrypt-only/src/lib.rs to the new nmp-nip59 API — never to
+# delete or disable this workflow.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/parked-crates.yml"
+      - "crates/nmp-nip59/**"
+      - "crates/nmp-nip59-decrypt-only/**"
+
+jobs:
+  check-parked-nip59:
+    name: cargo check (parked) nmp-nip59-decrypt-only
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: parked-nip59
+          workspaces: crates/nmp-nip59-decrypt-only
+
+      - name: cargo check (parked crate, own sub-workspace)
+        run: |
+          cargo check \
+            --manifest-path crates/nmp-nip59-decrypt-only/Cargo.toml \
+            --all-targets
