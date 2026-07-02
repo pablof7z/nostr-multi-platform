@@ -3,7 +3,7 @@
 use nmp_feed::{FeedCursor, FeedPage, FeedWindowMetrics, RootCard, RootFeedSnapshot};
 
 use super::*;
-use crate::{NoteFeedItem, RepostAttribution};
+use crate::{HostedGroupContext, NoteFeedItem, RepostAttribution};
 
 fn hex32(byte: u8) -> String {
     format!("{byte:02x}").repeat(32)
@@ -27,6 +27,10 @@ fn repost_item() -> NoteFeedItem {
             note_created_at: 1_699_000_000,
         }),
         relay_provenance: vec!["wss://relay.example".to_string()],
+        hosted_group: Some(HostedGroupContext {
+            host_relay_url: "wss://groups.example".to_string(),
+            local_id: "room-a".to_string(),
+        }),
     }
 }
 
@@ -40,6 +44,7 @@ fn bare_item() -> NoteFeedItem {
         content_tree: content_tree(),
         reposted_by: None,
         relay_provenance: Vec::new(),
+        hosted_group: None,
     }
 }
 
@@ -86,7 +91,7 @@ fn populated_snapshot() -> RootFeedSnapshot<NoteFeedItem, Nip10ReplyAttribution>
 fn schema_constants_match_note_feed_owner() {
     assert_eq!(OP_FEED_SCHEMA_ID, "nmp.note_feed.opfeed");
     assert_eq!(OP_FEED_FILE_IDENTIFIER, b"NNFS");
-    assert_eq!(OP_FEED_SCHEMA_VERSION, 1);
+    assert_eq!(OP_FEED_SCHEMA_VERSION, 2);
 }
 
 #[test]
@@ -135,6 +140,13 @@ fn repost_item_and_embedded_window_survive() {
     let repost = &decoded.cards[1];
     assert!(repost.attribution.is_empty());
     assert!(repost.card.reposted_by.is_some());
+    assert_eq!(
+        repost.card.hosted_group,
+        Some(HostedGroupContext {
+            host_relay_url: "wss://groups.example".to_string(),
+            local_id: "room-a".to_string(),
+        })
+    );
     assert_eq!(repost.card.kind, 6);
     assert_eq!(repost.card.relay_provenance, vec!["wss://relay.example"]);
 

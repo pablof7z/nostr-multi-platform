@@ -11,6 +11,11 @@ table RepostAttribution {
   note_created_at:uint64;
 }
 
+table HostedGroupContext {
+  host_relay_url:string;
+  local_id:string;
+}
+
 table NoteFeedItem {
   id:string;
   author_pubkey:string;
@@ -21,6 +26,7 @@ table NoteFeedItem {
   content_tree_bytes:[ubyte];
   relay_provenance:[string];
   reposted_by:RepostAttribution;
+  hosted_group:HostedGroupContext;
 }
 
 table ReplyAttribution {

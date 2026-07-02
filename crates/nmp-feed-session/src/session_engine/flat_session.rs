@@ -32,9 +32,14 @@ pub(super) fn build_flat_scope_session(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set: _,
+        row_context,
     } = resolved;
 
-    let feed = nmp_note_feed::FlatFeed::new_with_window_policy(admission, window);
+    let feed = nmp_note_feed::FlatFeed::new_with_window_policy_and_hosted_group_context(
+        admission,
+        window,
+        row_context,
+    );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
     let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),

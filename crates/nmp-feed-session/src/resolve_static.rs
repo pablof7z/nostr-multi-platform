@@ -21,7 +21,8 @@ use nmp_planner::{InterestScope, InterestShape};
 
 use super::resolve::not_supported;
 use super::source::{
-    empty_extra, one_live_shape, AcquisitionInterest, LiveShape, OpSessionIdentity, ReducedSource,
+    empty_extra, empty_row_context, one_live_shape, AcquisitionInterest, LiveShape,
+    OpSessionIdentity, ReducedSource,
 };
 
 // ── Authors { authors } — static author-set timeline ─────────────────────
@@ -78,6 +79,7 @@ pub(super) fn resolve_authors(
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 
@@ -114,6 +116,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
         active_follow_set: None,
+        row_context: empty_row_context(),
     }
 }
 
@@ -203,6 +206,7 @@ pub(super) fn resolve_referrer(
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 

@@ -80,6 +80,7 @@ fn build_observed_source_session(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set: _,
+        row_context: _,
     } = resolved;
 
     let admitted_observer: Arc<dyn ObservedProjectionSink> = Arc::new(AdmittedFeedObserver {

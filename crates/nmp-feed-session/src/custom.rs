@@ -31,7 +31,7 @@ use nmp_feed::{CustomAdmissionId, FeedOrder, FeedScope, RootAdmission};
 use nmp_planner::InterestShape;
 
 use super::resolve::resolve_scope;
-use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
+use super::source::{ExtraAcquisition, LiveShape, ReducedSource, RowContextProvider};
 
 fn not_supported(scope: &'static str) -> FeedOpenError {
     FeedOpenError::ScopeNotSupportedYet { scope }
@@ -165,6 +165,7 @@ pub(super) fn combine_admission_gate(
         mut identity_observer_ids,
         mut resolver_teardown,
         active_follow_set,
+        row_context: acq_row_context,
     } = acquisition;
     let op_session_identity = acq_op_session_identity.combine(gate.op_session_identity);
 
@@ -208,6 +209,11 @@ pub(super) fn combine_admission_gate(
             shapes
         })
     };
+    let row_context: RowContextProvider = {
+        let lp = acq_row_context;
+        let rp = gate.row_context;
+        Arc::new(move |event: &KernelEvent| lp(event).or_else(|| rp(event)))
+    };
 
     // Both sides stay reactive + are torn down (the gate must track changes so
     // its exclusion follows the live list/graph).
@@ -230,6 +236,7 @@ pub(super) fn combine_admission_gate(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set,
+        row_context,
     }
 }
 
@@ -338,6 +345,7 @@ mod tests {
             identity_observer_ids: Vec::new(),
             resolver_teardown: Vec::new(),
             active_follow_set: None,
+            row_context: crate::source::empty_row_context(),
         }
     }
 

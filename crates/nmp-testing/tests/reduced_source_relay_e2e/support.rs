@@ -242,6 +242,13 @@ pub(crate) fn list_members_params(key: &str, list_id: &str) -> FeedParams {
 }
 
 pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
+    flat_feed_cards(app, key)
+        .into_iter()
+        .map(|card| card.id)
+        .collect()
+}
+
+pub(crate) fn flat_feed_cards(app: &NmpApp, key: &str) -> Vec<nmp_note_feed::NoteFeedItem> {
     let Some(row) = app
         .run_typed_snapshot_projections()
         .into_iter()
@@ -253,7 +260,7 @@ pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
         .expect("NNFS payload decodes")
         .cards
         .into_iter()
-        .map(|card| card.card.id)
+        .map(|card| card.card)
         .collect()
 }
 

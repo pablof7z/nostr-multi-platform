@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use nmp_core::substrate::KernelEvent;
 use nmp_core::{DependentInterestChild, ObservedProjectionId};
 use nmp_feed::{FollowPredicate, RootAdmission, TeardownAction};
 use nmp_planner::{InterestScope, InterestShape};
@@ -35,6 +36,10 @@ pub(super) type LiveShapes = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
 
 /// Extra acquisition shapes a scope must subscribe to beyond the render shape.
 pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
+
+/// Optional source-owned row context attached to emitted note-feed rows.
+pub(super) type RowContextProvider =
+    Arc<dyn Fn(&KernelEvent) -> Option<nmp_note_feed::HostedGroupContext> + Send + Sync>;
 
 /// Whether a session can be registered before the active-account slot is
 /// populated.
@@ -138,6 +143,8 @@ pub(super) struct ReducedSource {
     /// Active-follow owner retained for active-follows session diagnostics.
     /// Session reactivity is carried by `reactivity_hooks`.
     pub active_follow_set: Option<Arc<nmp_nip02::ActiveFollowSet>>,
+    /// Source-owned context for the event that becomes a feed row.
+    pub row_context: RowContextProvider,
 }
 
 /// No extra acquisition beyond fixed interests.
@@ -147,4 +154,8 @@ pub(super) fn empty_extra() -> ExtraAcquisition {
 
 pub(super) fn one_live_shape(live_shape: LiveShape) -> LiveShapes {
     Arc::new(move || live_shape().into_iter().collect())
+}
+
+pub(super) fn empty_row_context() -> RowContextProvider {
+    Arc::new(|_| None)
 }

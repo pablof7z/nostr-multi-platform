@@ -37,8 +37,8 @@ use nmp_feed::RootAdmission;
 use nmp_planner::InterestShape;
 
 use super::source::{
-    one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity,
-    ReducedSource, SessionReactivityHook,
+    empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
+    OpSessionIdentity, ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
 use super::wot_graph::SessionWotGraph;
@@ -218,6 +218,7 @@ fn resolve_active_follow_set(
         identity_observer_ids: vec![identity_observer_id],
         resolver_teardown: vec![Box::new(move || resolver_for_teardown.close_current())],
         active_follow_set: Some(follow_set),
+        row_context: empty_row_context(),
     })
 }
 
@@ -325,6 +326,7 @@ fn resolve_wot(
         identity_observer_ids: Vec::new(),
         resolver_teardown: Vec::new(),
         active_follow_set: None,
+        row_context: empty_row_context(),
     })
 }
 

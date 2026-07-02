@@ -27,7 +27,7 @@ pub use flat_feed::{
     author_feed_predicate, author_feed_shape, thread_feed_predicate, thread_feed_shape, FlatFeed,
     FlatFeedPredicate,
 };
-pub use note_item::{NoteFeedItem, RepostAttribution};
+pub use note_item::{HostedGroupContext, NoteFeedItem, RepostAttribution};
 pub use op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, op_feed_observer, register_op_feed,
     register_op_feed_with_admission, Nip10ReplyAttribution, OpFeedEngine, OpFeedObserver,

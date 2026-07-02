@@ -26,6 +26,7 @@ fn root_item() -> NoteFeedItem {
         content_tree: content_tree(),
         reposted_by: None,
         relay_provenance: Vec::new(),
+        hosted_group: None,
     }
 }
 
@@ -42,6 +43,7 @@ fn repost_item() -> NoteFeedItem {
             note_created_at: 1_699_000_000,
         }),
         relay_provenance: Vec::new(),
+        hosted_group: None,
     }
 }
 
@@ -106,21 +108,21 @@ fn encode_hex(bytes: &[u8]) -> String {
 }
 
 #[test]
-fn op_feed_empty_golden_fixture_is_stable() {
+fn op_feed_empty_v2_golden_fixture_is_stable() {
     let wire = encode_op_feed_snapshot(&empty_snapshot());
-    let expected = decode_hex(include_str!("fixtures/op_feed_empty_v1.fb.hex"));
+    let expected = decode_hex(include_str!("fixtures/op_feed_empty_v2.fb.hex"));
     if wire != expected {
-        eprintln!("actual op_feed_empty_v1 hex:\n{}", encode_hex(&wire));
+        eprintln!("actual op_feed_empty_v2 hex:\n{}", encode_hex(&wire));
     }
     assert_eq!(wire, expected);
 }
 
 #[test]
-fn op_feed_populated_golden_fixture_is_stable() {
+fn op_feed_populated_v2_golden_fixture_is_stable() {
     let wire = encode_op_feed_snapshot(&populated_snapshot());
-    let expected = decode_hex(include_str!("fixtures/op_feed_populated_v1.fb.hex"));
+    let expected = decode_hex(include_str!("fixtures/op_feed_populated_v2.fb.hex"));
     if wire != expected {
-        eprintln!("actual op_feed_populated_v1 hex:\n{}", encode_hex(&wire));
+        eprintln!("actual op_feed_populated_v2 hex:\n{}", encode_hex(&wire));
     }
     assert_eq!(wire, expected);
 }
@@ -135,7 +137,7 @@ fn op_feed_golden_fixture_has_nnfs_identifier() {
 #[test]
 fn op_feed_schema_id_is_stable() {
     assert_eq!(OP_FEED_SCHEMA_ID, "nmp.note_feed.opfeed");
-    assert_eq!(OP_FEED_SCHEMA_VERSION, 1);
+    assert_eq!(OP_FEED_SCHEMA_VERSION, 2);
 }
 
 #[test]
