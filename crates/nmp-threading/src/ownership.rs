@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.threading",
     crate_name: "nmp-threading",
-    summary: "Reply-convention-agnostic timeline grouping algorithm. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper, consumed by per-NIP wrapper view modules (NIP-10 in nmp-nip01). No app nouns, no kind semantics.",
+    summary: "Reply-convention-agnostic timeline grouping and reactive threading graph projection. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper and the nmp.threading.graph.* projection family. No app nouns, no kind semantics.",
     claims: [
         {
             claim_type: "mechanism",
@@ -14,6 +14,32 @@ nmp_ownership::declare_crate_ownership! {
             },
             owns: [
                 "thread reconstruction and reply-tree semantics",
+            ],
+        },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.threading.graph",
+            exclusive: true,
+            scope: {
+                kind: "projection_family",
+                value: "nmp.threading.graph.*",
+                context: "",
+            },
+            owns: [
+                "per-session reactive threading graph projection family",
+            ],
+        },
+        {
+            claim_type: "schema",
+            id: "schema.nmp.threading.graph",
+            exclusive: true,
+            scope: {
+                kind: "schema_id",
+                value: "nmp.threading.graph",
+                context: "",
+            },
+            owns: [
+                "typed FlatBuffers schema for threading graph snapshots",
             ],
         },
     ],

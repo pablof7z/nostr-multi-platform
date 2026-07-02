@@ -10,10 +10,9 @@
 use std::collections::BTreeSet;
 
 use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
-use nmp_core::tags::parse_nip10;
-use nmp_threading::{
-    GroupDelta, Grouper, ModulePolicy, ParentResolver, ThreadPointer, TimelineBlock,
-};
+use nmp_threading::{GroupDelta, Grouper, ModulePolicy, TimelineBlock};
+#[cfg(test)]
+use nmp_threading::{ParentResolver, ThreadPointer};
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_SHORT_TEXT_NOTE;
@@ -21,43 +20,10 @@ use crate::kinds::KIND_SHORT_TEXT_NOTE;
 /// Pubkey alias mirroring the planner.
 pub type Pubkey = String;
 
-/// `ParentResolver` over NIP-10 markers. The grouper never sees kind:1
-/// directly — it only sees this resolver's `ThreadPointer` answers.
-pub struct Nip10Resolver;
-
-impl ParentResolver for Nip10Resolver {
-    fn parent(&self, event: &KernelEvent) -> Option<ThreadPointer> {
-        let refs = parse_nip10(&event.tags);
-        refs.reply.map(|r| ThreadPointer::Event {
-            id: r.id,
-            relay: r.relay,
-            kind: None,
-        })
-    }
-
-    fn root(&self, event: &KernelEvent) -> Option<ThreadPointer> {
-        let refs = parse_nip10(&event.tags);
-        refs.root.map(|r| ThreadPointer::Event {
-            id: r.id,
-            relay: r.relay,
-            kind: None,
-        })
-    }
-
-    fn parent_author(&self, event: &KernelEvent) -> Option<String> {
-        let refs = parse_nip10(&event.tags);
-        // Best-effort: NIP-10 says the participants' p-tags accompany the
-        // reply, but there's no positional guarantee that the first p-tag
-        // is the parent's author. Return the first p-tag — callers treat
-        // this as a hint, not authoritative.
-        refs.mentioned_pubkeys.into_iter().next()
-    }
-
-    fn supersedes(&self, event: &KernelEvent) -> Option<String> {
-        let _ = event;
-        None
-    }
-}
+/// `ParentResolver` over NIP-10/e-tag markers. Re-exported under the historic
+/// NIP-01 name, but implemented in `nmp-threading` so the kind-blind resolver
+/// has one owner.
+pub use nmp_threading::EtagThreadResolver as Nip10Resolver;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ModularTimelineSpec {
