@@ -5,7 +5,7 @@ use nmp_core::substrate::ObservedProjectionRegistrar;
 use crate::CommentThreadProjection;
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone)]
 pub struct Handles {

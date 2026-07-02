@@ -3,10 +3,10 @@ use nmp_core::substrate::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone, Debug, Default)]
-pub struct Handles;
+pub struct Handles {}
 
 pub fn register(
     app: &mut (impl ActionRegistrar + InputScopeRegistrar + SearchScopeRegistrar),
@@ -15,5 +15,5 @@ pub fn register(
     crate::action_registration::register_actions(app)?;
     crate::input_scope::register_input_scopes(app);
     crate::search::register_search_scopes(app);
-    Ok(Handles)
+    Ok(Handles {})
 }

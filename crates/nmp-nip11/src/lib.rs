@@ -35,10 +35,10 @@ pub use parse::parse_relay_info;
 pub use url::http_url_for_relay;
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone, Debug, Default)]
-pub struct Handles;
+pub struct Handles {}
 
 /// Install the automatic NIP-11 fetch hook on `app`. After this call, every
 /// relay the pool connects to has its information document fetched and surfaced
@@ -57,7 +57,7 @@ pub fn register(
     _config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     app.add_relay_connected_hook(std::sync::Arc::new(Nip11FetchHook::new()));
-    Ok(Handles)
+    Ok(Handles {})
 }
 
 /// On-demand probe of an arbitrary relay URL that may not be in the pool

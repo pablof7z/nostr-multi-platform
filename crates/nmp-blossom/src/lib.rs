@@ -43,10 +43,10 @@ pub use upload::http::BlobDescriptor;
 pub use upload::BlossomUploadCommand;
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone, Debug, Default)]
-pub struct Handles;
+pub struct Handles {}
 
 /// Register the Blossom action(s) on an [`ActionRegistrar`]
 /// (`nmp_core::substrate`).
@@ -57,7 +57,7 @@ pub fn register(
     _config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     app.register_action(UploadAction)?;
-    Ok(Handles)
+    Ok(Handles {})
 }
 
 /// Compiled ownership descriptor for crate-ownership reports.

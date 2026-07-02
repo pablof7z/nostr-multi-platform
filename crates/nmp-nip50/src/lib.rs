@@ -48,10 +48,10 @@ pub use wire::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone, Debug, Default)]
-pub struct Handles;
+pub struct Handles {}
 
 pub fn register(
     app: &(impl nmp_core::substrate::SearchScopeRegistrar + nmp_core::substrate::InputScopeRegistrar),
@@ -59,7 +59,7 @@ pub fn register(
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     scopes::register_search_scopes(app);
     input_recognizers::register_input_scopes(app);
-    Ok(Handles)
+    Ok(Handles {})
 }
 
 /// Compiled ownership descriptor for crate-ownership reports.

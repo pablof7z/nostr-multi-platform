@@ -7,7 +7,7 @@ use nmp_core::substrate::{
 use crate::WotBootstrapRuntime;
 
 #[derive(Clone, Debug, Default)]
-pub struct Config;
+pub struct Config {}
 
 #[derive(Clone, Default)]
 pub struct Handles {
