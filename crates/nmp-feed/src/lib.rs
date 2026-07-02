@@ -34,8 +34,8 @@ pub use pager::{
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
 pub use params::{
-    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope,
-    FeedSessionId, FeedShape, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, RelaySetId,
+    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedOrder, FeedParams, FeedScope,
+    FeedSessionId, FeedShape, FeedSourceExpr, FeedWindowPolicy, ListId, ProjectionKey, RelaySetId,
     TagTerm, WotRulesId, WotSeed,
 };
 pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};

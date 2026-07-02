@@ -429,7 +429,7 @@ that requires every feature screen to hand-roll hydration is not complete.
 
 Read APIs follow the same rule. App authors open typed sessions or generated
 helpers over session descriptors. The session owner names primary content kinds,
-source expressions, admission, ranking, output, and teardown; protocol/defaults
+source expressions, admission, order, output, and teardown; protocol/defaults
 code reduces that descriptor into planner-owned interests. Secondary facts that a
 rendered component needs are dependent interests resolved by that component or
 read model, never native-owned caches or ad hoc relay fetches.

@@ -10,14 +10,14 @@ const WOT_CANDIDATE_LIMIT: usize = 500;
 
 /// A minimal kind:3-ingesting WoT graph for ONE feed session, reusing
 /// [`nmp_wot::score::WotGraph`]'s ranked second-degree query (#1698). It does
-/// not duplicate the ranking logic: it owns a `WotGraph`, feeds it kind:3
+/// not duplicate the order logic: it owns a `WotGraph`, feeds it kind:3
 /// edges, and reads `ranked_second_degree_candidates`.
 pub(super) struct SessionWotGraph {
     seed: String,
     contact_kind: u32,
     graph: Mutex<WotGraph>,
     /// The seed's DIRECT follows (from the seed's own kind:3), tracked so the
-    /// session can acquire their contact lists for second-degree ranking.
+    /// session can acquire their contact lists for second-degree order.
     direct: Mutex<BTreeSet<String>>,
     /// Cached ranked candidate set: recomputed once per graph change, not once
     /// per admission test.
@@ -42,7 +42,7 @@ impl SessionWotGraph {
         self.ranked.lock().map(|r| r.clone()).unwrap_or_default()
     }
 
-    /// The seed's direct follows (their kind:3 feeds the ranking).
+    /// The seed's direct follows (their kind:3 feeds the order).
     pub(super) fn direct_follows(&self) -> BTreeSet<String> {
         self.direct.lock().map(|d| d.clone()).unwrap_or_default()
     }

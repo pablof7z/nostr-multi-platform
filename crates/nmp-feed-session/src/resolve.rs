@@ -270,7 +270,7 @@ fn resolve_wot(
     };
     let live_shapes = one_live_shape(Arc::clone(&live_shape));
 
-    // The second-degree ranking needs each direct follow's kind:3 contact list,
+    // The second-degree order needs each direct follow's kind:3 contact list,
     // and the candidates' primary-kind timeline must be acquired once ranked.
     // Acquire both live as the graph fills (seed kind:3 → direct follows known →
     // fetch their kind:3 → candidates rank → fetch their timelines).

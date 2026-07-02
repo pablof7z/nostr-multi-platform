@@ -14,7 +14,7 @@ shared crates. The default path is:
 | Layer | Owns |
 |---|---|
 | Reusable NMP crate | Generic Nostr mechanisms: event storage, routing, NIP modules, `nmp-content`, `refs.profile`, authoritative `refs.event`, derived `refs.event.envelopes`, typed action builders. |
-| App Rust core | Product nouns, product policy, app-specific ranking/admission, durable app state, and app projection shape. |
+| App Rust core | Product nouns, product policy, app-specific order/admission, durable app state, and app projection shape. |
 | Platform shell | Rendering, native navigation/widgets, OS capability execution, snapshot decoding, and component-host bridge objects. |
 | Runtime/component host | FFI/wasm transport, snapshot callback, typed action doorway, `resolve_ref` / `release_ref`, and provider stack for components. |
 
@@ -25,8 +25,8 @@ rows are ordinary Nostr content.
 
 - Reusable NMP: `nmp-feed`, NIP modules, routing, repost/delete acquisition,
   cache, and replaceable supersession.
-- App Rust core: declares `FeedParams`: primary content kinds, acquisition
-  scope, admission, ranking, window, and projection key.
+- App Rust core: declares `FeedParams`: primary content kinds, typed source
+  expression, admission, order, window policy, and projection key.
 - Shell: opens/closes the feed by handle and renders the pushed projection.
 - Runtime/host: transports the handle and installs component providers.
 - Single writers: NMP writes event facts; the feed session/app projection writes
@@ -36,9 +36,9 @@ rows are ordinary Nostr content.
 {
   "primary_kinds": [1],
   "shape": "RootIndexed",
-  "acquisition": "ActiveUserFollows",
+  "source": "ActiveUserFollows",
   "admission": "All",
-  "ranking": "ChronologicalDesc",
+  "order": "NewestByFeedPosition",
   "window": { "initial_limit": 80 },
   "projection": "myapp.timeline.home"
 }
@@ -50,13 +50,13 @@ derives acquisition below the app boundary.
 ## Kind-Filtered Explorer
 
 Use for "show kind N by this tag/author/relay set". If it is a feed, expose an
-app-owned typed read helper with the primary kind and typed acquisition scope.
+app-owned typed read helper with the primary kind and typed source expression.
 Low-level raw-interest APIs are internal acquisition machinery for
 already-compiled static non-feed reads; do not make them a product shell API.
 
 - Reusable NMP: validates primary kinds, compiles acquisition, routes relays.
 - App Rust core: owns explorer policy such as topic, relay-set id, custom
-  admission, or ranking.
+  admission, or order.
 - Shell: supplies the selected topic/id and keeps the opaque feed handle.
 - Runtime/host: closes by handle; it never re-derives a filter from UI state.
 - Single writers: app Rust writes explorer projection facts; NMP writes event
@@ -66,9 +66,9 @@ already-compiled static non-feed reads; do not make them a product shell API.
 {
   "primary_kinds": [30023],
   "shape": "Flat",
-  "acquisition": { "Tag": { "term": "nostr" } },
+  "source": { "Tag": { "term": "nostr" } },
   "admission": "All",
-  "ranking": "ChronologicalDesc",
+  "order": "NewestByFeedPosition",
   "window": { "initial_limit": 50 },
   "projection": "myapp.feed.longform.topic.nostr"
 }

@@ -36,9 +36,9 @@ so every render surface chooses its own enumeration policy.
   follows. Exposes `follows() -> Vec<String>` and
   `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`. No `FollowSetLookup`
   trait.
-- **app/runtime composition roots** — compose consumers and reduce
-  `FeedScope::ActiveUserFollows` into dependent child interests by calling the
-  owning protocol/feed installers explicitly.
+- **app/runtime composition roots** — open typed `FeedParams` sessions that
+  reduce `FeedSourceExpr::ActiveUserFollows` into dependent child interests
+  through the standard feed-session compiler.
 - **`nmp-core`** — owns the generic interest registry, cache-serve, routing, and
   planner execution. It does not own active-user follow-feed acquisition, a
   follow-set trait, NIP tokens, `SocialTimeline`, or bespoke C-ABI symbols.
@@ -105,39 +105,26 @@ active account author and switches that projection on account changes.
 ```rust
 pub fn open_active_follows_op_feed(
     app: &NmpApp,
-    viewer: Pubkey,
     primary_kinds: Vec<u32>,
     projection: ProjectionKey,
-) {
-    let follow_set = nmp_nip02::ActiveFollowSet::new(
-        app.active_account_handle(),
-        nmp_nip02::LatestKind3FollowSet::new(app.event_store_handle()),
-    );
-    app.open_feed(FeedParams {
-        acquisition: FeedScope::ActiveUserFollows,
+) -> Result<FeedHandle, FeedOpenError> {
+    app.open_feed(&FeedParams {
         primary_kinds,
-        projection,
         shape: FeedShape::RootIndexed,
-        /* ... */
-    });
-    let engine = nmp_nip01::register_op_feed(
-        viewer,
-        follow_set.predicate(),
-        app.event_lookup(),
-        app.claim_sink(),
-    );
-    follow_set.on_source_effect(Box::new(move |_| {
-        engine_observer.sync();
-        replace_dependent_acquisition();
-        engine.reset_for_perspective_change();
-    }));
+        source: FeedSourceExpr::ActiveUserFollows,
+        admission: FeedAdmission::All,
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy { initial_limit: 80 },
+        projection,
+    })
 }
 ```
 
 Rationale: the v3 `SocialTimeline` planner-side expansion forced a
 `FollowSetLookup` trait that creates an `nmp-feed → nmp-core → nmp-planner` cycle.
 The current shape avoids the cycle and delivers the V-45 affordance through the
-generic ReducedSource/dependent-interest mechanism.
+standard typed feed-session compiler and its generic ReducedSource/dependent-
+interest mechanism.
 
 ### E. `TimelineBlock::Standalone` lossless reshape
 

@@ -369,7 +369,7 @@ fn declared_feed_matrix_uses_real_relay_data() {
          - relay-set kind:30023 feed compiled to app relays with no authors filter; live no-author query returned {} real kind:30023 events.\n\
          - live kind:20 query returned {} events; NIP-68 picture adapter rendered {} rows from parsed feed data.\n\
          - live kind:16 query returned {} events; {} claimed a kind:20 target via `k` tag or embedded event.\n\
-         - caller-owned custom ranking/filtering ran over {} real events and produced {} bounded feed rows with page limit 2.\n\n\
+         - caller-owned custom order/filtering ran over {} real events and produced {} bounded feed rows with page limit 2.\n\n\
          Kind:16 picture repost observation is reported as evidence, not a hard public-relay invariant: absence means this relay sample did not serve that shape within budget, not that the adapter path is green by itself.",
         followees.len(),
         sampled.len(),

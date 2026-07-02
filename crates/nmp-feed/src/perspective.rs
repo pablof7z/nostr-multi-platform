@@ -12,13 +12,13 @@
 //! # What a definition is (closed data, not a closure)
 //!
 //! A [`CustomPerspectiveDef`] is:
-//! * `acquisition` — a [`FeedScope`] expression (the SAME closed algebra as a
+//! * `source` — a [`FeedScope`] expression (the SAME closed algebra as a
 //!   non-custom feed: author sets, `#t` tags, WoT, set algebra). This is what a
-//!   `FeedScope::CustomPerspectiveId(id)` acquisition resolves to, and what a
+//!   `FeedScope::CustomPerspectiveId(id)` source resolves to, and what a
 //!   `FeedAdmission::Custom(id)` admission gate compiles from.
-//! * `ranking` — the [`FeedRanking`] the perspective demands. A
-//!   `FeedRanking::Custom(id)` resolves to this; if the engine cannot honor it
-//!   (only [`FeedRanking::ChronologicalDesc`] is wired) the open fails closed,
+//! * `order` — the [`FeedOrder`] the perspective demands. A
+//!   `FeedOrder::Custom(id)` resolves to this; if the engine cannot honor it
+//!   (only [`FeedOrder::NewestByFeedPosition`] is wired) the open fails closed,
 //!   never silently mis-orders.
 //!
 //! NO closure / trait / raw filter is stored. The definition is pure values an
@@ -45,7 +45,7 @@
 //!
 //! Doctrine map:
 //! - D0: the registry names no app product — it stores a [`FeedScope`] /
-//!   [`FeedRanking`], both framework-neutral closed data.
+//!   [`FeedOrder`], both framework-neutral closed data.
 //! - D4: it stores a definition only; resolution reuses the ONE step-3 compiler
 //!   (`resolve_scope`/`build_scope_session`). There is no second resolver.
 //! - D8: the store is a bounded `BTreeMap` keyed by id; a poisoned lock degrades
@@ -55,7 +55,7 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use crate::params::{CustomPerspectiveId, FeedRanking, FeedScope};
+use crate::params::{CustomPerspectiveId, FeedOrder, FeedScope};
 
 /// The CLOSED-DATA definition of an app-registered custom perspective.
 ///
@@ -65,32 +65,32 @@ use crate::params::{CustomPerspectiveId, FeedRanking, FeedScope};
 pub struct CustomPerspectiveDef {
     /// The acquisition scope this perspective draws from — the SAME closed
     /// [`FeedScope`] algebra a non-custom feed uses. A
-    /// `FeedScope::CustomPerspectiveId(id)` acquisition resolves to this; a
+    /// `FeedScope::CustomPerspectiveId(id)` source resolves to this; a
     /// `FeedAdmission::Custom(id)` admission gate is the COMPILED admission of
     /// this scope (built inside the framework by the step-3 resolver).
-    pub acquisition: FeedScope,
-    /// The ranking this perspective demands. A `FeedRanking::Custom(id)`
+    pub source: FeedScope,
+    /// The order this perspective demands. A `FeedOrder::Custom(id)`
     /// resolves to this; the compiler fails closed if the engine cannot honor
-    /// it (only [`FeedRanking::ChronologicalDesc`] is wired) rather than
+    /// it (only [`FeedOrder::NewestByFeedPosition`] is wired) rather than
     /// silently mis-ordering.
-    pub ranking: FeedRanking,
+    pub order: FeedOrder,
 }
 
 impl CustomPerspectiveDef {
-    /// A definition over `acquisition` with the default chronological-descending
-    /// ranking (the only order the engine honors today).
+    /// A definition over `source` with the default feed-position order (the
+    /// only order the engine honors today).
     #[must_use]
-    pub fn new(acquisition: FeedScope) -> Self {
+    pub fn new(source: FeedScope) -> Self {
         Self {
-            acquisition,
-            ranking: FeedRanking::ChronologicalDesc,
+            source,
+            order: FeedOrder::NewestByFeedPosition,
         }
     }
 
-    /// Set this definition's ranking (builder-style).
+    /// Set this definition's order (builder-style).
     #[must_use]
-    pub fn with_ranking(mut self, ranking: FeedRanking) -> Self {
-        self.ranking = ranking;
+    pub fn with_order(mut self, order: FeedOrder) -> Self {
+        self.order = order;
         self
     }
 }

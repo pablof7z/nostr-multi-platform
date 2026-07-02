@@ -188,9 +188,9 @@ mod tests {
         // the validator at the `validate_feed_params` gate in `decode_and_validate`.
         let params_json = r#"{
             "primary_kinds": [6],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.test.invalid"
         }"#;
@@ -208,13 +208,13 @@ mod tests {
     #[test]
     fn parity_open_feed_json_valid_params_returns_handle() {
         let app = crate::NmpApp::new();
-        // FeedParams JSON: field names match the struct (acquisition, not scope;
-        // FeedAdmission::All, not "Default"; FeedWindow.initial_limit, not limit).
+        // FeedParams JSON: field names match the struct (source, not scope;
+        // FeedAdmission::All, not "Default"; FeedWindowPolicy.initial_limit, not limit).
         let params_json = r#"{
             "primary_kinds": [1],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.test"
         }"#;
@@ -236,9 +236,9 @@ mod tests {
         let app = crate::NmpApp::new();
         let params_json = r#"{
             "primary_kinds": [1],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.test.teardown"
         }"#;
@@ -275,9 +275,9 @@ mod tests {
         let app = crate::NmpApp::new();
         let params_json = r#"{
             "primary_kinds": [1],
-            "acquisition": "ActiveUserFollows",
+            "source": "ActiveUserFollows",
             "admission": "All",
-            "ranking": "ChronologicalDesc",
+            "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
             "projection": "app.feed.test.mismatch"
         }"#;

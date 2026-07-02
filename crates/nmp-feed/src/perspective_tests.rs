@@ -1,7 +1,7 @@
 //! Unit proofs for the closed-data custom-perspective registry (#1740 step 4).
 
 use super::*;
-use crate::params::{CustomPerspectiveId, FeedRanking, FeedScope, TagTerm};
+use crate::params::{CustomPerspectiveId, FeedOrder, FeedScope, TagTerm};
 
 fn id(s: &str) -> CustomPerspectiveId {
     CustomPerspectiveId(s.to_string())
@@ -53,20 +53,20 @@ fn register_is_register_once_immutable_no_overwrite() {
     );
     assert_eq!(reg.len(), 1, "no append");
     assert_eq!(
-        reg.get(&id("eng")).map(|d| d.acquisition),
+        reg.get(&id("eng")).map(|d| d.source),
         Some(tag_scope("rust")),
         "the FIRST definition stands (immutable, no overwrite)",
     );
 }
 
 #[test]
-fn definition_carries_ranking() {
+fn definition_carries_order() {
     let def =
-        CustomPerspectiveDef::new(tag_scope("rust")).with_ranking(FeedRanking::ChronologicalAsc);
-    assert_eq!(def.ranking, FeedRanking::ChronologicalAsc);
-    // Default ranking is chronological-descending (the engine-honored order).
+        CustomPerspectiveDef::new(tag_scope("rust")).with_order(FeedOrder::OldestByFeedPosition);
+    assert_eq!(def.order, FeedOrder::OldestByFeedPosition);
+    // Default order is feed-position newest-first (the engine-honored order).
     assert_eq!(
-        CustomPerspectiveDef::new(tag_scope("rust")).ranking,
-        FeedRanking::ChronologicalDesc,
+        CustomPerspectiveDef::new(tag_scope("rust")).order,
+        FeedOrder::NewestByFeedPosition,
     );
 }

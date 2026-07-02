@@ -2,7 +2,7 @@
 //!
 //! This module defines the **declaration** an app submits to open a feed:
 //! [`FeedParams`] with explicit, separately-typed phases — acquisition source,
-//! admission policy, ranking/order, window, and item projection — plus the
+//! admission policy, ordering policy, window, and item projection — plus the
 //! app's primary content kinds. It also defines the closed [`FeedSourceExpr`]
 //! algebra ([`FeedScope`]) used to name acquisition sources, and the
 //! [`FeedHandle`] returned when a session is opened.
@@ -13,10 +13,10 @@
 //!   `Perspective` trait and never a wire/protocol kind. Primary-kind validation
 //!   (which kinds are derived acquisition vs. primary input) is protocol
 //!   knowledge and lives in the composition/compiler layer, not here.
-//! - D8: window limits ride on the typed [`FeedWindow`].
+//! - D8: window limits ride on the typed [`FeedWindowPolicy`].
 //!
-//! Step 1 is **definition only**: `open_feed` does not yet consume these
-//! (step 2). No native closure crosses FFI — app-defined admission/ranking is
+//! `open_feed` consumes this declaration through the standard feed-session
+//! compiler. No native closure crosses FFI — app-defined admission/order is
 //! referenced by an opaque [`CustomPerspectiveId`].
 
 use serde::{Deserialize, Serialize};
@@ -36,11 +36,11 @@ use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct ListId(pub String);
 
-/// Opaque identifier for an app-defined admission/ranking perspective.
+/// Opaque identifier for an app-defined admission/order perspective.
 ///
 /// This is how app-defined policy enters the model **without** a `Perspective`
 /// trait and **without** a native closure crossing FFI. The app registers its
-/// admission/ranking logic out-of-band and names it here by id; the kernel sees
+/// admission/order logic out-of-band and names it here by id; the kernel sees
 /// only the opaque id and dispatches the compiled, pre-registered predicate.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct CustomPerspectiveId(pub String);
@@ -69,8 +69,8 @@ pub struct TagTerm(pub String);
 /// This is the framework-neutral source phase: it never names an app product.
 /// It is a closed enum — adding a new acquisition shape is a deliberate,
 /// reviewed model change, and every consumer that matches on it must stay
-/// exhaustive. App-defined admission/ranking does **not** live here; it rides
-/// on [`FeedAdmission::Custom`] / [`FeedRanking::Custom`] as an opaque id.
+/// exhaustive. App-defined admission/order does **not** live here; it rides
+/// on [`FeedAdmission::Custom`] / [`FeedOrder::Custom`] as an opaque id.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub enum FeedSourceExpr {
     /// The active account's own follow set (reactive perspective state derived
@@ -145,7 +145,7 @@ pub enum FeedSourceExpr {
 pub type FeedScope = FeedSourceExpr;
 
 // ---------------------------------------------------------------------------
-// Shape, admission, ranking, window, projection phases.
+// Shape, admission, order, window, projection phases.
 // ---------------------------------------------------------------------------
 
 /// (a) SHAPE — how the session projects acquired, admitted rows.
@@ -182,26 +182,30 @@ pub enum FeedAdmission {
     Custom(CustomPerspectiveId),
 }
 
-/// (c) RANKING / ORDER — how admitted rows are ordered in the window.
+/// (c) ORDER — how admitted rows are ordered in the window.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum FeedRanking {
-    /// Newest-first by `(created_at, id)` — the default chronological order.
-    ChronologicalDesc,
-    /// Oldest-first by `(created_at, id)`.
-    ChronologicalAsc,
-    /// Ranked per an app-registered ranking perspective (opaque id).
+pub enum FeedOrder {
+    /// Newest-first by feed position.
+    ///
+    /// Direct event feeds currently map feed position to event `(created_at, id)`.
+    /// Wrapper/protocol compilers can map this contract to source position
+    /// without changing the app-facing order name.
+    NewestByFeedPosition,
+    /// Oldest-first by feed position.
+    OldestByFeedPosition,
+    /// Ordered per an app-registered order perspective (opaque id).
     Custom(CustomPerspectiveId),
 }
 
-/// (d) WINDOW — the bounded viewport over admitted, ranked rows (D8).
+/// (d) WINDOW — the bounded viewport over admitted, ordered rows (D8).
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub struct FeedWindow {
+pub struct FeedWindowPolicy {
     /// Initial visible page size. Clamped into
-    /// `1..=MAX_FEED_WINDOW_LIMIT` by [`FeedWindow::bounded_limit`].
+    /// `1..=MAX_FEED_WINDOW_LIMIT` by [`FeedWindowPolicy::bounded_limit`].
     pub initial_limit: usize,
 }
 
-impl Default for FeedWindow {
+impl Default for FeedWindowPolicy {
     fn default() -> Self {
         Self {
             initial_limit: DEFAULT_FEED_WINDOW_LIMIT,
@@ -209,7 +213,7 @@ impl Default for FeedWindow {
     }
 }
 
-impl FeedWindow {
+impl FeedWindowPolicy {
     /// The window limit clamped into the bounded range. A zero limit falls back
     /// to the default; oversized limits are capped at [`MAX_FEED_WINDOW_LIMIT`].
     #[must_use]
@@ -299,13 +303,13 @@ pub struct FeedParams {
     #[serde(default)]
     pub shape: FeedShape,
     /// (b) ACQUISITION source.
-    pub acquisition: FeedScope,
+    pub source: FeedScope,
     /// (c) ADMISSION policy.
     pub admission: FeedAdmission,
-    /// (d) RANKING / ORDER.
-    pub ranking: FeedRanking,
+    /// (d) ORDER.
+    pub order: FeedOrder,
     /// (e) WINDOW.
-    pub window: FeedWindow,
+    pub window: FeedWindowPolicy,
     /// (f) ITEM PROJECTION.
     pub projection: ProjectionKey,
 }

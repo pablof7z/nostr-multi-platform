@@ -120,10 +120,10 @@ pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
     nmp_native_runtime::FeedParams {
         primary_kinds: vec![STARTER_PRIMARY_NOTE_KIND],
         shape: nmp_native_runtime::FeedShape::RootIndexed,
-        acquisition: nmp_native_runtime::FeedScope::ActiveUserFollows,
+        source: nmp_native_runtime::FeedSourceExpr::ActiveUserFollows,
         admission: nmp_native_runtime::FeedAdmission::All,
-        ranking: nmp_native_runtime::FeedRanking::ChronologicalDesc,
-        window: nmp_native_runtime::FeedWindow { initial_limit: 80 },
+        order: nmp_native_runtime::FeedOrder::NewestByFeedPosition,
+        window: nmp_native_runtime::FeedWindowPolicy { initial_limit: 80 },
         projection: nmp_native_runtime::ProjectionKey::app_owned(HOME_TIMELINE_PROJECTION)
             .expect("starter home timeline projection is app-owned"),
     }
@@ -402,7 +402,10 @@ mod tests {
             nmp_native_runtime::ProjectionKey::app_owned("{{name}}.timeline.home")
                 .expect("starter home timeline projection is app-owned")
         );
-        assert_eq!(feed.acquisition, nmp_native_runtime::FeedScope::ActiveUserFollows);
+        assert_eq!(
+            feed.source,
+            nmp_native_runtime::FeedSourceExpr::ActiveUserFollows
+        );
     }
 
     #[test]
