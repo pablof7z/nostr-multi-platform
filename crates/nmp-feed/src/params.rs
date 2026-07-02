@@ -25,7 +25,7 @@ use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
 use nmp_ownership::{DynamicProjectionKey, SurfaceTokenError};
 
 // ---------------------------------------------------------------------------
-// Acquisition source — the closed `PubkeySetExpr` algebra.
+// Acquisition source — the closed `FeedSourceExpr` algebra.
 // ---------------------------------------------------------------------------
 
 /// Opaque identifier for an app-registered list (a NIP-51 set, a curated id).
@@ -117,7 +117,7 @@ pub enum FeedSourceExpr {
     /// NIP-22 comments). The compiler extracts `e`/`a` targets from those
     /// pointer events and hydrates only the feed's primary kinds.
     PointerTargets {
-        pointers: Box<PubkeySetExpr>,
+        pointers: Box<FeedSourceExpr>,
         pointer_kinds: Vec<u32>,
     },
     /// The active account's hosted group set.
@@ -128,19 +128,15 @@ pub enum FeedSourceExpr {
     /// declaration or no active account fails closed.
     ActiveUserHostedGroups,
     /// Set union of two sub-expressions.
-    Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    Union(Box<FeedSourceExpr>, Box<FeedSourceExpr>),
     /// Set intersection of two sub-expressions.
-    Intersection(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    Intersection(Box<FeedSourceExpr>, Box<FeedSourceExpr>),
     /// Set difference: members of `0` that are not in `1`.
-    Difference(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
+    Difference(Box<FeedSourceExpr>, Box<FeedSourceExpr>),
     /// An app-defined acquisition perspective referenced by opaque registered
     /// id (no trait, no native closure).
     CustomPerspectiveId(CustomPerspectiveId),
 }
-
-/// Backwards-compatible alias for older call sites. The feed source algebra now
-/// includes non-pubkey sources such as NIP-51/NIP-29 group sets.
-pub type PubkeySetExpr = FeedSourceExpr;
 
 /// Alias: the acquisition phase of a [`FeedParams`] is a [`FeedSourceExpr`].
 ///

@@ -8,11 +8,11 @@
 use super::*;
 
 // ---------------------------------------------------------------------------
-// FeedScope / PubkeySetExpr construction + exhaustiveness.
+// FeedScope / FeedSourceExpr construction + exhaustiveness.
 // ---------------------------------------------------------------------------
 
 #[test]
-fn pubkey_set_expr_variants_construct() {
+fn feed_source_expr_variants_construct() {
     let follows = FeedScope::ActiveUserFollows;
     let authors = FeedScope::Authors {
         authors: ["deadbeef".to_string()].into_iter().collect(),
@@ -68,24 +68,24 @@ fn pubkey_set_expr_variants_construct() {
     }
 }
 
-/// Exhaustive matcher proving [`PubkeySetExpr`] is a closed enum: a new variant
+/// Exhaustive matcher proving [`FeedSourceExpr`] is a closed enum: a new variant
 /// would break compilation here.
-fn describe(expr: &PubkeySetExpr) -> &'static str {
+fn describe(expr: &FeedSourceExpr) -> &'static str {
     match expr {
-        PubkeySetExpr::ActiveUserFollows => "active-user-follows",
-        PubkeySetExpr::Authors { .. } => "authors",
-        PubkeySetExpr::ContactList { .. } => "contact-list",
-        PubkeySetExpr::ListMembers { .. } => "list-members",
-        PubkeySetExpr::Wot { .. } => "wot",
-        PubkeySetExpr::RelaySet { .. } => "relay-set",
-        PubkeySetExpr::Tag { .. } => "tag",
-        PubkeySetExpr::Referrer { .. } => "referrer",
-        PubkeySetExpr::PointerTargets { .. } => "pointer-targets",
-        PubkeySetExpr::ActiveUserHostedGroups => "active-user-hosted-groups",
-        PubkeySetExpr::Union(..) => "union",
-        PubkeySetExpr::Intersection(..) => "intersection",
-        PubkeySetExpr::Difference(..) => "difference",
-        PubkeySetExpr::CustomPerspectiveId(..) => "custom-perspective",
+        FeedSourceExpr::ActiveUserFollows => "active-user-follows",
+        FeedSourceExpr::Authors { .. } => "authors",
+        FeedSourceExpr::ContactList { .. } => "contact-list",
+        FeedSourceExpr::ListMembers { .. } => "list-members",
+        FeedSourceExpr::Wot { .. } => "wot",
+        FeedSourceExpr::RelaySet { .. } => "relay-set",
+        FeedSourceExpr::Tag { .. } => "tag",
+        FeedSourceExpr::Referrer { .. } => "referrer",
+        FeedSourceExpr::PointerTargets { .. } => "pointer-targets",
+        FeedSourceExpr::ActiveUserHostedGroups => "active-user-hosted-groups",
+        FeedSourceExpr::Union(..) => "union",
+        FeedSourceExpr::Intersection(..) => "intersection",
+        FeedSourceExpr::Difference(..) => "difference",
+        FeedSourceExpr::CustomPerspectiveId(..) => "custom-perspective",
     }
 }
 
