@@ -53,19 +53,16 @@ crate owner named here has not yet been extracted in code, the current owner is
 migration debt tracked in GitHub Issues, not an exception to this graph.
 
 `nmp-signer-iface` (Layer 0) owns the dependency-light signing substrate
-vocabulary so lower-layer signer and protocol crates can name it without
-depending on the kernel: the NIP-01 event value types `SignedEvent` /
+vocabulary so signer, protocol, and kernel crates can name it without creating
+a dependency cycle: the NIP-01 event value types `SignedEvent` /
 `UnsignedEvent` / `SigningError`, the `SignerOp` / `SignerError` op vocabulary,
 the NIP-46 `Nip46Rpc` / `Nip46Transport` and NIP-55 external-signer transport
 contracts, and the actor-facing `RemoteSignerHandle` trait. `nmp-signers`
 (Layer 1) depends only on `nmp-signer-iface` for this vocabulary, not on
-`nmp-core` (issue #1720). `nmp-core` temporarily re-exports `SignedEvent` /
-`UnsignedEvent` / `SigningError` through `nmp_core::substrate` and
-`RemoteSignerHandle` at the crate root so the ~94 existing kernel-side and
-protocol-crate import paths keep resolving; that re-export is a staged
-migration aid, not a durable seam — issue #1772 tracks migrating every
-remaining importer onto direct `nmp_signer_iface` imports and deleting the
-re-exports. The type owner is `nmp-signer-iface`.
+`nmp-core`; `nmp-core` also imports the owner crate directly when the actor or
+substrate needs these types. Durable code should name `nmp_signer_iface`
+directly for signer-interface concepts unless it is using a deliberately
+documented higher-level NMP facade.
 
 `nmp-relay-url` (Layer 0) owns the dependency-free relay-URL canonicalization
 vocabulary: the single `canonicalize(&str) -> Option<String>` authority that
@@ -333,9 +330,9 @@ name.
 
 `nmp-substrate` is the reusable shared floor for router/mailbox/profile/contacts
 cache-parser construction. Reducer-owned delivery roots that cannot implement
-the full AppHost tier (currently Chirp web) must call `nmp-substrate`; they must
-not hand-copy that construction. Above that floor, app/runtime roots compose
-protocol crates and app-owned features by name.
+the full AppHost tier must call `nmp-substrate`; they must not hand-copy that
+construction. Above that floor, app/runtime roots compose protocol crates and
+app-owned features by name.
 
 Composition roots may name `nmp_core::substrate::AppHost` and the narrow
 registrar traits below it. Reusable protocol crates take only the narrow traits
@@ -346,8 +343,8 @@ or hide app policy behind a preset.
 Shared crates **must not own operator policy facts** — relay URLs,
 nostrconnect bootstrap relay URLs, seed pubkeys, account auto-follow lists, or
 signer permission batches. Those facts belong only in leaf app Rust crates
-(`apps/<app>/...`, e.g. `apps/chirp/crates/nmp-chirp-config`) or
-operator-provided app config (#1493). The native and browser runtime builders
+(`apps/<app>/...`) or operator-provided app config (#1493). The native and
+browser runtime builders
 enforce this at compile time: an app must declare its initial relay set with
 `.with_relays(...)` or explicitly opt out with `.without_initial_relays()`
 before `start()` — there is no framework relay default to inherit silently.

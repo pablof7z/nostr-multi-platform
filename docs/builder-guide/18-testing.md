@@ -38,7 +38,6 @@ milestone owns the contract.
 | Reactivity bench | `reactivity-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/reactivity-bench/main.rs` |
 | Firehose bench | `firehose-bench replay --standard --fail-on-gate` | `crates/nmp-testing/bin/firehose-bench/main.rs` |
 | FFI transport bench | `ffi-transport-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/ffi-transport-bench/main.rs` |
-| FFI stress (M10.5) | `ffi-stress` + Chirp smoke/UI tests | `crates/nmp-testing/bin/ffi-stress/main.rs` |
 
 `nmp-testing`'s library surface stays deliberately thin
 (`crates/nmp-testing/src/lib.rs`: `store_harness` + `crate_ready()`); the value
@@ -55,9 +54,9 @@ hot path: FlatBuffers update bytes crossing UniFFI as `Vec<u8>` through
 The workflow runs automatically only for changes to the native byte-transport
 owner (`crates/nmp-uniffi`, `crates/nmp-native-runtime`), the transport schema
 surface (`crates/nmp-core/src/transport`), the benchmark, dependency manifests,
-or the owning workflow/docs. It does not run for broad crate churn or legacy
-M14-D deletion surfaces such as `crates/nmp-ffi`, Gallery runtime glue, Marmot,
-or `ffi-stress`.
+or the owning workflow/docs. It does not run for broad crate churn or retired
+native cleanup artifacts; current native release evidence comes from UniFFI
+byte transport and app-shell tests.
 
 The failure threshold is not a historical timing number. The bench's
 pre-registered rule fails unless the surcharged weighted-p99 UniFFI-vs-C delta
@@ -186,12 +185,12 @@ policy live in Rust; the platform shells ferry the raw strings verbatim.
 | `NMP_TEST_NSEC` | `nsec1…` bech32 | Skip keyring restore; sign in with this nsec |
 | `NMP_TEST_RELAYS` | `[["ws://…","role"],…]` JSON | Replace default relay bootstrap with this set |
 
-Both are read in `KernelModel.start()`. When `NMP_TEST_RELAYS` is absent the
-Chirp app defaults from `nmp-chirp-config` are used:
-`wss://relay.primal.net` with role `"both,indexer"` for write-capable content
-proof plus connected discovery, and `wss://purplepag.es` with role `"indexer"`
-for an additional discovery lane. When present the JSON array **entirely
-replaces** the defaults — no merging.
+Both are read in `KernelModel.start()`. When `NMP_TEST_RELAYS` is absent, the
+shell starts with its app-owned relay configuration. For the external Chirp
+consumer, that means `wss://relay.primal.net` with role `"both,indexer"` for
+write-capable content proof plus connected discovery, and `wss://purplepag.es`
+with role `"indexer"` for an additional discovery lane. When present the JSON
+array **entirely replaces** the app defaults — no merging.
 
 Example XCUITest launch arg:
 
@@ -204,7 +203,7 @@ app.launchEnvironment["NMP_TEST_RELAYS"] = #"[["ws://127.0.0.1:10547","both"]]"#
 
 | Query parameter | Format | Behaviour |
 |---|---|---|
-| `relay_bootstrap` | JSON array of `[url, role]` pairs, for example `[[\"ws://127.0.0.1:1001\",\"indexer\"],[\"ws://127.0.0.1:1002\",\"both,indexer\"]]` | Replaces Chirp web's default relay bootstrap while preserving relay roles. Use this for outbox tests that must prove pure indexers stay discovery-only and write-capable relays seed the local publish lane. |
+| `relay_bootstrap` | JSON array of `[url, role]` pairs, for example `[[\"ws://127.0.0.1:1001\",\"indexer\"],[\"ws://127.0.0.1:1002\",\"both,indexer\"]]` | Replaces the shell's default relay bootstrap while preserving relay roles. Use this for outbox tests that must prove pure indexers stay discovery-only and write-capable relays seed the local publish lane. |
 | `relay` | repeated URL param | Legacy one-relay smoke override. Each URL is treated as `both,indexer` so the single fixture can serve discovery and writes. |
 
 ### Android — intent extras (`adb shell am start`)
@@ -241,7 +240,7 @@ arrays `[url, role]` where role is one of `"both"`, `"read"`, `"write"`, or
 
 Rust validates each entry through the relay-seeding helper; a malformed entry is
 silently skipped (D6). If the entire JSON array is malformed or empty, Rust
-falls back to the Chirp reference relay set so the kernel is never left without
-any relay.
+falls back to the app-owned reference relay set so the kernel is never left
+without any relay.
 
 See also: [06 — Reactivity contract (D8)](06-reactivity-contract.md) · [21 — The framework-magic contract](21-framework-magic.md) · [22 — Doctrine compliance checklist](22-doctrine-checklist.md)

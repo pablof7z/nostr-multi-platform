@@ -238,7 +238,12 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 
 The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
 
-The v1 release does **not** ship every module above as a finished product module. Per the v1 plan tracked in GitHub Issues, v1 first proves the kernel substrate and codegen with a non-Nostr fixture module, then grows Chirp from the first social baseline into NMP's reference client. Any reusable module that does ship should be demonstrated in Chirp, or carry a documented platform exception.
+The v1 release does **not** ship every module above as a finished product
+module. Per the v1 plan tracked in GitHub Issues, v1 first proves the kernel
+substrate and codegen with current in-repo fixtures and shell proofs, while
+external consumers such as Chirp prove NMP as a dependency. Any reusable module
+that does ship should be demonstrated by a current consumer or carry a
+documented platform exception.
 
 ### 4.2 Bindings
 
@@ -252,9 +257,17 @@ The CLI scaffolds a complete starter project. Behavior is detailed in §8.
 
 `examples/chat-{ios,android,desktop,web}` track the starter app but include richer features (groups via NIP-29, zaps end-to-end, Blossom uploads, NIP-46 bunker pairing) and serve as the canonical "what does production-grade integration look like" reference for each platform.
 
-### 4.5 The proof app (`nmp-proof`)
+### 4.5 Planned proof app (`nmp-proof`)
 
-A kitchen-sink stress-test app, built using the framework, on the v1 native platforms. It is **not** the starter app — the starter stays minimal so newcomers can read it. The proof app exists to validate the framework at scale and to gate v1 release. Browser runtime support is current; adding the web proof app to the release gate waits on browser-shell DX and component-host conformance.
+`nmp-proof` is the planned kitchen-sink stress-test app built using the
+framework on the v1 native platforms. It is **not** the starter app — the
+starter stays minimal so newcomers can read it. This section defines the target
+release-gate shape; it is not a claim that a wired in-repo `nmp-proof` artifact
+already exists. Until that artifact lands in the v1 release train, release
+evidence must cite current in-repo fixtures, app-shell proofs, subsystem tests,
+or external consumer repositories explicitly. Browser runtime support is
+current; adding the web proof app to the release gate waits on browser-shell DX
+and component-host conformance.
 
 Feature set:
 
