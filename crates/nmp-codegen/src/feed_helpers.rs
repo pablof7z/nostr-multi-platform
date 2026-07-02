@@ -3,8 +3,8 @@
 //! These helpers are host-language convenience only. They build the same
 //! serializable declaration that Rust app code builds with `FeedKey::app(...)`,
 //! `feed::events()`, `source::active_user().follows()`, and
-//! `app.feeds().open_spec(...)`, then call the host platform's feed-session
-//! opening door.
+//! `app.feeds().open_spec(...)`, then call the host platform's feed-opening
+//! door.
 //! They do not introduce another feed runtime or expose Trellis/session
 //! compiler internals.
 

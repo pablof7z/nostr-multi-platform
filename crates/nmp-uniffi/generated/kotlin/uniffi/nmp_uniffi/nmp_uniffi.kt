@@ -914,7 +914,7 @@ fun uniffi_nmp_uniffi_checksum_method_nmpapp_cancel_bunker_handshake(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer(
 ): Short
-fun uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(
+fun uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed(
 ): Short
 fun uniffi_nmp_uniffi_checksum_method_nmpapp_configure(
 ): Short
@@ -1074,7 +1074,7 @@ fun uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(`ptr`: Pointer,un
 ): Unit
 fun uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
-fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+fun uniffi_nmp_uniffi_fn_method_nmpapp_close_feed(`ptr`: Pointer,`handle`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
 ): Byte
 fun uniffi_nmp_uniffi_fn_method_nmpapp_configure(`ptr`: Pointer,`visibleLimit`: Int,`emitHz`: Int,uniffi_out_err: UniffiRustCallStatus,
 ): Unit
@@ -1325,7 +1325,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer() != 28028.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session() != 59539.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed() != 58223.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_configure() != 62391.toShort()) {
@@ -1349,16 +1349,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_init_signer_broker() != 39820.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 7876.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed() != 55957.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 54730.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_load_older_feed_status() != 19193.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_nostrconnect_uri() != 966.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 47635.toShort()) {
+    if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_feed_json() != 13798.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_nmp_uniffi_checksum_method_nmpapp_open_uri() != 12173.toShort()) {
@@ -1946,18 +1946,18 @@ public interface NmpAppInterface {
     fun `clearActionResultObserver`()
 
     /**
-     * Close a feed session previously opened by `open_feed_json`.
+     * Close a feed previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
-     * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live matching session was torn down;
+     * registered when the feed was opened, then removes the feed from
+     * the registry. Returns `true` when a live matching feed was torn down;
      * `false` when the handle is unknown, mismatched, or already closed
      * (idempotent — D6).
      *
-     * D8: the session's resources are released immediately; the registry entry
+     * D8: the feed's resources are released immediately; the registry entry
      * is removed so a subsequent close of the same handle is always a no-op.
      */
-    fun `closeFeedSession`(`handle`: FeedSessionHandle): kotlin.Boolean
+    fun `closeFeed`(`handle`: FeedHandle): kotlin.Boolean
 
     /**
      * Reconfigure rendering limits without restarting. Same clamp rules as
@@ -2052,17 +2052,17 @@ public interface NmpAppInterface {
      * Advance the feed's viewport to the next older page.
      *
      * Uses the full handle returned by `open_feed_json`; a raw projection key
-     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * or raw handle id is not sufficient to page a feed. Returns `true` when
      * the viewport cursor actually changed; `false` for an unknown, closed, or
      * mismatched handle, or when already at the oldest page (D6: always
      * succeeds, never panics).
      */
-    fun `loadOlderFeed`(`handle`: FeedSessionHandle): kotlin.Boolean
+    fun `loadOlderFeed`(`handle`: FeedHandle): kotlin.Boolean
 
     /**
      * Advance a feed's viewport and return the Rust-owned stop reason.
      */
-    fun `loadOlderFeedStatus`(`handle`: FeedSessionHandle): FeedLoadStatus
+    fun `loadOlderFeedStatus`(`handle`: FeedHandle): FeedLoadStatus
 
     /**
      * Generate a fresh `nostrconnect://` URI for app-initiated NIP-46 flows.
@@ -2077,12 +2077,12 @@ public interface NmpAppInterface {
     fun `nostrconnectUri`(`callbackScheme`: kotlin.String?): kotlin.String?
 
     /**
-     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     * Open a new feed from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then opens the session through
+     * Parses and validates the declaration, then opens the feed through
      * `NmpApp::open_feed` using the canonical native compiler below the facade
      * boundary.
-     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     * Returns a [`FeedHandle`] with the projection key and handle id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
      *
@@ -2091,10 +2091,10 @@ public interface NmpAppInterface {
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the feed
      * (e.g. an unsupported scope or poisoned registry).
      */
-    fun `openFeedJson`(`paramsJson`: kotlin.String): FeedSessionHandle
+    fun `openFeedJson`(`paramsJson`: kotlin.String): FeedHandle
 
     /**
      * Route a `nostr:` URI (or a bare NIP-19 entity) to the kernel reducer.
@@ -2622,22 +2622,22 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
-     * Close a feed session previously opened by `open_feed_json`.
+     * Close a feed previously opened by `open_feed_json`.
      *
      * Tears down the observer, projection, pull-controller, and interests
-     * registered when the session was opened, then removes the session from
-     * the registry. Returns `true` when a live matching session was torn down;
+     * registered when the feed was opened, then removes the feed from
+     * the registry. Returns `true` when a live matching feed was torn down;
      * `false` when the handle is unknown, mismatched, or already closed
      * (idempotent — D6).
      *
-     * D8: the session's resources are released immediately; the registry entry
+     * D8: the feed's resources are released immediately; the registry entry
      * is removed so a subsequent close of the same handle is always a no-op.
-     */override fun `closeFeedSession`(`handle`: FeedSessionHandle): kotlin.Boolean {
+     */override fun `closeFeed`(`handle`: FeedHandle): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(
-        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
+    UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_close_feed(
+        it, FfiConverterTypeFeedHandle.lower(`handle`),_status)
 }
     }
     )
@@ -2804,16 +2804,16 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * Advance the feed's viewport to the next older page.
      *
      * Uses the full handle returned by `open_feed_json`; a raw projection key
-     * or raw session id is not sufficient to page a feed. Returns `true` when
+     * or raw handle id is not sufficient to page a feed. Returns `true` when
      * the viewport cursor actually changed; `false` for an unknown, closed, or
      * mismatched handle, or when already at the oldest page (D6: always
      * succeeds, never panics).
-     */override fun `loadOlderFeed`(`handle`: FeedSessionHandle): kotlin.Boolean {
+     */override fun `loadOlderFeed`(`handle`: FeedHandle): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed(
-        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
+        it, FfiConverterTypeFeedHandle.lower(`handle`),_status)
 }
     }
     )
@@ -2823,12 +2823,12 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
     /**
      * Advance a feed's viewport and return the Rust-owned stop reason.
-     */override fun `loadOlderFeedStatus`(`handle`: FeedSessionHandle): FeedLoadStatus {
+     */override fun `loadOlderFeedStatus`(`handle`: FeedHandle): FeedLoadStatus {
             return FfiConverterTypeFeedLoadStatus.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_load_older_feed_status(
-        it, FfiConverterTypeFeedSessionHandle.lower(`handle`),_status)
+        it, FfiConverterTypeFeedHandle.lower(`handle`),_status)
 }
     }
     )
@@ -2859,12 +2859,12 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
 
 
     /**
-     * Open a new feed session from a JSON-encoded `FeedParams` declaration.
+     * Open a new feed from a JSON-encoded `FeedParams` declaration.
      *
-     * Parses and validates the declaration, then opens the session through
+     * Parses and validates the declaration, then opens the feed through
      * `NmpApp::open_feed` using the canonical native compiler below the facade
      * boundary.
-     * Returns a [`FeedSessionHandle`] with the projection key and session id.
+     * Returns a [`FeedHandle`] with the projection key and handle id.
      *
      * D6: all failures are typed `NmpError` values — never panics.
      *
@@ -2873,11 +2873,11 @@ open class NmpApp: Disposable, AutoCloseable, NmpAppInterface
      * * `NmpError::InvalidInput` — `params_json` is not valid JSON or the
      * `FeedParams` primary kinds fail validation (e.g. a wrapper kind used as
      * a primary kind, or an empty primary-kinds list).
-     * * `NmpError::FeedOpenFailed` — the runtime failed to register the session
+     * * `NmpError::FeedOpenFailed` — the runtime failed to register the feed
      * (e.g. an unsupported scope or poisoned registry).
      */
-    @Throws(NmpException::class)override fun `openFeedJson`(`paramsJson`: kotlin.String): FeedSessionHandle {
-            return FfiConverterTypeFeedSessionHandle.lift(
+    @Throws(NmpException::class)override fun `openFeedJson`(`paramsJson`: kotlin.String): FeedHandle {
+            return FfiConverterTypeFeedHandle.lift(
     callWithPointer {
     uniffiRustCallWithError(NmpException) { _status ->
     UniffiLib.INSTANCE.uniffi_nmp_uniffi_fn_method_nmpapp_open_feed_json(
@@ -3567,6 +3567,46 @@ public object FfiConverterTypeDispatchOutcome: FfiConverterRustBuffer<DispatchOu
 
 
 /**
+ * Opaque handle for a feed opened via `open_feed_json`.
+ *
+ * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
+ * subscribes to for feed-frame updates.
+ * `handle_id` — the numeric handle id. The handle is only valid when this id
+ * still resolves to `projection_key`.
+ */
+data class FeedHandle (
+    var `projectionKey`: kotlin.String,
+    var `handleId`: kotlin.ULong
+) {
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeFeedHandle: FfiConverterRustBuffer<FeedHandle> {
+    override fun read(buf: ByteBuffer): FeedHandle {
+        return FeedHandle(
+            FfiConverterString.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: FeedHandle) = (
+            FfiConverterString.allocationSize(value.`projectionKey`) +
+            FfiConverterULong.allocationSize(value.`handleId`)
+    )
+
+    override fun write(value: FeedHandle, buf: ByteBuffer) {
+            FfiConverterString.write(value.`projectionKey`, buf)
+            FfiConverterULong.write(value.`handleId`, buf)
+    }
+}
+
+
+
+/**
  * Result of a feed load command.
  */
 data class FeedLoadStatus (
@@ -3596,46 +3636,6 @@ public object FfiConverterTypeFeedLoadStatus: FfiConverterRustBuffer<FeedLoadSta
     override fun write(value: FeedLoadStatus, buf: ByteBuffer) {
             FfiConverterBoolean.write(value.`changed`, buf)
             FfiConverterTypeFeedLoadStopReason.write(value.`reason`, buf)
-    }
-}
-
-
-
-/**
- * Opaque handle for a feed session opened via `open_feed_json`.
- *
- * `projection_key` — the NMPU snapshot key (e.g. `"microblog.timeline.home"`) the host
- * subscribes to for feed-frame updates.
- * `session_id` — the numeric session id. The handle is only valid when this id
- * still resolves to `projection_key`.
- */
-data class FeedSessionHandle (
-    var `projectionKey`: kotlin.String,
-    var `sessionId`: kotlin.ULong
-) {
-
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeFeedSessionHandle: FfiConverterRustBuffer<FeedSessionHandle> {
-    override fun read(buf: ByteBuffer): FeedSessionHandle {
-        return FeedSessionHandle(
-            FfiConverterString.read(buf),
-            FfiConverterULong.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: FeedSessionHandle) = (
-            FfiConverterString.allocationSize(value.`projectionKey`) +
-            FfiConverterULong.allocationSize(value.`sessionId`)
-    )
-
-    override fun write(value: FeedSessionHandle, buf: ByteBuffer) {
-            FfiConverterString.write(value.`projectionKey`, buf)
-            FfiConverterULong.write(value.`sessionId`, buf)
     }
 }
 

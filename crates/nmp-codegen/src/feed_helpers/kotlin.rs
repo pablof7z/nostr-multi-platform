@@ -14,12 +14,12 @@ pub fn render() -> String {
 //
 // These helpers build canonical FeedParams JSON and call the existing
 // openFeedJson binding. They do not own feed reactivity, compiler selection, or
-// session teardown; Rust/NMP does.
+// feed teardown; Rust/NMP does.
 // -----------------------------------------------------------------------------
 
 package org.nmp.android
 
-import uniffi.nmp_uniffi.FeedSessionHandle
+import uniffi.nmp_uniffi.FeedHandle
 import uniffi.nmp_uniffi.NmpApp
 
 object GeneratedFeedHelpers {
@@ -73,7 +73,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
         shape: FeedHelperShape = FeedHelperShape.RootIndexed,
-    ): FeedSessionHandle {
+    ): FeedHandle {
         val paramsJson = activeUserFollowsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
     }
@@ -92,7 +92,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
         shape: FeedHelperShape = FeedHelperShape.RootIndexed,
-    ): FeedSessionHandle {
+    ): FeedHandle {
         val paramsJson = hostedGroupsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
     }
@@ -116,7 +116,7 @@ object GeneratedFeedHelpers {
         listId: String,
         visibleLimit: Int = 80,
         shape: FeedHelperShape = FeedHelperShape.RootIndexed,
-    ): FeedSessionHandle {
+    ): FeedHandle {
         val paramsJson = listMembersFeedParamsJson(feedKey, primaryKinds, listId, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
     }
@@ -140,7 +140,7 @@ object GeneratedFeedHelpers {
         relaySetId: String,
         visibleLimit: Int = 80,
         shape: FeedHelperShape = FeedHelperShape.RootIndexed,
-    ): FeedSessionHandle {
+    ): FeedHandle {
         val paramsJson = relaySetFeedParamsJson(feedKey, primaryKinds, relaySetId, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
     }

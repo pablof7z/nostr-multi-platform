@@ -231,20 +231,20 @@ What you MUST reuse, never copy:
   `dispatch_action_vec` returning `nmp_uniffi_support::DispatchOutcome`);
 - action-result observers and lifecycle observers
   (`register_action_result_observer`, `set_lifecycle_callback`);
-- feed/projection session open/close/reopen
-  (`open_feed_session`, `close_feed_session`, `reopen_feed_session`);
+- feed/projection open/close/reopen
+  (`open_feed`, `close_feed`, `reopen_feed`);
 - active-account-change observation (`register_account_change_sink`,
   `unregister_account_change_sink`).
 
-These mechanics — panic containment, quiescence, dispatch, clamp policy, session
+These mechanics — panic containment, quiescence, dispatch, clamp policy, feed
 teardown, account-change observation — live below the generated surface in
 `nmp-uniffi-support` / `nmp-native-runtime`. Copy zero runtime bridge policy into
 your facade.
 
-Feed-session helpers are bridge mechanics below ADR-0076's app-facing helper
+Feed helpers are bridge mechanics below ADR-0076's app-facing helper
 shape. Generated or app-owned facades should teach product code to open
-feed-shaped typed sessions, for example `app.feeds().open_spec(feed_key, feed_spec)`,
-while reusing `open_feed_session` / `close_feed_session` internally where JSON
+feed-shaped typed reads, for example `app.feeds().open_spec(feed_key, feed_spec)`,
+while reusing `open_feed` / `close_feed` internally where JSON
 descriptor bridging is still the local binding shape. Do not expose compiler
 selection, observer registration, raw interest JSON, pull-controller wiring, or
 teardown recipes through a product facade.
@@ -253,7 +253,7 @@ Use `nmp gen feed-helpers --platform swift|kotlin|ts --out <path>` when a host
 binding wants checked generated helper code over that JSON bridge. The generated
 helpers cover four source families — active-user-follows, active-user-hosted-groups,
 list-members, and relay-set — each building canonical `FeedParams` JSON with
-typed `RootIndexed`/`Flat` shape selection and calling the platform feed-session
+typed `RootIndexed`/`Flat` shape selection and calling the platform feed-opening
 door (`openFeedJson` on native bindings, `feed_open_json` in `runtime-web`);
 they do not create a second runtime path. Rust app crates should prefer the
 typed shape directly:
@@ -271,14 +271,14 @@ let handle = app.feeds().open_spec(
 )?;
 ```
 
-### Account-change and account-scoped sessions (#2516)
+### Account-change and account-scoped feeds (#2516)
 
 Two layers, pick the lighter one. Account-**reactive** feeds
 (`FeedSourceExpr::ActiveUserFollows`) re-seed in place on an active-account change —
-the native runtime's identity-change wiring rebuilds the live session, so your
-facade does nothing. Account-**pinned** app-specific sessions (e.g. a NIP-29
+the native runtime's identity-change wiring rebuilds the live feed, so your
+facade does nothing. Account-**pinned** app-specific feeds (e.g. a NIP-29
 joined-groups view bound to the active account) observe the change with
-`register_account_change_sink` and rebuild with `reopen_feed_session` from one
+`register_account_change_sink` and rebuild with `reopen_feed` from one
 of your facade methods.
 
 Do this through the helpers, not a raw runtime pointer. Your facade owns its

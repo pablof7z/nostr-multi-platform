@@ -33,7 +33,7 @@ pub mod signer;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};
 pub use runtime::{
-    BrowserFeedSessions, BrowserGroupDiscoverySessionHandle, BrowserGroupEventsSessionHandle,
+    BrowserFeeds, BrowserGroupDiscoverySessionHandle, BrowserGroupEventsSessionHandle,
     BrowserRuntimeDiagnostics, BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome,
     SnapshotOutcome,
 };

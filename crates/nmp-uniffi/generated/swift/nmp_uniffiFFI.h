@@ -337,9 +337,9 @@ void uniffi_nmp_uniffi_fn_method_nmpapp_cancel_bunker_handshake(void*_Nonnull pt
 void uniffi_nmp_uniffi_fn_method_nmpapp_clear_action_result_observer(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED_SESSION
-int8_t uniffi_nmp_uniffi_fn_method_nmpapp_close_feed_session(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CLOSE_FEED
+int8_t uniffi_nmp_uniffi_fn_method_nmpapp_close_feed(void*_Nonnull ptr, RustBuffer handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_FN_METHOD_NMPAPP_CONFIGURE
@@ -916,9 +916,9 @@ uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_clear_action_result_observer(v
 
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED_SESSION
-uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed_session(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED
+#define UNIFFI_FFIDEF_UNIFFI_NMP_UNIFFI_CHECKSUM_METHOD_NMPAPP_CLOSE_FEED
+uint16_t uniffi_nmp_uniffi_checksum_method_nmpapp_close_feed(void
 
 );
 #endif

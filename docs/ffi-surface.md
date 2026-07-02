@@ -78,12 +78,12 @@ close the remaining app-owned-facade gaps:
 
 | Facade need | Reuse, never copy | Notes |
 |---|---|---|
-| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). `nmp-uniffi`'s own `open_feed_json`/`close_feed_session` delegate to these. |
-| Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
+| Open/close a feed | `open_feed`, `close_feed` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). `nmp-uniffi`'s own `open_feed_json`/`close_feed` delegate to these. |
+| Rebuild a feed after a perspective change | `reopen_feed` | Idempotent close of the prior handle + open from the retained declaration. For account-pinned feeds only — `ActiveUserFollows` feeds re-seed in place (see below). |
 | React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
 
 These helpers are bridge mechanics below ADR-0076's feed-shaped app helper.
-Product facades should expose generated or app-owned feed-session methods, not
+Product facades should expose generated or app-owned feed methods, not
 compiler selection, raw interest JSON, observer wiring, pull-controller wiring,
 or teardown recipes.
 
@@ -92,9 +92,9 @@ Account-change handling has two layers and a facade picks the lighter one:
 - Account-**reactive** feeds (`FeedSourceExpr::ActiveUserFollows` and friends) re-seed
   **in place** — the native runtime's identity-change wiring clears and
   repopulates the live session. No reopen, no facade glue.
-- Account-**pinned** app-specific sessions (e.g. a NIP-29 joined-groups view
+- Account-**pinned** app-specific feeds (e.g. a NIP-29 joined-groups view
   bound to the active account) observe the change through
-  `register_account_change_sink` and rebuild via `reopen_feed_session` from a
+  `register_account_change_sink` and rebuild via `reopen_feed` from a
   facade method, where the facade already holds `&self.inner`.
 
 ### Safe runtime ownership (no raw `*mut NmpApp`)
@@ -142,7 +142,7 @@ payload evolution remain owned by the FlatBuffers/codegen crates.
 | Identity/signer/relay | account registration, local signer, NIP-46, external signer, relay edits |
 | Reference resolution | profile/event/ref resolve and release helpers |
 | Capability/action/publish control | capability sink, action-result observer, retry/cancel publish controls |
-| Sessions | feed, search, and URI-routing sessions/helpers |
+| Feed / search / URI | feed handles, search sessions, and URI-routing helpers |
 | Runtime config/diagnostics/lifecycle | storage/projection config, lifecycle callback, liveness, debug info, intent dispatch |
 | Mirror pull | `mirror_pull_page` returning typed `MirrorPullResult` with byte payload variants |
 

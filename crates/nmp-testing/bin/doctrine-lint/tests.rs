@@ -30,6 +30,7 @@
 //! | `no_raw_tap_rule_tests.rs`| no_raw_tap                            |
 //! | `product_raw_read_tests.rs`| product raw-read/session ratchet      |
 //! | `deleted_defaults_tests.rs`| deleted nmp-defaults ratchet          |
+//! | `feed_vocabulary_tests.rs`| feed-facade "session" vocabulary ratchet (#2508/#2783) |
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
@@ -44,6 +45,7 @@ mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling
 mod deleted_defaults_tests; // Deleted nmp-defaults production/scaffold ratchet.
 mod embed_owner_delegation_tests; // nmp-content embed projection must delegate owned protocol kinds.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
+mod feed_vocabulary_tests; // Feed-facade "session" vocabulary ratchet (#2508/#2783) — sibling module.
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
 mod gallery_composition_gates; // Gallery explicit composition ratchet.
 mod kind_predicate_authority_tests; // D4 nmp-kinds predicate ownership gate.
