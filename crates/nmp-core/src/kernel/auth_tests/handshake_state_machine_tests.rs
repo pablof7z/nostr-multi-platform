@@ -1,0 +1,447 @@
+//! NIP-42 AUTH handshake state-machine coverage: challenge → authenticate →
+//! fail → retry transitions, the `changed_since_emit`/`rev` bump invariant,
+//! and claim REQs routed through the AUTH gate.
+
+use super::*;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test 1 — nip42_kernel_auth_required_for_read
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Pins: relay sends AUTH → kernel transitions ChallengeReceived →
+// Authenticating; kernel emits the `["AUTH", <signed_event>]` wire frame;
+// any concurrent REQ to the same relay is held in the deferred queue.
+
+#[test]
+fn nip42_kernel_auth_required_for_read() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, calls) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    // Inbound AUTH challenge from the content relay.
+    let outbound = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+
+    assert_eq!(*calls.lock().unwrap(), 1, "signer invoked exactly once");
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Authenticating
+    );
+
+    // Exactly one outbound frame: the signed kind:22242 AUTH event.
+    let auth_msgs: Vec<_> = outbound
+        .iter()
+        .filter(|m| m.role == RelayRole::Content && m.text.starts_with("[\"AUTH\""))
+        .collect();
+    assert_eq!(auth_msgs.len(), 1, "exactly one AUTH wire frame emitted");
+    assert!(auth_msgs[0].text.contains("\"kind\":22242"));
+    assert!(auth_msgs[0].text.contains("\"challenge\""));
+    assert!(auth_msgs[0].text.contains("ch1"));
+    assert!(auth_msgs[0].text.contains(AUTH_EVENT_ID));
+
+    // While Authenticating, any REQ targeting Content is held — the prior
+    // call to req_for_relay() succeeds (caller still gets the OutboundMessage)
+    // but the partition routine pulls it back into the deferred queue.
+    // V-04 Stage 4: migrated from the retired `Kernel::req` helper; the test
+    // exercises a single Content URL so a direct `req_for_relay` call is
+    // equivalent to the prior loop-over-bootstrap-URLs shape.
+    let _ = kernel.req_for_relay(
+        RelayRole::Content,
+        RelayRole::Content.url().to_string(),
+        "test-sub",
+        "test-summary",
+        serde_json::json!({"kinds":[1],"limit":1}),
+    );
+    let outbound_after = kernel.partition_auth_paused(vec![OutboundMessage {
+        role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
+        text: "[\"REQ\",\"test-sub\",{}]".to_string(),
+    }]);
+    assert!(
+        outbound_after.is_empty(),
+        "REQ to AUTH-paused relay must be deferred, not emitted"
+    );
+    assert!(
+        kernel
+            .deferred_outbound
+            .iter()
+            .any(|m| m.text.contains("test-sub")),
+        "deferred queue holds the AUTH-paused REQ"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test 2 — nip42_kernel_auth_failed_surfaces_relay_status
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Pins: relay rejects the AUTH event (`OK <id> false <reason>`) → driver
+// transitions to Failed; RelayStatus.auth becomes "failed" and last_error
+// carries the rejection reason.
+
+#[test]
+fn nip42_kernel_auth_failed_surfaces_relay_status() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, _) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Authenticating
+    );
+
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, false, "restricted: subscribers only"),
+    );
+
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Failed
+    );
+    let status = kernel.relay_status_for(RelayRole::Content);
+    assert_eq!(status.auth, "failed");
+    assert!(
+        status
+            .last_error
+            .as_deref()
+            .unwrap_or("")
+            .contains("restricted"),
+        "rejection reason surfaced: {:?}",
+        status.last_error
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Typed FFI error contract — a NIP-42 auth failure must stamp the machine-
+// readable `error_category: Some("auth_required")` on the relay snapshot so
+// iOS can branch on the error *class* without substring-matching English
+// prose. Mirrors `nip42_kernel_auth_failed_surfaces_relay_status` above.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn nip42_auth_failure_stamps_error_category_on_snapshot() {
+    use crate::kernel::closed_reason::ERR_AUTH_REQUIRED;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, _) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    // Drive the NIP-42 handshake into Authenticating.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+
+    // Before any failure the lane carries no category.
+    assert_eq!(
+        kernel.relay_status_for(RelayRole::Content).error_category,
+        None,
+        "no error_category before the AUTH event is rejected"
+    );
+
+    // Relay rejects the AUTH event — driver transitions to Failed.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, false, "restricted: subscribers only"),
+    );
+
+    // The snapshot carries the typed category, not just the English prose.
+    let status = kernel.relay_status_for(RelayRole::Content);
+    assert_eq!(
+        status.error_category.as_deref(),
+        Some(ERR_AUTH_REQUIRED),
+        "a NIP-42 auth failure must classify as auth_required; got {:?}",
+        status.error_category
+    );
+
+    // It also survives into the full kernel snapshot's relay_statuses.
+    let snapshot_status = kernel
+        .relay_statuses()
+        .into_iter()
+        .find(|s| s.role == "content")
+        .expect("content relay row present in snapshot");
+    assert_eq!(
+        snapshot_status.error_category.as_deref(),
+        Some(ERR_AUTH_REQUIRED),
+        "error_category must project into the snapshot relay_statuses row"
+    );
+
+    // A subsequent successful reconnect clears the stale category — iOS must
+    // not keep showing the auth prompt after the lane recovers.
+    kernel.relay_connected(RelayRole::Content);
+    assert_eq!(
+        kernel.relay_status_for(RelayRole::Content).error_category,
+        None,
+        "a fresh socket clears the prior auth_required category"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Typed FFI error contract — the kernel-level `last_error_category` must
+// project into the emitted JSON snapshot as a snake_case key, and the legacy
+// uncategorized `set_last_error_toast` path must clear a stale category so a
+// newer toast never carries a misleading class.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn last_error_category_projects_into_snapshot_and_clears_on_legacy_toast() {
+    use crate::kernel::closed_reason::ERR_PERMANENT;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // A categorized toast surfaces both fields in the snapshot JSON.
+    kernel.set_error_toast_with_category("publish store error".to_string(), ERR_PERMANENT);
+    let snap: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("snapshot is valid JSON");
+    assert_eq!(
+        snap["last_error_toast"].as_str(),
+        Some("publish store error"),
+        "categorized toast text surfaces in the snapshot"
+    );
+    assert_eq!(
+        snap["last_error_category"].as_str(),
+        Some(ERR_PERMANENT),
+        "last_error_category projects into the snapshot as a snake_case key"
+    );
+
+    // A subsequent legacy (uncategorized) toast must clear the stale category
+    // so iOS never branches on a class that no longer matches the toast.
+    kernel.set_last_error_toast(Some("something else went wrong".to_string()));
+    let snap: serde_json::Value = serde_json::from_str(&kernel.make_update_json_for_test(true))
+        .expect("snapshot is valid JSON");
+    assert_eq!(
+        snap["last_error_toast"].as_str(),
+        Some("something else went wrong")
+    );
+    assert!(
+        snap["last_error_category"].is_null(),
+        "legacy set_last_error_toast clears the stale category: {:?}",
+        snap["last_error_category"]
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test 3 — nip42_kernel_replays_pending_reqs_on_auth
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Pins: REQ issued while ChallengeReceived → deferred. OK accepted=true
+// (Authenticated) → next `pending_view_requests` tick drains the deferred
+// REQ back to outbound.
+
+#[test]
+fn nip42_kernel_replays_pending_reqs_on_auth() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, _) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    // Drive into ChallengeReceived → Authenticating.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+    assert!(kernel.relay_auth_paused(RelayRole::Content));
+
+    // Caller dispatches a REQ; the partition routine pulls it into deferred.
+    let req_msg = OutboundMessage {
+        role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
+        text: "[\"REQ\",\"timeline-1\",{\"kinds\":[1]}]".to_string(),
+    };
+    let pass = kernel.partition_auth_paused(vec![req_msg]);
+    assert!(pass.is_empty());
+    assert_eq!(kernel.deferred_outbound.len(), 1);
+
+    // Relay accepts AUTH; driver transitions to Authenticated. The OK frame
+    // by itself does not flush the deferred queue (M5+M2+M8: lifecycle
+    // owns the flush trigger; the actor's next tick reads
+    // `pending_view_requests` which drains).
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, true, ""),
+    );
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Authenticated
+    );
+    assert!(!kernel.relay_auth_paused(RelayRole::Content));
+
+    // Next tick: deferred queue drains; the REQ flows through.
+    let drained = kernel.pending_view_requests();
+    assert!(
+        drained.iter().any(|m| m.text.contains("timeline-1")),
+        "deferred REQ replayed on Authenticated tick: {drained:?}"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test 4 — nip42_kernel_publish_retry_on_auth_required
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Pins (spec-named test from task #57): after a Failed AUTH the relay
+// re-issues a fresh challenge — the kernel-side analogue of a publish
+// AUTH-REQUIRED retry cycle, except the trigger is relay re-prompt rather
+// than publish-engine policy. A second signer invocation cycle drives
+// back to Authenticated.
+//
+// The publish engine in `crates/nmp-core/src/publish/` handles an
+// outbound `auth-required` ack by PARKING the publish (demoting the relay
+// to durable Pending via the availability gate) until the socket reaches
+// `Authenticated`, at which point this very handler re-opens the gate via
+// `mark_publish_relay_available` — pinned independently by
+// `crates/nmp-core/src/publish/engine/auth_park_tests.rs` and the
+// `t117_auth_required_on_one_relay_parks_until_authenticated_*` kernel
+// test. Both code paths are intentional per `docs/perf/m5/nip42.md`
+// "coordination notes" — this test exercises the kernel AUTH FSM side;
+// the publish tests exercise the publish-engine park/re-dispatch side.
+
+#[test]
+fn nip42_kernel_publish_retry_on_auth_required() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, calls) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    // First challenge → AUTH sent → relay rejects.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, false, "auth-required"),
+    );
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Failed
+    );
+    assert_eq!(*calls.lock().unwrap(), 1);
+
+    // Caller queues a REQ during the Failed window. T76 / ADR-0019:
+    // Failed is FAIL-CLOSED — the REQ is dropped, never emitted to an
+    // unauthenticated relay and never deferred (bounded-buffer).
+    let pass = kernel.partition_auth_paused(vec![OutboundMessage {
+        role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
+        text: "[\"REQ\",\"thread-1\",{\"kinds\":[1]}]".to_string(),
+    }]);
+    assert!(
+        pass.is_empty(),
+        "Failed state is fail-closed: REQ must not reach the relay"
+    );
+    assert!(
+        !kernel
+            .deferred_outbound
+            .iter()
+            .any(|m| m.text.contains("thread-1")),
+        "fail-closed REQ must be dropped, not deferred"
+    );
+
+    // Rebind the signer with a fresh event-id so the second handshake can
+    // be correlated independently (a real signer would naturally produce a
+    // distinct id for a distinct created_at + challenge).
+    let (signer2, calls2) = make_signer(AUTH_EVENT_ID_2);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer2);
+
+    // Relay re-prompts (publish-side AUTH-REQUIRED retry equivalent).
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch2"),
+    );
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Authenticating
+    );
+    assert_eq!(*calls2.lock().unwrap(), 1, "signer re-invoked on re-AUTH");
+
+    // Accept the second handshake.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID_2, true, ""),
+    );
+    assert_eq!(
+        auth_state_of(&kernel, RelayRole::Content),
+        RelayAuthState::Authenticated
+    );
+
+    // After re-auth completion no REQ should remain auth-held — the relay
+    // is live.
+    assert!(!kernel.relay_auth_paused(RelayRole::Content));
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Test 5 — nip42_kernel_auth_does_not_bump_view_rev (D8 invariant)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// Pins: AUTH-state transitions DO NOT directly bump `kernel.rev`. The
+// `changed_since_emit` flag IS set so the diagnostic surface re-emits on
+// the next actor tick (required by the NIP-42 auth-failure diagnostic
+// contract — Failed AUTH must be visible), but the rev counter advances only via
+// `make_update` which the actor schedules at ≤60 Hz/view (D8).
+//
+// The narrower invariant pinned here: AUTH-paused REQ re-defers (the
+// `pending_view_requests` drain → still-paused re-defer loop) do NOT bump
+// `changed_since_emit` — otherwise the actor would emit every tick for
+// the entire AUTH-pause window. This is the test most likely to regress
+// silently if a future agent moves the auth-pause defer onto the noisy
+// `defer_outbound` instead of the silent variant.
+
+#[test]
+fn nip42_kernel_auth_does_not_bump_view_rev() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let rev_before = kernel.rev;
+    let (signer, _) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &auth_frame("ch1"),
+    );
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, true, ""),
+    );
+    assert_eq!(
+        kernel.rev, rev_before,
+        "AUTH transitions must not directly bump kernel.rev (only make_update does)"
+    );
+
+    // Auth-pause re-defer invariant: simulate ChallengeReceived → 10 ticks
+    // of `pending_view_requests` (each drains + re-defers the held REQ).
+    // The dirty flag must NOT keep getting set or the actor will busy-emit.
+    let _ = kernel.handle_text(
+        RelayRole::Indexer,
+        RelayRole::Indexer.url(),
+        &auth_frame("ch-idx"),
+    );
+    let _ = kernel.partition_auth_paused(vec![OutboundMessage {
+        role: RelayRole::Indexer,
+        relay_url: RelayRole::Indexer.url().to_string(),
+        text: "[\"REQ\",\"x\",{}]".to_string(),
+    }]);
+    kernel.changed_since_emit = false; // post-emit baseline
+    for _ in 0..10 {
+        let _ = kernel.pending_view_requests();
+    }
+    assert!(
+        !kernel.changed_since_emit,
+        "10 ticks of auth-paused REQ re-defer must NOT bump changed_since_emit"
+    );
+}
