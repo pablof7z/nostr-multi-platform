@@ -237,8 +237,18 @@ updateFrameDegradationsTotal():bigint {
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
+commandDrops():bigint {
+  const offset = this.bb!.__offset(this.bb_pos, 90);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
+relayBacklogDrops():bigint {
+  const offset = this.bb!.__offset(this.bb_pos, 92);
+  return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
+}
+
 static startMetrics(builder:flatbuffers.Builder) {
-  builder.startObject(43);
+  builder.startObject(45);
 }
 
 static addGeneratedEvents(builder:flatbuffers.Builder, generatedEvents:bigint) {
@@ -413,12 +423,20 @@ static addUpdateFrameDegradationsTotal(builder:flatbuffers.Builder, updateFrameD
   builder.addFieldInt64(42, updateFrameDegradationsTotal, BigInt('0'));
 }
 
+static addCommandDrops(builder:flatbuffers.Builder, commandDrops:bigint) {
+  builder.addFieldInt64(43, commandDrops, BigInt('0'));
+}
+
+static addRelayBacklogDrops(builder:flatbuffers.Builder, relayBacklogDrops:bigint) {
+  builder.addFieldInt64(44, relayBacklogDrops, BigInt('0'));
+}
+
 static endMetrics(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEvents:bigint, profileEvents:bigint, duplicateEvents:bigint, deleteEvents:bigint, storedEvents:bigint, tombstones:bigint, visibleItems:bigint, visibleProfiledItems:bigint, visiblePlaceholderAvatarItems:bigint, openViews:number, eventsSinceLastUpdate:bigint, diagnosticFirehoseEvents:bigint, insertedCount:bigint, updatedCount:bigint, removedCount:bigint, emitHzConfigured:number, updateSequence:bigint, estimatedStoreBytes:bigint, payloadBytes:bigint, storeToPayloadRatio:number, actorQueueDepth:number, framesRx:bigint, eventsRx:bigint, eoseRx:bigint, noticesRx:bigint, closedRx:bigint, bytesRx:bigint, bytesTx:bigint, contactsAuthors:bigint, timelineAuthors:bigint, firstEventMs:bigint|null, targetProfileLoadedMs:bigint|null, timelineOpenedMs:bigint|null, timelineFirstItemMs:bigint|null, updateEmittedMs:bigint|null, lastEventToEmitMs:bigint|null, maxEventToEmitMs:bigint, maxEventsPerUpdate:bigint, claimDropsTotal:bigint, makeUpdateUs:bigint, serializeUs:bigint, updateFrameDegradationsTotal:bigint):flatbuffers.Offset {
+static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEvents:bigint, profileEvents:bigint, duplicateEvents:bigint, deleteEvents:bigint, storedEvents:bigint, tombstones:bigint, visibleItems:bigint, visibleProfiledItems:bigint, visiblePlaceholderAvatarItems:bigint, openViews:number, eventsSinceLastUpdate:bigint, diagnosticFirehoseEvents:bigint, insertedCount:bigint, updatedCount:bigint, removedCount:bigint, emitHzConfigured:number, updateSequence:bigint, estimatedStoreBytes:bigint, payloadBytes:bigint, storeToPayloadRatio:number, actorQueueDepth:number, framesRx:bigint, eventsRx:bigint, eoseRx:bigint, noticesRx:bigint, closedRx:bigint, bytesRx:bigint, bytesTx:bigint, contactsAuthors:bigint, timelineAuthors:bigint, firstEventMs:bigint|null, targetProfileLoadedMs:bigint|null, timelineOpenedMs:bigint|null, timelineFirstItemMs:bigint|null, updateEmittedMs:bigint|null, lastEventToEmitMs:bigint|null, maxEventToEmitMs:bigint, maxEventsPerUpdate:bigint, claimDropsTotal:bigint, makeUpdateUs:bigint, serializeUs:bigint, updateFrameDegradationsTotal:bigint, commandDrops:bigint, relayBacklogDrops:bigint):flatbuffers.Offset {
   Metrics.startMetrics(builder);
   Metrics.addGeneratedEvents(builder, generatedEvents);
   Metrics.addNoteEvents(builder, noteEvents);
@@ -469,6 +487,8 @@ static createMetrics(builder:flatbuffers.Builder, generatedEvents:bigint, noteEv
   Metrics.addMakeUpdateUs(builder, makeUpdateUs);
   Metrics.addSerializeUs(builder, serializeUs);
   Metrics.addUpdateFrameDegradationsTotal(builder, updateFrameDegradationsTotal);
+  Metrics.addCommandDrops(builder, commandDrops);
+  Metrics.addRelayBacklogDrops(builder, relayBacklogDrops);
   return Metrics.endMetrics(builder);
 }
 }
