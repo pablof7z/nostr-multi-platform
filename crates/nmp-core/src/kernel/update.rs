@@ -55,6 +55,12 @@ mod refs_glue_integration_tests;
 #[cfg(test)]
 #[path = "refs_glue_typed_decode_tests.rs"]
 mod refs_glue_typed_decode_tests;
+// Issue #2766 — release→reclaim-before-emit monotonic-rev regression. Split
+// out of `refs_glue_integration_tests` to respect the 500-LOC hard cap; lives
+// alongside it for the same reason (drives `make_update` directly).
+#[cfg(test)]
+#[path = "refs_glue_release_reclaim_regression_tests.rs"]
+mod refs_glue_release_reclaim_regression_tests;
 
 // ADR-0070 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on

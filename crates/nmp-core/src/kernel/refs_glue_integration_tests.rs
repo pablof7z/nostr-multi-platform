@@ -35,11 +35,11 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 use nmp_network::role::RelayRole;
 
-fn hex64(prefix: &str) -> String {
+pub(super) fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-fn inject_kind0(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
+pub(super) fn inject_kind0(kernel: &mut Kernel, pubkey: &str, display_name: &str) {
     kernel.seed_profile_view_for_test(
         pubkey,
         crate::substrate::ProfileView {
@@ -96,7 +96,7 @@ fn decode_ok_for(namespace: &str) -> impl Fn(&str, &[u8]) -> bool {
 /// `refs.profile` / `refs.event` NRRD batches (when present this tick) to the two
 /// host caches under the frame's `(session_id, snapshot_epoch)`. Returns nothing;
 /// the caches mutate in place — exactly the host incremental-apply contract.
-fn emit_and_apply(
+pub(super) fn emit_and_apply(
     kernel: &mut Kernel,
     profile_cache: &mut RefRowCache,
     event_cache: &mut RefRowCache,
@@ -136,7 +136,7 @@ fn emit_and_apply(
 /// The producer's ground-truth FULL snapshot of the live resolver state for one
 /// namespace: a fresh `RefRowDeltaTracker` baseline over the kernel's own
 /// `RefRowRevSource`. This is what an incrementally-applied host cache must equal.
-fn full_snapshot(kernel: &Kernel, namespace: &str) -> BTreeMap<String, Vec<u8>> {
+pub(super) fn full_snapshot(kernel: &Kernel, namespace: &str) -> BTreeMap<String, Vec<u8>> {
     let mut tracker = RefRowDeltaTracker::new();
     let batch = tracker.build_baseline(namespace, kernel);
     batch
@@ -148,7 +148,7 @@ fn full_snapshot(kernel: &Kernel, namespace: &str) -> BTreeMap<String, Vec<u8>> 
 
 /// Install a kernel with a snapshot slot + incremental-apply declared (so the
 /// producer omits Unchanged rows and the first frame is a full baseline).
-fn kernel_with_incremental() -> (
+pub(super) fn kernel_with_incremental() -> (
     Kernel,
     super::super::snapshot_registry::SnapshotProjectionSlot,
 ) {
