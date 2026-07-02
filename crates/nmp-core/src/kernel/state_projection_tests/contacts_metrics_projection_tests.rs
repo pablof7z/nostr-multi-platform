@@ -1,7 +1,7 @@
 //! kind:3 contacts stay out of the `metrics` projection — no second
 //! follow-count source of truth.
 
-use super::support::{snapshot, ACCOUNT, FOLLOW_A, FOLLOW_B};
+use super::projection_fixtures_support::{snapshot, ACCOUNT, FOLLOW_A, FOLLOW_B};
 use crate::kernel::{Kernel, NostrEvent};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 

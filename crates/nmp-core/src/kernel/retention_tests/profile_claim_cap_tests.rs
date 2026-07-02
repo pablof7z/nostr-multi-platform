@@ -3,7 +3,7 @@
 //! release→reclaim recovery path, and a 16× flood harness proving the set
 //! never grows past `MAX_CLAIMS_PER_PUBKEY`.
 
-use super::support::{deterministic_pubkey, resolve_profile_card};
+use super::retention_fixtures_support::{deterministic_pubkey, resolve_profile_card};
 use crate::kernel::{Kernel, RefNamespace, MAX_CLAIMS_PER_PUBKEY};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 

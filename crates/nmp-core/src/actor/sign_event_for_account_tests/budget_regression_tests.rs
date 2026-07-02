@@ -10,7 +10,7 @@
 use nmp_signer_iface::RemoteSignerHandle;
 use nostr::Keys;
 
-use super::support::{fresh_identity, PendingRemoteSigner};
+use super::signer_fixtures_support::{fresh_identity, PendingRemoteSigner};
 use crate::actor::commands;
 use crate::actor::signer_port_test_harness::dispatch_one;
 use crate::actor::{ActorCommand, SignCommand};

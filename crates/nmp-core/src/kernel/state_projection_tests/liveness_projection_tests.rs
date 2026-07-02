@@ -1,6 +1,6 @@
 //! `schema_version` + `last_tick_ms` liveness heartbeat projection.
 
-use super::support::snapshot;
+use super::projection_fixtures_support::snapshot;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 

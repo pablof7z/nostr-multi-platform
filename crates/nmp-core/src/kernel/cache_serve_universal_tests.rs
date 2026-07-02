@@ -7,7 +7,7 @@
 //!
 //! This is the v1 exit criterion for ADR-0045 §8: one test that falsifies the
 //! complete seam. If any engineering increment (E1 feed, E2 DM, E3 thread /
-//! long-form) is broken, this test fails. See [`universal_acceptance`].
+//! long-form) is broken, this test fails. See [`universal_acceptance_tests`].
 //!
 //! ## Structure
 //!
@@ -38,9 +38,9 @@
 //!
 //! The decrypt path itself is exercised by
 //! `nmp-nip17::inbox::tests::received_dm_surfaces_in_the_conversation`.
-//! See [`e2_ingest_parser_seam`] for the narrower PR-2 regression.
+//! See [`e2_ingest_parser_seam_tests`] for the narrower PR-2 regression.
 
-mod support;
+mod universal_fixtures_support;
 
-mod universal_acceptance;
-mod e2_ingest_parser_seam;
+mod universal_acceptance_tests;
+mod e2_ingest_parser_seam_tests;

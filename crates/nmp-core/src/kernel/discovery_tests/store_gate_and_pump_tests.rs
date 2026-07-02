@@ -4,7 +4,7 @@
 //! still register the discovery interest via the M2 registry while emitting
 //! no legacy M1 outbound frames.
 
-use super::support::{drain_and_register, install_bootstrap_relays, tag, BOOTSTRAP_CONTENT, QUOTED_ID};
+use super::discovery_fixtures_support::{drain_and_register, install_bootstrap_relays, tag, BOOTSTRAP_CONTENT, QUOTED_ID};
 use crate::kernel::Kernel;
 use crate::kernel::NostrEvent;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;

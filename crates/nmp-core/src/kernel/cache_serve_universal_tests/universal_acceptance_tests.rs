@@ -3,7 +3,7 @@
 //! long-form) render from a warm store with ZERO relay connectivity after a
 //! cold restart.
 
-use super::support::{gift_wrap_json, open_interest, register_one, signed_event_json, CapturingIngestParser};
+use super::universal_fixtures_support::{gift_wrap_json, open_interest, register_one, signed_event_json, CapturingIngestParser};
 use crate::kernel::cache_serve_tests::{drain_cache_serves, hex_pk, open_author_interest, simulate_cold_restart};
 use crate::kernel::Kernel;
 use crate::planner::{InterestShape, NaddrCoord};

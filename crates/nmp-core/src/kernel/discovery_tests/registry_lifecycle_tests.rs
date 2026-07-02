@@ -3,7 +3,7 @@
 //! `OneshotKind::Discovery` routing (T104), and the no-op EOSE-completion
 //! path for a non-discovery sub.
 
-use super::support::{
+use super::discovery_fixtures_support::{
     drain_and_register, install_bootstrap_relays, planner_req_filters, tag, KNOWN_ID,
     MENTIONED_PK, QUOTED_ID,
 };

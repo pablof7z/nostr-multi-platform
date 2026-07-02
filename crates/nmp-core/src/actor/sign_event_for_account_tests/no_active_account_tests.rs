@@ -1,7 +1,7 @@
 //! No active account — the continuation resolves `Err` immediately (D6 — no
 //! stuck spinner when there is nothing to sign with).
 
-use super::support::{capture_continuation, draft_unsigned, fresh_identity};
+use super::signer_fixtures_support::{capture_continuation, draft_unsigned, fresh_identity};
 use crate::actor::signer_port_test_harness::dispatch_one;
 use crate::actor::{ActorCommand, SignCommand};
 use crate::kernel::Kernel;

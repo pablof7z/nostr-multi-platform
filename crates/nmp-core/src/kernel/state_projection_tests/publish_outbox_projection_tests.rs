@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use super::support::{snapshot, ACCOUNT};
+use super::projection_fixtures_support::{snapshot, ACCOUNT};
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PerRelayState, PublishRecord, PublishStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;

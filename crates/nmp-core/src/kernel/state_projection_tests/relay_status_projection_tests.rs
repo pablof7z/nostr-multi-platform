@@ -8,7 +8,7 @@
 //! (`wallet_projection_appears_and_clears_through_make_update`), since it now
 //! exercises the projection seam rather than a kernel-owned field.
 
-use super::support::snapshot;
+use super::projection_fixtures_support::snapshot;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_network::role::RelayRole;

@@ -1,6 +1,6 @@
 //! PR-2 rawtap retirement: cache-serve feeds kind:1059 via IngestParser only.
 
-use super::support::{gift_wrap_json, register_one, CapturingIngestParser};
+use super::universal_fixtures_support::{gift_wrap_json, register_one, CapturingIngestParser};
 use crate::kernel::cache_serve_tests::{drain_cache_serves, simulate_cold_restart};
 use crate::kernel::Kernel;
 use crate::planner::InterestShape;

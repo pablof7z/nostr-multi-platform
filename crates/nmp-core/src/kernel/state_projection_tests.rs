@@ -19,16 +19,16 @@
 //! only (no `Deserialize`), so the assertions parse the JSON dynamically rather
 //! than round-tripping the typed struct.
 //!
-//! Split by projection surface: [`liveness_projection`] (schema_version /
-//! last_tick_ms heartbeat), [`profile_projection`] (profile-card shape),
-//! [`publish_outbox_projection`] (outbox + summary),
-//! [`contacts_metrics_projection`] (kind:3 stays out of metrics), and
-//! [`relay_status_projection`] (relay connection transitions).
+//! Split by projection surface: [`liveness_projection_tests`] (schema_version /
+//! last_tick_ms heartbeat), [`profile_projection_tests`] (profile-card shape),
+//! [`publish_outbox_projection_tests`] (outbox + summary),
+//! [`contacts_metrics_projection_tests`] (kind:3 stays out of metrics), and
+//! [`relay_status_projection_tests`] (relay connection transitions).
 
-mod support;
+mod projection_fixtures_support;
 
-mod liveness_projection;
-mod profile_projection;
-mod publish_outbox_projection;
-mod contacts_metrics_projection;
-mod relay_status_projection;
+mod liveness_projection_tests;
+mod profile_projection_tests;
+mod publish_outbox_projection_tests;
+mod contacts_metrics_projection_tests;
+mod relay_status_projection_tests;

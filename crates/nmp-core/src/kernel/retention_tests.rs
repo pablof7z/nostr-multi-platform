@@ -32,7 +32,7 @@
 //!
 //! ## Defense-in-depth
 //!
-//! The bounded caps pinned by [`profile_claim_cap`] and [`queue_depth`] are
+//! The bounded caps pinned by [`profile_claim_cap_tests`] and [`queue_depth_tests`] are
 //! **defense-in-depth** — not the load-bearing fix for S2 (the emit gate is).
 //! They harden the kernel against adversarial / pathological inputs where a
 //! long-lived UI churns unique consumer_ids per pubkey, or an FFI burst
@@ -57,7 +57,7 @@
 //! not being exercised. That is the correct outcome: the working set (50
 //! pubkeys × ≤256 consumers) fits inside the bound. The claim cap surfaces on
 //! `Metrics` (`update.rs`) for diagnostic visibility; its unit tests in
-//! [`profile_claim_cap`] pin the drop-newest semantics for the pathological
+//! [`profile_claim_cap_tests`] pin the drop-newest semantics for the pathological
 //! cases. The FFI command lane is separately bounded by ADR-0029 and exposes
 //! its shed-load counter on the shared `CommandSender` / test-support FFI
 //! stats path.
@@ -84,13 +84,13 @@
 //! | `relay_closed_all` (global pool drain)   | `wire_subs.retain(role != …)`      |
 //! | `relay_failed` (transient)       | no eviction — `state="retrying"` may resume |
 //!
-//! Pinned by [`wire_subs_eviction`] below; `view_close_evicts_wire_subs_to_zero`
+//! Pinned by [`wire_subs_eviction_tests`] below; `view_close_evicts_wire_subs_to_zero`
 //! deleted (V-112 — used `open_author`/`close_author` which are deleted). The
 //! diagnostic-filter call sites at `status.rs:27` / `requests/mod.rs:25,39,80`
 //! remain (defense-in-depth — they cost nothing once the row is gone).
 
-mod support;
+mod retention_fixtures_support;
 
-mod profile_claim_cap;
-mod queue_depth;
-mod wire_subs_eviction;
+mod profile_claim_cap_tests;
+mod queue_depth_tests;
+mod wire_subs_eviction_tests;

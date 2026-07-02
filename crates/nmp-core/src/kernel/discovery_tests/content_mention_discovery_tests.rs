@@ -6,7 +6,7 @@
 //! (no-mention) case stays allocation-free (D8) and an already-known /
 //! already-pending pubkey is never double-counted.
 
-use super::support::{drain_and_register, install_bootstrap_relays, planner_req_filters, tag, MENTIONED_PK};
+use super::discovery_fixtures_support::{drain_and_register, install_bootstrap_relays, planner_req_filters, tag, MENTIONED_PK};
 use crate::kernel::{Kernel, NostrEvent};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 

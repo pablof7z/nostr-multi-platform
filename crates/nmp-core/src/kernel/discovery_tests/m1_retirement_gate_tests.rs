@@ -10,7 +10,7 @@
 //! `t140_m1_retirement_tests.rs` — a negative-existence gate that proves the
 //! dual-write deletion stayed deleted (no silent regression to the M1 helper).
 
-use super::support::{install_bootstrap_relays, planner_req_filters, tag, MENTIONED_PK, QUOTED_ID};
+use super::discovery_fixtures_support::{install_bootstrap_relays, planner_req_filters, tag, MENTIONED_PK, QUOTED_ID};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 

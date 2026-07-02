@@ -1,7 +1,7 @@
 //! `projections.profile` shape: no second metadata-source discriminator, and
 //! raw hex pubkey only (no bech32 / npub encoding at the kernel layer).
 
-use super::support::{snapshot, ACCOUNT};
+use super::projection_fixtures_support::{snapshot, ACCOUNT};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
