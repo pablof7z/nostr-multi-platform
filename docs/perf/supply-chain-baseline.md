@@ -165,9 +165,9 @@ ignore, and delete the ignore entry from `deny.toml`.
 
 ---
 
-## Post-baseline advisory: RUSTSEC-2026-0194
+## Post-baseline advisories: RUSTSEC-2026-0194 and RUSTSEC-2026-0195
 
-- **Advisory**: RUSTSEC-2026-0194
+- **Advisories**: RUSTSEC-2026-0194, RUSTSEC-2026-0195
 - **Crate**: `quick-xml` v0.39.4
 - **Affected dependency chain**: `wayland-scanner 0.31.10` through the
   Linux Wayland/iced desktop stack used by `apps/nmp-gallery/desktop`
@@ -176,14 +176,16 @@ ignore, and delete the ignore entry from `deny.toml`.
 - **Removal deadline**: before the v1 release train closes, or 2026-09-30
   at the latest if v1 is still open
 
-The advisory is a high-severity CPU-exhaustion vulnerability in untrusted XML
-attribute duplicate checks. NMP does not call `quick-xml` directly; it is pulled
-through `wayland-scanner`, a proc-macro/build-time dependency for the Linux
-Wayland desktop UI stack. As of 2026-07-02, crates.io latest
-`wayland-scanner` is 0.31.10 and requires `quick-xml ^0.39`, so
-`cargo update -p quick-xml --precise 0.41.0` cannot resolve.
+These advisories cover high-severity denial-of-service vulnerabilities in
+untrusted XML parsing: CPU exhaustion in duplicate-attribute checks and
+unbounded namespace-declaration allocation in `NsReader`. NMP does not call
+`quick-xml` directly; it is pulled through `wayland-scanner`, a
+proc-macro/build-time dependency for the Linux Wayland desktop UI stack. As of
+2026-07-02, crates.io latest `wayland-scanner` is 0.31.10 and requires
+`quick-xml ^0.39`, so `cargo update -p quick-xml --precise 0.41.0` cannot
+resolve.
 
-**Current mitigation**: `RUSTSEC-2026-0194` is ignored in both
+**Current mitigation**: `RUSTSEC-2026-0194` and `RUSTSEC-2026-0195` are ignored in both
 `.github/workflows/supply-chain.yml` and `deny.toml [advisories].ignore`.
 This is a staged exception, not a permanent waiver.
 
@@ -191,5 +193,5 @@ This is a staged exception, not a permanent waiver.
 `smithay-client-toolkit`, `winit`, and `iced` releases. When a compatible stack
 allows `quick-xml >= 0.41.0`, update the workspace lockfile, verify
 `cargo audit --ignore RUSTSEC-2026-0124` and `cargo deny check --all-features`
-pass without this ignore, remove the workflow/config exceptions, and close
+pass without these ignores, remove the workflow/config exceptions, and close
 #2711.
