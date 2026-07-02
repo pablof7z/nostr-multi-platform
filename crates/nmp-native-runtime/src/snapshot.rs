@@ -17,12 +17,12 @@ use nmp_ownership::ProjectionRegistrationKey;
 pub(crate) mod embed_sidecar;
 
 // ADR-0063 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
-// seam (`register_feed_render_source`) + its test introspection accessors. A
+// seam (`register_feed_window_source`) + its test introspection accessors. A
 // submodule of `snapshot` (both own snapshot-projection wiring); kept off the
 // over-cap `lib.rs` AND out of this file so `snapshot.rs` stays under the 500-LOC
 // hard ceiling (AGENTS.md file-size anti-cheat).
-#[path = "feed_render_source.rs"]
-mod feed_render_source;
+#[path = "feed_window_source.rs"]
+mod feed_window_source;
 
 impl NmpApp {
     /// Register a typed FlatBuffers projection closure for a named projection key.
@@ -110,7 +110,7 @@ impl NmpApp {
             .map(|mut registry| {
                 // ADR-0063 D7 (#1671 Lane H) — OUT-OF-BAND introspection path
                 // (tests/hosts reading the sidecar without a full `make_update`).
-                // Bump the per-tick rev so a `FeedRenderSource` memo re-materializes
+                // Bump the per-tick rev so a `FeedWindowSource` memo re-materializes
                 // per ad-hoc call (reflecting a `load_older` grow between calls).
                 // The production tick path is a different method, so no double-bump.
                 registry.bump_frame_tick_rev();

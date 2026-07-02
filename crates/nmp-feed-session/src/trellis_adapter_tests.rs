@@ -7,7 +7,7 @@ use std::sync::{
 use nmp_core::actor::{ActorCommand, ActorMail, InterestsCommand, LifecycleCommand};
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::{CommandSender, DependentInterestChild};
-use nmp_feed::FeedRender;
+use nmp_feed::FeedShape;
 use nmp_planner::InterestShape;
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
@@ -77,7 +77,7 @@ fn adapter_emits_replacement_only_for_trellis_resource_transitions() {
     let (sender, rx) = command_receiver();
     let adapter = FeedSessionTrellisAdapter::new(
         "app.feed.synthetic",
-        FeedRender::OpCentric,
+        FeedShape::RootIndexed,
         vec![interest("fixed")],
         sender,
     )
@@ -129,7 +129,7 @@ fn adapter_emits_replacement_only_for_trellis_resource_transitions() {
 fn close_scope_clears_once_and_late_source_effect_cannot_resurrect_demand() {
     let (sender, rx) = command_receiver();
     let adapter =
-        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedRender::Flat, Vec::new(), sender)
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
             .unwrap();
 
     assert!(adapter.sync(&extra(vec![interest("alice")]), "source-changed"));
@@ -156,7 +156,7 @@ fn adapter_output_lifecycle_frames_drive_rebaseline_and_clear() {
     let (sender, rx) = command_receiver();
     let adapter = FeedSessionTrellisAdapter::new(
         "app.feed.synthetic",
-        FeedRender::OpCentric,
+        FeedShape::RootIndexed,
         Vec::new(),
         sender,
     )

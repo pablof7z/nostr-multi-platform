@@ -31,7 +31,7 @@ use nmp_core::substrate::{
 use nmp_core::{CommandSender, TypedProjectionData};
 use nmp_feed::{
     CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedAuthorRefs, FeedController,
-    FeedParams, FeedRenderSource, FeedSessionBuild, PullFn, TeardownAction,
+    FeedParams, FeedSessionBuild, FeedWindowSource, PullFn, TeardownAction,
 };
 
 mod active_shape;
@@ -107,10 +107,10 @@ pub trait FeedSessionHost {
     fn command_sender(&self) -> CommandSender;
     fn register_feed(&self, key: String, controller: Arc<dyn FeedController>);
     fn load_older_feed(&self, key: &str) -> bool;
-    fn register_feed_render_source<S, F>(
+    fn register_feed_window_source<S, F>(
         &self,
         feed_key: String,
-        source: Arc<FeedRenderSource<S>>,
+        source: Arc<FeedWindowSource<S>>,
         encode: F,
     ) where
         S: FeedAuthorRefs + Send + Sync + 'static,
@@ -204,7 +204,7 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
     session_engine::build_scope_session_with_artifacts(
         app,
         params.projection.as_str(),
-        &params.render,
+        &params.shape,
         resolved,
         suppression,
     )

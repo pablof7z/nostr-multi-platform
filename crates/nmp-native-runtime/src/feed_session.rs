@@ -183,7 +183,7 @@ impl FeedTeardown {
     /// (ADR-0063 D7, #1671 Lane H, #1740).
     ///
     /// A session feed installs its typed sidecar through
-    /// `register_feed_render_source`, which pairs a feed-author auto-resolve
+    /// `register_feed_window_source`, which pairs a feed-author auto-resolve
     /// provider under the same key (so the session's rendered authors resolve
     /// avatars). That provider lives in the same snapshot registry as the typed
     /// projection, so closing the session must drop BOTH in the same lock — exactly

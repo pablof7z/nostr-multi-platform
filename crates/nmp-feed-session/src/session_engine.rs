@@ -30,8 +30,8 @@ use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
-    FeedSessionBuild, PullFeedController, RootAdmission,
+    ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
+    FeedShape, PullFeedController, RootAdmission,
 };
 use nmp_note_feed::OpFeedEngine;
 use nmp_planner::InterestScope;
@@ -62,13 +62,13 @@ pub struct OpScopeSessionArtifacts {
 pub(super) fn build_scope_session_with_artifacts(
     app: &impl FeedSessionHost,
     key: &str,
-    render: &FeedRender,
+    shape: &FeedShape,
     resolved: ReducedSource,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
-    match render {
-        FeedRender::OpCentric => build_op_scope_session(app, key, resolved, suppression),
-        FeedRender::Flat => {
+    match shape {
+        FeedShape::RootIndexed => build_op_scope_session(app, key, resolved, suppression),
+        FeedShape::Flat => {
             flat_session::build_flat_scope_session(app, key, resolved).map(|build| {
                 ScopeSessionBuild {
                     build,
@@ -192,7 +192,7 @@ fn build_op_scope_session(
     // others). Sessions emit always (no incremental-apply omit bookkeeping).
     //
     // CRITICAL (the #1740 unblocker): route BOTH lanes through ONE
-    // `FeedRenderSource` via `register_feed_render_source` — NOT the bare
+    // `FeedWindowSource` via `register_feed_window_source` — NOT the bare
     // `register_typed_snapshot_projection`. The bare path installs ONLY the typed
     // sidecar and NO feed-author provider, so the authors a session feed renders
     // would never auto-`resolve_ref` → blank avatars (the exact #1671 coverage
@@ -206,8 +206,8 @@ fn build_op_scope_session(
     let engine_for_typed = Arc::clone(&engine);
     let typed_key = key.to_string();
     let source =
-        nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
-    app.register_feed_render_source(key.to_string(), source, move |snapshot| {
+        nmp_feed::FeedWindowSource::new(move || engine_for_typed.snapshot_current_window());
+    app.register_feed_window_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
             schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
@@ -230,7 +230,7 @@ fn build_op_scope_session(
     // serializes shapes to NIP-01 JSON or tracks a private open log.
     let sender = app.command_sender();
     let acquisition_adapter =
-        FeedSessionTrellisAdapter::new(key, FeedRender::OpCentric, interests, sender)?;
+        FeedSessionTrellisAdapter::new(key, FeedShape::RootIndexed, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
 
     // Wire each source change to re-sync observed delivery/acquisition for the

@@ -35,7 +35,7 @@ rows are ordinary Nostr content.
 ```json
 {
   "primary_kinds": [1],
-  "render": "OpCentric",
+  "shape": "RootIndexed",
   "acquisition": "ActiveUserFollows",
   "admission": "All",
   "ranking": "ChronologicalDesc",
@@ -65,7 +65,7 @@ already-compiled static non-feed reads; do not make them a product shell API.
 ```json
 {
   "primary_kinds": [30023],
-  "render": "Flat",
+  "shape": "Flat",
   "acquisition": { "Tag": { "term": "nostr" } },
   "admission": "All",
   "ranking": "ChronologicalDesc",

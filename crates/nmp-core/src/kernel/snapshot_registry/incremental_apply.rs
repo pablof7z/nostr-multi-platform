@@ -60,7 +60,7 @@ impl SnapshotRegistry {
 
     /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle.
     ///
-    /// A [`FeedRenderSource`](nmp_feed::FeedRenderSource) captures this and reads
+    /// A [`FeedWindowSource`](nmp_feed::FeedWindowSource) captures this and reads
     /// it lock-free to key its per-tick window memo, so the author provider and
     /// the typed producer (two reads in one tick) share one materialization.
     #[must_use]

@@ -20,12 +20,12 @@ mod params;
 mod perspective;
 mod pull_controller;
 mod registry;
-mod render_source;
 mod root_indexed;
 mod session;
 pub mod typed_wire;
 mod types;
 mod window;
+mod window_source;
 
 pub use admit::AdmitExpr;
 pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
@@ -34,9 +34,9 @@ pub use pager::{
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
 pub use params::{
-    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope,
-    FeedSessionId, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, RelaySetId, TagTerm,
-    WotRulesId, WotSeed,
+    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope,
+    FeedSessionId, FeedShape, FeedSourceExpr, FeedWindow, ListId, ProjectionKey, RelaySetId,
+    TagTerm, WotRulesId, WotSeed,
 };
 pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
@@ -44,7 +44,6 @@ pub use pull_controller::{
     FeedReplace, FeedReset, PullFeedController, PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
-pub use render_source::FeedRenderSource;
 pub use root_indexed::{
     admit_all_roots, AttributionAuthors, AttributionPayload, CardAuthors, CardBuilder, EventGate,
     EventLookup, FeedAuthorRefs, FollowPredicate, RootAdmission, RootCard, RootFeedSnapshot,
@@ -60,6 +59,7 @@ pub use types::{
     FeedWindowState, DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT,
 };
 pub use window::{block_cursor, cards_for_blocks, page_for_request, sorted_blocks};
+pub use window_source::FeedWindowSource;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

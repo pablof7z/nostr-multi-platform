@@ -6,7 +6,7 @@ use crate::NmpApp;
 use nmp_core::substrate::ObservedProjectionCommandHandle;
 use nmp_core::{CommandSender, TypedProjectionData};
 use nmp_feed::{
-    CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedRenderSource,
+    CustomPerspectiveDef, CustomPerspectiveId, FeedAuthorRefs, FeedController, FeedWindowSource,
     PullFn, TeardownAction,
 };
 use nmp_feed_session::{FeedSessionHost, IdentityChangeObserverId};
@@ -54,16 +54,16 @@ impl FeedSessionHost for NmpApp {
         NmpApp::load_older_feed(self, key)
     }
 
-    fn register_feed_render_source<S, F>(
+    fn register_feed_window_source<S, F>(
         &self,
         feed_key: String,
-        source: Arc<FeedRenderSource<S>>,
+        source: Arc<FeedWindowSource<S>>,
         encode: F,
     ) where
         S: FeedAuthorRefs + Send + Sync + 'static,
         F: Fn(&S) -> Option<TypedProjectionData> + Send + Sync + 'static,
     {
-        NmpApp::register_feed_render_source(self, feed_key, source, encode);
+        NmpApp::register_feed_window_source(self, feed_key, source, encode);
     }
 
     fn custom_perspective(&self, id: &CustomPerspectiveId) -> Option<CustomPerspectiveDef> {

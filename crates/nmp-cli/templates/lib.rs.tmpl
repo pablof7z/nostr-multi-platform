@@ -119,7 +119,7 @@ pub fn starter_builtin_projection_keys() -> [&'static str; 3] {
 pub fn starter_home_feed_params() -> nmp_native_runtime::FeedParams {
     nmp_native_runtime::FeedParams {
         primary_kinds: vec![STARTER_PRIMARY_NOTE_KIND],
-        render: nmp_native_runtime::FeedRender::OpCentric,
+        shape: nmp_native_runtime::FeedShape::RootIndexed,
         acquisition: nmp_native_runtime::FeedScope::ActiveUserFollows,
         admission: nmp_native_runtime::FeedAdmission::All,
         ranking: nmp_native_runtime::FeedRanking::ChronologicalDesc,

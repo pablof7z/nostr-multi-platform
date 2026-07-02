@@ -145,27 +145,27 @@ pub enum FeedSourceExpr {
 pub type FeedScope = FeedSourceExpr;
 
 // ---------------------------------------------------------------------------
-// Render mode, admission, ranking, window, projection phases.
+// Shape, admission, ranking, window, projection phases.
 // ---------------------------------------------------------------------------
 
-/// (a) RENDER MODE — how the session projects acquired, admitted rows.
+/// (a) SHAPE — how the session projects acquired, admitted rows.
 ///
-/// `OpCentric` produces a root-indexed reply rollup (OP-feed engine).
+/// `RootIndexed` produces a root-indexed reply rollup (OP-feed engine).
 /// `Flat` produces a flat list with empty attribution (NIP-01 FlatFeed engine),
 /// used for profile and thread screens.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
-pub enum FeedRender {
+pub enum FeedShape {
     /// Reply-centric: replies roll up as attribution under their parent OP.
     /// (root-indexed OP-feed engine)
-    OpCentric,
+    RootIndexed,
     /// Flat: every matching event is a top-level row; no attribution nesting.
     /// (profile/thread style, FlatFeed engine)
     Flat,
 }
 
-impl Default for FeedRender {
+impl Default for FeedShape {
     fn default() -> Self {
-        FeedRender::OpCentric
+        FeedShape::RootIndexed
     }
 }
 
@@ -295,9 +295,9 @@ pub struct FeedParams {
     /// composition/compiler layer, which validates that no derived-acquisition
     /// kind was declared as primary input (fail-closed).
     pub primary_kinds: Vec<u32>,
-    /// (a) RENDER MODE.
+    /// (a) SHAPE.
     #[serde(default)]
-    pub render: FeedRender,
+    pub shape: FeedShape,
     /// (b) ACQUISITION source.
     pub acquisition: FeedScope,
     /// (c) ADMISSION policy.

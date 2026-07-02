@@ -7,8 +7,7 @@ use std::time::Duration;
 
 use nmp_core::WireProjectionState;
 use nmp_feed::{
-    FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ListId,
-    ProjectionKey,
+    FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedShape, FeedWindow, ListId, ProjectionKey,
 };
 use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
@@ -192,7 +191,7 @@ pub(crate) fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event 
 pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        render: FeedRender::OpCentric,
+        shape: FeedShape::RootIndexed,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
@@ -204,7 +203,7 @@ pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
 pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        render: FeedRender::Flat,
+        shape: FeedShape::Flat,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
@@ -216,7 +215,7 @@ pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
 pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        render: FeedRender::Flat,
+        shape: FeedShape::Flat,
         acquisition: FeedScope::ListMembers {
             list: ListId(nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID.to_string()),
         },
@@ -230,7 +229,7 @@ pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
 pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        render: FeedRender::Flat,
+        shape: FeedShape::Flat,
         acquisition: FeedScope::ListMembers {
             list: ListId(list_id.to_string()),
         },

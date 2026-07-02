@@ -19,8 +19,8 @@ use std::sync::{
 use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedRender, FeedScope,
-    FeedSessionBuild, FeedSessionRegistry, FeedWindow, ProjectionKey, TeardownAction,
+    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedScope, FeedSessionBuild,
+    FeedSessionRegistry, FeedShape, FeedWindow, ProjectionKey, TeardownAction,
 };
 
 use crate::feed_session::{FeedOpenError, FeedTeardown};
@@ -57,7 +57,7 @@ impl ObservedProjectionSink for StubFeed {
 fn following_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        render: FeedRender::OpCentric,
+        shape: FeedShape::RootIndexed,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,

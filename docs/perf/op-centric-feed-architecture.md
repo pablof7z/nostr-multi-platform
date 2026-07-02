@@ -117,7 +117,7 @@ pub fn open_active_follows_op_feed(
         acquisition: FeedScope::ActiveUserFollows,
         primary_kinds,
         projection,
-        render: FeedRender::OpCentric { /* ... */ },
+        shape: FeedShape::RootIndexed,
         /* ... */
     });
     let engine = nmp_nip01::register_op_feed(

@@ -12,7 +12,7 @@ impl NmpApp {
     /// `f` returns the raw author keys the feed will RENDER for its CURRENT
     /// visible window; the kernel calls it INSIDE every snapshot tick and
     /// auto-`resolve_ref`s the additions / `release_ref`s the removals under the
-    /// consumer id `feed-author:<feed_key>`. Prefer [`Self::register_feed_render_source`],
+    /// consumer id `feed-author:<feed_key>`. Prefer [`Self::register_feed_window_source`],
     /// which installs this lane STRUCTURALLY paired with the typed sidecar; this
     /// bare method exists for that helper and for tests.
     ///
@@ -34,7 +34,7 @@ impl NmpApp {
     /// paired.
     ///
     /// This is THE registration seam for any feed whose rows carry authors. It
-    /// installs both lanes from the SAME [`nmp_feed::FeedRenderSource`], so it is
+    /// installs both lanes from the SAME [`nmp_feed::FeedWindowSource`], so it is
     /// IMPOSSIBLE to register a feed's typed sidecar without also registering the
     /// author provider that auto-resolves the authors that sidecar renders — the
     /// coverage hole (a dynamic feed that emits a typed sidecar but no provider →
@@ -59,10 +59,10 @@ impl NmpApp {
     /// - `encode` — maps the materialized snapshot to the typed sidecar payload
     ///   (`None` to omit this tick, e.g. an unchanged frame under incremental
     ///   apply). Receives the SAME `&S` the provider derived authors from.
-    pub fn register_feed_render_source<S>(
+    pub fn register_feed_window_source<S>(
         &self,
         feed_key: impl Into<String>,
-        source: std::sync::Arc<nmp_feed::FeedRenderSource<S>>,
+        source: std::sync::Arc<nmp_feed::FeedWindowSource<S>>,
         encode: impl Fn(&S) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) where
         S: nmp_feed::FeedAuthorRefs + Send + Sync + 'static,

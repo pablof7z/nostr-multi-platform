@@ -155,7 +155,7 @@ pub struct SnapshotRegistry {
     /// of every `make_update`, BEFORE any feed-author provider or typed producer
     /// closure runs.
     ///
-    /// A [`FeedRenderSource`](nmp_feed::FeedRenderSource) keys its per-tick window
+    /// A [`FeedWindowSource`](nmp_feed::FeedWindowSource) keys its per-tick window
     /// memo on this value so the author provider (run first) and the typed
     /// producer (run later in the SAME tick) materialize the window EXACTLY ONCE
     /// and share it — closing the `load_older` 1-frame gap. Unlike

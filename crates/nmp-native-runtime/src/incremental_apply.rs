@@ -94,7 +94,7 @@ impl NmpApp {
     /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle the kernel
     /// bumps at the top of every `make_update`.
     ///
-    /// A [`nmp_feed::FeedRenderSource`] captures this once at registration and
+    /// A [`nmp_feed::FeedWindowSource`] captures this once at registration and
     /// reads it lock-free (`Acquire`) inside both its provider and typed-producer
     /// closures, so the two share one per-tick window materialization (no
     /// `load_older` gap). Returns a fresh zero-handle if the registry mutex is

@@ -415,7 +415,7 @@ fn emitted_set_guardrail_silent_for_resolved_emitted_author() {
 // ─── load_older widening WITHIN a tick does not blank newly-visible authors ───
 
 /// The HIGH fix, at the kernel seam: a feed's author provider and its typed
-/// producer share ONE per-tick materialized window (the `FeedRenderSource`
+/// producer share ONE per-tick materialized window (the `FeedWindowSource`
 /// memoization is unit-tested in `nmp-feed`; this asserts the kernel CONTRACT
 /// that consumes it). When the provider resolves window W and the typed producer
 /// emits the SAME window W at the same tick rev, the reconciled author set ==
@@ -434,7 +434,7 @@ fn load_older_widening_within_tick_does_not_blank_authors() {
     let b = hex64("bbbb2");
 
     // Model the SHARED per-tick window: ONE author vector that the provider and
-    // the emit-record both read for the tick. (With `FeedRenderSource` this is the
+    // the emit-record both read for the tick. (With `FeedWindowSource` this is the
     // memoized `Arc<S>`; here we model the kernel-visible consequence directly.)
     let window = register_swappable_provider(&slot, HOME_KEY);
     // Pre-widen window: only `a` is visible when the tick materializes.

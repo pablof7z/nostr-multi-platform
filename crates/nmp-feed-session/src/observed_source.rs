@@ -14,7 +14,7 @@ use crate::trellis_adapter::FeedSessionTrellisAdapter;
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::{FeedAdmission, FeedParams, FeedRender, FeedSessionBuild, ProjectionKey};
+use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild, FeedShape, ProjectionKey};
 
 /// Options for wiring a Rust app projection to a compiled feed source.
 pub struct ObservedFeedSourceOptions {
@@ -48,7 +48,7 @@ pub fn compile_observed_feed_source<H: FeedSessionHost>(
     build_observed_source_session(
         app,
         params.projection.as_str(),
-        params.render.clone(),
+        params.shape.clone(),
         resolved,
         options,
     )
@@ -57,7 +57,7 @@ pub fn compile_observed_feed_source<H: FeedSessionHost>(
 fn build_observed_source_session(
     app: &impl FeedSessionHost,
     key: &str,
-    render: FeedRender,
+    shape: FeedShape,
     resolved: ReducedSource,
     options: ObservedFeedSourceOptions,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
@@ -92,7 +92,7 @@ fn build_observed_source_session(
     source_observer.sync();
 
     let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, render, interests, sender)?;
+    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, shape, interests, sender)?;
     acquisition_adapter.sync(&extra_acquisition, "feed-observed-source-acquisition");
 
     for hook in reactivity_hooks {
