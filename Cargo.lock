@@ -4480,6 +4480,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-reactions"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-nip25",
+ "nmp-ownership",
+ "nmp-planner",
+ "nmp-read-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-read-session"
 version = "0.8.4"
 dependencies = [

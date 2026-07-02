@@ -1,0 +1,266 @@
+//! `open_reactions` — the concept-owned reaction-count active read (#2758, #2508).
+//!
+//! This is the reaction owner's DOOR. It composes ONE routed demand (kind:7
+//! reactions + their kind:5 NIP-09 retractions, `#e`-tagging the target) with
+//! `nmp_nip25::ReactionAggregateProjection` — the SAME kind:7/kind:5 fold the
+//! NIP-29-group-scoped reaction read already drives — as the admission +
+//! reducer, then drives them through the ONE read-lifecycle engine
+//! (`nmp-read-session`). It contains NO registry, NO close map, NO replay
+//! implementation, and NO teardown recipe of its own — those are the
+//! engine's, reached only via [`open_read`] / [`close_read`]. If this file
+//! ever grew any of them, the engine boundary would be wrong (#2777).
+//!
+//! The symbol lives HERE, in the concept crate: a kernel that does not import
+//! `nmp-reactions` has no `open_reactions`. `open_reactions` takes the
+//! engine's host seam (`&dyn ReadHost`, which a runtime like `NmpApp`
+//! implements once) — it never depends on a runtime crate. Dependency
+//! direction: `nmp-reactions` -> `nmp-read-session` <- runtime.
+//!
+//! ## Retraction handling
+//!
+//! Correct kind:5 delete/retraction handling is NOT reimplemented here: the
+//! demand filter over-fetches kind:5 alongside kind:7 (mirroring
+//! `group_reactions_filter_json`), and `ReactionAggregateProjection::ingest`
+//! delegates kind:5 tag parsing to `nmp-nip09`'s `DeleteRecord` read seam,
+//! removing a stored reaction only when the delete's author matches the
+//! original reactor. This crate reuses that machinery unchanged.
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
+use flatbuffers::FlatBufferBuilder;
+use nmp_core::{ObservedProjectionSink, TypedProjectionData};
+use nmp_nip25::{ReactionAggregateProjection, ReactionTargetAggregate};
+use nmp_ownership::FrameworkProjectionKey;
+use nmp_read_session::{close_read, open_read, ReadDemand, ReadHost, ReadOutputEncoder, ReadSpec};
+use serde::{Deserialize, Serialize};
+
+use crate::read::reaction_filter_json;
+use crate::target::{ReactionTarget, ReactionTargetError};
+
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
+#[path = "wire/generated/reaction_summary_generated.rs"]
+mod generated;
+
+use generated::nmp::reactions as fb;
+
+/// Stable schema id for the reaction-summary typed projection.
+pub const REACTION_SUMMARY_SCHEMA_ID: &str = "nmp.reactions.summary";
+/// Schema version mirrored in `reaction_summary.fbs`.
+pub const REACTION_SUMMARY_SCHEMA_VERSION: u32 = 1;
+/// FlatBuffers file identifier for the reaction-summary buffer.
+pub const REACTION_SUMMARY_FILE_IDENTIFIER: &[u8] = b"NRCS";
+/// Account-agnostic scope: a note's reactions come from anywhere, routed by
+/// the target's outbox rather than the viewer's account (mirrors
+/// `nmp-replies`' `REPLY_READ_SCOPE_GLOBAL`).
+const REACTION_READ_SCOPE_GLOBAL: u32 = 1;
+/// Bounded read-cache replay depth before live activation.
+const REACTION_REPLAY_LIMIT: usize = 512;
+
+/// Every `open_reactions` call gets a unique output key, so independent
+/// reaction-count components on the same target are fully separate reads
+/// (feed's unique-output model), not a shared singleton.
+static NEXT_REACTION_READ: AtomicU64 = AtomicU64::new(1);
+
+/// One reaction-content group's tally within a [`ReactionSummarySnapshot`].
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReactionGroupSummary {
+    /// Raw reaction content token ("+" for empty/like; emoji; NIP-30 shortcode).
+    pub token: String,
+    /// Surviving reactions carrying this token for the target.
+    pub count: u64,
+}
+
+/// The reaction-summary read model for ONE target: total + per-content-token
+/// breakdown + distinct reactor pubkeys. Raw data only (aim.md Section 2) — no
+/// "is mine" boolean is computed here; `open_reactions` takes no viewer
+/// parameter, so a caller that already knows its own active pubkey tests
+/// membership in `reactor_pubkeys` itself.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReactionSummarySnapshot {
+    /// The reacted-to event id (raw hex).
+    pub target_id: String,
+    /// Total surviving reactions across all content tokens.
+    pub total: u64,
+    /// Per-content-token breakdown (count desc, then token asc).
+    pub groups: Vec<ReactionGroupSummary>,
+    /// Distinct reactor pubkeys (raw hex), ascending.
+    pub reactor_pubkeys: Vec<String>,
+}
+
+impl From<ReactionTargetAggregate> for ReactionSummarySnapshot {
+    fn from(aggregate: ReactionTargetAggregate) -> Self {
+        Self {
+            target_id: aggregate.target_event_id,
+            total: aggregate.total,
+            groups: aggregate
+                .by_emoji
+                .into_iter()
+                .map(|emoji| ReactionGroupSummary {
+                    token: emoji.token,
+                    count: emoji.count,
+                })
+                .collect(),
+            reactor_pubkeys: aggregate.reactors,
+        }
+    }
+}
+
+/// The typed close handle `open_reactions` returns. Wraps the engine's opaque
+/// handle so a reaction read can only be closed with [`close_reactions`] (not
+/// with a feed or replies handle), and exposes the projection key the shell
+/// renders from.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReactionsReadHandle(nmp_read_session::ReadHandle);
+
+impl ReactionsReadHandle {
+    /// The projection key this read's typed [`ReactionSummarySnapshot`]
+    /// surfaces under. The shell learns it from the handle and renders that
+    /// key.
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
+        &self.0.projection_key
+    }
+}
+
+/// Open a live reaction-count read for `target_event_id` on the
+/// read-lifecycle engine.
+///
+/// Composes ONE routed demand (kind:7 + kind:5, `#e`-tagging the target) with
+/// `nmp_nip25::ReactionAggregateProjection` as the admission-applying reducer,
+/// then drives it through the engine. Returns a close handle;
+/// [`close_reactions`] withdraws the demand and tombstones the output.
+///
+/// # Errors
+///
+/// Returns [`ReactionTargetError`] when `target_event_id` is not a 64-hex
+/// event id.
+pub fn open_reactions(
+    host: &dyn ReadHost,
+    target_event_id: impl Into<String>,
+) -> Result<ReactionsReadHandle, ReactionTargetError> {
+    let target = ReactionTarget::event(target_event_id)?;
+    let token = target.as_str().to_string();
+    let nonce = NEXT_REACTION_READ.fetch_add(1, Ordering::Relaxed);
+    let key_string = format!("nmp.reactions.summary.{token}.{nonce}");
+
+    // Demand: one live `REQ` (kind:7 + kind:5, `#e`-tagged) folding into the
+    // NIP-25 aggregate reducer, which also owns retraction admission.
+    let demand = ReadDemand {
+        filter_json: reaction_filter_json(&target),
+        consumer_id: key_string.clone(),
+        scope: REACTION_READ_SCOPE_GLOBAL,
+        relay_pin: None,
+        replay_limit: REACTION_REPLAY_LIMIT,
+    };
+
+    // No viewer pubkey: `open_reactions` takes no account parameter (the
+    // read-lifecycle host seam exposes no active-account accessor), so `mine`
+    // stays empty on the shared aggregate; callers test `reactor_pubkeys`
+    // membership against their own already-known active pubkey instead.
+    let projection = Arc::new(ReactionAggregateProjection::new(None));
+
+    // Typed output: encode the reducer's per-target aggregate each tick.
+    // Coalesced emission + tombstone-on-close are the engine/runtime's, not
+    // this closure's.
+    let projection_for_output = Arc::clone(&projection);
+    let output_target = token.clone();
+    let output_key = key_string.clone();
+    let output_encoder: ReadOutputEncoder = Box::new(move || {
+        let snapshot: ReactionSummarySnapshot = projection_for_output
+            .aggregate_for(&output_target)
+            .map(ReactionSummarySnapshot::from)
+            .unwrap_or_else(|| ReactionSummarySnapshot {
+                target_id: output_target.clone(),
+                ..Default::default()
+            });
+        Some(TypedProjectionData {
+            key: output_key.clone(),
+            schema_id: REACTION_SUMMARY_SCHEMA_ID.to_string(),
+            schema_version: REACTION_SUMMARY_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(REACTION_SUMMARY_FILE_IDENTIFIER).into_owned(),
+            payload: encode_reaction_summary_snapshot(&snapshot),
+            ..Default::default()
+        })
+    });
+
+    // `nmp.reactions.*` is a framework prefix, so this declaration cannot
+    // fail. The owner-claim literal must appear here for the crate-ownership
+    // audit.
+    let projection_key =
+        FrameworkProjectionKey::declared(key_string, "projection.nmp.reactions.summary")
+            .expect("nmp.reactions.summary.* carries the framework prefix");
+
+    let handle = open_read(
+        host,
+        ReadSpec {
+            projection_key: projection_key.into(),
+            demands: vec![demand],
+            observer: projection as Arc<dyn ObservedProjectionSink>,
+            output_encoder,
+        },
+    );
+    Ok(ReactionsReadHandle(handle))
+}
+
+/// Close a reaction read opened by [`open_reactions`], withdrawing the demand
+/// and tombstoning the typed output. Idempotent (D6).
+pub fn close_reactions(host: &dyn ReadHost, handle: ReactionsReadHandle) -> bool {
+    close_read(host, &handle.0)
+}
+
+/// Encode a [`ReactionSummarySnapshot`] to its typed FlatBuffers payload.
+#[must_use]
+pub fn encode_reaction_summary_snapshot(snapshot: &ReactionSummarySnapshot) -> Vec<u8> {
+    let mut fbb = FlatBufferBuilder::new();
+    let target_id = fbb.create_string(&snapshot.target_id);
+
+    let group_offsets: Vec<_> = snapshot
+        .groups
+        .iter()
+        .map(|group| {
+            let token = fbb.create_string(&group.token);
+            fb::ReactionGroupSummary::create(
+                &mut fbb,
+                &fb::ReactionGroupSummaryArgs {
+                    token: Some(token),
+                    count: group.count,
+                },
+            )
+        })
+        .collect();
+    let groups = fbb.create_vector(&group_offsets);
+
+    let reactor_offsets: Vec<_> = snapshot
+        .reactor_pubkeys
+        .iter()
+        .map(|pubkey| fbb.create_string(pubkey))
+        .collect();
+    let reactor_pubkeys = fbb.create_vector(&reactor_offsets);
+
+    let root = fb::ReactionSummarySnapshot::create(
+        &mut fbb,
+        &fb::ReactionSummarySnapshotArgs {
+            schema_version: REACTION_SUMMARY_SCHEMA_VERSION,
+            target_id: Some(target_id),
+            total: snapshot.total,
+            groups: Some(groups),
+            reactor_pubkeys: Some(reactor_pubkeys),
+        },
+    );
+    fbb.finish(root, Some(fb::REACTION_SUMMARY_SNAPSHOT_IDENTIFIER));
+    fbb.finished_data().to_vec()
+}
+
+#[cfg(test)]
+#[path = "summary_tests.rs"]
+mod tests;

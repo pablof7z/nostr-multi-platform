@@ -21,6 +21,7 @@ members = [
     "crates/nmp-uniffi-support",
     "crates/nmp-nip01",
     "crates/nmp-note-feed",
+    "crates/nmp-reactions",
     "crates/nmp-replies",
     "crates/nmp-reposts",
     "crates/nmp-nip02",

@@ -1,0 +1,235 @@
+//! Concept-side proofs for `open_reactions`: the door composes the NIP-25
+//! fold, admits kind:7 + kind:5 retractions, emits typed output, and drives
+//! the ONE engine — with no lifecycle code of its own (a fake host records
+//! the engine calls).
+
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+
+use nmp_core::substrate::{KernelEvent, ObservedProjection};
+use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
+use nmp_ownership::ProjectionRegistrationKey;
+use nmp_read_session::{
+    ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
+    TeardownAction,
+};
+
+use super::generated::nmp::reactions::root_as_reaction_summary_snapshot;
+use super::*;
+
+const TARGET: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const REACTION_A: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+const REACTION_B: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+const AUTHOR_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const AUTHOR_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+fn event(id: &str, author: &str, kind: u32, tags: Vec<Vec<&str>>, content: &str) -> KernelEvent {
+    KernelEvent {
+        id: id.to_string(),
+        author: author.to_string(),
+        kind,
+        created_at: 1,
+        tags: tags
+            .into_iter()
+            .map(|tag| tag.into_iter().map(str::to_string).collect())
+            .collect(),
+        content: content.to_string(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+fn reaction(id: &str, author: &str, content: &str) -> KernelEvent {
+    event(id, author, 7, vec![vec!["e", TARGET]], content)
+}
+
+fn delete(id: &str, author: &str, target_reaction_id: &str) -> KernelEvent {
+    event(id, author, 5, vec![vec!["e", target_reaction_id]], "")
+}
+
+// ── The concept composition (no engine involved) ────────────────────────────
+
+#[test]
+fn filter_targets_the_event_id() {
+    let filter = reaction_filter_json(&ReactionTarget::event(TARGET).unwrap());
+    assert!(filter.contains(TARGET));
+}
+
+#[test]
+fn reducer_counts_and_groups_reactions_by_token() {
+    let projection = ReactionAggregateProjection::new(None);
+    projection.on_kernel_event(&reaction(REACTION_A, AUTHOR_A, "+"));
+    projection.on_kernel_event(&reaction(REACTION_B, AUTHOR_B, "🔥"));
+    // Duplicate delivery must not double count.
+    projection.on_kernel_event(&reaction(REACTION_A, AUTHOR_A, "+"));
+
+    let aggregate = projection.aggregate_for(TARGET).unwrap();
+    assert_eq!(aggregate.total, 2);
+    assert_eq!(
+        aggregate.reactors,
+        vec![AUTHOR_A.to_string(), AUTHOR_B.to_string()]
+    );
+}
+
+#[test]
+fn a_kind_5_delete_from_the_reactor_retracts_the_reaction() {
+    let projection = ReactionAggregateProjection::new(None);
+    projection.on_kernel_event(&reaction(REACTION_A, AUTHOR_A, "+"));
+    projection.on_kernel_event(&reaction(REACTION_B, AUTHOR_B, "+"));
+    assert_eq!(projection.aggregate_for(TARGET).unwrap().total, 2);
+
+    // A delete from someone OTHER than the reactor must not retract it.
+    projection.on_kernel_event(&delete("del-wrong", AUTHOR_B, REACTION_A));
+    assert_eq!(projection.aggregate_for(TARGET).unwrap().total, 2);
+
+    // A delete from the original reactor retracts exactly that reaction.
+    projection.on_kernel_event(&delete("del-right", AUTHOR_A, REACTION_A));
+    let aggregate = projection.aggregate_for(TARGET).unwrap();
+    assert_eq!(aggregate.total, 1);
+    assert_eq!(aggregate.reactors, vec![AUTHOR_B.to_string()]);
+}
+
+#[test]
+fn typed_output_round_trips() {
+    let snapshot = ReactionSummarySnapshot {
+        target_id: TARGET.to_string(),
+        total: 2,
+        groups: vec![ReactionGroupSummary {
+            token: "+".to_string(),
+            count: 2,
+        }],
+        reactor_pubkeys: vec![AUTHOR_A.to_string(), AUTHOR_B.to_string()],
+    };
+    let bytes = encode_reaction_summary_snapshot(&snapshot);
+    let decoded = root_as_reaction_summary_snapshot(&bytes).unwrap();
+    assert_eq!(decoded.schema_version(), REACTION_SUMMARY_SCHEMA_VERSION);
+    assert_eq!(decoded.target_id(), Some(TARGET));
+    assert_eq!(decoded.total(), 2);
+    let groups = decoded.groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups.get(0).token(), Some("+"));
+    assert_eq!(groups.get(0).count(), 2);
+    let reactors: Vec<&str> = decoded.reactor_pubkeys().unwrap().iter().collect();
+    assert_eq!(reactors, vec![AUTHOR_A, AUTHOR_B]);
+}
+
+// ── The door drives the engine end-to-end (fake host) ───────────────────────
+
+#[derive(Default)]
+struct FakeHost {
+    registry: ReadSessionRegistry,
+    observer: Mutex<Option<Arc<dyn ObservedProjectionSink>>>,
+    encoder: Mutex<Option<ReadOutputEncoder>>,
+    output_key: Arc<Mutex<Option<String>>>,
+    opened_filters: Mutex<Vec<String>>,
+    closed_interests: Arc<Mutex<Vec<u64>>>,
+    next_interest: AtomicU64,
+}
+
+impl FakeHost {
+    fn run_encoder(&self) -> Option<nmp_core::TypedProjectionData> {
+        self.encoder.lock().unwrap().as_ref().and_then(|e| e())
+    }
+    fn feed(&self, event: &KernelEvent) {
+        if let Some(obs) = self.observer.lock().unwrap().as_ref() {
+            obs.on_kernel_event(event);
+        }
+    }
+}
+
+impl ReadHost for FakeHost {
+    fn install_read_output(&self, key: ProjectionRegistrationKey, encoder: ReadOutputEncoder) {
+        *self.output_key.lock().unwrap() = Some(key.as_str().to_string());
+        *self.encoder.lock().unwrap() = Some(encoder);
+    }
+    fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
+        self.opened_filters.lock().unwrap().push(decl.filter_json);
+        ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
+    }
+    fn teardown_close_interest(&self, id: ObservedProjectionId) -> TeardownAction {
+        let closed = Arc::clone(&self.closed_interests);
+        Box::new(move || closed.lock().unwrap().push(id.0))
+    }
+    fn teardown_remove_output(&self, _key: String) -> TeardownAction {
+        let output = Arc::clone(&self.output_key);
+        Box::new(move || *output.lock().unwrap() = None)
+    }
+    fn teardown_mark_changed(&self) -> TeardownAction {
+        Box::new(|| {})
+    }
+    fn store_read_session(&self, build: ReadSessionBuild) -> ReadSessionId {
+        self.registry.open(build)
+    }
+    fn read_session_projection_key(&self, id: &ReadSessionId) -> Option<String> {
+        self.registry.projection_key(id)
+    }
+    fn close_read_session(&self, id: &ReadSessionId) -> bool {
+        self.registry.close(id)
+    }
+}
+
+#[test]
+fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
+    let host = FakeHost::default();
+    let handle = open_reactions(&host, TARGET).unwrap();
+
+    assert!(
+        handle
+            .projection_key()
+            .starts_with("nmp.reactions.summary."),
+        "framework-owned per-read output key: {}",
+        handle.projection_key()
+    );
+    assert_eq!(
+        host.opened_filters.lock().unwrap().len(),
+        1,
+        "one demand opened"
+    );
+    assert_eq!(
+        host.registry.live_count(),
+        1,
+        "one live read in the shared registry"
+    );
+    assert_eq!(
+        host.output_key.lock().unwrap().as_deref(),
+        Some(handle.projection_key()),
+        "typed output installed under the handle's key"
+    );
+
+    // Live delivery folds into the typed output the shell will render.
+    host.feed(&reaction(REACTION_A, AUTHOR_A, "+"));
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.total(), 1);
+
+    // A retraction folds too — the same reducer instance is fed on close as
+    // it was on delivery, so no parallel deletion model is needed here.
+    host.feed(&delete("del", AUTHOR_A, REACTION_A));
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.total(), 0);
+
+    // Close withdraws the demand and tombstones the output — and the engine
+    // no longer tracks the read (no leak).
+    assert!(close_reactions(&host, handle));
+    assert_eq!(
+        host.closed_interests.lock().unwrap().len(),
+        1,
+        "the demand withdrawn"
+    );
+    assert!(
+        host.output_key.lock().unwrap().is_none(),
+        "output tombstoned"
+    );
+    assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn open_reactions_rejects_a_malformed_target() {
+    let host = FakeHost::default();
+    assert_eq!(
+        open_reactions(&host, "not-hex"),
+        Err(ReactionTargetError::InvalidEventId)
+    );
+    assert_eq!(host.registry.live_count(), 0, "nothing opened on rejection");
+}
