@@ -23,7 +23,7 @@ fn controller_with_perspective(
     let pull: PullFn = {
         let queue = Arc::clone(&queue);
         let seen = Arc::clone(&seen_after);
-        Arc::new(move |_scope: PullScope, after_seq: u64| {
+        Arc::new(move |_scope: PullScope, after_seq: u64, _limits| {
             seen.lock().unwrap().push(after_seq);
             queue
                 .lock()
@@ -119,7 +119,9 @@ fn reset_without_hook_only_rewinds_cursor() {
     let feed = Arc::new(FakeFeed::default());
     let ctrl = PullFeedController::new_with_replacement(
         real_shape(),
-        Arc::new(|_scope, after| page(vec![inserted(after + 1, "x", 1)], after + 1, after + 1)),
+        Arc::new(|_scope, after, _limits| {
+            page(vec![inserted(after + 1, "x", 1)], after + 1, after + 1)
+        }),
         feed.apply(),
         feed.replace(),
         feed.advance(),
@@ -177,7 +179,7 @@ fn new_with_replacement_evicts_superseded_source() {
     let queue = Arc::new(Mutex::new(std::collections::VecDeque::from(pages)));
     let pull: PullFn = {
         let queue = Arc::clone(&queue);
-        Arc::new(move |_scope: PullScope, after_seq: u64| {
+        Arc::new(move |_scope: PullScope, after_seq: u64, _limits| {
             queue
                 .lock()
                 .unwrap()
@@ -225,7 +227,7 @@ fn registry_replace_reaches_new_with_replacement_hook() {
     let feed = Arc::new(FakeFeed::default());
     let ctrl = PullFeedController::new_with_replacement(
         real_shape(),
-        Arc::new(|_scope, after| page(vec![], after, after)),
+        Arc::new(|_scope, after, _limits| page(vec![], after, after)),
         feed.apply(),
         feed.replace(),
         feed.advance(),

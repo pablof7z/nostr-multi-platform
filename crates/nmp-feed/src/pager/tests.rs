@@ -115,7 +115,7 @@ fn test_late_old_event_not_skipped() {
         2,
         2,
     ));
-    let out1 = pager.drain(|_after| first.take().expect("first page"));
+    let out1 = pager.drain(|_after, _limits| first.take().expect("first page"));
     assert_eq!(out1.stop, DrainStop::Exhausted);
     assert_eq!(
         pager.after_seq(),
@@ -128,7 +128,7 @@ fn test_late_old_event_not_skipped() {
     // `created_at` cursor would have skipped it (its timestamp is behind the
     // already-displayed window); a seq cursor sees it on the NEXT drain.
     let mut second = Some(one_page(vec![inserted(3, "late_old", 10)], 3, 3));
-    let out2 = pager.drain(|after| {
+    let out2 = pager.drain(|after, _limits| {
         assert_eq!(after, 2, "second drain resumes from the seq-2 cursor");
         second.take().expect("second page")
     });
@@ -157,8 +157,12 @@ fn test_empty_advancing_pages_hit_scan_budget() {
         .with_budgets(8, budget);
 
     let mut calls = 0u32;
-    let out = pager.drain(|after| {
+    let out = pager.drain(|after, limits| {
         calls += 1;
+        assert!(
+            limits.max_scan_entries.get() <= budget,
+            "each pull must receive no more than the remaining scan budget"
+        );
         // Each call advances the cursor by 5 seqs but matches nothing, with the
         // store always claiming far more remains (has_more = true forever).
         ScanLogResult::Page(PullPage {
@@ -193,7 +197,7 @@ fn test_empty_advancing_page_terminates() {
     // No matching entries, but the cursor advanced to seq 5 and the store is
     // caught up (next_after_seq == latest_seq ⇒ has_more == false).
     let mut calls = 0u32;
-    let out = pager.drain(|_after| {
+    let out = pager.drain(|_after, _limits| {
         calls += 1;
         one_page(vec![], 5, 5)
     });
@@ -212,7 +216,7 @@ fn test_pullgap_triggers_rebase() {
         .expect("real shape")
         .with_budgets(80, 64);
     // Pretend the cursor was behind the GC floor.
-    let out = pager.drain(|_after| {
+    let out = pager.drain(|_after, _limits| {
         ScanLogResult::Gap(PullGap {
             requested_after_seq: 0,
             first_available_seq: 42,
@@ -263,7 +267,7 @@ fn test_display_order_after_seq_drain() {
         3,
     );
     let mut once = Some(page);
-    let out = pager.drain(|_after| once.take().expect("pulled once"));
+    let out = pager.drain(|_after, _limits| once.take().expect("pulled once"));
 
     // Drain (seq) order: late is LAST.
     let drain_ids: Vec<&str> = out.events.iter().map(|e| e.id.as_str()).collect();
@@ -286,7 +290,7 @@ fn test_deleted_rows_skipped_but_advance() {
     let mut pager = FeedPullPager::new(&RealShapeFeed).expect("real shape");
     let page = one_page(vec![inserted(1, "keep", 100), deleted(2, "keep")], 2, 2);
     let mut once = Some(page);
-    let out = pager.drain(|_after| once.take().expect("pulled once"));
+    let out = pager.drain(|_after, _limits| once.take().expect("pulled once"));
 
     let ids: Vec<&str> = out.events.iter().map(|e| e.id.as_str()).collect();
     assert_eq!(ids, ["keep"], "deleted row must not yield an event");
@@ -306,7 +310,12 @@ fn test_page_filled_stops_drain() {
         .expect("real shape")
         .with_budgets(2, 64);
     // Two matching rows fill the 2-event page; has_more stays true.
-    let out = pager.drain(|after| {
+    let out = pager.drain(|after, limits| {
+        assert_eq!(
+            limits.max_entries.get(),
+            2,
+            "first pull can ask for the full remaining page"
+        );
         let base = after;
         one_page(
             vec![
@@ -339,7 +348,7 @@ fn test_replaced_row_surfaces_superseded_id() {
         received_at_ms: 0,
     };
     let mut first = Some(one_page(vec![replaced], 1, 1));
-    let out = pager.drain(|_after| first.take().expect("one page"));
+    let out = pager.drain(|_after, _limits| first.take().expect("one page"));
 
     assert_eq!(out.stop, DrainStop::Exhausted);
     assert_eq!(
@@ -363,7 +372,7 @@ fn test_rewind_resets_cursor_only() {
         .expect("real shape")
         .with_budgets(3, 17);
     let mut first = Some(one_page(vec![inserted(1, "e1", 100)], 5, 5));
-    let _ = pager.drain(|_after| first.take().expect("page"));
+    let _ = pager.drain(|_after, _limits| first.take().expect("page"));
     assert_eq!(pager.after_seq(), 5, "cursor advanced");
 
     pager.rewind();
@@ -372,7 +381,7 @@ fn test_rewind_resets_cursor_only() {
 
     // The next drain replays from seq 0.
     let mut replay = Some(one_page(vec![inserted(1, "e1", 100)], 1, 1));
-    pager.drain(|after| {
+    pager.drain(|after, _limits| {
         assert_eq!(after, 0, "post-rewind drain starts at seq 0");
         replay.take().expect("replay page")
     });
