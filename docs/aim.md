@@ -164,9 +164,16 @@ The target conversation layer wraps NIP-17 private DMs (gift-wrapped via NIP-59,
 
 A **media client** for the Blossom protocol (BUD-01/BUD-02), with reactive upload/download status flowing through `AppState` like every other operation.
 
-### 4.12 Developer guardrails
+### 4.12 Developer guardrails (post-v1 target)
 
-In **debug builds only**, the framework runs runtime checks for the common Nostr-development mistakes: bech32 entities mistakenly passed where hex pubkeys are required, replaceable-event filters with too-large `limit`, subscriptions opened without a cache adapter, missing required fields on events being built, anti-patterns in filter shape. These produce loud, educational errors with actionable fixes. In release builds they compile to nothing. The bar is that an LLM-driven developer or a novice should be unable to ship a broken filter from a debug session.
+Developer guardrails are a post-v1 target: debug-build-only checks for common
+Nostr-development mistakes such as bech32 entities passed where hex pubkeys are
+required, replaceable-event filters with too-large `limit`, missing cache
+coverage, incomplete event drafts, and broad filter shapes. The intended bar is
+that an LLM-driven developer or a novice should be unable to leave a debug
+session with a broken filter. v1 currently relies on typed APIs, doctrine
+gates, targeted tests, and perf gates; a general guardrails crate must not be
+documented as shipped until it exists.
 
 ### 4.13 Testing
 
@@ -204,7 +211,7 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   ├── <framework>-wallet       # Post-v1 NIP-47/57/60/61 wallet mechanics.
 │   ├── <framework>-messages     # NIP-17 conversation layer.
 │   ├── <framework>-blossom      # Blossom client wrapper.
-│   ├── <framework>-guardrails   # Debug-build runtime checks.
+│   ├── <framework>-guardrails   # Post-v1 debug-build runtime checks.
 │   ├── <framework>-testing      # Mock relay, factories, simulated time.
 │   └── <framework>-cli          # Scaffolding tool.
 ├── bindings/

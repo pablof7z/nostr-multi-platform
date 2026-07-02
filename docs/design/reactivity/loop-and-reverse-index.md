@@ -80,7 +80,10 @@ When an event arrives, the actor needs to know which views care about it. Naive 
 
 ### 3.2 The decision: composite-keyed reverse index (ADR-0001)
 
-The store maintains a reverse index keyed primarily by **composite** event attributes, not by independent axes. Independent-axis buckets exist only for views with genuinely broad filters; using them produces a debug-build guardrail warning.
+The store maintains a reverse index keyed primarily by **composite** event
+attributes, not by independent axes. Independent-axis buckets exist only for
+views with genuinely broad filters; using them is a broad-cost choice that must
+be explicit in tests/design evidence.
 
 ```rust
 pub struct ReverseIndex {
@@ -91,7 +94,7 @@ pub struct ReverseIndex {
     by_kind_author_d: HashMap<(u16, PubKey, String), HashSet<ViewId>>,
     by_kind_d_tag: HashMap<(u16, String), HashSet<ViewId>>,
 
-    // Broad (single-axis) keys — guardrailed; for search / hashtag-scan only
+    // Broad (single-axis) keys — for search / hashtag-scan only
     by_kind: HashMap<u16, HashSet<ViewId>>,
     by_author: HashMap<PubKey, HashSet<ViewId>>,
     by_e_tag: HashMap<EventId, HashSet<ViewId>>,
@@ -113,7 +116,7 @@ When a view opens, the registry picks the **most specific** index that covers it
 | kinds + d-tag refs only | `by_kind_d_tag[(k, d)]` |
 | kinds only | `by_kind[k]` — broad-cost flag |
 | authors only | `by_author[a]` — broad-cost flag |
-| no constraint | `catch_all` — guardrail warning |
+| no constraint | `catch_all` — explicit broad-cost path |
 
 Each view, when opened, registers a `Dependencies` declaration:
 
@@ -153,7 +156,7 @@ fn lookup(&self, event: &Event) -> HashSet<ViewId> {
         hits.extend(self.by_kind_p_tag.get(&(event.kind, p_ref)).into_iter().flatten().copied());
     }
 
-    // Broad (guardrailed) lookups — empty for well-shaped apps
+    // Broad lookups — empty for well-shaped apps
     hits.extend(self.by_kind.get(&event.kind).into_iter().flatten().copied());
     hits.extend(self.by_author.get(&event.pubkey).into_iter().flatten().copied());
     hits.extend(&self.catch_all);
@@ -168,7 +171,11 @@ Cost: O(K + P) composite lookups plus O(|broad indexes used|) plus O(|catch_all|
 
 Some views have filters that don't naturally key into the index — full-text search on event content, time-windowed scans across many authors, regex over tags. For those, `catch_all_filter` causes the view to be considered for every insert; the view's `on_event_inserted` evaluates the filter and decides.
 
-This is the expensive path. The guardrails (`nmp-guardrails`) emit a warning in debug builds when a view declares `catch_all_filter`, so framework users notice when they're paying the cost. Most built-in view kinds will never use it.
+This is the expensive path. A view that declares `catch_all_filter` must carry
+explicit design/test evidence explaining why no composite key can represent it.
+Most built-in view kinds will never use it. Future developer guardrails may turn
+that broad-cost declaration into a debug-build warning, but v1 does not ship a
+general guardrails crate.
 
 ### 3.5 What ruled out alternatives
 

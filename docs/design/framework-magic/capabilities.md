@@ -1,7 +1,7 @@
 # Framework Magic §C13 — Best-Effort Rendering
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/product-spec/overview-and-dx.md` §1.5 doctrine D1; `docs/product-spec/subsystems.md` §7.6 (the per-field placeholder table + the `TimelineItem` concrete example); `docs/aim.md` §4.12.
+> Read first: `docs/product-spec/overview-and-dx.md` §1.5 doctrine D1; `docs/product-spec/subsystems.md` §7.6 (the per-field placeholder table + the `TimelineItem` concrete example).
 
 The "capabilities" filename in the user's directive maps here, not to capability bridges. The rendering contract is the **rendering capability** the framework grants the app: render now, refine in place, never withhold cached data behind a spinner. (Capability bridges in the technical sense — `KeyringCapability` etc. — are covered as plumbing in C11 and `kernel-substrate.md` §5; they are not themselves a contract bullet because they are infrastructure, not an observable app guarantee.)
 
