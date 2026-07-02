@@ -26,7 +26,6 @@
 
 use std::{
     collections::BTreeMap,
-    ffi::c_void,
     sync::{mpsc::Receiver, Arc},
     time::Duration,
 };
@@ -260,8 +259,11 @@ impl LiveGallerySource {
 
 impl LiveKernel {
     pub fn new() -> Result<Self, String> {
-        let app = Box::into_raw(Box::new(nmp_native_runtime::new_app()));
-        nmp_app_gallery::nmp_app_gallery_register(app as *mut c_void);
+        let mut app = nmp_native_runtime::new_app();
+        if !nmp_app_gallery::register_gallery_composition(&mut app) {
+            return Err("gallery composition root already claimed".to_string());
+        }
+        let app = Box::into_raw(Box::new(app));
 
         let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         // The tx is moved into the listener closure; the closure (inside the Arc)

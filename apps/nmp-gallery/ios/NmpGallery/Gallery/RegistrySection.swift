@@ -27,10 +27,7 @@ private struct GalleryRegistryManifest: Decodable {
 
 private enum GalleryRegistryLoader {
     static func loadSections() -> [RegistrySection] {
-        guard let ptr = nmp_app_gallery_registry_json() else {
-            fatalError("nmp_app_gallery_registry_json returned null")
-        }
-        let json = String(cString: ptr)
+        let json = galleryRegistryJson()
         do {
             let manifest = try JSONDecoder().decode(
                 GalleryRegistryManifest.self,

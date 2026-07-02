@@ -3,39 +3,32 @@ name = "nmp-app-gallery"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "NmpGallery explicit composition root over nmp-native-runtime. Produces libnmp_app_gallery for iOS and Android."
+description = "NmpGallery app-owned UniFFI facade over nmp-native-runtime. Produces libnmp_app_gallery for iOS and Android."
 
 [lib]
 # `staticlib` so the iOS shell can link `-lnmp_app_gallery` alongside the
-# other NMP archives, `cdylib` so the
-# Android NDK build produces `libnmp_app_gallery.so` directly (rather than
-# going through a parallel JNI shim crate like `nmp-android-ffi`), and
-# `rlib` so Rust-side consumers (integration tests, future Android JNI
-# shims) reach the symbols through normal Rust paths.
+# other NMP archives; `cdylib` so `uniffi-bindgen generate --library` and the
+# Android NDK build produce `libnmp_app_gallery.so`/`.dylib` directly; `rlib`
+# so Rust-side consumers (integration tests, TUI/desktop hosts) reach the
+# composition installer and gallery helpers through normal Rust paths.
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
 default = ["native"]
-# The gallery composition root is native-only (wasm uses wasm-bindgen, not
-# C-ABI), so the entire crate is gated behind `native`. Enabled by default.
-native = ["nmp-uniffi/native"]
-# `android-ffi` enables the JNI shim surface consumed by
-# `org.nmp.gallery.bridge.KernelBridge`. Implies `native` (the shim is a
-# native consumer). Activates the `jni` dependency so the symbols are
-# only pulled in when building the Android .so.
-android-ffi = ["dep:jni", "nmp-uniffi/native"]
+# The gallery facade is native-only (wasm uses wasm-bindgen, not UniFFI), so
+# the entire crate is gated behind `native`. Enabled by default.
+native = [
+    "nmp-native-runtime/external-signer",
+]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-# Native runtime owner — `NmpApp` handle + lifecycle API.
+# Native runtime owner — `NmpApp` handle + lifecycle API, owned by value
+# inside the facade's `Arc<GalleryApp>` UniFFI object.
 nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime" }
-# M14 UniFFI shell migration: the gallery iOS shell migrates from the nmp-ffi
-# C-ABI to the UniFFI Swift surface. Including nmp-uniffi here ensures every
-# `uniffi_nmp_uniffi_*` symbol lives in `libnmp_app_gallery.a` so the iOS
-# linker sees a single archive. The `nmp_app_gallery_register_uniffi` bridge
-# function (below) also relies on `nmp_uniffi::NmpApp::inner` for the Arc→
-# native pointer extraction.
-nmp-uniffi = { path = "../../../../crates/nmp-uniffi", default-features = false }
+# Shared Rust-side mechanics (lifecycle, update sink, capability callback,
+# dispatch, clamp policy) the facade delegates to — never copied.
+nmp-uniffi-support = { path = "../../../../crates/nmp-uniffi-support" }
 nmp-core = { path = "../../../../crates/nmp-core" }
 nmp-nostr-id = { path = "../../../../crates/nmp-nostr-id" }
 nmp-content = { path = "../../../../crates/nmp-content" }
@@ -57,12 +50,11 @@ nmp-wot = { path = "../../../../crates/nmp-wot" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 zeroize = { workspace = true }
-# JNI surface for the Android shell — only active under `android-ffi`.
-jni = { version = "0.21", optional = true }
+uniffi = { version = "0.29" }
 
 [dev-dependencies]
 # Test-support gates expose `signin_nsec_for_test` / `inject_signed_event_json_for_test`
-# so the in-crate smoke tests can spin up a real `NmpApp`, call
-# `nmp_app_gallery_register`, and confirm the registration didn't panic
-# / didn't fail closed.
+# so the in-crate smoke tests can spin up a real `NmpApp`, call the gallery
+# composition installer, and confirm registration didn't panic / didn't fail
+# closed.
 nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime", features = ["test-support"] }
