@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use nmp_core::WireProjectionState;
 use nmp_feed::{
-    FeedAdmission, FeedOrder, FeedParams, FeedScope, FeedShape, FeedWindowPolicy, ListId,
-    ProjectionKey,
+    FeedAdmission, FeedItemProjection, FeedOrder, FeedParams, FeedScope, FeedShape,
+    FeedWindowPolicy, ListId, ProjectionKey,
 };
 use nmp_native_runtime::NmpApp;
 use nostr::{Event, EventBuilder, JsonUtil, Keys, Kind, Tag, Timestamp, ToBech32};
@@ -189,7 +189,7 @@ pub(crate) fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event 
         .expect("sign note")
 }
 
-pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
+pub(crate) fn active_follows_params(key: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::RootIndexed,
@@ -197,11 +197,12 @@ pub(crate) fn active_follows_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned(projection).unwrap(),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
     }
 }
 
-pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
+pub(crate) fn flat_active_follows_params(key: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
@@ -209,11 +210,12 @@ pub(crate) fn flat_active_follows_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned(projection).unwrap(),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
     }
 }
 
-pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
+pub(crate) fn mute_source_params(key: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
@@ -223,11 +225,12 @@ pub(crate) fn mute_source_params(projection: &str) -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned(projection).unwrap(),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
     }
 }
 
-pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams {
+pub(crate) fn list_members_params(key: &str, list_id: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
         shape: FeedShape::Flat,
@@ -237,7 +240,8 @@ pub(crate) fn list_members_params(projection: &str, list_id: &str) -> FeedParams
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned(projection).unwrap(),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
     }
 }
 
