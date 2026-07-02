@@ -222,6 +222,8 @@ fn encode_metrics<'bldr>(
             make_update_us: m.make_update_us(),
             serialize_us: m.serialize_us(),
             update_frame_degradations_total: m.update_frame_degradations_total(),
+            command_drops: m.command_drops(),
+            relay_backlog_drops: m.relay_backlog_drops(),
         },
     )
 }

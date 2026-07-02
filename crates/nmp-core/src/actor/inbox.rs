@@ -25,9 +25,13 @@
 #[cfg(feature = "native")]
 use std::collections::VecDeque;
 #[cfg(feature = "native")]
+use std::sync::atomic::{AtomicU64, Ordering};
+#[cfg(feature = "native")]
 use std::sync::mpsc::Receiver;
 #[cfg(feature = "native")]
 use std::sync::mpsc::{RecvTimeoutError, TryRecvError};
+#[cfg(feature = "native")]
+use std::sync::Arc;
 
 #[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
@@ -162,8 +166,12 @@ pub(super) struct MailScheduler {
     relay_backlog: VecDeque<PoolEvent>,
     /// Count of relay events dropped because the backlog was at
     /// [`RELAY_BACKLOG_CAP`] when a new event was stashed. Observable so the
-    /// (recoverable) loss under flood is not silent.
-    relay_backlog_drops: u64,
+    /// (recoverable) loss under flood is not silent. Shared (via
+    /// [`relay_backlog_drops_handle`](MailScheduler::relay_backlog_drops_handle))
+    /// with the kernel's diagnostic snapshot, mirroring the `actor_queue_depth`
+    /// handle pattern, so the drop count is host-visible in release builds
+    /// rather than test-only.
+    relay_backlog_drops: Arc<AtomicU64>,
 }
 
 /// Result of one [`MailScheduler::drain_command_lane`] pass: the commands to
@@ -199,8 +207,16 @@ impl MailScheduler {
     pub(super) fn new() -> Self {
         Self {
             relay_backlog: VecDeque::new(),
-            relay_backlog_drops: 0,
+            relay_backlog_drops: Arc::new(AtomicU64::new(0)),
         }
+    }
+
+    /// Clone the shared drop-counter handle for the kernel's diagnostic
+    /// snapshot to bind via `Kernel::set_relay_backlog_drops_handle`, mirroring
+    /// the `actor_queue_depth` handle pattern so this counter is host-visible
+    /// (`Metrics::relay_backlog_drops`) instead of test-only.
+    pub(super) fn relay_backlog_drops_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.relay_backlog_drops)
     }
 
     /// Stash a relay event that must be processed but cannot run yet (the
@@ -216,7 +232,7 @@ impl MailScheduler {
             // Drop the oldest staged event to make room (D1: partial state is
             // tolerated; the newest events are the most relevant to keep).
             self.relay_backlog.pop_front();
-            self.relay_backlog_drops = self.relay_backlog_drops.saturating_add(1);
+            self.relay_backlog_drops.fetch_add(1, Ordering::Relaxed);
         }
         self.relay_backlog.push_back(event);
     }
