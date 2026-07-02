@@ -3,7 +3,7 @@
 //! Extracted from `snapshot_registry.rs` to keep that file within its LOC
 //! ceiling. These are the methods `make_update` (and the `Reset` dispatch arm)
 //! call to read the host-extensible registry through the `Arc<Mutex<…>>` slot the
-//! actor binds onto the kernel: the typed projection runs and — ADR-0053 — the
+//! actor binds onto the kernel: the typed projection runs and — ADR-0070 — the
 //! host-declared consumed-projection set.
 
 use super::super::Kernel;
@@ -35,7 +35,7 @@ impl Kernel {
     }
 
     /// Run every registered **typed** snapshot projection and return the vector
-    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0037).
+    /// carried in the snapshot frame's `typed_projections` sidecar (ADR-0072).
     ///
     /// Empty when no slot is bound, the mutex is poisoned, or nothing is
     /// registered — D6: a projection failure is data, never a panic at the
@@ -50,7 +50,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — collect every registered feed-author
+    /// ADR-0070 D7 (#1671 Lane H) — collect every registered feed-author
     /// provider's CURRENT visible-author set for this tick, as
     /// `(feed_key, keys)`.
     ///
@@ -68,7 +68,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0053 — snapshot the host-declared consumed-projection set for this
+    /// ADR-0070 — snapshot the host-declared consumed-projection set for this
     /// tick.
     ///
     /// Cloned ONCE at the top of `snapshot_projections_with_publish_cluster` so
@@ -90,7 +90,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0055 R6-S1 — publish this tick's frame identity
+    /// ADR-0070 R6-S1 — publish this tick's frame identity
     /// `(session_id, snapshot_epoch)` into the shared registry handles so a
     /// Tier-1 producer closure (the feed change-signal) reads the SAME signal
     /// the host's `ProjectionCache` resets on.
@@ -109,7 +109,7 @@ impl Kernel {
         if let Some(slot) = &self.snapshot_projections {
             if let Ok(registry) = slot.lock() {
                 registry.publish_frame_identity(session_id, snapshot_epoch);
-                // ADR-0063 D7 (#1671 Lane H) — advance the per-tick rev in the
+                // ADR-0070 D7 (#1671 Lane H) — advance the per-tick rev in the
                 // SAME lock so every feed-author provider + typed producer this
                 // tick reads one rev and materializes its window exactly once.
                 registry.bump_frame_tick_rev();
@@ -117,7 +117,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — the per-tick rev for THIS `make_update`.
+    /// ADR-0070 D7 (#1671 Lane H) — the per-tick rev for THIS `make_update`.
     ///
     /// Read AFTER [`Self::publish_frame_identity`] has bumped it, so it matches the
     /// rev every feed closure used this tick. Used to drain the emitted-author
@@ -134,7 +134,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — drain the emitted-author sink for the tick
+    /// ADR-0070 D7 (#1671 Lane H) — drain the emitted-author sink for the tick
     /// matching `tick_rev`: `(consumer_id, author_key)` pairs every feed's typed
     /// producer recorded as ACTUALLY EMITTED onto the wire this tick.
     ///
@@ -151,7 +151,7 @@ impl Kernel {
         }
     }
 
-    /// ADR-0055 Rung 3 S1b (finding 6 / issue #1390) — read both the
+    /// ADR-0070 Rung 3 S1b (finding 6 / issue #1390) — read both the
     /// incremental-apply enabled flag and the baseline-pending latch in a
     /// **single** mutex acquisition.
     ///

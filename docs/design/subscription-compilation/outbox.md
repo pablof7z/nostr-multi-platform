@@ -217,7 +217,7 @@ Notes on the algorithm:
   (`UserConfiguredCategory::AppRelay`), and additive to NIP-65 — they take over the role
   indexers were previously (and wrongly) being asked to play. A failed Step 2 (both
   NIP-65 write relays AND app relays empty) surfaces as `Failed { reason: NoAuthorRelays }`
-  in the action ledger, rendered as a toast per ADR-0007's `SideEffect` lane.
+  in the action ledger, rendered as a toast per ADR-0072's `SideEffect` lane.
 - **Step 1's override validation order** (derive base set first, validate override as subset)
   ensures the privacy constraint is always checked — the override cannot bypass the
   `PrivateToRecipients` fail-closed check by returning early before validation.
@@ -311,7 +311,7 @@ pub enum Diagnostic {
 }
 ```
 
-This is the SideEffect-lane payload per ADR-0007. The platform diagnostic UI renders an entry on every override; the count over a session is a soft metric (Cargo dependents using overrides routinely should re-examine their flow).
+This is the SideEffect-lane payload per ADR-0072. The platform diagnostic UI renders an entry on every override; the count over a session is a soft metric (Cargo dependents using overrides routinely should re-examine their flow).
 
 ## 7.5 Atomicity contract
 

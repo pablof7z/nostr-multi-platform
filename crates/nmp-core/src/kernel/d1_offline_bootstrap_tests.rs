@@ -11,7 +11,7 @@
 //!    the in-memory `events` and `timeline` caches exactly as the actor does.
 //! 3. Assert the seeded event id appears in `kernel.events` and `kernel.timeline`.
 //!
-//! V-112 (ADR-0042): the previous observation window via
+//! V-112 (ADR-0076): the previous observation window via
 //! `projections.author_view.items` was deleted together with `AuthorViewState`.
 //! The D1 property is unchanged — `self.timeline`, `self.events`, and
 //! `ingest_pre_verified_event` all remain — so the test now observes them

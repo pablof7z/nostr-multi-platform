@@ -15,7 +15,7 @@ impl NmpAppBuilder<Unstarted> {
     /// # V-95 / issue #619 — install-before-dispatch made type-enforceable
     ///
     /// The wallet runtime must be wired before any `nmp.wallet.*` action
-    /// dispatches. ADR-0052 rung 5.2: the three wallet `ActionModule`s are
+    /// dispatches. ADR-0072 rung 5.2: the three wallet `ActionModule`s are
     /// registered BY VALUE, each owning a clone of the per-app
     /// `WalletRuntimeHandle` `register_wallet` creates — there is no
     /// process-global. Previously the wiring lived in an app crate
@@ -33,7 +33,7 @@ impl NmpAppBuilder<Unstarted> {
     /// `nmp_app_set_storage_path` was driven through the C-ABI). With
     /// `.in_memory()` (no path), the runtime tracks payments in memory only.
     ///
-    /// Per-instance (ADR-0052 rung 5.2): two builders in one process now get
+    /// Per-instance (ADR-0072 rung 5.2): two builders in one process now get
     /// two INDEPENDENT wallet runtimes (no shared global), so a second
     /// `.with_wallet()` wires a distinct runtime rather than silently yielding.
     /// The returned per-app handle is threaded into the NIP-57 zap auto-chain
@@ -48,11 +48,11 @@ impl NmpAppBuilder<Unstarted> {
         // `register_wallet` takes only the narrow registrar traits it uses; the
         // builder implements `AppHost` (the composition supertrait over them), so
         // it satisfies those bounds and wires every registration against its app.
-        // It returns the per-app `WalletRuntimeHandle` (ADR-0052 rung 5.2).
+        // It returns the per-app `WalletRuntimeHandle` (ADR-0072 rung 5.2).
         let wallet_runtime = nmp_nip47::register_wallet(&mut self, storage_path);
         // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
         // the app-path override of the port-less zap default `explicit owner composition`
-        // installs (ADR-0049), so a zap pays through this builder's wallet. The
+        // installs (ADR-0069), so a zap pays through this builder's wallet. The
         // `nmp-nip57 → nmp-nip47` edge is gone — NIP-57 sees only the substrate
         // `PaymentPort` (#1728), and `explicit composition` (composition) wires the two.
         nmp_nip57::register_zap_with_payment_port(

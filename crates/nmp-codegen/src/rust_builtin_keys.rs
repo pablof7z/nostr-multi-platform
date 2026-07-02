@@ -1,4 +1,4 @@
-//! ADR-0053 / Workstream-E4 — generator for `nmp-core`'s
+//! ADR-0070 / Workstream-E4 — generator for `nmp-core`'s
 //! `KERNEL_BUILTIN_PROJECTION_KEYS` const.
 //!
 //! The kernel built-in projection key set is **derived from the codegen
@@ -324,11 +324,11 @@ mod tests {
         assert_eq!(a, b, "render must be deterministic");
         assert!(a.contains("pub const KERNEL_BUILTIN_PROJECTION_KEYS"));
         // The out-of-registry built-in signed_events is present.
-        // ADR-0063 Lane H: mention_profiles removed (kernel no longer emits it).
+        // ADR-0070 Lane H: mention_profiles removed (kernel no longer emits it).
         assert!(a.contains("\"signed_events\""));
         assert!(
             !a.contains("\"mention_profiles\""),
-            "mention_profiles must be removed (ADR-0063 Lane H)"
+            "mention_profiles must be removed (ADR-0070 Lane H)"
         );
         // A Tier-2 decodable built-in is present.
         assert!(a.contains("\"relay_diagnostics\""));

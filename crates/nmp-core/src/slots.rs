@@ -33,7 +33,7 @@ pub type MlsLocalNsecSlot = Arc<Mutex<Option<Zeroizing<String>>>>;
 /// `nmp-nip17` for gift-wrap unsealing, `nmp-nip57` for self-zap-receipt
 /// pubkey reads) consume the slot through `nmp-ffi`'s `NmpApp` accessor.
 ///
-/// Parallel in shape to [`MlsLocalNsecSlot`] (which is the ADR-0025 raw-key
+/// Parallel in shape to [`MlsLocalNsecSlot`] (which is the ADR-0072 raw-key
 /// escape, deliberately MLS-scoped — see D13). The actor is the sole writer;
 /// `None` means no account is active OR the active account uses a remote
 /// signer (NIP-46 bunker) that does not expose raw `Keys`.
@@ -67,7 +67,7 @@ pub type RoutingTraceSlot =
 /// [`KernelEvent`] with no NIP noun (D0 stays clean).
 pub type EventStoreSlot = Arc<Mutex<Option<Arc<dyn crate::store::EventStore>>>>;
 
-/// ADR-0058 step 3b — typed slot the actor publishes the kernel's pull-cursor
+/// ADR-0072 step 3b — typed slot the actor publishes the kernel's pull-cursor
 /// registry handle into, right after kernel construction (and re-publishes on
 /// `Reset`).
 ///
@@ -179,7 +179,7 @@ pub fn event_by_id_from_store(
 /// Reads the newest kind:3 for the author from the local store and counts its
 /// distinct, hex-valid `p` tags. Because every locally-published event is
 /// ingested into this same store before its observer fan-out (read-your-writes,
-/// `kernel/ingest/timeline.rs` / ADR-0057), a kind:3 just published by a
+/// `kernel/ingest/timeline.rs` / ADR-0070), a kind:3 just published by a
 /// `follow` / `follow_many` write is visible here synchronously — no relay
 /// round-trip is required for the count to reflect it.
 ///

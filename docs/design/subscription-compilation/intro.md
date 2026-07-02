@@ -16,7 +16,7 @@ The kernel today encodes "where a REQ goes" as a two-valued enum and resolves it
 - **Profile claim path is single-relay.** `crates/nmp-core/src/kernel/requests.rs:390-402` (`profile_claim_request`) sends a kind:0 fetch to `RelayRole::Indexer` unconditionally. It cannot consult mailboxes for the claimed author.
 - **No publish path exists yet.** `crates/nmp-core/src/kernel/requests.rs:30` (no occurrences of `EVENT` outbound) and `crates/nmp-core/src/relay.rs:42-45` (`OutboundMessage` carries only role + text). The first publish action (M6 `SendNote`) will hit this same `req()`-style seam. M2 must establish the planner shape before M6 builds the first user of it; the doctrine "no developer-supplied relays for a publish" (`docs/aim.md` §6 doctrine 5; `docs/product-spec/subsystems.md` §7.3 row "Publish leaked to wrong relays") needs a structural enforcement point.
 
-The summary diagnosis: **the planner is a string formatter, not a compiler.** Every REQ is a per-call-site decision; routing is one of two literals; recompilation is impossible because nothing is compiled. The diagnostics in `crates/nmp-core/src/kernel/mod.rs:117-154` already type `RelayStatus` / `WireSubscriptionStatus` / `LogicalInterestStatus` per ADR-0007 — but the planner currently emits at most one `LogicalInterestStatus` per view kind because there is no logical-interest object to scope it against.
+The summary diagnosis: **the planner is a string formatter, not a compiler.** Every REQ is a per-call-site decision; routing is one of two literals; recompilation is impossible because nothing is compiled. The diagnostics in `crates/nmp-core/src/kernel/mod.rs:117-154` already type `RelayStatus` / `WireSubscriptionStatus` / `LogicalInterestStatus` per ADR-0072 — but the planner currently emits at most one `LogicalInterestStatus` per view kind because there is no logical-interest object to scope it against.
 
 ## 2. The logical interest model
 
@@ -183,11 +183,11 @@ Account-scoped interests with empty `authors` and empty `#p` (e.g. a free-form h
 
 To keep the surface small, the following are explicitly **not** logical interests:
 
-- A **wire REQ**. Wire REQs are produced by the compiler; they live in `WireSubscriptionStatus` per ADR-0007.
+- A **wire REQ**. Wire REQs are produced by the compiler; they live in `WireSubscriptionStatus` per ADR-0072.
 - A **publish**. Publishes are action/publish-engine work; they may consult
   the `PublishPlanner`, but they are not interests because they do not stay
   alive.
-- A **diagnostic record**. ADR-0007 lanes are facts derived from the planner's state, not inputs.
+- A **diagnostic record**. ADR-0072 lanes are facts derived from the planner's state, not inputs.
 - An **HTTP fetch** (Blossom upload, indexer JSON probe). Those are `CapabilityModule` requests.
 
 The boundary is intentional: an interest is anything that asks the planner to *keep a REQ open*. Everything else routes through a different seam.

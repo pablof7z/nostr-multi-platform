@@ -190,7 +190,7 @@ pub struct TransportError {
 /// deleted that crate), so the feature tracks independently in the issue
 /// queue.
 ///
-/// NIP-11 relay information is NO LONGER a pool concern: per ADR-0051 it is
+/// NIP-11 relay information is NO LONGER a pool concern: per ADR-0072 it is
 /// fetched by the `nmp-nip11` protocol crate on connect and surfaced through
 /// the kernel's `relay_diagnostics` projection (a D7 capability *report*), not
 /// stored in a pool-internal capability map. The pool stays substrate-grade
@@ -234,7 +234,7 @@ pub enum HealthState {
 /// (`per_relay_reconnect_rate`, `socket_budget`) are still deferred — the
 /// original `nmp-signer-broker` motivation is gone (#2119 deleted that crate),
 /// so they track independently in the issue queue. (NIP-11 is handled
-/// out-of-band by `nmp-nip11` per ADR-0051, not a pool config knob.) Defaults
+/// out-of-band by `nmp-nip11` per ADR-0072, not a pool config knob.) Defaults
 /// preserve today's `relay_worker` behaviour bit-for-bit.
 #[derive(Clone, Debug)]
 pub struct PoolConfig {

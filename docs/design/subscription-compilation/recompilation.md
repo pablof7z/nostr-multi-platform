@@ -71,7 +71,7 @@ pub enum CompileTrigger {
     },
     RelayAuthStateChanged {
         url: RelayUrl,
-        state: RelayAuthState,              // re-exported from ADR-0007
+        state: RelayAuthState,              // re-exported from ADR-0072
     },
     SignerAvailable {
         account: AccountId,
@@ -97,7 +97,7 @@ Emitted from `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:209-233`
 
 Compiler effect: re-runs Stages 1–4 for every interest that touches `pubkey` either as a member of `shape.authors` or as a member of `shape.tags[#p]`. Other interests stay assigned to their current plan-id slot; the merged plan-id changes (because the mailbox snapshot's `created_at` for `pubkey` advanced) but its `per_relay` content may be identical.
 
-Outbox routing implication: if `pubkey` was previously routed to the indexer fallback set (Stage 2 read-fallback), the compiler now reassigns to the author's declared write relays. The wire-emitter closes the indexer REQ for that author's slice and opens a new REQ on the declared relays. ADR-0007 diagnostics reflect the route source flipping from `UserConfigured::Indexer` to `Nip65`.
+Outbox routing implication: if `pubkey` was previously routed to the indexer fallback set (Stage 2 read-fallback), the compiler now reassigns to the author's declared write relays. The wire-emitter closes the indexer REQ for that author's slice and opens a new REQ on the declared relays. ADR-0072 diagnostics reflect the route source flipping from `UserConfigured::Indexer` to `Nip65`.
 
 Comparison with NDK: `refreshRelayConnections` (`docs/research/ndk/outbox.md` §"Live subscription refresh", `core/src/subscription/index.ts:787-812`) **only adds** newly-discovered relays on kind:10002 arrival — it never removes the stale indexer route. NMP's compiler must close the stale REQ and open the new one in the same diff pass; the wire-emitter's diff semantics guarantee this. The `a912a2c2` timing race (`docs/research/ndk/gotchas.md`) documents that outbox bootstrap timing can leave relay lists empty — NMP handles this by staying on the indexer fallback until A1 fires, rather than blocking the interest registration.
 
@@ -113,7 +113,7 @@ owner-opened triggers within one actor tick into a single recompile pass. This
 is the existing reactivity batching
 (`docs/design/reactivity/scheduling-and-data-model.md`) extended to the
 planner; the M2 implementation respects the same `≤60Hz/view` budget from
-ADR-0002 by capping recompiles at one per tick regardless of trigger fan-in.
+ADR-0070 by capping recompiles at one per tick regardless of trigger fan-in.
 
 ### A3 — Interest Owner Closed
 

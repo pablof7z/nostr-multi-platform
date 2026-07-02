@@ -309,7 +309,7 @@ fn add_component_installs_content_view_with_transitive_deps() {
         .path()
         .join("Components/NostrContent/NostrMediaGrid.swift")
         .exists());
-    // Event refs now render through the kind-dispatch registry (ADR-0034).
+    // Event refs now render through the kind-dispatch registry (ADR-0072).
     assert!(tmp
         .path()
         .join("Components/NostrContent/NostrKindRegistry.swift")
@@ -413,7 +413,7 @@ fn add_component_installs_compose_content_view_with_deps() {
         .path()
         .join("Components/NostrContent/NostrMediaGrid.kt")
         .exists());
-    // Event refs now render through the kind-dispatch registry (ADR-0034).
+    // Event refs now render through the kind-dispatch registry (ADR-0072).
     assert!(tmp
         .path()
         .join("Components/NostrContent/NostrKindRegistry.kt")

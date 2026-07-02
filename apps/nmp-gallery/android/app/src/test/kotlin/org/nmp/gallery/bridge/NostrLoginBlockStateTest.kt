@@ -10,13 +10,13 @@ import org.nmp.gallery.registry.SignerCardTone
 import org.nmp.gallery.registry.signerCardUi
 
 /**
- * ADR-0048 Stage 2 — state rendering contract tests for the `NostrLoginBlock`
+ * ADR-0072 Stage 2 — state rendering contract tests for the `NostrLoginBlock`
  * Compose component.
  *
  * These assert on the PRODUCTION `signerCardUi` presentation function — the
  * exact pure function `SignerCard` renders from (no test-side mirror of the
  * render rule). The UI never string-compares `state`: presentation derives
- * only from the pre-computed bool flags (ADR-0032 / D6).
+ * only from the pre-computed bool flags (ADR-0072 / D6).
  *
  * Pure JVM tests — no Compose runtime, no Activity.
  */

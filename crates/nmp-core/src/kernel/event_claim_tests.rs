@@ -1,5 +1,5 @@
 //! Tests for the generic event `resolve_ref` / `release_ref` kernel primitive
-//! and the `refs.event` keyed row projection (F-CR-06 / ADR-0034).
+//! and the `refs.event` keyed row projection (F-CR-06 / ADR-0072).
 //!
 //! These tests stay scoped to `nmp-core`: no relay traffic, no actor wiring,
 //! no FFI. Each test drives the raw-key event resolver directly
@@ -273,7 +273,7 @@ fn resolve_event_ref_naddr_matches_kind_pubkey_dtag_in_store() {
         TEST_AUTHOR_HEX,
         30023,
         TEST_D_TAG,
-        "ADR-0034",
+        "ADR-0072",
     );
 
     let uri = naddr_uri(30023, TEST_AUTHOR_HEX, TEST_D_TAG);

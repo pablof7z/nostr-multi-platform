@@ -18,7 +18,7 @@ mod transport_failure_tests;
 #[path = "tests/encryption_rpc_tests.rs"]
 mod encryption_rpc_tests;
 
-/// `RemoteSignerHandle::nip44_*` seam (ADR-0026).
+/// `RemoteSignerHandle::nip44_*` seam (ADR-0072).
 #[path = "tests/remote_handle_nip44_tests.rs"]
 mod remote_handle_nip44_tests;
 

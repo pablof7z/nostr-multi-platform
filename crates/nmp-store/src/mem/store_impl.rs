@@ -209,7 +209,7 @@ impl EventStore for MemEventStore {
         }
     }
 
-    // ─── K3 coverage ledger (ADR-0056 §3, Stage D1) ────────────────────────────
+    // ─── K3 coverage ledger (ADR-0072 §3, Stage D1) ────────────────────────────
 
     fn record_coverage(&self, filter_hash: &str, relay: &str, covered_through: u64) {
         if let Ok(mut state) = self.lock() {
@@ -255,7 +255,7 @@ impl EventStore for MemEventStore {
             .map(|((_fh, relay), v)| (relay.clone(), *v))
             .collect()
     }
-    // ─── Ingest log (ADR-0058 §3, step 1) ────────────────────────────────────────
+    // ─── Ingest log (ADR-0072 §3, step 1) ────────────────────────────────────────
 
     fn latest_ingest_seq(&self) -> Result<u64, crate::StoreError> {
         Ok(self.lock()?.ingest_seq)

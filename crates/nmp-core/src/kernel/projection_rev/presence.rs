@@ -1,9 +1,9 @@
-//! ADR-0055 Rung 3 S1b — presence state-machine implementations.
+//! ADR-0070 Rung 3 S1b — presence state-machine implementations.
 //!
 //! Extracted from `mod.rs` (which was approaching the 500-LOC hard ceiling)
 //! to make room for `note_copy_emit` (the Cleared-edge machine for the
 //! copy-with-TTL keys `action_stages` / `action_lifecycle` — §10.4 of
-//! `docs/decisions/0055-rung3.md`).
+//! `docs/decisions/0070-typed-read-sessions.md`).
 //!
 //! # What lives here
 //!
@@ -71,7 +71,7 @@ impl ProjectionRevTracker {
     /// `take_signed_events_projection`) EXACTLY ONCE per emit per drain key,
     /// with `nonempty` = "the drain carried content this tick".
     ///
-    /// State machine (ADR-0055 codex #2 — Cleared is emitted exactly once on
+    /// State machine (ADR-0070 codex #2 — Cleared is emitted exactly once on
     /// the non-empty → empty transition so the host drops its prior copy
     /// without a replay, and a stably-empty drain settles to Unchanged):
     ///
@@ -113,7 +113,7 @@ impl ProjectionRevTracker {
     /// tracker is copied (not drained) each tick:
     /// `action_stages` and `action_lifecycle`.
     ///
-    /// State machine (§10.4 of `docs/decisions/0055-rung3.md`).
+    /// State machine (§10.4 of `docs/decisions/0070-typed-read-sessions.md`).
     ///
     /// CRITICAL — unlike `note_drain_emit`, the copy-with-TTL keys
     /// (`action_stages` / `action_lifecycle`) PERSIST across ticks: a stable

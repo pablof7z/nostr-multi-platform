@@ -9,7 +9,7 @@
 //!
 //! D8: `on_relay_connected` runs on the actor thread and only ever *spawns* a
 //! worker; the blocking `ureq` GET happens on the new thread, which posts the
-//! result back through the cloned [`CommandSender`] (the ADR-0050 §D3a waking
+//! result back through the cloned [`CommandSender`] (the ADR-0072 §D3a waking
 //! inbox handle) as [`ActorCommand::SetRelayInfo`].
 
 use std::collections::HashMap;

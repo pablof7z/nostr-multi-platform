@@ -84,7 +84,7 @@ pub fn register_dm_runtime(
     );
     controller.sync();
 
-    // Typed FlatBuffers sidecar (ADR-0037, Wave A): PURE READ — reads the
+    // Typed FlatBuffers sidecar (ADR-0072, Wave A): PURE READ — reads the
     // relay-list state and encodes it. Reconciliation (push/withdraw) is
     // handled exclusively by event observers above so this closure is
     // side-effect-free (D0).
@@ -181,7 +181,7 @@ impl nmp_core::substrate::IngestParser for DmRuntimeIngestParser {
 /// with the snapshot closures registered in `register_inbox_projection`.
 pub struct DmInboxController {
     /// Pubkey-only active-account slot — read to determine the current pubkey
-    /// (populated for every backend including bunker; ADR-0050 §D6).
+    /// (populated for every backend including bunker; ADR-0072 §D6).
     active_pubkey: nmp_core::slots::ActiveAccountSlot,
     /// Last pubkey we observed — used to detect genuine account changes
     /// (vs. spurious identity-observer firings).

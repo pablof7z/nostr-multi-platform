@@ -6,7 +6,7 @@
 //! `snapshot_projections_with_publish_cluster` helper inserts under
 //! `"profile"`: the serialisation of `profile_card()` (a `ProfileCard` for the
 //! active account). This module adds a **typed FlatBuffers** encoding of the
-//! same shape, carried in the `typed_projections` sidecar (ADR-0037) ALONGSIDE
+//! same shape, carried in the `typed_projections` sidecar (ADR-0072) ALONGSIDE
 //! — never replacing — the generic `Value` projection.
 //!
 //! [`ProfileCardModel`] is built from the same `profile_card()` output the JSON

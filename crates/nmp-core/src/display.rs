@@ -7,7 +7,7 @@
 //!
 //! # Why these live in `nmp-core`
 //!
-//! ADR-0032 changed the projection contract: kernel snapshots and Layer-4
+//! ADR-0072 changed the projection contract: kernel snapshots and Layer-4
 //! projection payloads carry raw protocol data, and presentation layers format
 //! that data for display. These helpers remain for Rust presentation surfaces
 //! (TUI, desktop, CLI/REPL, and tests) that need the same pure primitives:
@@ -136,7 +136,7 @@ pub fn avatar_color_hex(pubkey_hex: &str) -> String {
 ///
 /// The canonical `"Xs ago"` / `"Xm ago"` / `"Xh ago"` / `"Xd ago"` dialect
 /// shared by every surface that renders a relative time. This is a
-/// PRESENTATION helper (ADR-0032): projection builders must never call it —
+/// PRESENTATION helper (ADR-0072): projection builders must never call it —
 /// they emit raw Unix-epoch timestamps and the shells (iOS / Android / the
 /// Rust TUI's `relay_settings::format::format_ms_ago`) format at render time
 /// (aim.md §62). The relay-diagnostics projection used to embed pre-formatted

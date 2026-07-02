@@ -1,4 +1,4 @@
-//! ADR-0045 E1–E3 — Store-cache serve seam (chunked continuation).
+//! ADR-0070 E1–E3 — Store-cache serve seam (chunked continuation).
 //!
 //! The **first half** of the one event-acquisition mechanism: at
 //! interest-open time, map the `InterestShape` → `StoreQuery` variants, scan
@@ -64,7 +64,7 @@
 //!
 //! Served events carry `relay_count: 0` — the de-facto
 //! `Provenance::LocalStore` marker (no relay confirmed the event this
-//! session). ADR-0045 R2.4(b) names an explicit marker; pending that ADR
+//! session). ADR-0070 R2.4(b) names an explicit marker; pending that ADR
 //! amendment, `relay_count == 0 ⇔ local-store-served` is the encoding.
 //!
 //! ## Completion marker
@@ -95,7 +95,7 @@ pub(super) mod queries;
 pub(super) mod search;
 // #1520 cache-serve wakeup DRAIN — kept inside the cache_serve module so it can
 // reach the module-sealed `enqueue_interest_cache_serve_deferred`. The wake ARM
-// + the `StoreWakeups` owner live in `kernel::store_wakeup` (ADR-0058 §10).
+// + the `StoreWakeups` owner live in `kernel::store_wakeup` (ADR-0072 §10).
 pub(super) mod wakeup;
 
 #[cfg(test)]
@@ -207,7 +207,7 @@ impl Kernel {
     /// changed — enqueues ONE coalesced `InvalidateCompile` trigger and drains
     /// ONE aggregate-budget chunk synchronously so the first snapshot after
     /// install carries store data (D1 guarantee). A caller can NEVER register
-    /// an interest without store-serving it (ADR-0045 R2.1 single-mechanism;
+    /// an interest without store-serving it (ADR-0070 R2.1 single-mechanism;
     /// R3 store-first additive).
     ///
     /// `reason` labels the single coalesced recompile trigger for diagnostics.

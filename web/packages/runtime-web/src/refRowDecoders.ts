@@ -1,6 +1,6 @@
 import type { ProfileSnapshot } from "./generated/nmp/kernel/profile-snapshot";
 
-// ADR-0063 Lane G twin (#2722) — the hand-written glue `keyedRefCache.generated.ts`
+// ADR-0070 Lane G twin (#2722) — the hand-written glue `keyedRefCache.generated.ts`
 // calls to map a `flatc --ts` reader struct to a package domain type. This is
 // the web sibling of Chirp's `TypedProjectionGlue.swift` / `KeyedRefDecoders.kt`:
 // the generator emits the mechanical envelope lookup + checked decode, this

@@ -2,7 +2,7 @@
 //!
 //! The `"nmp.nip17.dm_inbox"` projection is emitted by
 //! [`crate::register_runtime`]. This module encodes the typed FlatBuffers
-//! sidecar payload carried in `typed_projections` (ADR-0037,
+//! sidecar payload carried in `typed_projections` (ADR-0072,
 //! `crates/nmp-core/schema/nmp_update.fbs`).
 //!
 //! The schema (`crates/nmp-nip17/schema/dm_inbox.fbs`) mirrors the Rust structs

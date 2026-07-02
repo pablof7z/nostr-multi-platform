@@ -20,6 +20,6 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 # `native` enables `ActionRegistry` (via `__ffi_internal`) for registry-level
-# trip tests (ADR-0064 / S3 #1751). `test-support` enables store harness helpers.
+# trip tests (ADR-0071 / S3 #1751). `test-support` enables store harness helpers.
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 nmp-store = { path = "../nmp-store" }

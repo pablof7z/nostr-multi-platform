@@ -52,7 +52,7 @@ source of truth; native maps are render caches.
 
 ### 6.3 Actions And Write Transport
 
-Production write transport is ADR-0064 `DispatchEnvelope` bytes through the
+Production write transport is ADR-0071 `DispatchEnvelope` bytes through the
 UniFFI dispatch method or the equivalent wasm/browser runtime channel.
 Host-facing builders expose typed intent methods; those builders encode the
 per-module payload, stamp the namespace, and send the finished envelope through

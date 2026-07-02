@@ -23,7 +23,7 @@ nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # S9 typed FlatBuffers sidecar for the SearchResultsSnapshot projection
-# (ADR-0037). The serde JSON shape stays the in-crate authority; this is the
+# (ADR-0072). The serde JSON shape stays the in-crate authority; this is the
 # language-neutral typed payload the host platforms decode.
 flatbuffers = { workspace = true }
 

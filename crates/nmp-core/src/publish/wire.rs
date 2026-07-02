@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codec for the `nmp.publish` `ActionModule`
-//! (ADR-0064 / S3 #1751).
+//! (ADR-0071 / S3 #1751).
 //!
 //! This is the WRITE-direction typed payload carried as the OPAQUE
 //! `DispatchEnvelope.payload` for `action_namespace = "nmp.publish"`. The
@@ -209,7 +209,7 @@ pub(super) fn malformed(reason: impl Into<String>) -> ActionPayloadDecodeError {
 ///
 /// Runs the fail-closed `schema_version` gate FIRST: an unrecognised version is
 /// [`ActionPayloadDecodeError::SchemaVersionMismatch`] and the body is NOT
-/// inspected (ADR-0064 §1).
+/// inspected (ADR-0071 §1).
 fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDecodeError> {
     if bytes.len() < 8 || !fb::publish_payload_buffer_has_identifier(bytes) {
         return Err(malformed("missing NPUB file identifier"));

@@ -11,7 +11,7 @@ use crate::kind0_parser::parse_profile_view;
 /// chooses how to render the missing case (typically by formatting
 /// `author_pubkey` itself).
 ///
-/// ADR-0032 / V-115: `npub` (bech32) has been removed — Rust must not
+/// ADR-0072 / V-115: `npub` (bech32) has been removed — Rust must not
 /// encode presentation-layer bech32 in projection types. Shells that
 /// need bech32 must call the UniFFI `encode_profile` helper or their own encoder.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

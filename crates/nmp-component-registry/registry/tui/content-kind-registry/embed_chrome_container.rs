@@ -1,7 +1,7 @@
 //! EmbedChromeContainer — the visual wrapper for any kind renderer (F-CR-06).
 //!
 //! Provides left border, indentation, and depth visual weight. Knows nothing
-//! about the inner content. Matches ADR-0034's design.
+//! about the inner content. Matches ADR-0072's design.
 
 use ratatui::{
     buffer::Buffer,

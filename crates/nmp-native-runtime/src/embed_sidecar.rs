@@ -1,4 +1,4 @@
-//! `refs.event.envelopes` derived sidecar — issue #1283 / ADR-0034
+//! `refs.event.envelopes` derived sidecar — issue #1283 / ADR-0072
 //! §embed-sidecar.
 //!
 //! `refs.event` is the authoritative event-reference projection. Its row
@@ -221,7 +221,7 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
 /// `Mutex::lock` read + encode, non-blocking on the actor thread. D0: kind
 /// dispatch lives in `nmp-content`; this is a thin reader/encoder.
 ///
-/// ADR-0055 R6-S2: the typed projection now uses `TypedProjectionEmissionState`
+/// ADR-0070 R6-S2: the typed projection now uses `TypedProjectionEmissionState`
 /// to omit an unchanged `refs.event.envelopes` frame when the host has declared
 /// incremental-apply capability (exact byte equality, monotonic rev, freeze
 /// guard on the same FrameIdentity the feed uses — one shared implementation).
@@ -277,7 +277,7 @@ pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedS
 // ── Unit tests ──────────────────────────────────────────────────────────────
 // Extracted to sibling files to keep this file under the 500 LOC gate:
 // - `embed_sidecar_tests.rs`    — resolve path + wire shape tests (pre-R6-S2).
-// - `embed_sidecar_emission_tests.rs` — ADR-0055 R6-S2 cardinal-trap tests.
+// - `embed_sidecar_emission_tests.rs` — ADR-0070 R6-S2 cardinal-trap tests.
 
 #[cfg(test)]
 #[path = "embed_sidecar_tests.rs"]

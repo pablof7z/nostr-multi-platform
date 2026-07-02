@@ -33,7 +33,7 @@
 //!
 //! The actor's gift-wrap path is a continuation chain through the signer port
 //! (`Nip44EncryptForAccount` → `SignEventForAccount` → `PublishSignedEvent`,
-//! composed in [`dm_send::SendGiftWrappedDmCommand`] per ADR-0050 §D5), so BOTH
+//! composed in [`dm_send::SendGiftWrappedDmCommand`] per ADR-0072 §D5), so BOTH
 //! local-key accounts AND NIP-46 / bunker remote signers send DMs through the
 //! SAME mechanism — local-vs-bunker is invisible to this crate. This
 //! rumor-builder crate is signer-agnostic.
@@ -185,7 +185,7 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 pub fn register_actions(
     app: &mut (impl ActionRegistrar + DmInboxRelayRegistrar + IngestParserRegistrar),
 ) {
-    // Yielding defaults (ADR-0049 Part 1): an app may pre-empt either DM action
+    // Yielding defaults (ADR-0069 Part 1): an app may pre-empt either DM action
     // module regardless of call order.
     app.register_default_action(SendDmAction);
     app.register_default_action(HydratePeerRelayListAction);

@@ -99,7 +99,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     let handle = wait_for_add_remote_signer(&actor_rx, Duration::from_secs(10))
         .expect("AddRemoteSigner must arrive on the actor channel");
 
-    // ADR-0050 §D3b: the broker's steady-state dispatcher no longer calls
+    // ADR-0072 §D3b: the broker's steady-state dispatcher no longer calls
     // `ingest_rpc_response` directly — the completion sink posts
     // `DeliverSignerResponse` into the actor inbox and the actor's dispatch
     // arm fans the body out to the remote handles. This test has no actor

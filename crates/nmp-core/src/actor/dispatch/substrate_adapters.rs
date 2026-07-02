@@ -120,7 +120,7 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
     }
 }
 
-/// ADR-0052 §D4 — bridge the actor's snapped per-app host-op handler into the
+/// ADR-0072 §D4 — bridge the actor's snapped per-app host-op handler into the
 /// substrate [`crate::substrate::HostOpHandlerAccess`] capability. Reaches no
 /// kernel/identity state.
 pub(super) struct HostOpHandlerAccessAdapter {
@@ -186,7 +186,7 @@ mod tests {
     /// history array or `Null` when absent.
     ///
     /// Takes `&mut Kernel` because `action_stages_projection` drives the
-    /// `note_copy_emit` Cleared-edge machine (ADR-0055 Rung 3 S1b §10.4).
+    /// `note_copy_emit` Cleared-edge machine (ADR-0070 Rung 3 S1b §10.4).
     fn stage_history(kernel: &mut Kernel, correlation_id: &str) -> serde_json::Value {
         kernel
             .action_stages_projection()

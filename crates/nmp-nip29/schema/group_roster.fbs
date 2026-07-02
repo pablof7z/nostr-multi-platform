@@ -3,9 +3,9 @@ namespace nmp.nip29;
 // Typed FlatBuffers wire for `nmp_nip29::projection::GroupRosterSnapshot`,
 // schema_id "nmp.nip29.group_roster". The serde snapshot remains the
 // authoritative Rust shape; this sidecar mirrors it for typed host decoders
-// (ADR-0037 typed sidecar carried alongside no generic Value projection).
+// (ADR-0072 typed sidecar carried alongside no generic Value projection).
 //
-// Raw data only (ADR-0032): every field is the raw protocol value — hex
+// Raw data only (ADR-0072): every field is the raw protocol value — hex
 // pubkeys and verbatim role tokens. No `display::` forwarder runs on the
 // encode path.
 //

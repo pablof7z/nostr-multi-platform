@@ -69,7 +69,7 @@ impl super::KernelReducer {
 
     // ── Deferred &mut seams (applied at start()) ──────────────────────────────
 
-    /// Install the subscription-plan coverage hook (ADR-0053 diagnostics seam).
+    /// Install the subscription-plan coverage hook (ADR-0070 diagnostics seam).
     ///
     /// `BrowserAppBuilder` forwards `CoverageHookRegistrar::set_coverage_hook`
     /// here, deferred to `start()` so the reducer exists before the call.
@@ -111,7 +111,7 @@ impl super::KernelReducer {
 
     // ── Snapshot-slot bridges (&self, via Arc<Mutex<SnapshotRegistry>>) ──────
 
-    /// ADR-0053 — declare the static set of Tier-2 built-in projection keys
+    /// ADR-0070 — declare the static set of Tier-2 built-in projection keys
     /// this host consumes. Bridges `SnapshotProjectionRegistrar::declare_consumed_projections`.
     pub fn declare_consumed_projections<I, K>(&self, keys: I)
     where
@@ -124,7 +124,7 @@ impl super::KernelReducer {
         // D6 — poisoned mutex: silent drop.
     }
 
-    /// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+    /// ADR-0070 / Workstream-E4 — declare the explicit "I consume every Tier-2
     /// built-in" intent (`DeclaredProjections::All`).
     ///
     /// The browser builder's `consume_all_builtin_projections()` gate forwards
@@ -136,7 +136,7 @@ impl super::KernelReducer {
         }
     }
 
-    /// ADR-0055 Rung 3 — declare incremental-apply capability.
+    /// ADR-0070 Rung 3 — declare incremental-apply capability.
     /// Bridges `SnapshotProjectionRegistrar::declare_incremental_apply`.
     pub fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError> {
         match self.snapshot_slot.lock() {
@@ -148,7 +148,7 @@ impl super::KernelReducer {
         }
     }
 
-    /// ADR-0055 R6-S1 — clone of the incremental-apply flag handle.
+    /// ADR-0070 R6-S1 — clone of the incremental-apply flag handle.
     /// Bridges `SnapshotProjectionRegistrar::incremental_apply_handle`.
     pub fn incremental_apply_handle(&self) -> Arc<AtomicBool> {
         self.snapshot_slot
@@ -157,7 +157,7 @@ impl super::KernelReducer {
             .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)))
     }
 
-    /// ADR-0055 R6-S1 — clones of the `(session_id, snapshot_epoch)` handles.
+    /// ADR-0070 R6-S1 — clones of the `(session_id, snapshot_epoch)` handles.
     /// Bridges `SnapshotProjectionRegistrar::frame_identity_handles`.
     pub fn frame_identity_handles(&self) -> (Arc<AtomicU64>, Arc<AtomicU64>) {
         self.snapshot_slot
@@ -230,7 +230,7 @@ impl super::KernelReducer {
 
     /// Return `true` when the host has NOT yet called `declare_projections` or
     /// `consume_all_builtin_projections`. Used by `BrowserAppBuilder::start()`
-    /// to fire the ADR-0053 debug-assert gate (loud forgotten-declaration).
+    /// to fire the ADR-0070 debug-assert gate (loud forgotten-declaration).
     ///
     /// D6 — poisoned slot: returns `true` (treat as undeclared; loud is safer
     /// than silent emit-all in a poisoned state).

@@ -1,5 +1,5 @@
 //! Snapshot / typed projection registration and the incremental
-//! emission contract (ADR-0037 / ADR-0055).
+//! emission contract (ADR-0072 / ADR-0070).
 //!
 //! Split out of `app_host/mod.rs` (D6 work) to keep that file under the 500-LOC
 //! hard ceiling — this is the single largest narrow registration concern.
@@ -10,14 +10,14 @@ use nmp_ownership::ProjectionRegistrationKey;
 /// Error returned by [`SnapshotProjectionRegistrar::declare_incremental_apply`]
 /// when the pre-start invariant is violated or the registry is unavailable.
 ///
-/// ADR-0055 Rung 3 S1b (finding 5 / issue #1390) — replaces the
+/// ADR-0070 Rung 3 S1b (finding 5 / issue #1390) — replaces the
 /// `debug_assert!` (silent in release) with a hard `Result` return-code so
 /// a post-start call is caught in all builds, not only debug.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum IncrementalApplyError {
     /// `declare_incremental_apply` was called AFTER `nmp_app_start`.
     /// The incremental-apply flag must be set before the kernel emits its
-    /// first real frame (ADR-0055 Rung 3 / init-only invariant).
+    /// first real frame (ADR-0070 Rung 3 / init-only invariant).
     AlreadyStarted,
     /// The snapshot-projection registry mutex was poisoned (another thread
     /// panicked while holding it). Treat as a non-recoverable kernel error.
@@ -25,7 +25,7 @@ pub enum IncrementalApplyError {
 }
 
 /// Register snapshot / typed projections and configure the incremental
-/// emission contract (ADR-0037 / ADR-0055).
+/// emission contract (ADR-0072 / ADR-0070).
 ///
 /// The projection-registration concern: snapshot data closures, typed
 /// FlatBuffers sidecars, the consumed-projection
@@ -34,7 +34,7 @@ pub enum IncrementalApplyError {
 pub trait SnapshotProjectionRegistrar {
     /// Register a **typed** FlatBuffers projection closure under `key` — the
     /// typed-sidecar counterpart to [`Self::register_snapshot_projection`]
-    /// (ADR-0037). The closure returns the projection's opaque, host-declared
+    /// (ADR-0072). The closure returns the projection's opaque, host-declared
     /// FlatBuffers payload ([`TypedProjectionData`]) carried verbatim in the
     /// `SnapshotFrame`'s `typed_projections` sidecar, or `None` when there is
     /// no changed row to emit this tick. Under incremental apply, omission
@@ -47,7 +47,7 @@ pub trait SnapshotProjectionRegistrar {
     /// projections without depending on the C-ABI crate. It mirrors
     /// `register_snapshot_projection`: `&self` (the registry mutation is a
     /// lock-and-insert), and the same host-chosen key space shared with the
-    /// generic registry (ADR-0037 Commitment 4).
+    /// generic registry (ADR-0072 Commitment 4).
     ///
     /// Like the generic closure, `f` runs on the actor thread inside the
     /// snapshot tick — it MUST be non-blocking (D8).
@@ -73,7 +73,7 @@ pub trait SnapshotProjectionRegistrar {
         K: Into<ProjectionRegistrationKey>,
         F: Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static;
 
-    /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+    /// ADR-0070 Rung 3 — declare that this host runtime owns the NMP
     /// cache-merge layer (D3-3) and is ready to receive frames with
     /// `Unchanged` projections omitted.
     ///
@@ -91,10 +91,10 @@ pub trait SnapshotProjectionRegistrar {
     /// the error is informational, not fatal to the kernel.
     ///
     /// This is durable architecture (the per-attach baseline gate + the
-    /// Rung-5 ADR-0053 compose seam), NOT a compat shim.
+    /// Rung-5 ADR-0070 compose seam), NOT a compat shim.
     fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError>;
 
-    /// ADR-0055 Rung 6 S1 — return a shared handle to the incremental-apply
+    /// ADR-0070 Rung 6 S1 — return a shared handle to the incremental-apply
     /// capability flag.
     ///
     /// The returned `Arc<std::sync::atomic::AtomicBool>` is `true` when
@@ -111,7 +111,7 @@ pub trait SnapshotProjectionRegistrar {
     /// the kernel reads. There is no separate mirror.
     fn incremental_apply_handle(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool>;
 
-    /// ADR-0055 R6-S1 — return clones of the frame-identity handles
+    /// ADR-0070 R6-S1 — return clones of the frame-identity handles
     /// `(session_id, snapshot_epoch)` the kernel publishes each tick.
     ///
     /// A Tier-1 producer closure that omits unchanged frames (the feed
@@ -141,7 +141,7 @@ pub trait SnapshotProjectionRegistrar {
     /// registry lock is a silent no-op (D6).
     fn remove_snapshot_projection(&self, key: &str);
 
-    /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
+    /// ADR-0070 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).
     ///

@@ -40,7 +40,7 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+    /// ADR-0070 Rung 3 — declare that this host runtime owns the NMP
     /// cache-merge layer and is ready to receive frames with `Unchanged`
     /// projections omitted.
     ///
@@ -61,7 +61,7 @@ impl NmpApp {
         }
     }
 
-    /// ADR-0053 — declare the static set of Tier-2 built-in projection keys
+    /// ADR-0070 — declare the static set of Tier-2 built-in projection keys
     /// this host consumes (the output-side sibling of relay interest installs).
     ///
     /// `keys` is the union of every projection key any of the app's screens
@@ -76,7 +76,7 @@ impl NmpApp {
         self.inner.declare_consumed_projections(keys);
     }
 
-    /// ADR-0053 / Workstream-E4 — declare intent to consume EVERY Tier-2
+    /// ADR-0070 / Workstream-E4 — declare intent to consume EVERY Tier-2
     /// built-in projection (`DeclaredProjections::All`).
     ///
     /// Use this instead of leaving consumption intent undeclared when the

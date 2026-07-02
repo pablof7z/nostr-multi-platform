@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — action-builder emitter tests.
+//! ADR-0071 §3 (#1783) — action-builder emitter tests.
 //!
 //! These cover the EMITTER (determinism, registry coverage, structural shape).
 //! The authoritative WIRE round-trip — that builder-shaped `DispatchEnvelope`

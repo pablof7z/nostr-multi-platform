@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# ADR-0064 / S2 (#1750) — DispatchEnvelope fail-closed CI gates.
+# ADR-0071 / S2 (#1750) — DispatchEnvelope fail-closed CI gates.
 #
 # Static, fail-closed invariants over the write-command byte transport. The
 # *runtime* rejection behaviors (schema_version tripwire, oversize bound,
@@ -15,7 +15,7 @@
 #                                byte doorway fails closed on a wrong root).
 #   G2  schema_version field   — the tripwire field exists in the schema.
 #   G3  opaque [ubyte] payload — `payload` stays an opaque byte vector, NOT a
-#                                union (the open ActionModule seam, ADR-0064 §2).
+#                                union (the open ActionModule seam, ADR-0071 §2).
 #   G4  max byte-size bound    — a `MAX_DISPATCH_ENVELOPE_BYTES` constant exists
 #                                and gates decode (the oversize fail-closed gate).
 #   G5  namespace uniqueness   — no two registered `ActionModule`s declare the
@@ -65,7 +65,7 @@ gate_opaque_payload() {
     grep -Eq '^[[:space:]]*payload[[:space:]]*:[[:space:]]*\[ubyte\]' "${schema}" \
         || fail "G3 opaque payload: payload is not an opaque [ubyte] vector in ${schema#${REPO_ROOT}/}"
     if grep -Eq '^[[:space:]]*union[[:space:]]' "${schema}"; then
-        fail "G3 opaque payload: a union is declared — the payload must stay opaque (ADR-0064 §2)"
+        fail "G3 opaque payload: a union is declared — the payload must stay opaque (ADR-0071 §2)"
     fi
 }
 
@@ -85,7 +85,7 @@ gate_namespace_uniqueness() {
     local root="$1"
     local dupes
     # Exclude test sources: fixture modules deliberately reuse a namespace to
-    # exercise the registry's own dedup (ADR-0049). The gate guards PRODUCTION
+    # exercise the registry's own dedup (ADR-0069). The gate guards PRODUCTION
     # ActionModule registrations, not the registry's negative tests.
     dupes="$(
         grep -rlE '^[[:space:]]*const NAMESPACE:[[:space:]]*&.*str[[:space:]]*=[[:space:]]*"[^"]+"' \

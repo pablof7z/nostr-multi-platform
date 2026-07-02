@@ -5,7 +5,7 @@ namespace nmp.nip23;
 // projection key `nmp.nip23.articles`.
 //
 // This is the TYPED sidecar payload carried in every `SnapshotFrame`'s
-// `typed_projections` slot (ADR-0037 / `crates/nmp-core/schema/nmp_update.fbs`
+// `typed_projections` slot (ADR-0072 / `crates/nmp-core/schema/nmp_update.fbs`
 // `TypedProjection`). The projection is registered through
 // `AppHost::register_typed_snapshot_projection` — it does NOT write into the
 // generic JSON `projections` map. The JSON map is being retired; this typed

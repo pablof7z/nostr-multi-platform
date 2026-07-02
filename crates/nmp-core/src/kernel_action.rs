@@ -100,7 +100,7 @@ fn open_uri(kernel: &mut Kernel, uri: String) -> KernelUpdate {
     let owner = SubOwnerKey::new(("open-uri-view", namespace.as_str(), key.as_str()));
     let identity = SubIdentity::new(owner, sub_key, scope);
 
-    // ADR-0045 — route through the single ensure-install front door so opening
+    // ADR-0070 — route through the single ensure-install front door so opening
     // a `nostr:` URI whose target is already in the store serves those events
     // to parsers/projections (closes the F2 bypass: this path previously called
     // bare `ensure_sub` with neither a recompile trigger nor a store-cache
@@ -252,7 +252,7 @@ mod tests {
         assert_eq!(
             active[0].shape.relay_pin.as_deref(),
             Some("wss://naddr.example"),
-            "ADR-0012 relay_pin third routing lane set from the naddr hint"
+            "ADR-0071 relay_pin third routing lane set from the naddr hint"
         );
     }
 

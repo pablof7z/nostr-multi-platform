@@ -152,7 +152,7 @@ PR #2610).
 | `last_error_toast` / `last_error_category` / `last_planner_error` / `store_open_failure` | string? | user-visible and diagnostic failure state |
 | `no_configured_relays` | bool? | startup/configuration diagnostic |
 | `negentropy_sync_stats` | NegentropySyncStats? | NIP-77 sync counters |
-| `snapshot_epoch` / `session_id` | u64 | ADR-0055 frame-level cache identity |
+| `snapshot_epoch` / `session_id` | u64 | ADR-0070 frame-level cache identity |
 
 Debug order: `relay_statuses` → `logical_interests` → `wire_subscriptions` →
 `logs`. Product view state comes from typed projection rows; add a typed row

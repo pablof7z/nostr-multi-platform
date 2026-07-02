@@ -211,7 +211,7 @@ role = "source"
 id = "compose/login-block"
 version = "0.1.0"
 target = "compose"
-description = "Login UI with Amber (NIP-55) signer detection, one-tap sign-in cards, and manual key entry fallback (ADR-0048 Stage 2)."
+description = "Login UI with Amber (NIP-55) signer detection, one-tap sign-in cards, and manual key entry fallback (ADR-0072 Stage 2)."
 [[components.files]]
 source = "compose/login-block/NostrLoginBlock.kt"
 target = "Components/Auth/NostrLoginBlock.kt"

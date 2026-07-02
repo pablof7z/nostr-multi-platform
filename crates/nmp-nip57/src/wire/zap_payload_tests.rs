@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the nip57 zap typed payload codec
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 
 use super::{zap_generated::nmp::nip_57 as fb, SCHEMA_VERSION};
 use crate::action::ZapInput;

@@ -1,14 +1,14 @@
 //! `EmbedHostState` — gallery-side mirror of the kernel's `refs.event`
 //! row-delta projection.
 //!
-//! The renderer is frontend-driven (ADR-0034 / M16): when `NostrContentView`
+//! The renderer is frontend-driven (ADR-0072 / M16): when `NostrContentView`
 //! walks the content tree and hits an `EventRef(uri)`, it calls
 //! `sink.resolve_event_ref(uri, consumer_id)` via `EventRefResolver`. The host
 //! (`LiveKernelSink`) decodes the URI and forwards the raw event key through
 //! `resolve_ref`. The kernel registers a `OneshotApi` interest (D4 single
 //! writer), fetches the event from relays *or* short-circuits when it's already
 //! in the local store (cache hit, sub-tick latency), and surfaces the resolved
-//! event in the typed `refs.event` row-delta sidecar (ADR-0063).
+//! event in the typed `refs.event` row-delta sidecar (ADR-0070).
 //!
 //! `EmbedHostState` is the gallery's read-side cache of that projection.
 //! Each snapshot push calls `update_from_typed`; on the next redraw the

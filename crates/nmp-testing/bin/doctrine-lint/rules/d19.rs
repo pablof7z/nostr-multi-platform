@@ -1,6 +1,6 @@
 //! D19 — display formatting banned from kernel projection/error producers.
 //!
-//! ADR-0032 (raw-data projection doctrine, V-115): projection builders in
+//! ADR-0072 (raw-data projection doctrine, V-115): projection builders in
 //! `kernel/update/`, `kernel/types.rs`, and `kernel/publish_outbox.rs` must
 //! send raw protocol data to shells. Display-formatting helpers —
 //! `crate::display::` and `format_timestamp` — are banned in those files.
@@ -12,7 +12,7 @@
 //! - `crate::display::` — the display-formatting module inside `nmp-core`.
 //!   Its entry points encode bech32 npubs, abbreviate hex, format timestamps,
 //!   etc. Calling them in projection code bakes locale-specific English into
-//!   the wire format, violating ADR-0032.
+//!   the wire format, violating ADR-0072.
 //! - `format_timestamp(` — the same violation via a direct call to the
 //!   `format_timestamp` helper (which lives in `kernel/nostr.rs` and
 //!   historically leaked into `publish_outbox.rs`).
@@ -60,14 +60,14 @@ const BANNED: &[(&str, &str, &str)] = &[
     (
         "crate::display::",
         "`crate::display::*` called in a kernel projection builder violates \
-         ADR-0032 (V-115): projections must send raw data; shells format for display",
+         ADR-0072 (V-115): projections must send raw data; shells format for display",
         "send raw `pubkey: String` (hex) and `created_at: u64` (Unix secs); \
          shell converts to bech32 / locale-formatted time on the host side",
     ),
     (
         "format_timestamp(",
         "`format_timestamp` called in a kernel projection builder violates \
-         ADR-0032 (V-115): send raw Unix-seconds `u64`; shells format with their \
+         ADR-0072 (V-115): send raw Unix-seconds `u64`; shells format with their \
          own locale/TZ",
         "send raw `pubkey: String` (hex) and `created_at: u64` (Unix secs); \
          shell converts to bech32 / locale-formatted time on the host side",
@@ -140,8 +140,8 @@ mod tests {
         let hits = check("    let npub = crate::display::to_npub(pk);", false, false);
         assert_eq!(hits.len(), 1, "must flag crate::display:: in prod code");
         assert!(
-            hits[0].1.contains("ADR-0032"),
-            "message must reference ADR-0032; got: {}",
+            hits[0].1.contains("ADR-0072"),
+            "message must reference ADR-0072; got: {}",
             hits[0].1
         );
     }
@@ -155,8 +155,8 @@ mod tests {
         );
         assert_eq!(hits.len(), 1, "must flag format_timestamp in prod code");
         assert!(
-            hits[0].1.contains("ADR-0032"),
-            "message must reference ADR-0032"
+            hits[0].1.contains("ADR-0072"),
+            "message must reference ADR-0072"
         );
     }
 

@@ -3,12 +3,12 @@
 //! Provides the typed (FlatBuffers) registration seam ([`NmpApp::register_typed_snapshot_projection`])
 //! and C-ABI declaration surfaces for consumed projections and incremental-apply.
 //! The generic (`serde_json::Value`) lane has been removed; all projections use
-//! the typed FlatBuffers sidecar (ADR-0037).
+//! the typed FlatBuffers sidecar (ADR-0072).
 
 use super::NmpApp;
 use nmp_ownership::ProjectionRegistrationKey;
 
-// Issue #1283 / ADR-0034 — the `refs.event.envelopes` snapshot-projection
+// Issue #1283 / ADR-0072 — the `refs.event.envelopes` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);
 // kept here rather than as a `lib.rs` sibling `mod` so the over-cap `lib.rs`
 // does not grow (AGENTS.md file-size anti-cheat). See the module doc for the
@@ -16,7 +16,7 @@ use nmp_ownership::ProjectionRegistrationKey;
 #[path = "embed_sidecar.rs"]
 pub(crate) mod embed_sidecar;
 
-// ADR-0063 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
+// ADR-0070 D7 (#1671 Lane H) — the structural feed-author auto-resolve pairing
 // seam (`register_feed_window_source`) + its test introspection accessors. A
 // submodule of `snapshot` (both own snapshot-projection wiring); kept off the
 // over-cap `lib.rs` AND out of this file so `snapshot.rs` stays under the 500-LOC
@@ -28,13 +28,13 @@ impl NmpApp {
     /// Register a typed FlatBuffers projection closure for a named projection key.
     ///
     /// The typed sidecar is emitted alongside the existing typed-projection set in
-    /// every `SnapshotFrame` (ADR-0037). `f` runs on the actor thread on every
+    /// every `SnapshotFrame` (ADR-0072). `f` runs on the actor thread on every
     /// tick — it MUST be non-blocking (D8) and returns `None` when there is no
     /// changed row to emit this tick. Under incremental apply, omission means
     /// retain the last decoded value; unregistering the key emits one `Cleared`
     /// row.
     ///
-    /// ADR-0049 — records a truthful composition-ledger disposition:
+    /// ADR-0069 — records a truthful composition-ledger disposition:
     /// - [`nmp_core::Disposition::Installed`] — first registration for this key.
     /// - [`nmp_core::Disposition::ReplacedPrevious`] — a closure was already
     ///   registered under this key; the new one wins (last-writer-wins).
@@ -65,7 +65,7 @@ impl NmpApp {
         use nmp_core::__ffi_internal::TypedAdmission;
         let key = key.into().into_string();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
-            // ADR-0049 / Blocker C — derive the ledger disposition from the
+            // ADR-0069 / Blocker C — derive the ledger disposition from the
             // ACTUAL admission result returned by `register_typed` rather than
             // from a pre-insertion key-presence check. This is the only way to
             // distinguish a genuine `Installed` from a `DroppedFull` silent
@@ -108,7 +108,7 @@ impl NmpApp {
         self.snapshot_projections
             .lock()
             .map(|mut registry| {
-                // ADR-0063 D7 (#1671 Lane H) — OUT-OF-BAND introspection path
+                // ADR-0070 D7 (#1671 Lane H) — OUT-OF-BAND introspection path
                 // (tests/hosts reading the sidecar without a full `make_update`).
                 // Bump the per-tick rev so a `FeedWindowSource` memo re-materializes
                 // per ad-hoc call (reflecting a `load_older` grow between calls).

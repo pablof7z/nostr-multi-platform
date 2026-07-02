@@ -1,4 +1,4 @@
-//! Serialized capability-worker thread (ADR-0040 §3, V-90 Site 2).
+//! Serialized capability-worker thread (ADR-0072 §3, V-90 Site 2).
 //!
 //! Moves synchronous-native (Keychain-class) capability I/O OFF the actor
 //! thread. The actor enqueues a [`CapabilityWorkItem`] instead of calling
@@ -9,7 +9,7 @@
 //! ## Design invariants
 //!
 //! * **Single FIFO worker** — one thread, one queue. Per-op spawn is
-//!   explicitly rejected (ADR-0040 §"Options considered") because two threads
+//!   explicitly rejected (ADR-0072 §"Options considered") because two threads
 //!   racing the Keychain can reorder a `persist(A)` + `forget(A)` pair for
 //!   the same account, corrupting at-rest secrets on a rapid account switch.
 //!   The single FIFO worker makes per-account persist/forget ordering correct
@@ -50,7 +50,7 @@ use crate::substrate::CapabilityRequest;
 pub(crate) struct CapabilityWorkItem {
     /// The account the operation targets. Carried through to the re-entry
     /// command so the actor can confirm the account still exists before
-    /// applying the result (account-switch safety, ADR-0040 §"Ordering =
+    /// applying the result (account-switch safety, ADR-0072 §"Ordering =
     /// account-switch safety").
     pub(crate) account_id: String,
     /// Pre-serialized `CapabilityRequest` JSON (built on the actor thread
@@ -185,7 +185,7 @@ mod tests {
     use std::sync::Mutex;
     use std::time::Duration;
 
-    /// ADR-0050 §D3a — the worker now takes a [`CommandSender`] over an
+    /// ADR-0072 §D3a — the worker now takes a [`CommandSender`] over an
     /// [`ActorMail`] inbox. This helper builds the pair and returns the
     /// `ActorMail` receiver so tests can assert the posted command.
     fn cap_channel() -> (CommandSender, Receiver<ActorMail>) {

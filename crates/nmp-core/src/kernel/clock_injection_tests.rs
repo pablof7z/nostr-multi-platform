@@ -142,7 +142,7 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
     );
 }
 
-/// D9 (ADR-0057) — a relay-supplied event with a FUTURE `created_at` must be
+/// D9 (ADR-0070) — a relay-supplied event with a FUTURE `created_at` must be
 /// clamped to the kernel's `now` on the OBSERVER-DELIVERED `KernelEvent`, so a
 /// hostile/buggy relay cannot pin an event to the top of app feeds (which order
 /// by `KernelEvent.created_at` — `nmp-feed` / `nmp-nip01::FlatFeed`). This is a
@@ -201,7 +201,7 @@ fn future_dated_event_created_at_clamped_to_now_on_observer_and_in_projection() 
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", future);
     kernel.ingest_timeline_event(RelayRole::Content, RELAY_A, "diag-firehose-stress", past);
 
-    // ADR-0057 — the timeline READ-CACHE projection (`self.events`, which backs
+    // ADR-0070 — the timeline READ-CACHE projection (`self.events`, which backs
     // the timeline ordering) is clamped to `now` for the future-dated event so
     // it cannot pin to the top of the feed; the past-dated event passes through.
     assert_eq!(
@@ -215,7 +215,7 @@ fn future_dated_event_created_at_clamped_to_now_on_observer_and_in_projection() 
         "past-dated created_at must pass through unchanged — clamp is min(wire, now)"
     );
 
-    // ADR-0057 (D9 blocker fix) — the app-observer fan-out (the input to every
+    // ADR-0070 (D9 blocker fix) — the app-observer fan-out (the input to every
     // app feed) MUST also clamp the future-dated `created_at` to now, else a
     // hostile event sorts to the top of `nmp-feed` / `FlatFeed`. The past-dated
     // event passes through unchanged.

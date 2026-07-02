@@ -142,7 +142,7 @@ pub(super) fn gc_step(
                 .env
                 .write_txn()
                 .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
-            // ADR-0058 §6 step-4: snapshot retention claims once for this reap txn.
+            // ADR-0072 §6 step-4: snapshot retention claims once for this reap txn.
             let retention_claims = inner.retention_claims_snapshot();
             for (index_key, id) in &to_reap {
                 // Load the event before deletion to capture the freshness key
@@ -204,7 +204,7 @@ pub(super) fn gc_step(
                         origin: TombstoneOrigin::NIP40Expiry,
                     },
                 )?;
-                // ADR-0058 §3: emit Nip40Expiry log entry inside this txn (D4).
+                // ADR-0072 §3: emit Nip40Expiry log entry inside this txn (D4).
                 ingest_log::append_deleted(
                     inner.ingest_log,
                     inner.ingest_meta,

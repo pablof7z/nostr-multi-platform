@@ -1,4 +1,4 @@
-// ADR-0063 Lane A — TypeScript host-side per-key reference cache.
+// ADR-0070 Lane A — TypeScript host-side per-key reference cache.
 //
 // `RefRowCache` is the TypeScript mirror of the canonical Rust `RefRowCache`
 // (crates/nmp-core/src/refs/cache.rs) and the generated Swift / Kotlin per-key
@@ -18,7 +18,7 @@
 // namespace typed decoder (e.g. ProfileSnapshot/KPRF) via the `decodeOk`
 // preflight wired at the call site.
 //
-// The five ADR-0063 invariants enforced at ROW grain:
+// The five ADR-0070 invariants enforced at ROW grain:
 //   1. an absent row is Unchanged (retained), never Cleared;
 //   2. decode-before-commit: a `Changed` row commits only after its payload
 //      decodes; a malformed row leaves the prior cached row intact + latches
@@ -135,7 +135,7 @@ export class RefRowCache {
   private appliedSession = 0n;
   private appliedEpoch = 0n;
   /** False until the first batch is applied after a (re)baseline. UI gates on
-   *  this (ADR-0055 D3-5). */
+   *  this (ADR-0070 D3-5). */
   private baselinedFlag = false;
   /** Sticky: latches on any decode-before-commit failure. Cleared on
    *  session/epoch re-baseline. */

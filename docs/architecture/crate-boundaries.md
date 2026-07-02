@@ -410,7 +410,7 @@ gate when it affects reusable framework behavior.
 
 ## 10a. Browser Platform Adapter (nmp-browser-runtime)
 
-`nmp-browser-runtime` is the browser platform adapter per ADR-0067: a Layer-6
+`nmp-browser-runtime` is the browser platform adapter per ADR-0072: a Layer-6
 runtime adapter, sibling to `nmp-native-runtime`. Unlike pure ABI-glue binding
 crates, it is a **composition root**: it composes `nmp-substrate` and protocol
 crates into a typed builder (`BrowserAppBuilder`), exactly as a native runtime
@@ -441,7 +441,7 @@ protocol crates in Layers 0–5. Leaf web apps depend on `nmp-browser-runtime`
 for the typed builder and Worker export. No Layer 0-5 crate depends on
 `nmp-browser-runtime`.
 
-### Shared composition target: reuse `AppHost` (#2059, ADR-0067)
+### Shared composition target: reuse `AppHost` (#2059, ADR-0072)
 
 `BrowserAppBuilder` composes through the **existing** `nmp_core::substrate::AppHost`
 super-trait — no browser-specific composition trait is introduced. `AppHost` is

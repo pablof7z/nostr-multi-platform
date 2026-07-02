@@ -55,7 +55,7 @@ impl ActionModule for DiscoverGroupsAction {
         );
     type Action = DiscoverGroupsInput;
 
-    /// ADR-0064 / Cut-B (#1756): opt into the typed FlatBuffers payload doorway;
+    /// ADR-0071 / Cut-B (#1756): opt into the typed FlatBuffers payload doorway;
     /// the fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<DiscoverGroupsInput as ActionPayload>::decode(bytes))

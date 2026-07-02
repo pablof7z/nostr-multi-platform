@@ -1,4 +1,4 @@
-//! `ActionPayload` codec for the `nmp.nip29.edit_metadata` action (ADR-0064 /
+//! `ActionPayload` codec for the `nmp.nip29.edit_metadata` action (ADR-0071 /
 //! S9 #1747) — edit an existing NIP-29 group's metadata (kind:9002).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};

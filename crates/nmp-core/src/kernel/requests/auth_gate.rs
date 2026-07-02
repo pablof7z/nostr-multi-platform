@@ -1,7 +1,7 @@
 //! NIP-42 AUTH gate: predicates over the per-relay driver state plus the
 //! `partition_auth_paused` outbound-batch splitter that withholds REQs from
 //! AUTH-paused relays (deferring them into `deferred_outbound`) and drops
-//! REQs targeting `Failed` relays (fail-closed per ADR-0019). Pairs with
+//! REQs targeting `Failed` relays (fail-closed per ADR-0072). Pairs with
 //! `relay_lifecycle` (which resets drivers on reconnect) and the deferred-
 //! queue drain in `pending_view_requests`.
 
@@ -11,7 +11,7 @@ impl Kernel {
     /// True when REQs to `role` must be withheld from the wire:
     /// `ChallengeReceived` / `Authenticating` (transient, deferred) or
     /// `Failed` (fail-closed, dropped — see [`Self::relay_auth_failed`]).
-    /// `NotRequired` / `Authenticated` are pass-through. Per ADR-0019 a
+    /// `NotRequired` / `Authenticated` are pass-through. Per ADR-0072 a
     /// `Failed` relay never silently downgrades to unauthenticated reads.
     pub(crate) fn relay_auth_paused(&self, role: RelayRole) -> bool {
         let state = self
@@ -30,7 +30,7 @@ impl Kernel {
 
     /// True when `role`'s NIP-42 handshake is `Failed`. REQs to a failed
     /// relay are dropped, not deferred (the shared ring has no per-relay
-    /// segregation). Recovery is reconnect-only. Rationale: ADR-0019.
+    /// segregation). Recovery is reconnect-only. Rationale: ADR-0072.
     pub(crate) fn relay_auth_failed(&self, role: RelayRole) -> bool {
         matches!(
             self.auth_drivers.get(&role).map(|d| d.state.clone()),
@@ -40,7 +40,7 @@ impl Kernel {
 
     /// Purge deferred REQ messages targeting `role` — called on the
     /// transition into `Failed` so withheld REQs cannot leak when the ring
-    /// next drains. CLOSEs and other relays' messages are retained (ADR-0019).
+    /// next drains. CLOSEs and other relays' messages are retained (ADR-0072).
     pub(crate) fn purge_deferred_reqs_for(&mut self, role: RelayRole) {
         self.deferred_outbound
             .retain(|msg| !(msg.role == role && msg.text.starts_with("[\"REQ\"")));
@@ -71,7 +71,7 @@ impl Kernel {
             if is_req && self.relay_auth_failed(msg.role) {
                 // Fail-closed: an AUTH-required relay that rejected/refused
                 // AUTH gets its gated REQs DROPPED, never deferred — no
-                // silent unauthenticated downgrade (T76 / ADR-0019).
+                // silent unauthenticated downgrade (T76 / ADR-0072).
                 self.log(format!(
                     "REQ@{} dropped — relay AUTH failed (fail-closed)",
                     msg.role.key()

@@ -74,7 +74,7 @@ struct WotRuntimeState {
 /// Small diagnostic noun the WOT bootstrap runtime projects onto the kernel
 /// snapshot under `nmp.wot.bootstrap`. The serde JSON of this struct is the
 /// authoritative `register_snapshot_projection` shape; the typed FlatBuffers
-/// sidecar (`crate::wire::typed_fb`) mirrors it field-for-field (ADR-0037).
+/// sidecar (`crate::wire::typed_fb`) mirrors it field-for-field (ADR-0072).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct WotBootstrapSnapshot {
     /// Active account hex pubkey, or `None` when no account is selected.

@@ -184,7 +184,7 @@ impl FeedTeardown {
 
     /// A teardown step that removes the (generic + typed) snapshot projection
     /// registered under `key` AND its STRUCTURALLY-PAIRED feed-author provider
-    /// (ADR-0063 D7, #1671 Lane H, #1740).
+    /// (ADR-0070 D7, #1671 Lane H, #1740).
     ///
     /// A session feed installs its typed sidecar through
     /// `register_feed_window_source`, which pairs a feed-author auto-resolve

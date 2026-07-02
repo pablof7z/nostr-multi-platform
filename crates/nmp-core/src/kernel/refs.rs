@@ -1,4 +1,4 @@
-//! ADR-0063 — the kernel-owned `RefResolver` reference-resolution primitive.
+//! ADR-0070 — the kernel-owned `RefResolver` reference-resolution primitive.
 //!
 //! Profile and event refs are two instances of one shape:
 //! refcounted consumer ownership → kernel-owned fetch/routing/cache policy
@@ -23,11 +23,11 @@
 //! the namespace discriminant, the resolve/release entry points) while the kernel
 //! owns the state and the seam (`resolve_ref`) dispatches with a `match`.
 //!
-//! ## Closed, typed surface (ADR-0063 D2/D3/D4 — NOT a stringly registry)
+//! ## Closed, typed surface (ADR-0070 D2/D3/D4 — NOT a stringly registry)
 //!
 //! * [`RefNamespace`] — `Profile` + `Event` ONLY. No `zap_total` / reply-counts;
 //!   those are aggregate queries over event *sets*, a different invalidation
-//!   model (ADR-0063 D2 scope limit).
+//!   model (ADR-0070 D2 scope limit).
 //! * Shape — a small **closed, namespace-owned** enum ([`ProfileShape`],
 //!   [`EventShape`]); NOT a per-field mask. `Card`/`Raw` are the widest shapes.
 //! * [`RefLiveness`] — `CacheOk | Live`, kept **strictly separate from shape**
@@ -48,7 +48,7 @@
 use super::{Instant, Kernel, OutboundMessage};
 use crate::kernel::ProfileLiveness;
 
-/// Closed, typed set of reference resolvers (ADR-0063 D2). Adding a namespace is
+/// Closed, typed set of reference resolvers (ADR-0070 D2). Adding a namespace is
 /// a deliberate, reviewed change — never a runtime string.
 ///
 /// Promoted to `pub` in Lane D so `nmp-ffi` can carry it in
@@ -60,7 +60,7 @@ pub enum RefNamespace {
     Event,
 }
 
-/// Closed shape enum for the `profile` namespace (ADR-0063 D3). `Card` is the
+/// Closed shape enum for the `profile` namespace (ADR-0070 D3). `Card` is the
 /// widest (the full `ProfileCard`); `Ref` is the feed-avatar subset.
 ///
 /// Promoted to `pub` in Lane D (see [`RefNamespace`]).
@@ -74,7 +74,7 @@ pub enum ProfileShape {
 
 impl ProfileShape {
     /// Monotonic widen toward `Card` — the projection row carries the widest
-    /// shape any currently-live consumer of the key demanded (ADR-0063 D5).
+    /// shape any currently-live consumer of the key demanded (ADR-0070 D5).
     pub fn widen(self, other: Self) -> Self {
         if matches!(self, Self::Card) || matches!(other, Self::Card) {
             Self::Card
@@ -84,7 +84,7 @@ impl ProfileShape {
     }
 }
 
-/// Closed shape enum for the `event` namespace (ADR-0063 D3). `Raw` is the
+/// Closed shape enum for the `event` namespace (ADR-0070 D3). `Raw` is the
 /// widest (the full raw event); `Embed` is the render-an-embed-card subset.
 ///
 /// Promoted to `pub` in Lane D (see [`RefNamespace`]).
@@ -97,7 +97,7 @@ pub enum EventShape {
 }
 
 impl EventShape {
-    /// Monotonic widen toward `Raw` (ADR-0063 D5).
+    /// Monotonic widen toward `Raw` (ADR-0070 D5).
     pub fn widen(self, other: Self) -> Self {
         if matches!(self, Self::Raw) || matches!(other, Self::Raw) {
             Self::Raw
@@ -127,7 +127,7 @@ impl RefShape {
     }
 }
 
-/// Client-hintable freshness, **strictly separate from shape** (ADR-0063 D4):
+/// Client-hintable freshness, **strictly separate from shape** (ADR-0070 D4):
 /// shape = *what bytes are needed*, liveness = *how fresh the resolver keeps the
 /// entity*. `CacheOk` serves from the store + one-shot on a miss; `Live` keeps a
 /// tailing sub so replacements arrive reactively. Same key dedups to one slot;
@@ -288,7 +288,7 @@ impl RefResolver for EventNs {
 }
 
 impl Kernel {
-    /// The unified, origin-blind reference-resolution seam (ADR-0063 D1).
+    /// The unified, origin-blind reference-resolution seam (ADR-0070 D1).
     ///
     /// Generalizes the former per-kind profile/event claims. A `(namespace, shape)`
     /// mismatch fails closed (D6: log + no-op, never an FFI error). `hints` are
@@ -427,7 +427,7 @@ impl Kernel {
         }
     }
 
-    /// Lane A read API (ADR-0063 D6a): the per-KEY revision for a resolved-ref
+    /// Lane A read API (ADR-0070 D6a): the per-KEY revision for a resolved-ref
     /// row. Advances at resolve, release, and the ingest chokepoint that
     /// rewrites the row's data. The wire/manifest row-delta is Lane A's; this is
     /// the kernel-owned source of truth it consults.
@@ -438,7 +438,7 @@ impl Kernel {
     }
 
     /// The widest `profile` shape any currently-live consumer of `key` demanded
-    /// (ADR-0063 D5). Folds the widen lattice over the per-consumer shapes so a
+    /// (ADR-0070 D5). Folds the widen lattice over the per-consumer shapes so a
     /// release that drops the widest consumer narrows the result (HIGH 4). `None`
     /// once no consumer holds the key.
     pub(crate) fn ref_demanded_profile_shape(&self, key: &str) -> Option<ProfileShape> {

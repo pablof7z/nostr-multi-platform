@@ -22,7 +22,7 @@
 //! This is that projection. It is a [`ObservedProjectionSink`] with `Mutex<State>`
 //! interior mutability whose output is a **typed FlatBuffers sidecar** payload
 //! ([`TypedProjectionData`]) registered via
-//! `AppHost::register_typed_snapshot_projection` (ADR-0037). It does **not**
+//! `AppHost::register_typed_snapshot_projection` (ADR-0072). It does **not**
 //! emit into the generic JSON `projections` map — that map is being retired.
 //!
 //! # Reuse, not reinvention

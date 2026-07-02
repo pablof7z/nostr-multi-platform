@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 /// A relay disconnect resets the state to `NotRequired`; the relay will
 /// re-send a fresh challenge if it still requires AUTH on the next connect.
 ///
-/// `Failed` is **fail-closed** (ADR-0019): a relay that demanded AUTH and
+/// `Failed` is **fail-closed** (ADR-0072): a relay that demanded AUTH and
 /// failed it withholds its gated REQs rather than silently downgrading to
 /// unauthenticated reads. Recovery is reconnect-only.
 #[derive(Clone, Debug, Default, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ pub enum RelayAuthState {
 
 impl RelayAuthState {
     /// Wire key the diagnostics UI displays in `RelayStatus.auth`. Matches
-    /// the snake-case serde serialization (ADR-0007 §1).
+    /// the snake-case serde serialization (ADR-0072 §1).
     #[must_use]
     pub fn as_status_key(&self) -> &'static str {
         match self {
@@ -65,7 +65,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn status_keys_match_adr_0007() {
+    fn relay_auth_status_keys_are_stable() {
         assert_eq!(RelayAuthState::NotRequired.as_status_key(), "not_required");
         assert_eq!(
             RelayAuthState::ChallengeReceived.as_status_key(),

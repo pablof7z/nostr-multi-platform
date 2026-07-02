@@ -17,7 +17,7 @@ fn pinned_rumor(author: &Keys, content: &str) -> UnsignedEvent {
 }
 
 /// Test-only shorthand. `gift_wrap_local` composes the pure seal/wrap steps
-/// synchronously with the sender's local keys (ADR-0050 §D5).
+/// synchronously with the sender's local keys (ADR-0072 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
     gift_wrap_local(sender, receiver, rumor, tweaked).expect("gift_wrap_local should succeed")

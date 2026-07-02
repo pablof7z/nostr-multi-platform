@@ -1,4 +1,4 @@
-//! Kernel pull service — ADR-0058 §10, step 2.
+//! Kernel pull service — ADR-0072 §10, step 2.
 //!
 //! Exposes `Kernel::pull_page` over two scopes:
 //!

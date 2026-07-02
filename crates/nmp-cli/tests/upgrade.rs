@@ -45,7 +45,7 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
     assert!(manifest.contains("dependency_mode = \"version\""));
     assert!(manifest.contains("version = \"0.2.0\""));
 
-    // ADR-0046: the scaffolded core crate is a thin composition shell whose
+    // ADR-0069: the scaffolded core crate is a thin composition shell whose
     // `nmp-*` dependencies are git-rev pins (consumers pin NMP by git rev).
     // `nmp upgrade` repoints each pin at the new release tag — there is no
     // `nmp gen modules` step and no generated raw `apps/` tree.
@@ -68,6 +68,6 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
     );
     assert!(
         !root.join("apps").exists(),
-        "ADR-0046: upgrade must not produce a generated apps/ tree"
+        "ADR-0069: upgrade must not produce a generated apps/ tree"
     );
 }

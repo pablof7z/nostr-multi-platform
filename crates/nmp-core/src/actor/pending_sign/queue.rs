@@ -1,5 +1,5 @@
 //! The target-agnostic parked-signer-op queue + canonical drain driver
-//! (ADR-0050 §D2; issue #1753 S6).
+//! (ADR-0072 §D2; issue #1753 S6).
 //!
 //! Before #1753 the `Vec<ParkedOp>` lived as a bare local in the native actor
 //! loop, and the `retain_mut` that drives the canonical parked-op drain over it

@@ -313,7 +313,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     }
 
     // ── 9. Cache-serve step ───────────────────────────────────────────────
-    // ADR-0045 §5 — chunked continuation for store-cache serves.  Runs BEFORE
+    // ADR-0070 §5 — chunked continuation for store-cache serves.  Runs BEFORE
     // the `flush_due` emit below so served events land in this tick's snapshot.
     if *lc.running && (lc.kernel.has_pending_cache_serves() || lc.kernel.has_cache_serve_wakeups())
     {
@@ -335,7 +335,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     );
 
     // ── 11. Parked-op drive ───────────────────────────────────────────────
-    // ADR-0050 §D2 — ONE `retain_mut` over ONE `Vec<ParkedOp>`.
+    // ADR-0072 §D2 — ONE `retain_mut` over ONE `Vec<ParkedOp>`.
     if !lc.parked_ops.is_empty() {
         let parked_drive_now = Instant::now();
         let DrainBatch {

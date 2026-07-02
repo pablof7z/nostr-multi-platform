@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire codec for [`crate::wire::ContentTreeWire`].
 //!
 //! The canonical FFI shape is the serde JSON of [`ContentTreeWire`]
-//! (`docs/decisions/0018-content-tree-ffi-projection.md`). This module adds a
+//! (`docs/decisions/0072-runtime-capability-and-shell-boundary.md`). This module adds a
 //! **typed FlatBuffers** encoding of the same arena — a self-describing,
 //! schema-versioned, language-neutral binary the host platforms (Swift /
 //! Kotlin / TypeScript) can decode with generated accessors instead of JSON

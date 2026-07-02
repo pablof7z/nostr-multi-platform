@@ -3,7 +3,7 @@ use mdk_core::prelude::group_types::GroupState;
 
 impl MarmotProjection {
     /// Build the all-groups messages map for the `"nmp.marmot.messages"` push
-    /// projection (ADR-0039, V-107 Rust leg).
+    /// projection (ADR-0070, V-107 Rust leg).
     ///
     /// Returns a `serde_json::Value::Object` keyed by `group_id_hex` →
     /// newest-N [`crate::projection::payload::MarmotMessageRow`] JSON array for
@@ -40,7 +40,7 @@ impl MarmotProjection {
     }
 
     /// Structured sibling of [`Self::messages_all_groups_json`] for the typed
-    /// FlatBuffers sidecar (ADR-0037, Wave A). Returns the SAME per-group data
+    /// FlatBuffers sidecar (ADR-0072, Wave A). Returns the SAME per-group data
     /// the JSON projection emits — `(group_id_hex, newest-N rows)` for every
     /// joined group — as native Rust structs instead of a `serde_json::Value`
     /// map, so [`crate::wire::messages_fb`] can encode them without re-parsing

@@ -45,7 +45,7 @@ use crate::StoreError;
 /// 2. LRU-evict un-pinned events when store size exceeds `budget.max_total_events`.
 /// 3. Purge tombstone rows older than `TOMBSTONE_MAX_AGE_SECS`.
 ///
-/// `guards` (K3 Stage D3, ADR-0056 §3.D3) is the eviction⇄ledger coherence
+/// `guards` (K3 Stage D3, ADR-0072 §3.D3) is the eviction⇄ledger coherence
 /// backstop: if a Phase-2 LRU eviction deletes an event a guard matches whose
 /// `created_at <= covered_through`, the matching coverage row is lowered to just
 /// below the oldest evicted covered event, **inside the same `st` lock** as the

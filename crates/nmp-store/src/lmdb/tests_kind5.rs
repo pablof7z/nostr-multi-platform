@@ -5,7 +5,7 @@
 //!   * Foreign target — silently skipped (parity with `mem/insert.rs:271`).
 //!   * Foreign pre-tombstone — Alice's event must STILL Insert after Bob's
 //!     premature kind:5 (regression for the `handle_kind5` `mark_deleted`
-//!     bug — see commit history + ADR-0012 amendment).
+//!     bug — see commit history + ADR-0071 amendment).
 //!   * Self pre-tombstone — author's own kind:5 before target arrives;
 //!     target must surface as Tombstoned.
 //!   * Single-source delete-by-relay via `DeleteFilter::ByRelayOnly`.

@@ -27,7 +27,10 @@ The migration-readiness gate list before existing apps can move over is: product
 <!-- citations: [^898a4-289cb] [^898a4-b541d] [^898a4-9a8e2] -->
 ## ADR Spine
 
-The clean-break refactor is governed by ADR spine 0069–0073, applied to native, browser, and starter targets in lockstep, with doctrine-lint and doc ratchets locking each slice shut behind it. The prior ADR directory is treated as a museum (Current/Amended/Folded/Retired ledger). A memory entry for this reset is saved at adr-spine-reset-0069-0073-2026-06-29.md with a pointer in MEMORY.md's recent shipped/in-flight index.
+The clean-break refactor is governed by ADR spine 0069–0073, applied to native,
+browser, and starter targets in lockstep, with doctrine-lint and doc ratchets
+locking each slice shut behind it. The ADR directory is current-only: obsolete
+decision files are deleted after surviving rules move to their current owners.
 
 <!-- citations: [^898a4-eaad2] [^3c942-d9519] [^898a4-bc2c6] -->
 ## Protocol Scope: NIP Status

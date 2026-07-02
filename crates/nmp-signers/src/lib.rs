@@ -15,7 +15,7 @@
 //! - `identity::AccountManager` — multi-account runtime state with synchronous
 //!   active-switch guarantees + applesauce-style mismatch post-conditions.
 //!
-//! See `docs/decisions/0015-m6-signer-design.md` for the design rationale.
+//! See `docs/decisions/0072-runtime-capability-and-shell-boundary.md` for the design rationale.
 
 #![deny(unsafe_code)]
 #![warn(missing_docs)]

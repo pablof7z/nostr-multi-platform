@@ -152,7 +152,7 @@ fn record_terminal_accumulates_until_drained() {
     assert_eq!(ids, vec!["corr-a", "corr-b"], "producer order preserved");
 }
 
-/// `result_json` is forwarded into `result` as a parsed JSON object (ADR-0043
+/// `result_json` is forwarded into `result` as a parsed JSON object (ADR-0071
 /// Decision 4); a non-JSON body forwards as a raw string.
 #[test]
 fn record_terminal_forwards_result_json() {

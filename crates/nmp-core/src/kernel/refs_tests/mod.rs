@@ -1,4 +1,4 @@
-// ADR-0063 (#1671) — collector for the four `RefResolver` test sub-modules.
+// ADR-0070 (#1671) — collector for the four `RefResolver` test sub-modules.
 // The `*_tests_*` infix on each file satisfies the doctrine-lint `d6`
 // classifier (test-only file exemption from the 500-LOC hard cap).
 //

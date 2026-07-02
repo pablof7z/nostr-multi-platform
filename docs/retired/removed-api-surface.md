@@ -11,5 +11,5 @@ plus app-owned Rust composition that installs `nmp-substrate` and selected
 protocol/app features explicitly.
 
 The public JSON `nmp_app_dispatch_action` doorway is retired for production
-writes. Current production write transport uses ADR-0064 dispatch bytes through
+writes. Current production write transport uses legacy decision 0064 dispatch bytes through
 `nmp_app_dispatch_action_bytes` or the equivalent wasm/browser channel.

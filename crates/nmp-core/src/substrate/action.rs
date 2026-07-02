@@ -61,7 +61,7 @@ pub type ActionId = String;
 pub enum ActionPayloadDecodeError {
     /// The buffer's `schema_version` is not the version this crate compiled
     /// against. The RAW value is reported; the payload is NOT decoded further.
-    /// This is the **before-`start()`** fail-closed tripwire (ADR-0064 §1).
+    /// This is the **before-`start()`** fail-closed tripwire (ADR-0071 §1).
     SchemaVersionMismatch { found: u32, expected: u32 },
     /// The buffer is not a valid root for this payload (missing/wrong file
     /// identifier, truncated/corrupt FlatBuffers, or a missing required field).
@@ -80,7 +80,7 @@ impl core::fmt::Display for ActionPayloadDecodeError {
     }
 }
 
-/// A typed FlatBuffers action payload (ADR-0064 / S3 #1751).
+/// A typed FlatBuffers action payload (ADR-0071 / S3 #1751).
 ///
 /// This is the **inbound** typed decode contract for a migrated
 /// [`ActionModule`]: the open [`crate::transport::dispatch_envelope`] carries
@@ -95,7 +95,7 @@ impl core::fmt::Display for ActionPayloadDecodeError {
 /// **before** the module's `start()` validator runs — a mismatch is rejected
 /// ([`ActionPayloadDecodeError::SchemaVersionMismatch`]) and the module never
 /// sees the action. The decoder NEVER guesses a version; a mismatch is a
-/// reject, not a multi-version decode (ADR-0064 §1).
+/// reject, not a multi-version decode (ADR-0071 §1).
 ///
 /// # Opaque pre-signed bytes
 ///
@@ -120,7 +120,7 @@ pub trait ActionPayload: Sized {
 
     /// Encode the action shape to finished, file-identified FlatBuffers bytes
     /// (stamping [`Self::SCHEMA_VERSION`]). The production app-facing path is the
-    /// generated typed builders (ADR-0064 §3); this is the kernel-side primitive
+    /// generated typed builders (ADR-0071 §3); this is the kernel-side primitive
     /// they (and round-trip tests) build on.
     #[must_use]
     fn encode(&self) -> Vec<u8>;
@@ -143,7 +143,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// needed (empty fields, hex shape, invariant checks). Modules whose
     /// kernel command handler owns all error toasting can omit this method.
     ///
-    /// Takes `&self` (ADR-0052 rung 5.2): the registry stores the concrete
+    /// Takes `&self` (ADR-0072 rung 5.2): the registry stores the concrete
     /// module **value**, so `start` may read state the host captured at
     /// composition time (a stateful module owns e.g. an
     /// `Arc<WalletRuntimeHandle>`). Stateless modules ignore `&self`.
@@ -152,12 +152,12 @@ pub trait ActionModule: Send + Sync + 'static {
         Ok(())
     }
 
-    /// Typed FlatBuffers payload decode (ADR-0064 / S3 #1751), the OPT-IN
+    /// Typed FlatBuffers payload decode (ADR-0071 / S3 #1751), the OPT-IN
     /// counterpart to the serde-JSON `Action` path.
     ///
     /// Returns:
     /// * `None` — this module is **not** typed-payload-capable (the default;
-    ///   the 30+ modules ADR-0064 migrates per-crate stay on JSON until their
+    ///   the 30+ modules ADR-0071 migrates per-crate stay on JSON until their
     ///   own stage). The registry's typed-bytes doorway rejects the namespace.
     /// * `Some(Ok(action))` — the bytes decoded into `Self::Action`.
     /// * `Some(Err(_))` — fail-closed: a `schema_version` trip (gated BEFORE
@@ -202,11 +202,11 @@ pub trait ActionModule: Send + Sync + 'static {
     /// `ActorCommand` whose terminal verdict must report the dispatched id
     /// (the spinner round-trip).
     ///
-    /// The pre-ADR-0027 dual-registration path (`register_action_module` /
+    /// The pre-ADR-0071 dual-registration path (`register_action_module` /
     /// `register_action_executor`) was deleted; `execute` is now the sole
     /// executor seam for any registered module.
     ///
-    /// Takes `&self` (ADR-0052 rung 5.2): the dependencies a command needs
+    /// Takes `&self` (ADR-0072 rung 5.2): the dependencies a command needs
     /// (e.g. an `Arc<WalletRuntimeHandle>`) are owned by the registered
     /// module value and captured at composition time, rather than reached
     /// through a process-global. Stateless modules ignore `&self`.
@@ -228,16 +228,16 @@ pub trait ActionRegistrar {
     /// Register `M` as an **app** action module under `M::NAMESPACE` — an
     /// explicit, intentional registration that overrides a yielding default
     /// (legal) but collides loudly with another app registration of the same
-    /// namespace (ADR-0049 Part 1). This is the path app-specific verbs
+    /// namespace (ADR-0069 Part 1). This is the path app-specific verbs
     /// (Chirp's NIP-29, wallet, …) use.
     ///
     /// Returns `Ok(())` on success and `Err(`[`RegistrationError`]`)` when the
     /// namespace is already claimed by another **app** registration
-    /// (an app-over-app collision, ADR-0049). The new module still replaces the
+    /// (an app-over-app collision, ADR-0069). The new module still replaces the
     /// old (last-writer-wins for release resilience, D6); the error is returned
     /// so the caller can surface it in both dev AND release builds (#1724).
     ///
-    /// Takes the module **value** (ADR-0052 rung 5.2): a stateful module
+    /// Takes the module **value** (ADR-0072 rung 5.2): a stateful module
     /// (e.g. a wallet module owning an `Arc<WalletRuntimeHandle>`) carries
     /// its dependencies, captured by the host at composition time. Stateless
     /// modules pass a unit-shaped value (`register_action(PublishModule)`).
@@ -248,7 +248,7 @@ pub trait ActionRegistrar {
 
     /// Register `M` as a **yielding default** under `M::NAMESPACE` — install it
     /// ONLY if the namespace is unclaimed; otherwise yield to the existing
-    /// registration REGARDLESS of call order (ADR-0049 Part 1, the
+    /// registration REGARDLESS of call order (ADR-0069 Part 1, the
     /// Spring-Boot `@ConditionalOnMissingBean` shape). Returns `true` when
     /// installed, `false` when it yielded.
     ///
@@ -263,7 +263,7 @@ pub trait ActionRegistrar {
     /// semantics; the real entry-or-insert behaviour lives in the kernel's
     /// `ActionRegistry` override.
     ///
-    /// Takes the module **value** (ADR-0052 rung 5.2), as [`Self::register_action`].
+    /// Takes the module **value** (ADR-0072 rung 5.2), as [`Self::register_action`].
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         let _ = self.register_action(module);
         true

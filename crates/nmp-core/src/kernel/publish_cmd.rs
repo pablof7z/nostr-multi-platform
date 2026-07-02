@@ -203,7 +203,7 @@ impl Kernel {
         // observer and its action_results observer match on the same
         // `correlation_id`.
         //
-        // `result_json` (ADR-0043 Decision 4) is an opaque structured result
+        // `result_json` (ADR-0071 Decision 4) is an opaque structured result
         // body the action attaches to its `action_results` row's `result`
         // field. The kernel never parses it — it only forwards it (D0: no
         // protocol noun enters the substrate). Off-band success (e.g. NWC
@@ -254,7 +254,7 @@ impl Kernel {
         self.signed_events
             .insert(correlation_id.to_string(), result);
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump settlement_enqueue_ver (signed_events drain).
+        // ADR-0070 Rung 1: bump settlement_enqueue_ver (signed_events drain).
         self.projection_rev_tracker
             .source_versions
             .bump_settlement_enqueue();
@@ -270,7 +270,7 @@ impl Kernel {
     /// resolver parses. The map is `clear()`ed here (drain-once), so the host
     /// reads each id exactly once.
     pub(in super::super) fn take_signed_events_projection(&mut self) -> serde_json::Value {
-        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit
+        // ADR-0070 Rung 1 (F2): drive the drain tristate exactly once per emit
         // (mirrors `take_action_results_projection`). Changed on non-empty,
         // Cleared on the non-empty -> empty transition, Unchanged while stably
         // empty.
@@ -349,7 +349,7 @@ impl Kernel {
             at_ms,
         );
         self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
+        // ADR-0070 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
         self.projection_rev_tracker
             .source_versions
             .bump_settlement_enqueue();
@@ -365,7 +365,7 @@ impl Kernel {
     /// routes through the kernel clock so a `FixedClock` keeps tests
     /// deterministic.
     ///
-    /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit` Cleared-
+    /// ADR-0070 Rung 3 S1b (§10.4): also drives the `note_copy_emit` Cleared-
     /// edge machine for `action_lifecycle` so that the non-empty → empty
     /// transition (e.g. TTL expiry of the last terminal) parks a `Cleared`
     /// presence in the manifest rather than staying `Unchanged`. This makes
@@ -377,7 +377,7 @@ impl Kernel {
         // S11 (#1758): derived from the ONE ledger, not a parallel tracker.
         let result = self.action_ledger.lifecycle_snapshot(now);
         let len_after = self.action_ledger.lifecycle_entry_count();
-        // ADR-0055 Rung 1 (codex #3): bump ttl_expiry_ver when prune_expired
+        // ADR-0070 Rung 1 (codex #3): bump ttl_expiry_ver when prune_expired
         // actually removed a row. Wall-clock gated — called from the existing
         // emit/ingest edge (D8 compliant, no separate timer).
         if len_after < len_before {
@@ -385,7 +385,7 @@ impl Kernel {
                 .source_versions
                 .bump_ttl_expiry();
         }
-        // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
+        // ADR-0070 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
         // emit. `note_copy_emit` parks `Cleared` in `pending_presence` on the
         // was_nonempty && !nonempty edge so the manifest flips to Cleared and
         // the synthesis in `omit_unchanged` emits the host-facing Cleared row.
@@ -438,7 +438,7 @@ impl Kernel {
     /// expires. Returns `serde_json::Value::Null` when nothing is tracked so the
     /// helper can omit the projection key in steady state.
     ///
-    /// ADR-0055 Rung 3 S1b (§10.4): also drives the `note_copy_emit`
+    /// ADR-0070 Rung 3 S1b (§10.4): also drives the `note_copy_emit`
     /// Cleared-edge machine for `action_stages`. Takes `&mut self` to write
     /// into the `projection_rev_tracker`. The `action_results` drain above
     /// this site (in `projections.rs`) may record a terminal into `action_stages`
@@ -454,7 +454,7 @@ impl Kernel {
                 .source_versions
                 .bump_ttl_expiry();
         }
-        // ADR-0055 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
+        // ADR-0070 Rung 3 S1b (§10.4): drive the Cleared-edge machine once per
         // emit. On ack/expiry-of-last-entry the snapshot is Null;
         // was_nonempty=true → note_copy_emit parks Cleared → manifest Cleared
         // → synthesis emits the Cleared row → host drops the stale stage entry.

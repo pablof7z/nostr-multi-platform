@@ -47,13 +47,13 @@ impl Kernel {
                 // shell renders `can_retry` directly instead of branching on
                 // `status != "sending"` to decide whether to enable a button.
                 let can_retry = status != "sending";
-                // ADR-0032 / V-115: emit raw Unix-seconds `created_at` so
+                // ADR-0072 / V-115: emit raw Unix-seconds `created_at` so
                 // shells can format the timestamp in their own locale + TZ.
                 // `format_timestamp` (chrono::Local, OS wall clock) and
                 // `publish_outbox_target_summary` ("N relays · <time>") are
                 // removed; shells compose the relay-count + time label
                 // themselves from `target_relays` + `created_at`.
-                // ADR-0032 / aim.md §2 #4: `title`, `preview`, `system_image`,
+                // ADR-0072 / aim.md §2 #4: `title`, `preview`, `system_image`,
                 // `status_label` pre-formatted strings removed — shells own all
                 // presentation formatting. Raw `content` is emitted so shells
                 // can render a preview appropriate to their UX.
@@ -73,7 +73,7 @@ impl Kernel {
     }
 
     /// Raw per-status counters for the publish-outbox summary header.
-    /// ADR-0032 / aim.md §2 #4: the previously-emitted pre-formatted English
+    /// ADR-0072 / aim.md §2 #4: the previously-emitted pre-formatted English
     /// `title` / `subtitle` strings are removed; shells derive display strings
     /// from these raw counts using their own locale/formatting rules.
     pub(super) fn outbox_summary_snapshot(&self) -> OutboxSummarySnapshot {

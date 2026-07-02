@@ -25,7 +25,7 @@ import type { NostrProfileHost, ProfileWire } from "@nmp/components-web/user-ava
 
 export { tagValue, type ClaimedEventWire } from "./refEventStore";
 
-// ADR-0063 Lane D wire codes (mirror the wasm structured `resolve_ref` /
+// ADR-0070 Lane D wire codes (mirror the wasm structured `resolve_ref` /
 // `release_ref` protocol):
 //   namespace: 0 = profile, 1 = event
 //   shape:     profile → 0 = ref, 1 = card;  event → 0 = embed, 1 = raw
@@ -149,7 +149,7 @@ export function createGalleryRuntime(): GalleryRuntime {
   const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
   const requestedNpubs = new Set<string>();
 
-  // Stateful per-key `refs.profile` row-delta cache (ADR-0063). Lives for the
+  // Stateful per-key `refs.profile` row-delta cache (ADR-0070). Lives for the
   // runtime's lifetime — row deltas merge into it across frames. Replaces the
   // whole-map `resolved_profiles` decode.
   const refProfiles = new RefProfileStore();
@@ -175,7 +175,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       // Merge the `refs.profile` row-delta sidecar into the stateful store under
       // THIS frame's identity (session_id, snapshot_epoch). The store handles
       // baseline/incremental/identity-rebuild + decode-before-commit + fail-closed
-      // internally (ADR-0063). After every applied sidecar we re-derive the FULL
+      // internally (ADR-0070). After every applied sidecar we re-derive the FULL
       // set (like native desktop/tui) and feed it through `reconcile`, which keeps
       // per-key referential identity so only profiles that actually changed
       // trigger downstream re-renders — AND drops rows the kernel cleared (an

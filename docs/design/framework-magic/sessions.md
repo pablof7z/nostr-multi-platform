@@ -70,7 +70,7 @@ It also discharges `aim.md` §6 doctrine 7: "Sessions are state, switching is an
 
 - `docs/design/subscription-compilation/intro.md` §2.3 — `InterestScope::ActiveAccount` resolution at compile time, not registration time.
 - `docs/design/subscription-compilation/recompilation.md` §4.2 trigger A4 — the actor-message shape of the `ActiveAccountChanged` trigger.
-- ADR-0015 — signer/account boundary.
+- ADR-0072 — signer/account boundary.
 - `docs/product-spec/subsystems.md` §7.4 — `SessionState` field shapes.
 
 ## Interaction with C11

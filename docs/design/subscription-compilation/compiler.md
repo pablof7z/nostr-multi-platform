@@ -137,7 +137,7 @@ pub struct RelayPlan {
 pub struct SubShape {
     pub shape: InterestShape,                  // canonical, post-merge
     pub originating_interests: Vec<InterestId>,
-    pub canonical_filter_hash: String,         // for ADR-0007 WireSubscriptionStatus
+    pub canonical_filter_hash: String,         // for ADR-0072 WireSubscriptionStatus
 }
 ```
 

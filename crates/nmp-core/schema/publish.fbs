@@ -1,6 +1,6 @@
 namespace nmp.publish;
 
-// ADR-0064 / S3 (#1751) — the typed FlatBuffers payload for the `nmp.publish`
+// ADR-0071 / S3 (#1751) — the typed FlatBuffers payload for the `nmp.publish`
 // `ActionModule` (the engine-generic publish noun; lives in `nmp-core/schema`
 // because publish is a core engine capability, not a per-NIP crate noun).
 //
@@ -83,7 +83,7 @@ table PublishSignerSelection {
 union PublishPayloadBody { PublishProfile, PublishRaw, PublishReply }
 
 table PublishPayload {
-  // Fail-closed schema_version tripwire (ADR-0064 §1, read RAW before decode).
+  // Fail-closed schema_version tripwire (ADR-0071 §1, read RAW before decode).
   schema_version:uint;
   body:PublishPayloadBody (required);
 }

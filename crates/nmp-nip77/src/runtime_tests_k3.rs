@@ -291,7 +291,7 @@ fn responded_relay_never_triggers_liveness_fallback() {
     );
 }
 
-// ─── K3 Stage D2: coverage-gate staleness (ADR-0056 §3.D2) ──────────────────────
+// ─── K3 Stage D2: coverage-gate staleness (ADR-0072 §3.D2) ──────────────────────
 //
 // The gate now consults static result surface, not author×kind fanout alone:
 // small exact filters stay on plain REQ, while unbounded filters use full-window

@@ -1,14 +1,14 @@
 //! LMDB `EventStore` backend.
 //!
-//! Architecture (ADR-0011 + ADR-0012): a single `heed::Env` is owned by NMP
+//! Architecture (ADR-0072 + ADR-0071): a single `heed::Env` is owned by NMP
 //! and injected into the `nmp-nostr-lmdb` fork via `Lmdb::with_env`. This lets
 //! NMP open its own sub-databases on the same env so that every `insert()`
 //! commits the event write + NMP secondaries inside one `RwTxn` — atomicity
 //! across the whole pipeline.
 //!
 //! See:
-//!   * `docs/decisions/0011-lmdb-env-sharing.md` — env-sharing policy
-//!   * `docs/decisions/0012-lmdb-write-path-policy.md` — write-path semantics
+//!   * `docs/decisions/0072-runtime-capability-and-shell-boundary.md` — env-sharing policy
+//!   * `docs/decisions/0071-write-intents-and-route-provenance.md` — write-path semantics
 //!
 //! When compiled without `--features lmdb-backend` this module exposes only
 //! the `LmdbEventStore` newtype and an `open()` that returns
@@ -18,7 +18,7 @@
 
 #[cfg(feature = "lmdb-backend")]
 mod conv;
-// K3 Stage D1 (ADR-0056 §3) — coverage-ledger read/write helpers.
+// K3 Stage D1 (ADR-0072 §3) — coverage-ledger read/write helpers.
 #[cfg(feature = "lmdb-backend")]
 mod coverage;
 #[cfg(feature = "lmdb-backend")]
@@ -67,7 +67,7 @@ mod open;
 // LMDB-error classifier: heed/MdbError → typed StoreError variants (#1521).
 #[cfg(feature = "lmdb-backend")]
 mod open_error;
-// ADR-0058 §4 — ingest-log LMDB helpers.
+// ADR-0072 §4 — ingest-log LMDB helpers.
 #[cfg(feature = "lmdb-backend")]
 mod ingest_log;
 
@@ -109,13 +109,13 @@ mod tests_secondary_index;
 // #1521 — typed LMDB health diagnostics: classifier unit tests + integration tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_health_diag;
-// ADR-0058 step-1 — ingest-log smoke tests.
+// ADR-0072 step-1 — ingest-log smoke tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_ingest_log;
-// ADR-0058 fix-verification (split for 500-LOC cap).
+// ADR-0072 fix-verification (split for 500-LOC cap).
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_ingest_log_fixes;
-// ADR-0058 §6 step-4 — Protected-cursor log-retention tests.
+// ADR-0072 §6 step-4 — Protected-cursor log-retention tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_retention;
 // #1811 — durable FTS index: mem↔lmdb parity, early-stop bound, sub-db slot.

@@ -55,7 +55,7 @@ unicode-normalization = "0.1"
 web-time = "1.1"
 
 # LMDB backend deps — feature-gated. The fork at crates/nmp-nostr-lmdb carries
-# the env-injection seam (ADR-0011); heed / nostr-database are the underlying
+# the env-injection seam (ADR-0072); heed / nostr-database are the underlying
 # storage and event-encoding crates.
 nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
 heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }

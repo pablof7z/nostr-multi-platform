@@ -17,7 +17,7 @@ app-relay fallback). NMP has a clean opportunity to do this right.
 | Relay defaults at pool layer    | `explicitRelayUrls` in ctor      | None — pool is connection-only      | **None at transport; all roles at planner**         |
 | Indexer concept                 | Effectively absent (mis-named)   | `lookupRelays` (read-only)          | **First-class, kind-gated, R+W symmetric**          |
 | App-fallback concept            | Conflated with explicit relays   | `setFallbackRelays` (opt-in)        | **First-class, distinct from indexer**              |
-| NIP-51 routing (10007/10013/10102) | None                          | Cast classes only; no router       | **First-class — already designed in ADR-0020**     |
+| NIP-51 routing (10007/10013/10102) | None                          | Cast classes only; no router       | **First-class — already designed in ADR-0071**     |
 | Routing API shape               | God-object methods               | Composable RxJS operators           | **Composable planner partition cases**              |
 | Per-purpose relay subsetting    | No (causes #175 zap bug)         | Yes (loader scopes)                 | **Yes — every relay carries its lane**              |
 | User-published indexer list     | Not modelled                     | Kind 10086 (applesauce-invented)    | **Defer — operator config is the floor for v1**     |
@@ -52,7 +52,7 @@ app-relay fallback). NMP has a clean opportunity to do this right.
   dropping the author from the plan.
 
 Items still open in §7: (a) indexer-set user-mutability surface,
-(b) precise indexer kind-gate range, (e) ADR-0020 / ADR-0021 split.
+(b) precise indexer kind-gate range, (e) ADR-0071 / ADR-0072 split.
 
 ## 1. Where NDK + applesauce converge (even by accident)
 
@@ -119,7 +119,7 @@ createFilterMap(outboxMap, filter) planner::compiler::project_per_relay
 setFallbackRelays(users, fallback) planner::partition::case_apprelay
                                    (NEW — cold-start substitution)
 removeBlacklistedRelays(users, bl) compiler::post_filter::blocked
-                                   (already in ADR-0020 §4.3)
+                                   (already in ADR-0071 §4.3)
 ```
 
 `selectOptimalRelays` is the one NMP should benchmark against
@@ -141,7 +141,7 @@ pub enum RoutingSource {
     /// Lane 4 — user-configured (active-account read/write, debug).
     /// Indexer is REMOVED from this enum and promoted to its own lane.
     UserConfigured(UserConfiguredCategory),
-    /// Lane 5 — NIP-51 class routing (search/draft/wiki — ADR-0020).
+    /// Lane 5 — NIP-51 class routing (search/draft/wiki — ADR-0071).
     ClassRouted { class: EventClass, via: ClassRoutingPath },
     /// Lane 6 — operator-configured indexer relays.
     /// ALWAYS-ON for kind:0, kind:3, kind:10000–19999. R+W symmetric.
@@ -176,7 +176,7 @@ which is a post-pass, not a lane.
    publish kind:0 to it. No applesauce-style silent gap.
 5. **Multi-job magic config fields.** NDK's `explicitRelayUrls` does
    four jobs; NMP splits cleanly: `IndexerRelays`, `AppRelays`,
-   `DefaultRelayLists` (per-NIP-51-class fallback from ADR-0020).
+   `DefaultRelayLists` (per-NIP-51-class fallback from ADR-0071).
 6. **Auto-merging signer-supplied relays** (NDK `autoConnectUserRelays`).
    If the signer has relay opinions, they go through explicit operator
    configuration, not silent injection.
@@ -225,16 +225,16 @@ without:
 - (d3) AppRelay always fires regardless of NIP-65 state.
 
 **(e) Document split: one ADR or two?**
-ADR-0020 currently covers intent-classed routing + NIP-50 search.
+ADR-0071 currently covers intent-classed routing + NIP-50 search.
 Adding Indexer + AppRelay roles is meaningful new scope:
-- (e1) Fold into ADR-0020 — one document, expanded title to
+- (e1) Fold into ADR-0071 — one document, expanded title to
   "Relay routing architecture v2".
-- (e2) Spin out ADR-0021 — relay roles get their own ADR, with
-  ADR-0020 updated to reference the new `RoutingSource` variants.
+- (e2) Spin out ADR-0072 — relay roles get their own ADR, with
+  ADR-0071 updated to reference the new `RoutingSource` variants.
 
 Recommended: **(e2)**. The two concerns are at different abstraction
-levels (relay infrastructure vs intent semantics), and ADR-0021 is a
-prerequisite to ADR-0020's full design. Splits cleanly along the
+levels (relay infrastructure vs intent semantics), and ADR-0072 is a
+prerequisite to ADR-0071's full design. Splits cleanly along the
 existing P3 boundary in the rollout plan.
 
 ## 8. Recommended decision shorthand
@@ -245,11 +245,11 @@ If the user picks "obvious" answers for all of (a)–(e):
 - (b) All 10000–19999 (including DM-relay-list 10050 — public anyway).
 - (c1) AppRelay drops out once NIP-65 fetched.
 - (d1) Per-author fallback (most precise routing).
-- (e2) Separate ADR-0021.
+- (e2) Separate ADR-0072.
 
 These five choices give NMP the cleanest design and the smallest
 v1 surface area. Each is also defensible by analogy: (a1) keeps the
 kernel small, (b) maps the user's stated kind range literally, (c1) /
 (d1) keep AppRelay's role tightly scoped to "fix cold-start, not
-augment steady-state," and (e2) preserves the existing ADR-0020
+augment steady-state," and (e2) preserves the existing ADR-0071
 scope and enables independent rollout.

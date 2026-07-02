@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codec for the blossom upload action
-//! (ADR-0064 / S9 #1747): `nmp.blossom.upload` ([`UploadInput`]).
+//! (ADR-0071 / S9 #1747): `nmp.blossom.upload` ([`UploadInput`]).
 //!
 //! This is the WRITE-direction typed payload carried as the OPAQUE
 //! `DispatchEnvelope.payload`. The registry adapter decodes it through

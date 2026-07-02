@@ -17,7 +17,7 @@
 //! AGENTS.md soft cap (300 LOC) — the methods are otherwise inline `impl
 //! Kernel` items; splitting them out costs nothing at the call site (D0 —
 //! per-app crates compose; the kernel emits, never names a NIP type).
-//! ADR-0009.
+//! ADR-0072.
 
 use super::Kernel;
 use crate::actor::ObservedProjectionId;
@@ -68,7 +68,7 @@ impl Kernel {
         crate::actor::notify_observers(slot, &event);
     }
 
-    /// Deliver one event to a single named observer (ADR-0062 targeted replay).
+    /// Deliver one event to a single named observer (ADR-0070 targeted replay).
     ///
     /// Enriches `relay_provenance` from the store when empty (same as
     /// `notify_event_observers`), then calls `notify_observer_by_id` — which

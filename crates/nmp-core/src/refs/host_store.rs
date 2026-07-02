@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 Lane F) — host-side `refs.profile` / `refs.event`
+//! ADR-0070 (#1671 Lane F) — host-side `refs.profile` / `refs.event`
 //! consumption helpers for the Rust shells (chirp-tui / chirp-desktop).
 //!
 //! The kernel emits `refs.profile` as a per-KEY row-delta projection: each tick's

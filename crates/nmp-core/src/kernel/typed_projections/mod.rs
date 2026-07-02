@@ -1,9 +1,9 @@
 //! Tier-2 typed-projection codecs — the kernel-owned built-in counterpart to
-//! the host-registered Tier-1 typed projections (ADR-0037).
+//! the host-registered Tier-1 typed projections (ADR-0072).
 //!
 //! ## The two tiers
 //!
-//! ADR-0037 carries a strongly-typed FlatBuffer for each snapshot projection in
+//! ADR-0072 carries a strongly-typed FlatBuffer for each snapshot projection in
 //! the `SnapshotFrame`'s `typed_projections` sidecar, ALONGSIDE the generic
 //! `serde_json::Value` subtree, under the SAME key. A host with a decoder for a
 //! key prefers the typed payload; an un-updated host falls back to the generic
@@ -59,7 +59,7 @@
 
 mod accounts_fb;
 mod active_account_fb;
-// V-112 (ADR-0042): author_view_fb / thread_view_fb deleted.
+// V-112 (ADR-0076): author_view_fb / thread_view_fb deleted.
 mod builtins_publish;
 mod builtins_views;
 mod configured_relays_fb;
@@ -69,7 +69,7 @@ mod publish_outbox_fb;
 mod publish_queue_fb;
 mod relay_role_options_fb;
 mod settings_hub_fb;
-// ADR-0063 (#1671 integration glue) — the keyed `refs.profile` / `refs.event`
+// ADR-0070 (#1671 integration glue) — the keyed `refs.profile` / `refs.event`
 // row-delta producer. Unlike the snapshot clusters it runs in `make_update`
 // (needs `&mut self`); see `builtins_refs.rs`.
 mod builtins_refs;
@@ -124,7 +124,7 @@ pub use publish_outbox_fb::{
 // twice in this module's namespace.
 pub(crate) use publish_queue_fb::encode_publish_queue;
 // Wave C identity + views cluster (`accounts` / `active_account` / `profile`).
-// V-112 (ADR-0042): `author_view` / `thread_view` FlatBuffer codecs deleted.
+// V-112 (ADR-0076): `author_view` / `thread_view` FlatBuffer codecs deleted.
 pub(crate) use accounts_fb::encode_accounts;
 pub use accounts_fb::{
     AccountSummaryRow, AccountsModel, ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID,
@@ -135,14 +135,14 @@ pub use active_account_fb::{
     ActiveAccountModel, ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_VERSION,
 };
-// ADR-0063 (#1671 Lane F): the symmetric encoder of the public `decode_profile`.
+// ADR-0070 (#1671 Lane F): the symmetric encoder of the public `decode_profile`.
 // Promoted to `pub` so Rust shells can build a `refs.profile` row payload (a KPRF
 // `ProfileCard` buffer) in fixtures/tests of their host-side consumption.
 pub use profile_fb::encode_profile;
 pub use profile_fb::{
     ProfileCardModel, PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
-// KCEV row payload codec for `refs.event`. ADR-0063 Lane H removed the
+// KCEV row payload codec for `refs.event`. ADR-0070 Lane H removed the
 // host-visible `claimed_events` projection; these types remain because
 // `refs.event` rows reuse the same single-entry FlatBuffer payload.
 pub use claimed_events_fb::encode_claimed_events;
@@ -179,8 +179,8 @@ pub use signed_events_fb::{
     SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
 };
 
-// ADR-0063 (#1671 integration glue) — the two keyed row-delta sidecar keys.
-// Re-exported for the in-crate integration test AND for `make_update`'s ADR-0053
+// ADR-0070 (#1671 integration glue) — the two keyed row-delta sidecar keys.
+// Re-exported for the in-crate integration test AND for `make_update`'s ADR-0070
 // per-key permit gate (`kernel/update.rs`), which reads `declared.permits(key)`
 // for each refs.* key before invoking the producer.
 pub(crate) use builtins_refs::{REFS_EVENT_KEY, REFS_PROFILE_KEY};
@@ -188,7 +188,7 @@ pub(crate) use builtins_refs::{REFS_EVENT_KEY, REFS_PROFILE_KEY};
 pub use relay_role_options_fb::decode_relay_role_options;
 // KCEV row payload codec — `decode_claimed_events` remains public because
 // refs.event host stores decode one single-entry payload per row.
-// ADR-0063 Lane H: decode_claimed_profiles / decode_mention_profiles /
+// ADR-0070 Lane H: decode_claimed_profiles / decode_mention_profiles /
 // decode_resolved_profiles deleted (replaced by refs.profile KPRF row-delta sidecar).
 pub use claimed_events_fb::decode_claimed_events;
 // --- PUBLIC typed-projection decode surface --------------------------------
@@ -232,7 +232,7 @@ pub use active_account_fb::decode_active_account;
 pub use configured_relays_fb::decode_configured_relays;
 pub use profile_fb::decode_profile;
 pub use settings_hub_fb::decode_settings_hub;
-// V-112 (ADR-0042): decode_author_view / decode_thread_view deleted.
+// V-112 (ADR-0076): decode_author_view / decode_thread_view deleted.
 pub use outbox_summary_fb::decode_outbox_summary;
 pub use publish_outbox_fb::decode_publish_outbox;
 
@@ -248,7 +248,7 @@ impl super::Kernel {
     /// reads, in the same tick. `make_update` appends this vector to the
     /// host-registered [`Self::run_typed_projections`] result, so both the
     /// generic `Value` projection and its typed sidecar ride the same
-    /// `SnapshotFrame` under the SAME key (ADR-0037 shared keyspace).
+    /// `SnapshotFrame` under the SAME key (ADR-0072 shared keyspace).
     ///
     /// Adding the next built-in is one new codec module under
     /// `typed_projections/` plus one `push` here — no registry plumbing, no
@@ -262,8 +262,8 @@ impl super::Kernel {
         // diagnostics built-ins (`relay_diagnostics` unconditional once captured;
         // `action_results` / `signed_events` / `action_stages` /
         // `action_lifecycle` present only when captured this tick).
-        // V-112 (ADR-0042): author_view / thread_view conditional built-ins deleted.
-        // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
+        // V-112 (ADR-0076): author_view / thread_view conditional built-ins deleted.
+        // ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
         let mut out = Vec::with_capacity(14);
 
         // `configured_relays` — encoded from the SAME `AppRelay` slice the JSON
@@ -276,7 +276,7 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(CONFIGURED_RELAYS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_configured_relays(&configured_relays),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -298,7 +298,7 @@ impl super::Kernel {
             file_identifier: String::from_utf8_lossy(RELAY_ROLE_OPTIONS_FILE_IDENTIFIER)
                 .into_owned(),
             payload: encode_relay_role_options(&relay_role_options),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -313,7 +313,7 @@ impl super::Kernel {
             schema_version: SETTINGS_HUB_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(SETTINGS_HUB_FILE_IDENTIFIER).into_owned(),
             payload: encode_settings_hub(&settings_hub),
-            // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+            // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
             ..Default::default()
         });
 
@@ -325,7 +325,7 @@ impl super::Kernel {
         out.extend(self.publish_cluster_typed_projections());
 
         // Wave C identity cluster (`accounts` / `active_account` / `profile`
-        // unconditionally). V-112 (ADR-0042): `author_view` / `thread_view`
+        // unconditionally). V-112 (ADR-0076): `author_view` / `thread_view`
         // conditional pushes deleted. Extracted to `builtins_views.rs`.
         out.extend(self.views_cluster_typed_projections());
 
@@ -338,16 +338,16 @@ impl super::Kernel {
         // iff their JSON key is); `relay_diagnostics` is unconditional once
         // captured. Extracted to `builtins_diagnostics.rs` (LOC ceiling).
         //
-        // ADR-0053: the capture-based diagnostics cluster already self-gates —
+        // ADR-0070: the capture-based diagnostics cluster already self-gates —
         // `snapshot_projections_with_publish_cluster` only sets `captured_*` for
         // declared keys, so a gated-out diagnostics built-in (notably the
         // expensive `relay_diagnostics`) was never captured and produces no
         // encode here.
         out.extend(self.diagnostics_cluster_typed_projections());
 
-        // ADR-0053 — the final declared-set gate, mirroring the JSON path's
+        // ADR-0070 — the final declared-set gate, mirroring the JSON path's
         // per-key `permits()` so the typed sidecar and the JSON map carry the
-        // EXACT same key set (the ADR-0037 divergence-safety invariant extended
+        // EXACT same key set (the ADR-0072 divergence-safety invariant extended
         // to the gate). The capture-based diagnostics built-ins are already
         // gated upstream (so the costly `relay_diagnostics` encode is skipped);
         // the remaining live-accessor clusters above are cheap to encode, and

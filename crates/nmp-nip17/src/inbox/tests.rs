@@ -1,6 +1,6 @@
 //! `DmInboxProjection` decrypt-independent unit tests.
 //!
-//! The port-driven gift-UNWRAP decrypt tests (ADR-0050 §D6) live in the sibling
+//! The port-driven gift-UNWRAP decrypt tests (ADR-0072 §D6) live in the sibling
 //! `inbox/chain_tests.rs` — they need the `CommandSender` drain harness. This
 //! file covers the parts that do not decrypt: snapshot shape, the kind filter,
 //! the active-account interest, and serde round-tripping.
@@ -30,7 +30,7 @@ fn inbox_not_signed_in() -> DmInboxProjection {
 #[test]
 fn fresh_inbox_yields_empty_snapshot() {
     // No active account → empty + decrypt_state "unavailable" (the host hides
-    // the DM screen). ADR-0050 §D7: the tri-state replaced the old bool.
+    // the DM screen). ADR-0072 §D7: the tri-state replaced the old bool.
     let inbox = inbox_not_signed_in();
     let snap = inbox.snapshot();
     assert!(snap.conversations.is_empty());

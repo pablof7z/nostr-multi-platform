@@ -4,7 +4,7 @@ use super::super::{Kernel, NostrEvent};
 use super::IngestSource;
 
 impl Kernel {
-    /// ADR-0057 — the single kind-agnostic, source-agnostic accepted-event
+    /// ADR-0070 — the single kind-agnostic, source-agnostic accepted-event
     /// chokepoint. Replaces the two hand-maintained per-kind ingest ladders
     /// (`handle_event`'s relay `match event.kind` arms and the deleted
     /// `record_local_publish_intent` mirror arms).
@@ -48,7 +48,7 @@ impl Kernel {
         let sub_id = source.sub_id();
 
         // Persistence ONLY: sig-verify -> store.insert -> raw-tap -> provenance
-        // accounting -> TTL stamping (ADR-0057). Returns the verified clone so
+        // accounting -> TTL stamping (ADR-0070). Returns the verified clone so
         // the shared projection helper runs without re-verifying the signature.
         let Some((outcome, verified)) = self.verify_and_persist(provenance, &event) else {
             return None;
@@ -81,7 +81,7 @@ impl Kernel {
             if let Some(relay_count) = relay_count {
                 self.cache_event_for_matching_open_interest(&event, relay_count);
             }
-            // Arm BOTH store-wakeup arms for this mutation (ADR-0058 §10): the
+            // Arm BOTH store-wakeup arms for this mutation (ADR-0072 §10): the
             // #1520 cache-serve re-arm for already-served interests matching this
             // event (so live inserts surface in cache projections without a full
             // re-serve), and the pull-cursor wake for any registered cursor whose

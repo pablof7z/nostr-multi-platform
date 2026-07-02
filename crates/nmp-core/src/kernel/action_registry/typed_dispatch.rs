@@ -1,4 +1,4 @@
-//! Typed-bytes (ADR-0064 / S3 #1751) dispatch arm of [`super::ActionRegistry`].
+//! Typed-bytes (ADR-0071 / S3 #1751) dispatch arm of [`super::ActionRegistry`].
 //!
 //! The JSON `start` / `execute` doorway (and the rest of the orchestrator) live
 //! in `action_registry.rs`; this sibling carries the typed FlatBuffers twin

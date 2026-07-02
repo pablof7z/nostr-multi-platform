@@ -1,4 +1,4 @@
-//! Unit tests for [`super::SendGiftWrappedDmCommand`] — the ADR-0050 §D5
+//! Unit tests for [`super::SendGiftWrappedDmCommand`] — the ADR-0072 §D5
 //! continuation-chain DM send.
 //!
 //! The command body no longer spawns a thread or holds a `SignerForSeal`: it
@@ -58,7 +58,7 @@ impl KernelClock for FixedClock {
     }
 }
 
-/// `LocalSignerAccess` stub. ADR-0050 §D5 — the DM chain pins the active account
+/// `LocalSignerAccess` stub. ADR-0072 §D5 — the DM chain pins the active account
 /// by resolving `active_account_pubkey()` once at step 1. `active_local_keys`
 /// stays `None` (the chain never holds raw keys — it signs through the port).
 struct StaticSigner {

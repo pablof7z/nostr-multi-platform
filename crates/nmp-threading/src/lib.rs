@@ -11,9 +11,9 @@
 //!
 //! - `nmp-nip01::Nip10ModularTimelineView` wraps this for NIP-10 kind:1.
 //!
-//! See `docs/decisions/0009-app-extension-kernel-boundary.md` (sibling-crate
-//! packaging rule) and `docs/decisions/0010-generated-app-enum-vs-type-
-//! erased-registry.md`.
+//! See `docs/decisions/0072-runtime-capability-and-shell-boundary.md` and
+//! `docs/architecture/crate-boundaries.md` for the sibling-crate packaging
+//! rule.
 
 pub mod block;
 pub mod etag;

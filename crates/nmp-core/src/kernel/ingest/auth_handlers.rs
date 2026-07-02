@@ -9,7 +9,7 @@ use crate::subs::RelayAuthState;
 use crate::time::UNIX_EPOCH;
 use serde_json::{json, Value};
 
-/// Wire key for the `RelayStatus.auth` field — ADR-0007 §1 / matches the
+/// Wire key for the `RelayStatus.auth` field — ADR-0072 §1 / matches the
 /// `nmp_nip42::state::RelayAuthState::as_status_key` keys verbatim so the
 /// two surfaces stay aligned should the protocol module ever be re-introduced
 /// as a kernel dependency.

@@ -1,6 +1,6 @@
 //! Persistent live-mode kernel host for the gallery TUI.
 //!
-//! The gallery is **live-only** (ADR-0034 / M16): there is no fixture mode,
+//! The gallery is **live-only** (ADR-0072 / M16): there is no fixture mode,
 //! no pre-warm bootstrap, no synthesized embed envelopes. The kernel boots
 //! once at program start and stays alive for the lifetime of the process.
 //!
@@ -51,7 +51,7 @@ pub struct GalleryTypedSnapshot {
     /// `refs.event` row-delta projection.
     pub events: BTreeMap<String, ClaimedEventRow>,
     /// Materialised `pubkey -> ProfileCardModel` set merged from the
-    /// `refs.profile` row-delta projection (ADR-0063 #1671).
+    /// `refs.profile` row-delta projection (ADR-0070 #1671).
     pub profiles: BTreeMap<String, ProfileCardModel>,
     /// Per-relay connection statuses (Tier-3 envelope field).
     pub relay_statuses: Vec<nmp_core::RelayStatusEntry>,
@@ -128,7 +128,7 @@ unsafe impl Send for LiveKernelSink {}
 unsafe impl Sync for LiveKernelSink {}
 
 impl LiveKernelSink {
-    /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671).
+    /// Resolve a visible profile reference for `pubkey` (ADR-0070 #1671).
     pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
         self.resolve_profile_with_shape(pubkey, consumer_id, nmp_core::ProfileShape::Ref);
     }

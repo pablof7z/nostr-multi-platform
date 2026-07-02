@@ -3,7 +3,7 @@
 //! ## What this emits and why
 //!
 //! Snapshot projections ship typed FlatBuffer entries in the
-//! `SnapshotFrame.typed_projections` sidecar (ADR-0037/0044). Some keys still
+//! `SnapshotFrame.typed_projections` sidecar (ADR-0072/0044). Some keys still
 //! have a generic JSON `payload` fallback; newer derived projections such as
 //! `refs.event.envelopes` are typed-only. Switching Chirp's consumer off the
 //! JSON path means decoding those sidecars in Swift. The hand-written precedent is

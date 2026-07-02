@@ -1,5 +1,5 @@
 //! Tests for the OP-feed composition root's live, fail-closed active-follows
-//! shape provider (ADR-0058 §8 6B, B1 logout-race fail-close).
+//! shape provider (ADR-0072 §8 6B, B1 logout-race fail-close).
 
 use super::*;
 use std::collections::BTreeSet;

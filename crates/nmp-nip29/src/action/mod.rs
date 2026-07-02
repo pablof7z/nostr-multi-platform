@@ -21,7 +21,7 @@
 //!   existing group's name/about/picture/visibility/access (admin action).
 //!
 //! NIP-29 ships group creation (public or private), generic group-event publishing,
-//! discovery, join, and the ADR-0060 admin subset (`9000` / `9009`) in v1. The
+//! discovery, join, and the ADR-0070 admin subset (`9000` / `9009`) in v1. The
 //! other moderation actions remain out of this increment.
 
 mod admin;

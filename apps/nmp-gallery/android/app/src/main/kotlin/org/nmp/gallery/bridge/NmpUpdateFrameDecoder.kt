@@ -25,7 +25,7 @@ internal object NmpUpdateFrameDecoder {
 
     fun decodeSnapshot(
         bytes: ByteArray,
-        // ADR-0063 (#1671): the JSON provider is now session-scoped (it merges
+        // ADR-0070 (#1671): the JSON provider is now session-scoped (it merges
         // refs.profile into the native session store), so callers MUST pass
         // `bridge::decodeSnapshotJson`. No static default — the decode cannot be
         // sessionless. Tests pass an in-memory provider.

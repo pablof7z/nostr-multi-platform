@@ -15,7 +15,7 @@ use super::profile_wire::ProfileWire;
 /// references. The host supplies the platform adapter; the widget owns the
 /// resolve intent and reads the current projection each frame.
 ///
-/// ADR-0063 (#1671): `resolve_ref` replaces the old `claim_profile` — the
+/// ADR-0070 (#1671): `resolve_ref` replaces the old `claim_profile` — the
 /// host calls a typed profile-ref adapter and reads the resolved row from the shell's
 /// `RefProfileStore` mirror, not from the old `claimed_profiles` map.
 pub trait NostrProfileHost {

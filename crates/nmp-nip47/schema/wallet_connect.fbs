@@ -1,6 +1,6 @@
 namespace nmp.nip47;
 
-// ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.wallet.connect`
+// ADR-0071 (#1756) — typed FlatBuffers payload for the `nmp.wallet.connect`
 // `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
 // registry adapter decodes against THIS schema, gating `schema_version` BEFORE
 // `start()` (fail-closed on mismatch). WRITE-direction action payload; distinct

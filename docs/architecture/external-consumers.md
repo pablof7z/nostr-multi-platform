@@ -17,14 +17,14 @@ migrate to `nmp-substrate` plus explicit protocol/app composition.
 
 | App | Description | Evidence |
 |-----|-------------|----------|
-| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); the 2026-06-14 snapshot pinned the then-current NMP crate set by git rev from `github.com/pablof7z/nostr-multi-platform` (bumped to **nmp-v0.7.0 / rev `ce0097cde`** on 2026-06-14, the keystone-series release — ADR-0050/0052/0056). That snapshot predated the defaults deletion; the next pin bump must migrate to explicit substrate/protocol composition. Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. |
-| **hl** | Highlighter app | `~/Work/hl` (external workspace). The 2026-06-14 snapshot used local path deps into the monorepo checkout and therefore tracked whatever crate split existed at that revision. Current bumps must migrate off deleted defaults APIs to `nmp-substrate` plus explicit protocol/app composition. `hl`'s nostrdb mirror uses the **pull cursor** contract (ADR-0058). See the **Host mirror consumption contract** section below. The in-repo boundary is locked by `no_raw_tap_reintroduction`. |
+| **podcast-player** | Podcast client | `~/Work/podcast-player` (external workspace); the 2026-06-14 snapshot pinned the then-current NMP crate set by git rev from `github.com/pablof7z/nostr-multi-platform` (bumped to **nmp-v0.7.0 / rev `ce0097cde`** on 2026-06-14, the keystone-series release — ADR-0072/0052/0056). That snapshot predated the defaults deletion; the next pin bump must migrate to explicit substrate/protocol composition. Contains `apps/nmp-app-podcast` (~56k LOC Rust composing `ffi/register.rs`, `nmp_dispatch.rs`, `android.rs`) and a ~100k-LOC Swift iOS app. |
+| **hl** | Highlighter app | `~/Work/hl` (external workspace). The 2026-06-14 snapshot used local path deps into the monorepo checkout and therefore tracked whatever crate split existed at that revision. Current bumps must migrate off deleted defaults APIs to `nmp-substrate` plus explicit protocol/app composition. `hl`'s nostrdb mirror uses the **pull cursor** contract (ADR-0072). See the **Host mirror consumption contract** section below. The in-repo boundary is locked by `no_raw_tap_reintroduction`. |
 | **Olas** | Picture-first social app | `~/Work/Olas` (external workspace). Composes NMP through its `apps/olas/nmp-app-olas` crate and should open picture feeds through ADR-0076's feed-shaped helper, backed by `FeedParams`: primary kind `[20]`, app-owned source/admission/order policy, explicit item projection, and NIP-68/NIP-18 wrapper derivation below the app boundary. Raw `open_interest` is low-level internal acquisition machinery, not the Olas feed lane or a public native-app API. Olas is the concrete external consumer that pulled the generic `nmp-nip68` picture-event wrapper forward: reusable NIP-68 parse/build logic belongs in the protocol crate, while Olas keeps app policy such as feed mode, order, onboarding, image editing, and UI. |
 | **win-the-day** | — | **NOT an NMP consumer as checked out** (`~/Work/win-the-day-app`, 2026-06-14): pure SwiftUI/Watch app, zero Rust / zero `nmp-*` linkage (only `secp256k1.swift` + a `nostrsigner` URL scheme). Previously listed here as an "owner-operated NMP app"; the local checkout shows no NMP dependency. **Owner: reconcile — either a different app was intended, or it was never wired to NMP.** |
 
 ---
 
-## Host mirror consumption contract (ADR-0058)
+## Host mirror consumption contract (ADR-0072)
 
 An out-of-tree app that needs a complete, durable copy of the event log (e.g.
 `hl`'s nostrdb mirror) uses the **pull cursor**, not a push callback. The
@@ -36,7 +36,7 @@ canonical contract, in order:
    `after_seq` — restart re-registers with the persisted `after_seq`.
 
 2. **Receive** the `nmp.pull.wake { cursor_id, latest_seq }` typed projection
-   (ADR-0037). This is level-triggered: it re-fires while
+   (ADR-0072). This is level-triggered: it re-fires while
    `after_seq < latest_seq`. Rust exposes `decode_pull_wake_batch` in
    `crates/nmp-core/src/kernel/pull_wake.rs`; platform-specific host decoder
    glue belongs with the first in-repo consumer (not here — `hl` is
@@ -65,7 +65,7 @@ canonical contract, in order:
 **Mirror-as-semantic-superset invariant:** the mirror keeps events the
 producing store retention-evicted and never deletes its copy on a retention
 eviction — only on a semantic NIP-09 / NIP-40 / AdminPurge delete. See
-ADR-0058 §5 for the full contract.
+ADR-0072 §5 for the full contract.
 
 **What is NOT the mirror API:**
 - `nmp_app_register_event_sink` / ack-callback / retain-until-ack — this was

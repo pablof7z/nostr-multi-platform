@@ -6,7 +6,7 @@
 //! carrying `name` / `display_name` / `picture` / `nip05` / `about` and the
 //! NIP-57 `lud16` / `lud06` lightning fields. The kernel projects this data
 //! into timeline-item enrichment, profile cards, the zap LNURL gate, and the
-//! claim/TTL dedup gates. Before ADR-0057 PR 2 the cache + parse lived in the
+//! claim/TTL dedup gates. Before ADR-0070 PR 2 the cache + parse lived in the
 //! kernel (`profiles: HashMap<String, Profile>` + the `ingest_profile` arm) —
 //! both NIP-01 nouns inside `nmp-core`. PR 2 moves them here, mirroring the
 //! NIP-17 `DmRelayCache` migration:

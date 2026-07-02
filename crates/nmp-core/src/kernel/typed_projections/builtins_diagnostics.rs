@@ -108,7 +108,7 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
 }
 
 /// Map one captured `RelayDiagnosticsInfo` struct onto the codec's [`InfoRow`]
-/// (ADR-0051). The `pub(super)` struct fields are reachable here.
+/// (ADR-0072). The `pub(super)` struct fields are reachable here.
 fn info_row(info: &super::super::relay_diagnostics::RelayDiagnosticsInfo) -> InfoRow {
     InfoRow {
         name: info.name.clone(),
@@ -162,7 +162,7 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_RESULTS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_results(&model),
-                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
                 ..Default::default()
             });
         }
@@ -178,7 +178,7 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(SIGNED_EVENTS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_signed_events(&model),
-                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
                 ..Default::default()
             });
         }
@@ -194,7 +194,7 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_STAGES_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_stages(&model),
-                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
                 ..Default::default()
             });
         }
@@ -210,7 +210,7 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(ACTION_LIFECYCLE_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_action_lifecycle(&model),
-                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
                 ..Default::default()
             });
         }
@@ -230,7 +230,7 @@ impl super::super::Kernel {
                 file_identifier: String::from_utf8_lossy(RELAY_DIAGNOSTICS_FILE_IDENTIFIER)
                     .into_owned(),
                 payload: encode_relay_diagnostics(&model),
-                // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+                // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
                 ..Default::default()
             });
         }

@@ -1,4 +1,4 @@
-//! ADR-0043 Decision 2 — `ActorCommand::SignEventForAccount` dispatch-arm +
+//! ADR-0071 Decision 2 — `ActorCommand::SignEventForAccount` dispatch-arm +
 //! idle-loop drain tests for BOTH signing backends.
 //!
 //! These prove the worker code path is identical for a local nsec and a
@@ -26,7 +26,7 @@
 
 mod signer_fixtures_support;
 
-mod local_backend_tests;
-mod bunker_backend_tests;
-mod no_active_account_tests;
 mod budget_regression_tests;
+mod bunker_backend_tests;
+mod local_backend_tests;
+mod no_active_account_tests;

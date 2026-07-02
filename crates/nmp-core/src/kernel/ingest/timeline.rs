@@ -1,6 +1,6 @@
 //! Timeline read-cache projection.
 //!
-//! ADR-0057 — the timeline read-cache (`self.events` / `self.timeline`) is a
+//! ADR-0070 — the timeline read-cache (`self.events` / `self.timeline`) is a
 //! **chokepoint-fed projection observer**, not a per-kind ingest arm. Admission
 //! + persistence are owned by the single accepted-event chokepoint
 //! ([`Kernel::ingest_accepted_event`] → [`Kernel::verify_and_persist`], the D4
@@ -15,7 +15,7 @@ use super::super::{Instant, Kernel, NostrEvent, OutboundMessage, StoredEvent};
 impl Kernel {
     /// TEST-SUPPORT ONLY — historical kind:1|6 timeline-ingest entry point.
     ///
-    /// ADR-0057 deleted the production per-kind timeline ingest arm; production
+    /// ADR-0070 deleted the production per-kind timeline ingest arm; production
     /// timeline events flow through the single accepted-event chokepoint
     /// ([`Kernel::ingest_accepted_event`]) reached from `handle_event`. This
     /// driver preserves the `(role, relay_url, sub_id, event) -> bool` signature
@@ -49,7 +49,7 @@ impl Kernel {
         )
     }
 
-    /// ADR-0057 — project an already-persisted timeline event
+    /// ADR-0070 — project an already-persisted timeline event
     /// into the timeline read-cache (`self.events` + `self.timeline`).
     ///
     /// Called by the test/diagnostic timeline path AFTER `verify_and_persist`
@@ -79,7 +79,7 @@ impl Kernel {
 
         match outcome {
             Some(InsertOutcome::Duplicate { sources_after, .. }) => {
-                // ADR-0057 — the `relay_count` bump on `Duplicate` is preserved
+                // ADR-0070 — the `relay_count` bump on `Duplicate` is preserved
                 // (a diagnostic signal). It stays projection-silent: the
                 // observers already fired once on the original `Inserted`.
                 if let Some(cached) = self.events.get_mut(&event.id) {
@@ -97,7 +97,7 @@ impl Kernel {
             _ => return,
         }
 
-        // Read-time relevance predicate (ADR-0057): "does this event belong in
+        // Read-time relevance predicate (ADR-0070): "does this event belong in
         // MY timeline VIEW?". It NO LONGER gates persistence — the event is
         // already in the authoritative store. A non-relevant event is simply
         // absent from the timeline read-cache; a later follow (kind:3) that adds
@@ -133,7 +133,7 @@ impl Kernel {
 
         // D9: kernel owns time — clamp relay-supplied created_at to now so a
         // future-dated event from a hostile/buggy relay cannot pin permanently
-        // at the top of the timeline VIEW. ADR-0057: the clamp is applied to the
+        // at the top of the timeline VIEW. ADR-0070: the clamp is applied to the
         // observer-delivered `KernelEvent` at the chokepoint (so ALL feed
         // consumers are protected), and this read-cache projection clamps
         // independently as well — strictly stronger, since it also clamps the
@@ -161,7 +161,7 @@ impl Kernel {
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
         }
-        // V-112 (ADR-0042): enqueue_thread_hydration_from_event call deleted —
+        // V-112 (ADR-0076): enqueue_thread_hydration_from_event call deleted —
         // thread hydration is now handled by the per-app FlatFeed.
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
             self.insert_timeline_id_sorted(event.id.clone());
@@ -172,7 +172,7 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    /// ADR-0057 — TIMELINE-PROJECTION (read-time VIEW) predicate. "Does this
+    /// ADR-0070 — TIMELINE-PROJECTION (read-time VIEW) predicate. "Does this
     /// already-persisted event belong in MY timeline VIEW?".
     ///
     /// This has **no** power over persistence. Persistence is owned by the
@@ -183,9 +183,9 @@ impl Kernel {
     /// read-cache"; the event remains in the store and is surfaced later by
     /// cache-serve if a follow / interest brings it into view. Do NOT
     /// reintroduce a `store.insert` gate on this predicate — that was the #1442
-    /// relevance-shaped-holes bug ADR-0057 removed.
+    /// relevance-shaped-holes bug ADR-0070 removed.
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
-        // V-112 (ADR-0042): author_view.selected_author clause + author-notes-/
+        // V-112 (ADR-0076): author_view.selected_author clause + author-notes-/
         // thread-ids-/thread-replies- sub_id prefix clauses deleted. These were
         // view predicates for the legacy author_view/thread_view state machine; the
         // FlatFeed seam uses open_interest which is covered by matches_active_open_interest.
@@ -198,7 +198,7 @@ impl Kernel {
             // OneshotKind dispatch (T104) rather than string-prefix.
             || self.is_discovery_oneshot(sub_id)
             || self.claim_expansion_match_author(sub_id, event).is_some()
-            // M2 (ADR-0042 §5.1): include any event matching the wire filter of
+            // M2 (ADR-0076 §5.1): include any event matching the wire filter of
             // an active generic `open_interest` in the timeline VIEW. This is the
             // single generalised view clause that makes a generic `open_interest`
             // REQ render end-to-end — a non-followed author's notes, an arbitrary
@@ -206,7 +206,7 @@ impl Kernel {
             // (`self.events`) without any bespoke per-view sub-id prefix.
             // (`notify_event_observers` is NOT gated by this clause — the
             // chokepoint fires observers unconditionally on Inserted|Replaced|
-            // Ephemeral per ADR-0057; this clause governs timeline-VIEW
+            // Ephemeral per ADR-0070; this clause governs timeline-VIEW
             // membership only.) The wire sub_id is a *merged* compiler hash
             // (the lattice coalesces many shapes into one REQ), so it cannot be
             // reverse-mapped to one interest; matching the event against the
@@ -249,7 +249,7 @@ impl Kernel {
         self.cached_estimated_store_bytes.set(None);
     }
 
-    /// ADR-0042 §5.1 — does `event` satisfy the wire filter of any active
+    /// ADR-0076 §5.1 — does `event` satisfy the wire filter of any active
     /// registered interest? Drives the generalised `should_store_event`
     /// admission clause for generic `open_interest` feeds.
     fn matches_active_open_interest(&self, event: &NostrEvent) -> bool {

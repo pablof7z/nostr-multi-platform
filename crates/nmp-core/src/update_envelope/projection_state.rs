@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 2 — wire presence state for one typed projection sidecar entry.
+//! ADR-0070 Rung 2 — wire presence state for one typed projection sidecar entry.
 //!
 //! Extracted to a sibling module so `update_envelope.rs` stays under the 500-LOC
 //! ceiling. The enum + both `From` conversions are the entire owned↔FlatBuffers

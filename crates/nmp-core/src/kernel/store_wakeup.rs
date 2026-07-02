@@ -1,11 +1,11 @@
-//! Event-driven store-wakeup subsystem (ADR-0058 §10, step 3a).
+//! Event-driven store-wakeup subsystem (ADR-0072 §10, step 3a).
 //!
 //! The single actor-owned wake source. Generalizes the #1520 event-driven
 //! cache-serve wakeup into one structure that carries **both** wake arms:
 //!
 //! - `cache_serve`: the #1520 set of already-served interest completion keys
 //!   that a live insert re-armed (behavior preserved **byte-for-byte**).
-//! - `pull`: ADR-0058 pull-cursor wakes, coalesced to `cursor_id -> latest_seq`.
+//! - `pull`: ADR-0072 pull-cursor wakes, coalesced to `cursor_id -> latest_seq`.
 //!
 //! `Kernel` owns exactly **one** [`StoreWakeups`]. There is no separate
 //! `pull_wakeups` field, no channel, no callback, no timer — D8 (no polling):
@@ -50,7 +50,7 @@ pub(in crate::kernel) struct StoreWakeups {
     /// #1520 cache-serve re-arm set — already-served interest completion keys.
     /// `BTreeSet` coalesces N rapid inserts for one interest to ONE entry.
     pub(in crate::kernel) cache_serve: BTreeSet<u64>,
-    /// ADR-0058 pull-cursor wakes — coalesced `cursor_id -> latest_seq`.
+    /// ADR-0072 pull-cursor wakes — coalesced `cursor_id -> latest_seq`.
     pub(in crate::kernel) pull: BTreeMap<PullCursorId, u64>,
 }
 
@@ -94,7 +94,7 @@ impl Kernel {
             }
         }
 
-        // ── pull arm (ADR-0058) ───────────────────────────────────────────────
+        // ── pull arm (ADR-0072) ───────────────────────────────────────────────
         // Only arm pull wakes when the ingest log actually advanced
         // (`Inserted | Replaced`). Ephemerals match interests for the cache-serve
         // arm above but are never stored and never advance `latest_ingest_seq`,

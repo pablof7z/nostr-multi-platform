@@ -92,7 +92,7 @@ use frame::wire_frame_to_command;
 use inner::PoolInner;
 
 /// Narrow event-delivery seam the pool's translator thread pushes
-/// [`PoolEvent`]s into (ADR-0050 §D3a).
+/// [`PoolEvent`]s into (ADR-0072 §D3a).
 ///
 /// Historically the pool delivered events through a bare
 /// `std::sync::mpsc::Sender<PoolEvent>`. The actor now needs relay events to
@@ -106,7 +106,7 @@ use inner::PoolInner;
 /// `Sender::send().is_err()` break. The translator's worker→pool channel still
 /// closes when the workers exit on pool shutdown, so it does not spin.
 ///
-/// **Non-blocking contract (ADR-0050 §D3a):** `send_event` MUST be
+/// **Non-blocking contract (ADR-0072 §D3a):** `send_event` MUST be
 /// non-blocking — it must enqueue without waiting on the consumer (the
 /// blanket impl below wraps an *unbounded* `mpsc::Sender`, and the actor's
 /// adapter likewise pushes onto an unbounded inbox). The translator clones

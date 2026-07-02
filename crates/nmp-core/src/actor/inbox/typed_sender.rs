@@ -116,7 +116,7 @@ impl CommandSender {
         ));
     }
 
-    /// Fire-and-forget outbound frame send (ADR-0065 `EnqueueOutbound`).
+    /// Fire-and-forget outbound frame send (ADR-0071 `EnqueueOutbound`).
     ///
     /// Posts a raw `text` frame to `relay_url` on the `role` lane without
     /// waiting for delivery confirmation. Used by `RelayConnectedHook` impls

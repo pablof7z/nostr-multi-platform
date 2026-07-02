@@ -9,7 +9,7 @@
 //! platforms (Swift / Kotlin / TypeScript) can decode with generated accessors
 //! instead of JSON reflection. It is a sidecar codec: the serde shape stays
 //! authoritative; this is the typed payload carried in the `typed_projections`
-//! sidecar (ADR-0037, `crates/nmp-core/schema/nmp_update.fbs`).
+//! sidecar (ADR-0072, `crates/nmp-core/schema/nmp_update.fbs`).
 //!
 //! Note the deliberate key/schema_id split (same convention wallet used): the
 //! snapshot-tree registration key is `"nmp.follow_list"`, while this typed

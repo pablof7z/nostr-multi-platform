@@ -1,4 +1,4 @@
-//! ADR-0050 §D6 — gift-UNWRAP through the signer port.
+//! ADR-0072 §D6 — gift-UNWRAP through the signer port.
 //!
 //! These tests drive `DmInboxProjection`'s port-chain end-to-end without a real
 //! actor: the projection emits `ActorCommand::Nip44DecryptForAccount` into a
@@ -265,7 +265,7 @@ fn bunker_backend_decrypts_through_the_port_with_no_local_keys() {
     // Bob's active account is a bunker: the projection holds NO `Keys` — only
     // Bob's hex pubkey in the active-account slot. The harness decrypts on the
     // bunker's behalf (RemoteStub), proving the inbox is STRUCTURALLY able to
-    // unseal a gift-wrap for a remote signer (ADR-0050 §D6 — the V-08 fix).
+    // unseal a gift-wrap for a remote signer (ADR-0072 §D6 — the V-08 fix).
     let alice = Keys::generate();
     let bob = Keys::generate();
     let (proj, rx) = projection_for(&bob.public_key());

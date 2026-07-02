@@ -1,6 +1,6 @@
 //! D27 — banned display helpers in projection / snapshot / FFI serialization.
 //!
-//! ADR-0032 §3 deferred this lint (see §"What this ADR does *not* do").
+//! ADR-0072 §3 deferred this lint (see §"What this ADR does *not* do").
 //! Regression history: pubkey-to-npub and "ago" formatting leaked into the
 //! snapshot wire format twice (#1099 signer-label, #623 wallet-status).
 //!
@@ -26,7 +26,7 @@
 //!
 //! - `crates/nmp-nip*/src/` — entire protocol-crate source trees.
 //! - `crates/nmp-marmot/src/` — entire marmot source (minus
-//!   `projection/display.rs`, which ADR-0032 explicitly permits as free-form
+//!   `projection/display.rs`, which ADR-0072 explicitly permits as free-form
 //!   metadata fallbacks for the MarmotGroupRow name field).
 //! - `crates/nmp-core/src/` — projection-specific paths only to avoid false
 //!   positives in the logging / debug subtrees:
@@ -45,7 +45,7 @@
 //! - The doctrine-lint binary's own source (contains the banned tokens as
 //!   string constants — meta-false-positives on broad sweeps).
 //! - `nmp-marmot/src/projection/display.rs` — free-form name fallbacks
-//!   explicitly permitted by ADR-0032 (not pubkey/timestamp formatters).
+//!   explicitly permitted by ADR-0072 (not pubkey/timestamp formatters).
 //!
 //! ## Per-line opt-out
 //!
@@ -125,10 +125,10 @@ pub fn file_in_scope(path: &Path) -> bool {
         return true;
     }
 
-    // nmp-marmot: entire src/, but exempt the ADR-0032-permitted display module
+    // nmp-marmot: entire src/, but exempt the ADR-0072-permitted display module
     // (free-form name fallbacks — not pubkey/timestamp formatters).
     if s.contains("/crates/nmp-marmot/src/") || s.contains("crates/nmp-marmot/src/") {
-        // projection/display.rs is explicitly permitted by ADR-0032.
+        // projection/display.rs is explicitly permitted by ADR-0072.
         if s.ends_with("/projection/display.rs") || s.ends_with("projection/display.rs") {
             return false;
         }
@@ -179,7 +179,7 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
                 col,
                 format!(
                     "`{name}(` called in a projection / snapshot / FFI serialization \
-                     path violates ADR-0032 (D27): projection code must emit raw \
+                     path violates ADR-0072 (D27): projection code must emit raw \
                      protocol data; display formatting belongs in the shell"
                 ),
                 CALL_SUGGESTED.to_string(),
@@ -214,7 +214,7 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
                         pos + 1,
                         format!(
                             "precomputed `{field_name}:` `String` field in a projection \
-                             type violates ADR-0032 (D27): projection structs must carry \
+                             type violates ADR-0072 (D27): projection structs must carry \
                              raw protocol data; the shell derives display strings on the \
                              host side (see regressions #1099 and #623)"
                         ),
@@ -277,7 +277,7 @@ mod tests {
             hits[0].1.contains("short_npub"),
             "message must name the token"
         );
-        assert!(hits[0].1.contains("ADR-0032"), "must ref ADR-0032");
+        assert!(hits[0].1.contains("ADR-0072"), "must ref ADR-0072");
     }
 
     #[test]
@@ -327,7 +327,7 @@ mod tests {
         let hits = check("    pub kinds_label: String,", false, false);
         assert_eq!(hits.len(), 1, "kinds_label: String must be flagged");
         assert!(hits[0].1.contains("kinds_label"));
-        assert!(hits[0].1.contains("ADR-0032"));
+        assert!(hits[0].1.contains("ADR-0072"));
     }
 
     #[test]
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn marmot_projection_display_is_exempt() {
-        // ADR-0032 explicitly permits these free-form name fallbacks.
+        // ADR-0072 explicitly permits these free-form name fallbacks.
         assert!(!file_in_scope(Path::new(
             "crates/nmp-marmot/src/projection/display.rs"
         )));

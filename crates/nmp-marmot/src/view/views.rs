@@ -2,7 +2,7 @@
 //! `docs/research/mdk-api.md` §6.
 //!
 //! `GroupMessages` is relay-pinned to the group relay (kind:445) via
-//! `InterestShape::relay_pin` (ADR-0012). `GroupList` projects
+//! `InterestShape::relay_pin` (ADR-0071). `GroupList` projects
 //! off service-materialised state (the actual member set + decrypted history
 //! come from MDK, not the raw wire), so its dependency surface is the
 //! relay-pinned kind:445 stream that triggers re-projection ticks; the
@@ -134,7 +134,7 @@ impl GroupMessagesView {
     }
     #[must_use]
     pub fn dependencies(spec: &GroupMessagesSpec) -> ViewDependencies {
-        // kind:445 group-event stream, pinned to the group relay (ADR-0012
+        // kind:445 group-event stream, pinned to the group relay (ADR-0071
         // third lane). The structural surface declares the kind; `relay_pin`
         // declares the host affinity in the data model.
         ViewDependencies {

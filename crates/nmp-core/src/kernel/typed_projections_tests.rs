@@ -1,5 +1,5 @@
 //! End-to-end proof for the Tier-2 (kernel-owned built-in) typed-projection
-//! sidecars — the Wave C pattern (ADR-0037).
+//! sidecars — the Wave C pattern (ADR-0072).
 //!
 //! The bar (mirroring the Tier-1 proof
 //! `crates/explicit composition/tests/typed_dm_runtime_sidecar.rs`): a built-in
@@ -228,7 +228,7 @@ fn publish_cluster_builtins_emit_typed_sidecars_alongside_json() {
     );
     let decoded_summary =
         decode_outbox_summary(&os.payload).expect("outbox_summary sidecar must decode");
-    // ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
+    // ADR-0072 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
     // removed from the wire; only raw counters are asserted here.
     assert_eq!(
         os_json.get("total").and_then(serde_json::Value::as_u64),
@@ -254,30 +254,30 @@ fn builtins_emit_without_any_host_typed_registration() {
     assert!(keys.contains("outbox_summary"));
     // Wave C identity cluster: accounts / active_account / profile are
     // unconditional.
-    // V-112 (ADR-0042): author_view / thread_view deleted from typed sidecars.
+    // V-112 (ADR-0076): author_view / thread_view deleted from typed sidecars.
     assert!(keys.contains("accounts"));
     assert!(keys.contains("active_account"));
     assert!(keys.contains("profile"));
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+    // ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
     // claimed_events deleted from whole-map typed sidecars. Profile and event
     // refs now flow through row-delta carriers.
     assert!(keys.contains("refs.profile"));
     assert!(keys.contains("refs.event"));
     assert!(
         !keys.contains("claimed_events"),
-        "claimed_events whole-map sidecar deleted (ADR-0063 Lane H)"
+        "claimed_events whole-map sidecar deleted (ADR-0070 Lane H)"
     );
     assert!(
         !keys.contains("mention_profiles"),
-        "mention_profiles deleted (ADR-0063 Lane H)"
+        "mention_profiles deleted (ADR-0070 Lane H)"
     );
     assert!(
         !keys.contains("claimed_profiles"),
-        "claimed_profiles deleted (ADR-0063 Lane H)"
+        "claimed_profiles deleted (ADR-0070 Lane H)"
     );
     assert!(
         !keys.contains("resolved_profiles"),
-        "resolved_profiles deleted (ADR-0063 Lane H)"
+        "resolved_profiles deleted (ADR-0070 Lane H)"
     );
     // Wave C action-lifecycle + diagnostics cluster: `relay_diagnostics` is
     // unconditional (captured every emit), so it appears on a fresh kernel; the
@@ -300,7 +300,7 @@ fn builtins_emit_without_any_host_typed_registration() {
         !keys.contains("action_lifecycle"),
         "action_lifecycle is absent in steady state (nothing tracked)"
     );
-    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
+    // ADR-0070 Lane H: mention_profiles / claimed_profiles / resolved_profiles /
     // claimed_events removed from whole-map typed sidecars. The two refs.*
     // row-delta carriers are unconditional Tier-2 entries.
     // Breakdown: 6 relay/settings/publish + 3 identity/views + 2 refs.*
@@ -311,7 +311,7 @@ fn builtins_emit_without_any_host_typed_registration() {
         "the six relay/settings/publish built-ins + the three unconditional \
          identity/views built-ins (accounts / active_account / profile) + the \
          refs.profile / refs.event row-delta carriers + relay_diagnostics = 12; \
-         ADR-0063 Lane H removed mention_profiles / claimed_profiles / \
+         ADR-0070 Lane H removed mention_profiles / claimed_profiles / \
          resolved_profiles / claimed_events; \
          the four drain-on-emit built-ins absent on a fresh kernel: {typed:?}"
     );

@@ -47,12 +47,12 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     ///
     /// Default is 5s (correct for a NIP-46 relay RPC). `Nip55Signer` overrides
     /// to 90s because an Android Intent round-trip requires the user to
-    /// foreground Amber and tap approve (ADR-0048 D3). The actor reads this via
+    /// foreground Amber and tap approve (ADR-0072 D3). The actor reads this via
     /// the handle it already holds; the constant itself lives in
     /// `nmp-signer-iface` (alongside this trait) so `nmp-core` never sees a
     /// NIP-55 noun.
     ///
-    /// Named `op_timeout` (ADR-0050 D4 — hard-break rename from `sign_timeout`,
+    /// Named `op_timeout` (ADR-0072 D4 — hard-break rename from `sign_timeout`,
     /// no compat alias per repo rule) because it now budgets all three port
     /// verbs — `sign`, `nip44_encrypt`, `nip44_decrypt` — uniformly. One budget
     /// per backend (NIP-46 = 5s, NIP-55 = 90s); per-verb differentiation inside
@@ -66,7 +66,7 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent>;
 
     /// NIP-44 encrypt `plaintext` to `recipient_pubkey`. Used to build the
-    /// kind:13 seal in a NIP-59 gift-wrap (ADR-0026). The ephemeral kind:1059
+    /// kind:13 seal in a NIP-59 gift-wrap (ADR-0072). The ephemeral kind:1059
     /// outer wrap is actor-local — the actor generates that ephemeral key
     /// itself — so only the seal needs this method.
     ///
@@ -79,7 +79,7 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String>;
 
     /// NIP-44 decrypt `ciphertext` from `sender_pubkey`. Used for inbound
-    /// kind:13 seal decryption on the DM receive path (ADR-0026).
+    /// kind:13 seal decryption on the DM receive path (ADR-0072).
     ///
     /// `sender_pubkey` is lowercase hex. See [`Self::nip44_encrypt`] for the
     /// `&str`-vs-`&PublicKey` and `SignerOp` rationale.
@@ -88,7 +88,7 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// Begin an optional scoped NIP-44 decrypt session.
     ///
     /// Non-capable signers return [`SignerError::Unsupported`] by default so
-    /// the actor can keep using the ADR-0050 scalar fallback.  Implementations
+    /// the actor can keep using the ADR-0072 scalar fallback.  Implementations
     /// that support the NMP NIP-46 extension should return a signer-owned
     /// grant and keep reusable conversation secrets inside the signer boundary.
     fn nip44_decrypt_session_begin(
@@ -137,7 +137,7 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// than poisoning the signer state.
     ///
     /// Named `deliver_response` (not `deliver_rpc_response`) because NIP-55
-    /// is not RPC-based. This is the ADR-0048 hard-break rename; no compat
+    /// is not RPC-based. This is the ADR-0072 hard-break rename; no compat
     /// alias is provided (no-compat-aliases rule).
     fn deliver_response(&self, response_json: &str);
 

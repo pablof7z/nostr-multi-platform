@@ -26,7 +26,7 @@
 //!   fallback); `inject_recipient_relays` populates the kind:9734 `relays` tag
 //!   (NIP-57 § "Appendix F").
 //! - `sign_event_for_account` — V-78: signs the kind:9734 via the unified
-//!   `SignEventForAccount` port (ADR-0043), which resolves local-nsec (inline)
+//!   `SignEventForAccount` port (ADR-0071), which resolves local-nsec (inline)
 //!   and bunker (idle-loop drain) behind one seam; the worker never sees a
 //!   `SignerOp`. Only a genuinely absent account fails closed.
 //! - `record_action_stage_requested` — tracks the `Requested` stage against the
@@ -56,7 +56,7 @@
 //!
 //! After the bolt11 is fetched, the worker uses the per-app
 //! `WalletRuntimeHandle` that `ZapAction` captured at composition time
-//! (ADR-0052 rung 5.2 — no process-global): with a handle it dispatches
+//! (ADR-0072 rung 5.2 — no process-global): with a handle it dispatches
 //! `WalletPayInvoiceCommand` carrying the bolt11 + the zap's `correlation_id`;
 //! with none it records a "no wallet connected" failure. The kind:23195 NWC
 //! response handler then closes the action stage, so the host spinner resolves
@@ -91,7 +91,7 @@ pub use signing::{sign_zap_request, signed_event_to_nostr_json};
 /// `ZapAction::execute` (see `crate::action`). When `lnurl_or_address` is
 /// `None` the command resolves the recipient's lightning address from the
 /// kernel's cached kind:0 profile via the zap-only `ZapProfileLookup`
-/// capability (`ctx.zap_profiles().lnurl_for_pubkey(..)`; ADR-0052 §D5).
+/// capability (`ctx.zap_profiles().lnurl_for_pubkey(..)`; ADR-0072 §D5).
 ///
 /// The fields mirror the legacy `ActorCommand::FetchLnurlInvoice` variant
 /// payload one-for-one — every field is consumed inside [`Self::run`].
@@ -119,7 +119,7 @@ pub struct FetchLnurlInvoiceCommand {
     /// spinner clears. `None` means a direct caller with no spinner —
     /// only the `ShowErrorToken` follow-up is sent.
     pub correlation_id: Option<String>,
-    /// ADR-0052 rung 5.2: the per-app [`PaymentPort`] the zap auto-chain pays
+    /// ADR-0072 rung 5.2: the per-app [`PaymentPort`] the zap auto-chain pays
     /// through — captured by `ZapAction` at composition time, not read from a
     /// process-global (so two `NmpApp`s zap independently). `None` when no
     /// wallet was wired; the worker then records a "no wallet connected"
@@ -206,7 +206,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
         }
 
         // V-78 reconcile — sign the kind:9734 through the unified
-        // `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). The
+        // `ActorCommand::SignEventForAccount` port (ADR-0071 Decision 2). The
         // active account signs, so `signer_pubkey = None`. The actor's dispatch
         // arm resolves BOTH backends behind the port — a local nsec inline
         // (`SignerOp::Ready`); a NIP-46 bunker parked and resolved from the
@@ -300,7 +300,7 @@ fn spawn_lnurl_worker(
 ) {
     std::thread::spawn(move || {
         match fetch_lnurl_invoice_blocking(&lnurl_or_address, amount_msats, &signed_json) {
-            // ADR-0052 rung 5.2: pay through the per-app `PaymentPort`
+            // ADR-0072 rung 5.2: pay through the per-app `PaymentPort`
             // `ZapAction` captured (no process-global). `Some` → emit the
             // port's pay-invoice command (its own no-connection branch reports a
             // disconnected wallet); `None` → no wallet wired, record the

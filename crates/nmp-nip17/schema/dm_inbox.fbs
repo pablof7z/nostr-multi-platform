@@ -5,7 +5,7 @@ namespace nmp.nip17;
 //
 // This is the typed sidecar for the `DmInboxSnapshot` emitted by
 // `nmp_nip17::register_runtime` in every `SnapshotFrame`'s
-// `typed_projections` sidecar (ADR-0037).
+// `typed_projections` sidecar (ADR-0072).
 //
 // Field-for-field mirror of the Rust structs (raw protocol values only):
 //   * String fields are required (non-optional in the serde struct).
@@ -53,14 +53,14 @@ table DmConversation {
 table DmInboxSnapshot {
   // Conversations, ordered by most-recent message (newest thread first).
   conversations:[DmConversation];
-  // ADR-0050 §D7 decrypt-pipeline policy state (errors-as-state, D6) — the
+  // ADR-0072 §D7 decrypt-pipeline policy state (errors-as-state, D6) — the
   // tri-state that REPLACED the old `remote_signer_unsupported:bool`. Stable
   // wire tokens: "unavailable" (no active account → host hides the DM screen),
   // "limited" (active account, `undecrypted_count > 0`: bunker backfill pending
   // or throttled by the bounded per-account decrypt queue — NOT a silent drop),
   // "ok" (active account, everything decrypted).
   decrypt_state:string;
-  // ADR-0050 §D7 — count of envelopes admitted-but-not-yet-decrypted plus those
+  // ADR-0072 §D7 — count of envelopes admitted-but-not-yet-decrypted plus those
   // not admitted because the per-account bound was full. Non-zero exactly when
   // decrypt_state == "limited"; the host renders "N still decrypting".
   undecrypted_count:uint32;

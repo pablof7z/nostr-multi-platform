@@ -8,7 +8,7 @@
 //! state into [`AuthGate`]; new REQs check the gate before being returned;
 //! pending REQs flush on `Authenticated`.
 //!
-//! ## Fail-closed semantics (T76, ADR-0019)
+//! ## Fail-closed semantics (T76, ADR-0072)
 //!
 //! A relay that demanded AUTH and then rejected/refused/timed-out it is in
 //! `Failed`. Per doctrine D3 (outbox) and the NIP-42 spec, that relay MUST
@@ -46,7 +46,7 @@ impl AuthGate {
     /// / `Authenticating` buffer (transient — flushed on `Authenticated`).
     /// `Failed` is **fail-closed**: REQs are withheld (and dropped, not
     /// buffered — see [`Self::is_failed`]) so an AUTH-gated relay never
-    /// silently downgrades to unauthenticated reads (T76 / ADR-0019).
+    /// silently downgrades to unauthenticated reads (T76 / ADR-0072).
     pub(super) fn is_paused(&self, relay_url: &str) -> bool {
         matches!(
             self.state.get(relay_url),

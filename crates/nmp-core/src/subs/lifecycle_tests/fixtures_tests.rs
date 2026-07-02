@@ -3,7 +3,9 @@
 //! and a single-author follow-interest constructor used across the
 //! selection, dead-relay, drain-tick, and bootstrap-relay behavior modules.
 use super::*;
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 
 pub(crate) fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()

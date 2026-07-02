@@ -1,5 +1,5 @@
 //! Typed FlatBuffers wire codec for the actor-owned `"signer_state"`
-//! projection (Tier-1 closure path). ADR-0048 D6 — generalises the former
+//! projection (Tier-1 closure path). ADR-0072 D6 — generalises the former
 //! `"bunker_connection_state"` codec (V-14 step b, #963 / #1098, file
 //! identifier "KBCS") into the unified remote-signer health surface. The
 //! rename is a hard break (no-compat-alias rule): the old schema, table, and
@@ -12,7 +12,7 @@
 //! (`Arc<Mutex<Option<SignerStateDto>>>`) — JSON `null` when the slot is
 //! `None`, else the serialised `SignerStateDto`. This module adds a **typed
 //! FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection, and only when the slot holds `Some` (the typed
 //! closure mirrors the JSON closure's `Some`/`None`: no sidecar entry while
 //! the slot is idle).

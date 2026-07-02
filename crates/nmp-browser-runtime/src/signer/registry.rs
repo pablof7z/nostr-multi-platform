@@ -2,7 +2,7 @@
 //!
 //! Populated at builder time via `BrowserAppBuilder::with_capability_providers`;
 //! moved into the runtime at `start()`. The registry is the single door through
-//! which the pump broker looks up a registered signer for an account (ADR-0067
+//! which the pump broker looks up a registered signer for an account (ADR-0072
 //! §10a — signer SEMANTICS live in `nmp-signers`; this crate only WIRES).
 //!
 //! # Scope boundary (D6-honest)
@@ -64,7 +64,7 @@ pub(crate) struct ProviderEntry {
 /// Registry mapping lowercase-hex account pubkeys to their registered signer.
 ///
 /// Multiple inserts for the same pubkey are last-write-wins (one signer per
-/// identity — single-door, ADR-0067 §10a).
+/// identity — single-door, ADR-0072 §10a).
 #[derive(Default)]
 pub(crate) struct CapabilityProviderRegistry {
     providers: HashMap<String, ProviderEntry>,

@@ -1,4 +1,4 @@
-//! R3-S4 (ADR-0055) — generated `ProjectionMergeCache` for Kotlin (Android).
+//! R3-S4 (ADR-0070) — generated `ProjectionMergeCache` for Kotlin (Android).
 //!
 //! Generates `apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt`
 //! from the SAME projection registry as [`crate::swift_projection_cache`], so
@@ -52,7 +52,7 @@ const HEADER: &str = "\
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.
 // The CI gate (`codegen-drift.yml`) fails any PR whose generated Kotlin differs.
 //
-// ADR-0055 R3-S4: NMP-owned rev-aware host apply layer (Android). This cache
+// ADR-0070 R3-S4: NMP-owned rev-aware host apply layer (Android). This cache
 // implements the D3-3 merge algorithm exactly — byte-for-byte semantically
 // identical to `ProjectionCache.generated.swift` — so app code (KernelModel
 // accessors, Compose UI) stays oblivious to delta mechanics.
@@ -151,7 +151,7 @@ pub fn render_kotlin_projection_cache(entries: &[SnapshotProjectionEntry]) -> St
     // ── ProjectionMergeCache class ────────────────────────────────────────────
     out.push_str(
         "/**\n\
-         * NMP-owned rev-aware projection cache (ADR-0055 R3-S4).\n\
+         * NMP-owned rev-aware projection cache (ADR-0070 R3-S4).\n\
          *\n\
          * Lives in `KernelModel` (one instance per kernel session). Fed each\n\
          * FlatBuffers frame before the TypedXDecoder family runs. Implements\n\
@@ -203,7 +203,7 @@ pub fn render_kotlin_projection_cache(entries: &[SnapshotProjectionEntry]) -> St
          \x20\x20\x20\x20// row by contract carries full bytes (an empty projection is expressed as\n\
          \x20\x20\x20\x20// `Cleared`, never Changed-with-no-bytes). This `!bytes.isEmpty` guard is\n\
          \x20\x20\x20\x20// the sufficient correctness floor under synchronous in-process delivery\n\
-         \x20\x20\x20\x20// (per ADR-0055 D3-4 codex review). It is intentionally NOT a per-key\n\
+         \x20\x20\x20\x20// (per ADR-0070 D3-4 codex review). It is intentionally NOT a per-key\n\
          \x20\x20\x20\x20// typed-decode dispatch, because the Android typed decoders have\n\
          \x20\x20\x20\x20// non-uniform method signatures; a uniform `decodeBytes()` contract is a\n\
          \x20\x20\x20\x20// follow-on clean-up (it can be layered in without a wire change).\n\

@@ -3,7 +3,7 @@
 //! Every line that would otherwise trip the rule is either:
 //! - inside a comment;
 //! - covered by the per-line `// doctrine-allow: D13 — reason` opt-out;
-//! - or replaced by the legitimate ADR-0050 §D5 signer-port seam.
+//! - or replaced by the legitimate ADR-0072 §D5 signer-port seam.
 //!
 //! Marker opt-in: the file carries the canonical D13 Part-A marker so
 //! it is in scope; the smoke test additionally opts in via

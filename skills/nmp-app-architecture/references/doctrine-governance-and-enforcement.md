@@ -72,25 +72,25 @@ When you add a scanner rule, ask: does doctrine-lint already enforce this in Rus
 leave it to doctrine-lint. If it is a cross-language or external-repo concern, the scanner is
 the right home.
 
-## ADR Ledger and the "Not a Museum" Rule
+## ADR Directory Governance
 
-`docs/decisions/README.md` is the classification ledger. Every ADR has exactly one status:
+`docs/decisions/` contains only decisions that still govern the current
+architecture. It is not an archive. When a rule stops being current, move any
+surviving invariant into its current owner and delete the obsolete ADR file.
+Git history, closed issues, and pull request bodies preserve earlier context.
 
-| Status | Meaning |
-|---|---|
-| **Current** | Owns a live invariant; authoritative as written. |
-| **Amended** | Survives but narrowed by a later ADR listed in the entry. |
-| **Folded** | Surviving rule owned by a later ADR or durable doc; old text is historical. |
-| **Retired** | Historical or superseded; do not cite as current architecture. |
+The active redesign spine is **ADR-0069 through ADR-0073**. Extensions such as
+ADR-0074 through ADR-0076 remain only while they own live invariants that do not
+belong cleanly in the spine or a durable architecture/API document.
 
-The active redesign spine is **ADR-0069 through ADR-0073**. Older ADRs are authoritative only
-where they do not conflict with the spine. When a PR touches a Folded/Amended ADR's
-implementation area, keep the old public-surface count flat-or-decreasing, or update the owning
-ADR **in place** — never add a new correction document that leaves stale guidance behind.
+When a PR touches an architectural invariant, update the current owner **in
+place**. Do not add a parallel correction document that leaves stale guidance
+behind, and do not preserve obsolete ADR text for context.
 
 ## Rolling Ratchets
 
-Each architecture slice that reduces old public surfaces carries a deletion ledger in its PR:
+Each architecture slice that reduces old public surfaces carries a deletion
+summary in its PR:
 
 ```
 old public doors deleted or privatized:

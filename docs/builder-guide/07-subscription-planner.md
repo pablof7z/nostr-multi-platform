@@ -193,7 +193,7 @@ NIP-65 mailboxes. `InterestShape::relay_pin: Option<RelayUrl>`
 
 `relay_pin` is never serialized onto the wire; the relay receives only the
 regular filter. The kernel grows zero protocol nouns — `nmp-nip29` is a pure
-consumer (ADR-0012; `docs/decisions/0012-relay-pinned-interest-and-third-routing-lane.md`).
+consumer (ADR-0071; `docs/decisions/0071-write-intents-and-route-provenance.md`).
 
 ## Anti-patterns
 

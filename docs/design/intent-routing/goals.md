@@ -1,7 +1,7 @@
 # Intent-classed routing + NIP-50 search §1–§2 — Goals and Non-goals
 
 > Parent: `docs/design/intent-routing.md`.
-> ADR: `docs/decisions/0020-intent-classed-routing-and-search.md`.
+> ADR: `docs/decisions/0071-write-intents-and-route-provenance.md`.
 
 ## 1. Goals
 
@@ -9,7 +9,7 @@
    get cache hits synchronously, and stream relay hits as they arrive.
    Search orchestration (entrypoint, relay selection, cache scan, ranking,
    dedup, result projection) lives entirely in `nmp-nip50` and above — this is
-   the **higher-order search model** (ADR-0020 amendment 2026-06-22).
+   the **higher-order search model** (ADR-0071 amendment 2026-06-22).
 2. The kernel knows which relay class an event belongs to and routes
    accordingly, without app code naming relay URLs.
 3. NIP-51 lists with routing semantics become live routing inputs,

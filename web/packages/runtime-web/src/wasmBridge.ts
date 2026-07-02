@@ -8,7 +8,7 @@ type SnapshotCallback = (bytes: Uint8Array) => void;
 
 type NmpWasmRuntime = {
   handle_json(request: string): unknown;
-  /** Binary write doorway (#1008 / ADR-0064): receives the raw `Uint8Array` of
+  /** Binary write doorway (#1008 / ADR-0071): receives the raw `Uint8Array` of
    *  a `DispatchEnvelope` FlatBuffers root directly, bypassing the
    *  `JSON.stringify(Uint8Array) → {}` corruption that occurs on `handle_json`.
    *  Added alongside `handle_json` so the bridge can detect whether the loaded
@@ -106,7 +106,7 @@ export class WasmBridge {
 
   handle(request: WorkerRequest): WorkerEvent[] {
     try {
-      // #1008 / ADR-0064 — binary write doorway: route `dispatch_bytes`
+      // #1008 / ADR-0071 — binary write doorway: route `dispatch_bytes`
       // through `handle_dispatch_bytes` (if available) to avoid the
       // `JSON.stringify(Uint8Array) → {}` corruption that zeros the bytes
       // on the generic `handle_json` path. The `bytes` field is a `Uint8Array`

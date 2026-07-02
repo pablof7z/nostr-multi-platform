@@ -1,5 +1,5 @@
 //! `ActionPayload` codec for `DiscoverGroupsInput` (`nmp.nip29.discover`).
-//! (ADR-0064 / Cut-B producer gap #1756).
+//! (ADR-0071 / Cut-B producer gap #1756).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 

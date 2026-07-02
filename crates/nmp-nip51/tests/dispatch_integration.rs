@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the nip51 bookmark typed FlatBuffers payload
-//! doorway (ADR-0064 / S9 #1747).
+//! doorway (ADR-0071 / S9 #1747).
 //!
 //! These tests prove the fail-closed `schema_version` gate in
 //! `ActionRegistry::start_bytes` rejects bad payloads BEFORE `start()` runs, for
@@ -188,7 +188,7 @@ fn build_bad_version_web_bookmark_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
-/// ADR-0064 / S9 (#1747) — `nmp.nip51.add_bookmark` with a bad `schema_version`
+/// ADR-0071 / S9 (#1747) — `nmp.nip51.add_bookmark` with a bad `schema_version`
 /// MUST be rejected BEFORE `start()` runs.
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_add_bookmark() {
@@ -211,7 +211,7 @@ fn start_bytes_rejects_wrong_schema_version_for_add_bookmark() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — `nmp.nip51.remove_bookmark` with a bad
+/// ADR-0071 / S9 (#1747) — `nmp.nip51.remove_bookmark` with a bad
 /// `schema_version` MUST be rejected BEFORE `start()` runs.
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_remove_bookmark() {
@@ -234,7 +234,7 @@ fn start_bytes_rejects_wrong_schema_version_for_remove_bookmark() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — a well-formed, correct-version `add_bookmark`
+/// ADR-0071 / S9 (#1747) — a well-formed, correct-version `add_bookmark`
 /// payload passes the typed decode + schema_version gate at the registry
 /// boundary, for every `BookmarkItem` variant (the tagged-table round-trip).
 #[test]
@@ -273,7 +273,7 @@ fn start_bytes_accepts_well_formed_add_bookmark_for_every_item_variant() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — a well-formed, correct-version `remove_bookmark`
+/// ADR-0071 / S9 (#1747) — a well-formed, correct-version `remove_bookmark`
 /// payload (an existing bookmark seeded into the projection) passes the typed
 /// decode + schema_version gate AND `start()`'s presence check at the registry
 /// boundary — proving the `remove_bookmark` namespace override is load-bearing,
@@ -415,7 +415,7 @@ fn start_bytes_rejects_wrong_schema_version_for_publish_web_bookmark() {
     }
 }
 
-/// ADR-0064 / S9 (#1747) — registration is namespace-scoped: a namespace this
+/// ADR-0071 / S9 (#1747) — registration is namespace-scoped: a namespace this
 /// crate never registers is rejected even after `register_bookmark_actions`.
 #[test]
 fn unregistered_namespace_is_rejected() {

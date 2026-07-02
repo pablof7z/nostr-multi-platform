@@ -1,6 +1,6 @@
 //! Narrow host-trait delegation surface for `NmpAppBuilder<S>`.
 //!
-//! Extracted as a cohesive child submodule of `builder` (ADR-0053 work) so the
+//! Extracted as a cohesive child submodule of `builder` (ADR-0070 work) so the
 //! composition-root file stays under the 500-LOC hard ceiling / its size
 //! baseline (AGENTS.md file-size rule). Every method borrows the builder's
 //! `NmpApp` and delegates to the inherent method of the same name.
@@ -32,7 +32,7 @@ impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
     {
         let app: &NmpApp = unsafe { &*self.app };
         // Forward into the same shared registry the generic projection seam
-        // writes to (ADR-0037 Commitment 4: typed + generic share the key
+        // writes to (ADR-0072 Commitment 4: typed + generic share the key
         // space). Fully qualified to the inherent `NmpApp` method.
         NmpApp::register_typed_snapshot_projection(app, key, f);
     }

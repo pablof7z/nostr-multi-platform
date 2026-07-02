@@ -8,7 +8,7 @@
 //! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
 //!
-//! ADR-0065 — the `dispatch` function below matches the `IdentityCommand`
+//! ADR-0071 — the `dispatch` function below matches the `IdentityCommand`
 //! sub-enum and routes each verb to its existing handler.
 
 use crate::actor::commands;
@@ -87,7 +87,7 @@ pub(super) fn sign_event_for_return(
             }
             None => {
                 // Remote signer parked → `signed_events` projection. Use
-                // the SIGNING account's per-op deadline (ADR-0050 D4): a
+                // the SIGNING account's per-op deadline (ADR-0072 D4): a
                 // named 90s NIP-55 key must not inherit the active
                 // account's (e.g. 5s) budget. `""` = active (`None`).
                 let named = (!account_pubkey.is_empty()).then_some(account_pubkey.as_str());
@@ -172,7 +172,7 @@ pub(super) fn create_account(
         make_active,
     );
     update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-    // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
+    // ADR-0072 §3 — enqueue the Keychain write off-actor (D8).
     session_persistence::enqueue_persist_current_active_session(
         ctx.identity,
         ctx.capability_work_tx,
@@ -190,7 +190,7 @@ pub(super) fn switch_active(
     let outbound =
         commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
     update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-    // ADR-0040 §3 — enqueue the Keychain write off-actor (D8).
+    // ADR-0072 §3 — enqueue the Keychain write off-actor (D8).
     session_persistence::enqueue_persist_current_active_session(
         ctx.identity,
         ctx.capability_work_tx,
@@ -207,7 +207,7 @@ pub(super) fn remove_account(
     use crate::actor::tick::maybe_emit_after_dispatch;
     let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
     update_local_key_slots(ctx.identity, ctx.mls_local_nsec, ctx.active_local_keys);
-    // ADR-0040 §3 — enqueue the Keychain forget + active-pointer
+    // ADR-0072 §3 — enqueue the Keychain forget + active-pointer
     // persist off-actor (D8). FIFO ordering ensures forget(acct-X)
     // executes before any subsequent persist for the new active
     // account — the single worker drains in enqueue order.
@@ -308,7 +308,7 @@ pub(super) fn capability_result_ready(
     Some(Vec::new())
 }
 
-/// ADR-0065 — `IdentityCommand` family dispatch. Matches the sub-enum and
+/// ADR-0071 — `IdentityCommand` family dispatch. Matches the sub-enum and
 /// routes each verb to its existing handler.
 pub(super) fn dispatch(
     cmd: IdentityCommand,

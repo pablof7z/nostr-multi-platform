@@ -1,4 +1,4 @@
-//! The single waking actor inbox (ADR-0050 §D3a).
+//! The single waking actor inbox (ADR-0072 §D3a).
 //!
 //! Before this module the actor loop had two bare `std::sync::mpsc` channels:
 //! a command channel drained non-blockingly with `try_recv` at the top of each
@@ -6,7 +6,7 @@
 //! blocking point. Consequence: sending an [`ActorCommand`] did **not** wake a
 //! relay-blocked actor — the command sat for up to the 250 ms `compute_wait`
 //! cap whenever no relay traffic flowed (and the same latency afflicted
-//! ADR-0040 `CapabilityResultReady` re-entry).
+//! ADR-0072 `CapabilityResultReady` re-entry).
 //!
 //! This module collapses both into **one** blocking inbox carrying
 //! [`ActorMail`]. The loop blocks on a single [`Inbox::recv_timeout`]; any

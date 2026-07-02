@@ -6,7 +6,7 @@
 //! `"publish_queue"`: the serialisation of `publish_queue_snapshot()`, a slice
 //! of [`PublishQueueEntry`](crate::kernel::PublishQueueEntry) (each owning a
 //! `Vec<RelayAckOutcome>`). This module adds a **typed FlatBuffers** encoding of
-//! the same shape, carried in the `typed_projections` sidecar (ADR-0037)
+//! the same shape, carried in the `typed_projections` sidecar (ADR-0072)
 //! ALONGSIDE — never replacing — the generic `Value` projection.
 //!
 //! [`PublishQueueModel`] is built directly from the same entry slice the JSON

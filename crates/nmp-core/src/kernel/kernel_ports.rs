@@ -1,6 +1,6 @@
 //! Kernel ports facade — typed newtypes for kernel capabilities.
 //!
-//! ADR-0054 §X — KernelPorts provides a structured newtype facade over the
+//! ADR-0072 §X — KernelPorts provides a structured newtype facade over the
 //! kernel's core capability ports. Each port is a thin Arc-wrapping newtype
 //! that makes the kernel's dependency injections type-safe and explicit at
 //! the call site (D14).
@@ -96,7 +96,7 @@ pub struct IdentityPort(pub Arc<ActiveAccountSlot>);
 /// Reference-tracking capability port.
 ///
 /// Placeholder for reference-resolution capability. Reserved for future use
-/// in ADR-0063 ref-resolver expansion.
+/// in ADR-0070 ref-resolver expansion.
 #[derive(Clone)]
 pub struct ReferencePort {
     _phantom: std::marker::PhantomData<()>,
@@ -119,7 +119,7 @@ impl Default for ReferencePort {
 
 /// Pull-cursor capability port.
 ///
-/// Holds the non-durable pull-cursor registry (ADR-0058 §10, step 3a).
+/// Holds the non-durable pull-cursor registry (ADR-0072 §10, step 3a).
 /// Actor-written via dispatch arms; FFI-read-only (snapshots a registration
 /// on another thread). Rebuilt at restart from consumer-persisted state.
 #[derive(Clone)]

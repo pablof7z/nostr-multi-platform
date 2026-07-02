@@ -107,7 +107,7 @@ pub struct Inner {
     /// open for pre-#1518 databases — see `open.rs::backfill_relay_kind_index`.
     pub(crate) relay_kind: Database<Bytes, Bytes>,
 
-    /// K3 coverage ledger (ADR-0056 §3, Stage D1): `filter_hash || 0x1F ||
+    /// K3 coverage ledger (ADR-0072 §3, Stage D1): `filter_hash || 0x1F ||
     /// relay_url` → `covered_through` (8-byte BE unix-seconds).
     ///
     /// Records, per `(filter_hash, relay)`, the downward-closed timestamp
@@ -116,10 +116,10 @@ pub struct Inner {
     /// `EventStore::get_coverage` — the kernel's since-floor source. This is
     /// the purpose-built successor to the #1090-deleted `nmp-watermarks`
     /// sub-db — re-created with real readers/writers, not re-activated
-    /// (ADR-0056 §2.1).
+    /// (ADR-0072 §2.1).
     pub(crate) coverage: Database<Bytes, Bytes>,
 
-    // ── ADR-0058 §4 ingest-log sub-dbs ───────────────────────────────────────
+    // ── ADR-0072 §4 ingest-log sub-dbs ───────────────────────────────────────
     /// Ingest-log store: seq(8 BE) → JSON(LogEntryPersist).
     pub(crate) ingest_log: Database<Bytes, Bytes>,
     /// Ingest-log metadata: "last_seq" / "gc_floor" → u64 BE.
@@ -171,7 +171,7 @@ pub struct Inner {
     /// means nothing is purgeable in the first hour anyway).
     pub(crate) gc_last_tombstone_purge_secs: AtomicU64,
 
-    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0058 §6, step-4).
+    /// VOLATILE `Protected`-cursor log-retention claims (ADR-0072 §6, step-4).
     ///
     /// Held in memory only — cursor registrations are non-durable, so their
     /// retention claims are non-durable too (never written to `nmp-ingest-meta`).
@@ -183,7 +183,7 @@ pub struct Inner {
 }
 
 impl Inner {
-    /// Snapshot the current retention-claim set (ADR-0058 §6, step-4).
+    /// Snapshot the current retention-claim set (ADR-0072 §6, step-4).
     ///
     /// Cloned once per event mutation and threaded into `trim_in_txn` so the
     /// append-time trim sees a consistent claim set within the event `RwTxn`

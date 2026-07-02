@@ -8,7 +8,7 @@
 //!
 //! 1. Parses the verbatim wire JSON into a signed `nostr::Event` (the `sig`
 //!    is mandatory — NIP-44 decryption verifies the seal).
-//! 2. Launches a two-step **port-driven** gift-UNWRAP chain (ADR-0050 §D6):
+//! 2. Launches a two-step **port-driven** gift-UNWRAP chain (ADR-0072 §D6):
 //!    `Nip44DecryptForAccount(outer)` → `Nip44DecryptForAccount(seal)` →
 //!    a kind:14 rumor. The decrypts run on the actor thread through the
 //!    backend-transparent signer port, so a NIP-46 **bunker** account is
@@ -21,7 +21,7 @@
 //! — the exact shape a host `register_snapshot_projection` closure returns —
 //! so the inbox surfaces on every kernel snapshot tick.
 //!
-//! # ADR-0050 §D6 — gift-UNWRAP through the signer port
+//! # ADR-0072 §D6 — gift-UNWRAP through the signer port
 //!
 //! The projection holds a [`CommandSender`](nmp_core::CommandSender) and the
 //! pubkey-only [`ActiveAccountSlot`](nmp_core::slots::ActiveAccountSlot) — NOT
@@ -144,7 +144,7 @@ pub struct DmConversation {
 pub struct DmInboxSnapshot {
     /// Conversations, ordered by most-recent message (newest thread first).
     pub conversations: Vec<DmConversation>,
-    /// **ADR-0050 §D7** — the decrypt-pipeline policy state, an errors-as-state
+    /// **ADR-0072 §D7** — the decrypt-pipeline policy state, an errors-as-state
     /// (D6) tri-state that REPLACES the old `remote_signer_unsupported: bool`.
     /// Stable wire tokens the host switches on:
     ///
@@ -160,7 +160,7 @@ pub struct DmInboxSnapshot {
     /// [`Self::empty`] / a live no-account snapshot.
     #[serde(default)]
     pub decrypt_state: String,
-    /// **ADR-0050 §D7** — count of envelopes admitted-but-not-yet-decrypted plus
+    /// **ADR-0072 §D7** — count of envelopes admitted-but-not-yet-decrypted plus
     /// those not admitted because the per-account bound was full. Non-zero
     /// exactly when `decrypt_state == "limited"`. The host renders e.g. "N
     /// messages still decrypting" instead of silently hiding them.
@@ -183,7 +183,7 @@ impl DmInboxSnapshot {
 
 /// Accumulates decrypted NIP-17 direct messages into a per-peer conversation
 /// model, decrypting each gift-wrap through the actor's signer port
-/// (ADR-0050 §D6).
+/// (ADR-0072 §D6).
 ///
 /// Construct with the actor [`CommandSender`] and the pubkey-only
 /// [`ActiveAccountSlot`], register the `Arc` as an `IngestParser` with
@@ -191,7 +191,7 @@ impl DmInboxSnapshot {
 /// (`snapshot_json`).
 pub struct DmInboxProjection {
     /// Sends `Nip44DecryptForAccount` port commands into the actor inbox
-    /// (ADR-0050 §D6). Cloned into each chain step. Cheap, `Send + Sync`.
+    /// (ADR-0072 §D6). Cloned into each chain step. Cheap, `Send + Sync`.
     tx: CommandSender,
     /// Pubkey-only active-account slot — populated by the kernel for EVERY
     /// backend (local AND bunker). Read once per envelope to pin the chain's
@@ -205,7 +205,7 @@ pub struct DmInboxProjection {
 
 impl DmInboxProjection {
     /// Construct an inbox bound to the actor command sender and the pubkey-only
-    /// active-account slot (ADR-0050 §D6). The message store starts empty;
+    /// active-account slot (ADR-0072 §D6). The message store starts empty;
     /// envelopes arrive via [`IngestParser::parse`] and decrypt through the port.
     #[must_use]
     pub fn new(tx: CommandSender, active_pubkey: ActiveAccountSlot) -> Self {
@@ -304,7 +304,7 @@ impl DmInboxProjection {
     }
 
     /// Launch the port-driven gift-UNWRAP chain for one accepted kind:1059
-    /// envelope (ADR-0050 §D6). Returns `true` when the chain was LAUNCHED
+    /// envelope (ADR-0072 §D6). Returns `true` when the chain was LAUNCHED
     /// (outer envelope parsed + an account is active); `false` for every
     /// pre-launch silent no-op (malformed envelope, not signed in). The
     /// decrypted message — if any — lands in the store asynchronously when the
@@ -482,7 +482,7 @@ mod batch;
 #[path = "inbox/tests.rs"]
 mod tests;
 
-// ADR-0050 §D6 port-driven gift-UNWRAP chain tests — kept in a sibling file so
+// ADR-0072 §D6 port-driven gift-UNWRAP chain tests — kept in a sibling file so
 // `inbox.rs` and `inbox/tests.rs` each stay under the 500-LOC ceiling.
 #[cfg(test)]
 #[path = "inbox/chain_tests.rs"]

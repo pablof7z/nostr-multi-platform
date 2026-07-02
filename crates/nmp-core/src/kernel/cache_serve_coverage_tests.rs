@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 // ─── Issue #1517: full Scope shape coverage audit ────────────────────────────
 
-/// ADR-0045 §6 acceptance (issue #1517): every named cache-serve Scope shape
+/// ADR-0070 §6 acceptance (issue #1517): every named cache-serve Scope shape
 /// resolves to a bounded StoreQuery on a named index, OR is in the explicit
 /// intentionally-uncovered set. Table-driven over the full Scope shape list —
 /// the "one-seam/every-interest contract" guard.

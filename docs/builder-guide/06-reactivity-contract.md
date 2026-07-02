@@ -1,7 +1,7 @@
 # 06 — Reactivity contract (D8)
 
 > **Status: SHIPS** · audience: agents · design = `docs/design/reactivity/*`,
-> ADR-0001..0004.
+> ADR-0070..0004.
 
 D8 is the contract that keeps view payloads in sync with the event store at
 firehose scale **without** O(views × inserts) work, false wakeups, or
@@ -17,14 +17,14 @@ relay/sync ─▶ CoreMsg::EventInserted(event)        [on the one actor thread]
                 ▼  EventStore::insert(event)        replaceable/GC/tombstone
                 │
                 ▼  ReverseIndex::lookup(event) ─▶ Vec<ViewId>
-                │                                  composite-keyed (ADR-0001)
+                │                                  composite-keyed (ADR-0070)
                 ▼  for each ViewId:
                      view.on_event_inserted(event) ─▶ Option<ViewDelta>
                 │
                 ▼  DeltaBuffer::push(delta)
                 │
                 ── on tick (≤60Hz) ──
-                ▼  DeltaBuffer::flush()             coalesce by view id (ADR-0002)
+                ▼  DeltaBuffer::flush()             coalesce by view id (ADR-0070)
                 ▼  `UpdateFrame` carrying `view_batch` ─▶ update_tx.send()
                 │
                 ▼  Reconciler (background) ─▶ Platform UI thread
@@ -40,7 +40,7 @@ atomics — sequential message processing
 The store keys the reverse index on **composite** (conjunctive) tuples by
 default. A view registers a `Dependencies` declaration; the registry picks the
 most-specific index. Single-axis ("broad") keys are legal but trip a
-broad-cost classification (`loop-and-reverse-index.md:81-117`, ADR-0001).
+broad-cost classification (`loop-and-reverse-index.md:81-117`, ADR-0070).
 Today that classification is enforced by review, doctrine tests, and perf
 gates; the post-v1 guardrails target may make it a debug-build runtime warning.
 
@@ -68,24 +68,24 @@ buckets, so false wakes go to zero.
 **Why composite-first:** run 001 measured a 98% false-wake rate in
 `quiet_idle` and 49% in `following_timeline_scroll` under the v0
 union-of-axes design. Conjunctive keys eliminate it; the cost is registration
-growth (kinds × authors), bounded by the working-set budget (ADR-0001).
+growth (kinds × authors), bounded by the working-set budget (ADR-0070).
 
 ## Current budgets
 
 | Budget | Value | Source |
 |---|---|---|
-| Deltas per view per second | ≤ 60 (matches 60Hz flush) | ADR-0002 |
+| Deltas per view per second | ≤ 60 (matches 60Hz flush) | ADR-0070 |
 | Flush cadence | time ≥ 16 ms **or** ≥ 256 buffered deltas, whichever first | `scheduling-and-data-model.md:23-29` |
-| Total deltas/sec | naturally ≤ 60 × active views — **no absolute ceiling** | ADR-0002 |
-| Working-set memory | ≤ 100 MB at 100 views / 10k hot events | ADR-0003 |
-| Hot working set | claimed events + recency window (default 5,000 globally) | ADR-0003 |
-| Total cached events on disk | unbounded (backend-quota bounded) | ADR-0003 |
-| Per-event allocations (post-1,000-event warmup) | **0** on insert→lookup→recompute→buffer path | ADR-0004 |
+| Total deltas/sec | naturally ≤ 60 × active views — **no absolute ceiling** | ADR-0070 |
+| Working-set memory | ≤ 100 MB at 100 views / 10k hot events | ADR-0070 |
+| Hot working set | claimed events + recency window (default 5,000 globally) | ADR-0070 |
+| Total cached events on disk | unbounded (backend-quota bounded) | ADR-0070 |
+| Per-event allocations (post-1,000-event warmup) | **0** on insert→lookup→recompute→buffer path | ADR-0070 |
 | Lookup p99 / recompute p99 gate | ≤ 100 µs | `loop-and-reverse-index.md:165` |
 
 Within-view coalescing at flush is mandatory: the buffer sorts by view id and
 applies per-view-kind merge rules before emitting one `view_batch` `UpdateFrame`
-(`scheduling-and-data-model.md:31-53`, ADR-0002). Shared facts (author
+(`scheduling-and-data-model.md:31-53`, ADR-0070). Shared facts (author
 display, reaction counts) live in **store projections**, not view-on-view
 subscriptions, so a kind:0 arrival does a targeted O(items-by-that-author)
 patch rather than a per-view scan (`view-deltas-and-projections.md:110-164`).
@@ -163,7 +163,7 @@ planner/reactivity machinery carries the result.
   diff. Return `None`; the actor already gates emit on `changed_since_emit`
   (see [04]).
 - **Allocating in `on_event_inserted`.** The steady-state per-event path must
-  be zero-alloc post-warmup (ADR-0004). A `Vec::push` past capacity, a
+  be zero-alloc post-warmup (ADR-0070). A `Vec::push` past capacity, a
   `format!`, or a `clone()` in the hot path fails the bench gate before it
   lands.
 - **`catch_all_filter` for anything indexable.** It forces the view onto the

@@ -6,7 +6,7 @@ wasm-bindgen is the browser binding ·
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. The
 canonical composition is delivered as a **library call**, not as generated wiring
-in your source tree (ADR-0046 — see [19a](19a-walkthrough-microblog.md) and
+in your source tree (ADR-0069 — see [19a](19a-walkthrough-microblog.md) and
 [19b](19b-walkthrough-microblog.md) for how a new app uses it).
 
 This section covers the generated *bindings* and the *FFI boundary*. The public
@@ -360,7 +360,7 @@ For the reusable framework surface, drift is gated by
 `bash ci/check-uniffi-bindings-drift.sh`. The durable rationale and binding-surface
 rules live in [`docs/ffi-surface.md`](../ffi-surface.md) ("App-Owned UniFFI
 Facades" / "Verification Pointers") and
-[ADR-0030](../decisions/0030-uniffi-vs-c-abi.md); this guide is only the
+[ADR-0072](../decisions/0072-runtime-capability-and-shell-boundary.md); this guide is only the
 app-author how-to.
 
 ## Public bindings and transitional internals
@@ -400,7 +400,7 @@ app-author how-to.
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
+ADR-0072 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
 `bindings/{swift,kotlin,typescript}/` tree. Read it as binding-generation shape,
 not as permission to generate composition wiring. Live `nmp-codegen` emits
 maintained host and runtime artifacts (`gen typed-decoders`,
@@ -417,7 +417,7 @@ assemble raw interest, observer, replay, and projection wiring by hand.
 The shell receives a pushed binary `UpdateFrame`, applies the
 `SnapshotEnvelope`, and reads typed output rows by key. No polling or generic
 pull snapshot getter is allowed. Projection keys, output manifests, and change
-gates are runtime/output machinery governed by ADR-0070 and ADR-0055.
+gates are runtime/output machinery governed by ADR-0070 and ADR-0070.
 
 Do not model zap counts as a global snapshot projection or a shared relation
 bucket. The owning card or detail view asks the zap concept owner for a bounded

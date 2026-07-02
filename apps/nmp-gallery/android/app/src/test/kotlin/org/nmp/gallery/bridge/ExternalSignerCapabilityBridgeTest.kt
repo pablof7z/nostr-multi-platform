@@ -15,7 +15,7 @@ import org.nmp.gallery.registry.selectAmberResultValue
 import org.nmp.gallery.registry.shouldUseContentResolver
 
 /**
- * ADR-0048 Stage 2 — D7 contract tests for [ExternalSignerCapabilityBridge].
+ * ADR-0072 Stage 2 — D7 contract tests for [ExternalSignerCapabilityBridge].
  *
  * The bridge must:
  *  1. Deserialise `ExternalSignerRequest` JSON produced by Rust without loss.
@@ -27,7 +27,7 @@ import org.nmp.gallery.registry.shouldUseContentResolver
  *
  * These are pure Kotlin unit tests — no Activity, no PackageManager, no
  * ContentProvider. The bridge's OS seams are validated separately in the
- * Stage-4 emulator E2E (ADR-0048 D7).
+ * Stage-4 emulator E2E (ADR-0072 D7).
  */
 class ExternalSignerCapabilityBridgeTest {
 

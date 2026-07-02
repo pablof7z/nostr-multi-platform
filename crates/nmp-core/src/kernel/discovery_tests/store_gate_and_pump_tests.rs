@@ -56,7 +56,7 @@ fn discovered_event_on_oneshot_sub_passes_the_store_gate() {
         kernel.should_store_event(&oneshot_sub, &quoted),
         "a discovered event on its bridged planner sub_id must be storable"
     );
-    // ADR-0042 §5.1: store admission is now SHAPE-based, not sub-id-keyed. The
+    // ADR-0076 §5.1: store admission is now SHAPE-based, not sub-id-keyed. The
     // discovery oneshot registers an interest with `event_ids = {QUOTED_ID}` in
     // the registry, so the quoted event (id == QUOTED_ID) is storable on ANY
     // sub_id — `matches_active_open_interest` admits it by content. The old

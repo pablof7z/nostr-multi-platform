@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — biconditional completeness oracle.
+//! ADR-0070 Rung 1 — biconditional completeness oracle.
 //!
 //! `cfg(any(test, feature = "test-support"))` only. ZERO production cost.
 //!
@@ -46,7 +46,7 @@ fn fingerprint(key: &str, payload: &[u8]) -> u64 {
     h.finish()
 }
 
-/// ADR-0063 (#1671 integration glue) — the two keyed row-delta carriers
+/// ADR-0070 (#1671 integration glue) — the two keyed row-delta carriers
 /// (`refs.profile` / `refs.event`) are exempt from the biconditional oracle.
 ///
 /// The oracle's model is a FULL-SNAPSHOT projection: its "cache unit" is the
@@ -91,7 +91,7 @@ pub fn check_oracle(
     let mut violations = Vec::new();
     for state in &manifest.states {
         let key = state.key;
-        // ADR-0063: row-delta carriers carry per-tick deltas, not a full
+        // ADR-0070: row-delta carriers carry per-tick deltas, not a full
         // snapshot — the oracle's payload-bytes-vs-rev biconditional does not
         // model them. Skip (see `is_ref_row_delta_key`).
         if is_ref_row_delta_key(key) {
@@ -161,7 +161,7 @@ impl OracleState {
     ) {
         for state in &manifest.states {
             let key = state.key;
-            // ADR-0063: skip the row-delta carriers — they are exempt from the
+            // ADR-0070: skip the row-delta carriers — they are exempt from the
             // oracle (see `is_ref_row_delta_key`), so we neither fingerprint nor
             // advance a last-emit baseline for them here. Their last-emitted rev
             // is advanced by `record_emitted_for_manifest` on the production path;

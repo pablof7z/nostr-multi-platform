@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the typed FlatBuffers payload doorway
-//! (ADR-0064 / S3 #1751, builders #1783).
+//! (ADR-0071 / S3 #1751, builders #1783).
 //!
 //! Two kinds of test live here, both at the `ActionRegistry::start_bytes`
 //! registry boundary — the same path the byte transport (S2 `DispatchEnvelope`)
@@ -20,7 +20,7 @@
 
 // ---- S3 gap tests: bad-version trip for every migrated nip25 namespace -------
 
-/// ADR-0064 / S3 (#1751) — `nmp.nip25.react` with a bad `schema_version` MUST
+/// ADR-0071 / S3 (#1751) — `nmp.nip25.react` with a bad `schema_version` MUST
 /// be rejected BEFORE `start()` runs, proving the fail-closed gate covers the
 /// react namespace at the registry level.
 #[test]
@@ -52,7 +52,7 @@ fn start_bytes_rejects_wrong_schema_version_for_react() {
     }
 }
 
-/// ADR-0064 / S3 (#1751) — `nmp.nip25.unreact` with a bad `schema_version`
+/// ADR-0071 / S3 (#1751) — `nmp.nip25.unreact` with a bad `schema_version`
 /// MUST be rejected BEFORE `start()` runs.
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_unreact() {
@@ -138,7 +138,7 @@ fn build_bad_version_unreact_payload() -> Vec<u8> {
     fbb.finished_data().to_vec()
 }
 
-// ---- ADR-0064 §3 (#1783): generated-builder wire round-trip -----------------
+// ---- ADR-0071 §3 (#1783): generated-builder wire round-trip -----------------
 //
 // The Swift/Kotlin action-builders (`crates/nmp-codegen/src/action_builders`)
 // hand-roll the SAME FlatBuffers slot layout this helper builds: the payload

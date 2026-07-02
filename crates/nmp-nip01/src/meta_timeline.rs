@@ -5,7 +5,7 @@
 //!
 //! Replaces the doctrine-violating `MetaTimelineViewModule` mention in
 //! `nmp-core/src/planner/interest.rs` — that work now lives here in a
-//! sibling protocol crate per ADR-0009.
+//! sibling protocol crate per ADR-0072.
 
 use std::collections::BTreeSet;
 

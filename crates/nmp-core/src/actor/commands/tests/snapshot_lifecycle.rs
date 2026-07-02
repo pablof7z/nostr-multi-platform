@@ -67,7 +67,7 @@ fn snapshot_json_carries_new_projections() {
     );
     // D0: the views cluster (`profile`) is a kernel-owned built-in entry in
     // the `projections` map. `profile` is always present.
-    // V-112 (ADR-0042): `author_view` / `thread_view` deleted from projections.
+    // V-112 (ADR-0076): `author_view` / `thread_view` deleted from projections.
     // #1610: `timeline`, `inserted`, `updated`, `removed` removed from the
     // codegen registry (JSON-era vestigials; typed feeds ship through app-owned session keys).
     // These asserts confirm the kernel never emits those legacy keys.
@@ -89,15 +89,15 @@ fn snapshot_json_carries_new_projections() {
         projections.get("removed").is_none(),
         "#1610: removed must never appear in projections (removed JSON-era key)"
     );
-    // V-112 (ADR-0042): `author_view` / `thread_view` deleted from snapshot.
+    // V-112 (ADR-0076): `author_view` / `thread_view` deleted from snapshot.
     // `retarget_timeline` no longer calls `kernel.open_author()`.
     assert!(
         projections.get("author_view").is_none(),
-        "V-112: author_view must be absent — deleted in ADR-0042 M2 migration"
+        "V-112: author_view must be absent — deleted in ADR-0076 M2 migration"
     );
     assert!(
         projections.get("thread_view").is_none(),
-        "V-112: thread_view must be absent — deleted in ADR-0042 M2 migration"
+        "V-112: thread_view must be absent — deleted in ADR-0076 M2 migration"
     );
     // The typed `KernelSnapshot` fields must be gone — a shell that still
     // reads them would silently get `null`.

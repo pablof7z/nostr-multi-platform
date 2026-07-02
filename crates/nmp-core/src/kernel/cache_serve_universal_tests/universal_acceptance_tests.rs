@@ -1,4 +1,4 @@
-//! ADR-0045 §8 / issue #1086 — v1 exit criterion: the universal acceptance
+//! ADR-0070 §8 / issue #1086 — v1 exit criterion: the universal acceptance
 //! test proving ALL four projection paths (feed, DM IngestParser, thread,
 //! long-form) render from a warm store with ZERO relay connectivity after a
 //! cold restart.

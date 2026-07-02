@@ -1,14 +1,14 @@
 //! Ingest-log types for the pull-based event-log consumption system.
 //!
-//! ADR-0058 §3 — the primitive. Consumed by `EventStore::scan_log_since_seq`,
+//! ADR-0072 §3 — the primitive. Consumed by `EventStore::scan_log_since_seq`,
 //! `EventStore::latest_ingest_seq`, and `EventStore::oldest_available_seq`.
 
 use crate::types::{EventId, RawEvent, RelayUrl};
 
-/// Default maximum ingest-log entries retained per backend (ADR-0058 R2.4).
+/// Default maximum ingest-log entries retained per backend (ADR-0072 R2.4).
 pub const DEFAULT_LOG_MAX_ENTRIES: u64 = 10_000;
 
-/// A `Protected`-cursor log-retention claim (ADR-0058 §6, step-4).
+/// A `Protected`-cursor log-retention claim (ADR-0072 §6, step-4).
 ///
 /// VOLATILE — never persisted. Cursor registrations are non-durable, so their
 /// retention claims are non-durable too. The kernel is the single writer of the
@@ -31,7 +31,7 @@ pub struct LogRetentionClaim {
     pub max_lag_entries: u64,
 }
 
-/// Why an event was semantically removed (ADR-0058 §3 Rev 3).
+/// Why an event was semantically removed (ADR-0072 §3 Rev 3).
 ///
 /// LRU eviction and `delete_by_filter(ByRelayOnly)` emit NO row — those are
 /// retention removals, not semantic deletes.
@@ -80,7 +80,7 @@ pub enum LogOp {
     },
 }
 
-/// One entry in the store's ingest log (ADR-0058 §3).
+/// One entry in the store's ingest log (ADR-0072 §3).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct StoreLogEntry {
     /// Monotonic ingest-order sequence number. Never reused, starts at 1.
@@ -98,7 +98,7 @@ pub struct StoreLogEntry {
     pub received_at_ms: u64,
 }
 
-/// A page of log entries returned by `scan_log_since_seq` (ADR-0058 §3 R2.1).
+/// A page of log entries returned by `scan_log_since_seq` (ADR-0072 §3 R2.1).
 ///
 /// Level-triggered: if `has_more` is true the consumer MUST drain before
 /// yielding to the wake loop.
@@ -115,7 +115,7 @@ pub struct PullPage {
 }
 
 /// Explicit gap — returned when `after_seq` is behind the GC floor.
-/// Never a silent skip (ADR-0058 §6 `GapAllowed` contract).
+/// Never a silent skip (ADR-0072 §6 `GapAllowed` contract).
 #[derive(Debug, Clone)]
 pub struct PullGap {
     /// The `after_seq` the caller requested.

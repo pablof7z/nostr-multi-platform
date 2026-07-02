@@ -2,7 +2,7 @@
 //!
 //! NMP owns the full NIP-11 lifecycle so consumer apps get relay names, icons,
 //! and capability metadata with ZERO work of their own — no HTTP, no JSON, no
-//! awareness of what NIP-11 is. See ADR-0051.
+//! awareness of what NIP-11 is. See ADR-0072.
 //!
 //! Two trigger paths, one parsed type ([`nmp_core::substrate::RelayInfoDoc`]),
 //! one diagnostics surface:
@@ -39,7 +39,7 @@ pub use url::http_url_for_relay;
 /// Install the automatic NIP-11 fetch hook on `app`. After this call, every
 /// relay the pool connects to has its information document fetched and surfaced
 /// through the `relay_diagnostics` projection automatically — no further app
-/// involvement (ADR-0051 path 1).
+/// involvement (ADR-0072 path 1).
 ///
 /// `app` is any [`nmp_core::substrate::RelayConnectedHookRegistrar`] —
 /// `nmp_native_runtime::NmpApp` in production, wired up by each app's explicit
@@ -53,7 +53,7 @@ pub fn register(app: &impl nmp_core::substrate::RelayConnectedHookRegistrar) {
 }
 
 /// On-demand probe of an arbitrary relay URL that may not be in the pool
-/// (ADR-0051 path 3) — the "add relay" preview flow. BLOCKING: callers run it
+/// (ADR-0072 path 3) — the "add relay" preview flow. BLOCKING: callers run it
 /// on a worker thread (the FFI shim does). Returns the same [`RelayInfoDoc`]
 /// the automatic path produces, or an error string the caller surfaces as
 /// "couldn't reach relay".

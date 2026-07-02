@@ -1,5 +1,5 @@
 //! Host-extensible snapshot output — the typed FlatBuffers sidecar seam
-//! (ADR-0037).
+//! (ADR-0072).
 //!
 //! Hosts register typed projection closures whose FlatBuffers bytes are
 //! carried in the snapshot frame's `typed_projections` sidecar.  The legacy
@@ -18,7 +18,7 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 /// Where the old `ProjectionFn` returned a generic `serde_json::Value` appended to
 /// `KernelSnapshot::projections`, a `TypedProjectionFn` returns opaque
 /// FlatBuffers bytes ([`TypedProjectionData`]) carried in the snapshot frame's
-/// `typed_projections` sidecar (ADR-0037). `nmp-core` never interprets those
+/// `typed_projections` sidecar (ADR-0072). `nmp-core` never interprets those
 /// bytes — the closure (owned by an app/protocol crate) encodes its own typed
 /// schema and tags it with `schema_id` / `schema_version` / `file_identifier`.
 ///
@@ -33,7 +33,7 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 pub type TypedProjectionFn =
     Box<dyn Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
-/// A feed-author-set provider (ADR-0063 D7, #1671 Lane H).
+/// A feed-author-set provider (ADR-0070 D7, #1671 Lane H).
 ///
 /// Returns the set of raw author keys a feed projection will RENDER for its
 /// CURRENT visible window — recomputed fresh each time the kernel calls it. The
@@ -72,13 +72,13 @@ pub enum TypedAdmission {
     DroppedFull,
 }
 
-// ADR-0053 — the host-declared consumed-projection set. Extracted to a `pub`
+// ADR-0070 — the host-declared consumed-projection set. Extracted to a `pub`
 // submodule so the registry file stays within its LOC ceiling; the type is part
 // of the public seam (read by the kernel to gate Tier-2 built-ins).
 pub mod declared;
 pub use declared::DeclaredProjections;
 
-// ADR-0053 — end-to-end gating proofs. Mounted here (not from `kernel/mod.rs`)
+// ADR-0070 — end-to-end gating proofs. Mounted here (not from `kernel/mod.rs`)
 // via `#[path]` so the kernel god-module stays at its size baseline. The test
 // file uses absolute `crate::kernel::` paths so the mount point is irrelevant.
 #[cfg(test)]
@@ -103,7 +103,7 @@ pub struct SnapshotRegistry {
     /// the registry. Tier-1 keys are not in the built-in manifest, so Rung 3
     /// cannot synthesize these clears from `ProjectionPresence`.
     pending_typed_clears: Vec<String>,
-    /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
+    /// ADR-0070 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
     /// snapshot key (e.g. `"microblog.timeline.home"`) so a re-registration replaces (not
     /// duplicates) the provider and an `unregister_feed` removes it. Each closure
     /// returns the author keys its feed will RENDER this tick; the kernel
@@ -111,14 +111,14 @@ pub struct SnapshotRegistry {
     /// the feed key (not the derived consumer id) so the lifecycle matches the
     /// `typed_projections` registry exactly.
     feed_author_providers: HashMap<String, FeedAuthorProviderFn>,
-    /// ADR-0053 — the host-declared set of consumed Tier-2 built-in projection
+    /// ADR-0070 — the host-declared set of consumed Tier-2 built-in projection
     /// keys. Empty (the default) means "no opinion / no narrowing" — every
     /// Tier-2 built-in is emitted, as before this ADR. A non-empty set narrows
     /// the kernel-owned built-ins to its members. Tier-1 host/protocol
     /// projections are unaffected (they self-gate by registration). See
     /// [`DeclaredProjections`].
     declared_projections: DeclaredProjections,
-    /// ADR-0055 Rung 3 — the host-declared incremental-apply capability.
+    /// ADR-0070 Rung 3 — the host-declared incremental-apply capability.
     ///
     /// `false` (the default) means "full rows every tick" — the kernel emits
     /// the complete typed sidecar on every `make_update`, unchanged from Rung 2.
@@ -127,21 +127,21 @@ pub struct SnapshotRegistry {
     /// the kernel is permitted to omit `Unchanged` projections from the frame.
     /// The host MUST set this before `nmp_app_start` (single-writer,
     /// set-before-start) via [`declare_incremental_apply`]. Durable architecture
-    /// (per-attach baseline gate + Rung-5 ADR-0053 compose seam), NOT a compat
+    /// (per-attach baseline gate + Rung-5 ADR-0070 compose seam), NOT a compat
     /// shim — deleted only when every NMP host advertises it unconditionally.
     ///
     /// **Single source of truth (R6-S1).** This `Arc<AtomicBool>` is THE flag;
     /// `make_update` reads it lock-free and a Tier-1 producer captures a clone
     /// via [`Self::incremental_apply_handle`] — same atomic, no mirror anywhere.
     incremental_apply_enabled: Arc<AtomicBool>,
-    /// ADR-0055 Rung 3 (D3-5) — one-shot latch set by `declare_incremental_apply`.
+    /// ADR-0070 Rung 3 (D3-5) — one-shot latch set by `declare_incremental_apply`.
     ///
     /// The kernel reads and clears this in `make_update` (via
     /// `take_incremental_apply_baseline_pending`) and calls
     /// `ProjectionRevTracker::reset_last_emitted` when `true`, guaranteeing
     /// the next frame is a full baseline for the newly-declared host.
     incremental_apply_baseline_pending: bool,
-    /// ADR-0055 R6-S1 — frame identity for Tier-1 producers that omit unchanged
+    /// ADR-0070 R6-S1 — frame identity for Tier-1 producers that omit unchanged
     /// frames. `session_id` = `started_unix_ms` (changes on `Reset`-rebuild);
     /// `snapshot_epoch` = `tracker.epoch`. Written each tick by
     /// `Kernel::publish_frame_identity` before the typed projections run; a
@@ -151,7 +151,7 @@ pub struct SnapshotRegistry {
     /// registry survives `Reset`.
     frame_session_id: Arc<AtomicU64>,
     frame_snapshot_epoch: Arc<AtomicU64>,
-    /// ADR-0063 D7 (#1671 Lane H) — a monotone per-tick rev published at the TOP
+    /// ADR-0070 D7 (#1671 Lane H) — a monotone per-tick rev published at the TOP
     /// of every `make_update`, BEFORE any feed-author provider or typed producer
     /// closure runs.
     ///
@@ -162,7 +162,7 @@ pub struct SnapshotRegistry {
     /// `frame_snapshot_epoch` (which only changes on account-switch / schema bump)
     /// this changes on EVERY tick, so a feed re-materializes once per tick.
     frame_tick_rev: Arc<AtomicU64>,
-    /// ADR-0063 D7 (#1671 Lane H) — the emitted-author sink for the structural
+    /// ADR-0070 D7 (#1671 Lane H) — the emitted-author sink for the structural
     /// guardrail (BLOCKING 2).
     ///
     /// Each feed's typed producer, when it materializes the window it ENCODES onto
@@ -181,12 +181,12 @@ pub struct SnapshotRegistry {
     emitted_feed_authors: EmittedFeedAuthorsSlot,
 }
 
-/// ADR-0063 D7 (#1671 Lane H) — the shared emitted-author sink handle: the tick
+/// ADR-0070 D7 (#1671 Lane H) — the shared emitted-author sink handle: the tick
 /// rev it was last written for, and `consumer_id → emitted author keys`.
 pub type EmittedFeedAuthorsSlot =
     Arc<Mutex<(u64, HashMap<String, std::collections::BTreeSet<String>>)>>;
 
-/// ADR-0063 D7 (#1671 Lane H) — record `authors` as EMITTED under `consumer_id`
+/// ADR-0070 D7 (#1671 Lane H) — record `authors` as EMITTED under `consumer_id`
 /// for `tick_rev` into the shared sink, clearing the sink when the rev advances.
 ///
 /// A free function (not a method) so a typed-producer closure that captured a
@@ -250,7 +250,7 @@ impl SnapshotRegistry {
     }
 
     /// Register a **typed** projection closure under `key` — the
-    /// FlatBuffers-sidecar seam (ADR-0037).
+    /// FlatBuffers-sidecar seam (ADR-0072).
     ///
     /// `key` is the host-chosen snapshot namespace (e.g. `"microblog.timeline.home"`).
     /// Registering the same key twice replaces the first — last-writer-wins, with
@@ -345,12 +345,12 @@ impl SnapshotRegistry {
         out
     }
 
-    // ADR-0053 host-declared consumed-projection methods
+    // ADR-0070 host-declared consumed-projection methods
     // (`declare_consumed_projections`, `declared_projections`) and the
     // Workstream-E3 declared ⊆ decodable drift gate live in the `declared`
     // submodule alongside `DeclaredProjections`.
 
-    // ADR-0063 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
+    // ADR-0070 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
     // methods (`register_feed_author_provider`, `remove_feed_author_provider`,
     // `registered_feed_author_provider_keys`, `run_feed_author_provider(s)`,
     // `record_emitted_feed_authors`, `emitted_feed_authors_handle`,
@@ -376,17 +376,17 @@ pub fn new_snapshot_projection_slot() -> SnapshotProjectionSlot {
 }
 
 // Kernel-side accessors over the shared slot (set/take handle, run typed
-// projections and ADR-0053 declared-set snapshot) live in
+// projections and ADR-0070 declared-set snapshot) live in
 // the `kernel_access` submodule to keep this file within its LOC ceiling.
 mod kernel_access;
 
-// ADR-0055 Rung 3 — the `declare_incremental_apply` / `is_incremental_apply_enabled`
+// ADR-0070 Rung 3 — the `declare_incremental_apply` / `is_incremental_apply_enabled`
 // / `take_incremental_apply_baseline_pending` inherent methods live in the
 // `incremental_apply` submodule to keep this file within its LOC ceiling. The
 // two backing fields remain on the struct definition above.
 mod incremental_apply;
 
-// ADR-0063 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
+// ADR-0070 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
 // inherent methods live in the `feed_authors` submodule to keep this file under
 // its 500-LOC hard ceiling. The two backing fields remain on the struct above.
 mod feed_authors;

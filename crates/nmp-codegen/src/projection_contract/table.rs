@@ -283,7 +283,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "signer_state",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-core actor/typed_projections/signer_state_fb (ADR-0048)",
+        producer: "nmp-core actor/typed_projections/signer_state_fb (ADR-0072)",
         owner_claim: "projection.signer_state",
         schema_id: "signer_state",
         file_identifier: "KSST",

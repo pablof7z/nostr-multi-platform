@@ -1,4 +1,4 @@
-//! Unit tests for the [`CompositionLedger`] (ADR-0049 Part 2).
+//! Unit tests for the [`CompositionLedger`] (ADR-0069 Part 2).
 
 use super::*;
 

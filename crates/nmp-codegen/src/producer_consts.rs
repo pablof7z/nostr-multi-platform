@@ -291,7 +291,7 @@ pub fn render_producer_consts(target: &ProducerConstTarget) -> String {
     ));
     out.push_str(&format!(
         "/// Stable schema identifier carried in the typed-projection envelope. Equals the\n\
-         /// snapshot key (ADR-0037 shared-keyspace contract).\n\
+         /// snapshot key (ADR-0072 shared-keyspace contract).\n\
          {schema_id_vis} const {prefix}_SCHEMA_ID: &str = {schema_id:?};\n",
         schema_id_vis = target.schema_id_vis.keyword(),
         schema_id = c.schema_id,

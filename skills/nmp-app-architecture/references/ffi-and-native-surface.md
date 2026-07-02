@@ -2,7 +2,7 @@
 
 > Canonical state after the M14 clean-break (EPIC-NS-001 / #2340). Authority:
 > `docs/ffi-surface.md`, `docs/wasm-surface.md`, `docs/builder-guide/15-codegen-and-ffi.md`,
-> ADR-0030, ADR-0067, ADR-0068, ADR-0072. If this file disagrees with those, fix them and
+> ADR-0072, ADR-0072, ADR-0072, ADR-0072. If this file disagrees with those, fix them and
 > re-derive this — do not fork the spec.
 
 ## The Two Binding Families
@@ -40,7 +40,7 @@ platform runtime handle, no C ABI, and no lifecycle. See
 
 `crates/nmp-uniffi` (one `uniffi::setup_scaffolding!()`) is the reusable framework native
 surface. A new `pub extern "C"` in any `crates/nmp-*` framework crate is an **ABI
-regression** and requires an ADR-0030 exception gate (measured hot-path failure + internal
+regression** and requires an ADR-0072 exception gate (measured hot-path failure + internal
 wrapper behind a UniFFI API + named owner + thresholds + delete trigger).
 
 ## FlatBuffers Ride Through UniFFI, Not Alongside It
@@ -122,7 +122,7 @@ Raw `extern "C"` may remain in `apps/` as app-owned delivery glue (e.g.
 `apps/nmp-gallery/crates/nmp-app-gallery/src/`). It is app-owned, must carry an owning issue,
 and must not be promoted into reusable NMP framework API. It is not a second native binding
 family. Any proposal to add a new raw lane after its UniFFI replacement exists requires an
-ADR-0030 exception.
+ADR-0072 exception.
 
 ## Browser Stack
 
@@ -149,7 +149,7 @@ Worker/OPFS init before product start — silent in-memory fallback is not produ
 
 ## Hard Rules
 
-- `pub extern "C"` in `crates/nmp-*` is a framework ABI regression: file an ADR-0030 exception
+- `pub extern "C"` in `crates/nmp-*` is a framework ABI regression: file an ADR-0072 exception
   or remove it.
 - `uniffi::setup_scaffolding!()` appears exactly once per linked cdylib — in `nmp-uniffi` for
   framework-only apps, or in the app facade crate for apps with app-specific verbs.

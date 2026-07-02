@@ -1,4 +1,4 @@
-//! ADR-0053 / Workstream-E4 — the `NmpApp` projection-consumption-intent surface.
+//! ADR-0070 / Workstream-E4 — the `NmpApp` projection-consumption-intent surface.
 //!
 //! Extracted from `lib.rs` (god-file relief): the inherent `NmpApp` methods that
 //! set / read the host-declared consumed-projection intent. The matching C-ABI
@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use crate::NmpApp;
 
 impl NmpApp {
-    /// ADR-0053 — declare (union into) the static set of Tier-2 built-in
+    /// ADR-0070 — declare (union into) the static set of Tier-2 built-in
     /// projection keys this host consumes (the narrowing path).
     ///
     /// The output-side sibling of relay interest installs: the kernel serializes a
@@ -22,7 +22,7 @@ impl NmpApp {
     /// call [`Self::consume_all_builtin_projections`] instead (leaving the intent
     /// undeclared is a loud forgotten-wiring bug, not a silent firehose).
     ///
-    /// # Init-only invariant (ADR-0053 Decision 5)
+    /// # Init-only invariant (ADR-0070 Decision 5)
     ///
     /// The declared set MUST be written before the first real frame is emitted
     /// (i.e. before `nmp_app_start`). A `debug_assert!` enforces this in debug
@@ -36,14 +36,14 @@ impl NmpApp {
             !self.started.load(Ordering::SeqCst),
             "declare_consumed_projections called after nmp_app_start — \
              the declared set must be complete before the kernel emits its \
-             first real frame (ADR-0053 Decision 5 / init-only invariant)"
+             first real frame (ADR-0070 Decision 5 / init-only invariant)"
         );
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.declare_consumed_projections(keys);
         }
     }
 
-    /// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+    /// ADR-0070 / Workstream-E4 — declare the explicit "I consume every Tier-2
     /// built-in" intent (`DeclaredProjections::All`).
     ///
     /// This is the ONE non-footgun way to receive the full built-in set. Full
@@ -52,20 +52,20 @@ impl NmpApp {
     /// silent permissive default. Idempotent; a host-init call before
     /// `nmp_app_start`. A poisoned registry mutex is a silent no-op (D6). Like
     /// [`Self::declare_consumed_projections`], a debug build asserts it happens
-    /// before `nmp_app_start` (ADR-0053 Decision 5).
+    /// before `nmp_app_start` (ADR-0070 Decision 5).
     pub fn consume_all_builtin_projections(&self) {
         debug_assert!(
             !self.started.load(Ordering::SeqCst),
             "consume_all_builtin_projections called after nmp_app_start — \
              the consumption intent must be set before the kernel emits its \
-             first real frame (ADR-0053 Decision 5 / init-only invariant)"
+             first real frame (ADR-0070 Decision 5 / init-only invariant)"
         );
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.consume_all_builtin_projections();
         }
     }
 
-    /// ADR-0053 / Workstream-E4 — whether the host expressed NO
+    /// ADR-0070 / Workstream-E4 — whether the host expressed NO
     /// projection-consumption intent (the loud forgotten-declaration state).
     ///
     /// `nmp_app_start` reads this to fire the `debug_assert!` + non-fatal
@@ -80,7 +80,7 @@ impl NmpApp {
             .unwrap_or(false)
     }
 
-    /// ADR-0053 — whether the host narrowed to an explicit subset of built-ins.
+    /// ADR-0070 — whether the host narrowed to an explicit subset of built-ins.
     ///
     /// `false` for both `Undeclared` and the explicit `All` (neither narrows).
     /// Read by the `explicit composition` builder tests that assert the typestate methods

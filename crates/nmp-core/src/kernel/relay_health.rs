@@ -51,7 +51,7 @@ pub(crate) struct RelayStatus {
     /// matches `CloseReason::as_key()`. `None` until the first classified
     /// CLOSED frame arrives.
     pub(super) last_close_reason: Option<String>,
-    /// ADR-0051 — the relay's NIP-11 information document, once `nmp-nip11`
+    /// ADR-0072 — the relay's NIP-11 information document, once `nmp-nip11`
     /// has fetched it for this URL. `None` until the fetch resolves (or if
     /// the relay serves no document). The carried-through `RelayInfoDoc` is
     /// substrate-generic transport metadata (D0).
@@ -136,7 +136,7 @@ pub(super) struct RelayHealth {
     pub(super) error_category: Option<String>,
     pub(super) reconnect_count: u32,
     pub(super) counters: Counters,
-    /// NIP-42 per-relay auth state — diagnostic key matching ADR-0007 wire
+    /// NIP-42 per-relay auth state — diagnostic key matching ADR-0072 wire
     /// keys (`not_required` | `challenge_received` | `authenticating` |
     /// `authenticated` | `failed`). Mutated by `handle_auth_challenge` /
     /// `handle_auth_ok` per D8 (without bumping `changed_since_emit`).

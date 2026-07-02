@@ -11,7 +11,7 @@ impl Kernel {
         Arc::clone(&self.store)
     }
 
-    /// Borrow the kernel's pull-cursor registry handle (ADR-0058 §3, step 3b).
+    /// Borrow the kernel's pull-cursor registry handle (ADR-0072 §3, step 3b).
     #[must_use]
     pub fn pull_cursor_registry_handle(&self) -> pull_cursor::PullCursorRegistrySlot {
         Arc::clone(&self.pull_cursor_registry)
@@ -89,7 +89,7 @@ impl Kernel {
     ///
     /// Native LMDB threads the reason in at construction (`build_event_store`).
     /// Browser composition opens the durable OPFS-SQLite store **asynchronously
-    /// before the kernel exists** (ADR-0054 §1), so when that open fails the
+    /// before the kernel exists** (ADR-0072 §1), so when that open fails the
     /// reason is recorded here post-hoc and surfaces through the **same** Tier-3
     /// `store_open_failure` snapshot channel native uses (#1007 PR-8). Idempotent
     /// last-writer-wins; D6 — no stderr, no panic.

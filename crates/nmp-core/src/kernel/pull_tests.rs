@@ -1,4 +1,4 @@
-//! Unit tests for ADR-0058 step-2 kernel pull service.
+//! Unit tests for ADR-0072 step-2 kernel pull service.
 //!
 //! Covers GlobalLog + InterestShape semantics, scan-budget enforcement,
 //! predicate correctness, and gap propagation using the in-memory store.

@@ -1,8 +1,8 @@
 # Typed Read Sessions
 
-> Authority: ADR-0070 (typed read sessions), with ADR-0042, ADR-0053, ADR-0062, ADR-0058
-> folded in. For the projection emission/transport mechanics that sessions emit through, see
-> `projections-and-emission.md`.
+> Authority: ADR-0070 for typed read sessions, ADR-0076 for feed helpers, and
+> ADR-0072 for runtime/binding boundaries. For the projection emission/transport
+> mechanics that sessions emit through, see `projections-and-emission.md`.
 
 ## The read model in one sentence
 
@@ -52,11 +52,11 @@ compiler/bridge mechanics, not the product API taught to apps.
 - **`ReducedSource` dynamic source wiring** — source reconciliation is internal. Source
   replacement (follow-list update, empty-source fail-closed) is owned by the session, not app
   code.
-- **`declare_consumed_projections` / Tier-1/Tier-2 vocabulary** — output transport plumbing,
-  not the product read API (ADR-0053 folded into ADR-0070). Do not teach it as a composition
-  step.
-- **`PullCursor` / `pull_page`** (ADR-0058) — raw event-log pull for external mirrors and feed
-  pagination internals, not a UI read API. Host projection consumption stays push (ADR-0039);
+- **`declare_consumed_projections` / Tier-1/Tier-2 vocabulary** — output
+  transport plumbing, not the product read API. ADR-0070 owns the current
+  typed-session boundary. Do not teach it as a composition step.
+- **`PullCursor` / `pull_page`** (ADR-0072) — raw event-log pull for external mirrors and feed
+  pagination internals, not a UI read API. Host projection consumption stays push (ADR-0070);
   `pull_page` must never run on the UI thread from `apply()`.
 
 The `product_raw_read` doctrine-lint rule bans `open_interest`, `ObservedProjection`,
@@ -74,7 +74,7 @@ templates. The architecture scanner adds a complementary cross-repo warning.
    No shell re-derives a filter string to compute teardown.
 4. **Replay-before-live is mandatory.** A session executor delivers cached/stored matching
    events before live broadcasts. Apps must not hydrate read models by querying LMDB directly
-   (ADR-0062).
+   (ADR-0070).
 5. **Source changes are internal.** When the active account's follow list changes, the
    session's source reducer replaces its materialized child-interest set and sends a CLOSE
    diff + new REQ. The shell observes the updated typed output; it does not re-open or

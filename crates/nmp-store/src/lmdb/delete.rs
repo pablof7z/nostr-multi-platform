@@ -35,7 +35,7 @@ pub(super) fn delete_by_filter(
         .write_txn()
         .map_err(|e| StoreError::Io(format!("write_txn: {e}")))?;
 
-    // ADR-0058 §6 step-4: snapshot the retention claims once for this delete txn
+    // ADR-0072 §6 step-4: snapshot the retention claims once for this delete txn
     // so every append-time trim within it sees a consistent set.
     let claims = inner.retention_claims_snapshot();
 
@@ -91,7 +91,7 @@ fn by_ids(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // ADR-0058 §3: emit AdminPurge log entry for semantic deletion.
+        // ADR-0072 §3: emit AdminPurge log entry for semantic deletion.
         ingest_log::append_deleted(
             inner.ingest_log,
             inner.ingest_meta,
@@ -149,7 +149,7 @@ fn by_author(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // ADR-0058 §3: emit AdminPurge log entry.
+        // ADR-0072 §3: emit AdminPurge log entry.
         ingest_log::append_deleted(
             inner.ingest_log,
             inner.ingest_meta,
@@ -207,7 +207,7 @@ fn by_kind_range(
         // #1811: drop the deleted event's FTS rows (doc-key-driven).
         fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
-        // ADR-0058 §3: emit AdminPurge log entry.
+        // ADR-0072 §3: emit AdminPurge log entry.
         ingest_log::append_deleted(
             inner.ingest_log,
             inner.ingest_meta,

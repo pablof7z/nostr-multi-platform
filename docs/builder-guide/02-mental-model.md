@@ -56,7 +56,7 @@ Representative crates are labelled in their layer above:
 wasm-bindgen for browser).
 `nmp-codegen` still emits focused host helpers (`gen typed-decoders`,
 projection caches, keyed-ref caches, action/feed helpers, and registry builtin
-files); it no longer generates per-app composition crates (ADR-0046). `nmp-gallery` is
+files); it no longer generates per-app composition crates (ADR-0069). `nmp-gallery` is
 the in-tree reference app (iOS/Android/desktop/TUI shells over one Rust core);
 Chirp has been extracted into its own external consumer repo and is no longer
 part of this monorepo.
@@ -261,7 +261,7 @@ changes to `nmp-core`**.
 ## Anti-patterns
 
 1. **Putting `Highlight` / `Episode` / `Project` in `nmp-core`.** This is the
-   exact abstraction error ADR-0009 exists to forbid — it turns the kernel
+   exact abstraction error ADR-0072 exists to forbid — it turns the kernel
    into a junk drawer of every consumer's domain concepts. App nouns go in
    app-core crates; protocol nouns in `nmp-nip*` crates.
 2. **Bypassing typed sessions and actions.** Use typed read sessions or

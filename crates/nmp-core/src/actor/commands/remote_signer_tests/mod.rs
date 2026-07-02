@@ -108,7 +108,7 @@ impl RemoteSignerHandle for StubRemoteSigner {
     }
 
     fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String> {
-        // Real NIP-44 v2 against the stub's own keys (ADR-0026). The stub must
+        // Real NIP-44 v2 against the stub's own keys (ADR-0072). The stub must
         // behave like a production signer for actor-side plumbing tests; an
         // error stub would be a landmine for any future test exercising the
         // seal path. D0 still holds — `nostr::nips::nip44` is a leaf crypto

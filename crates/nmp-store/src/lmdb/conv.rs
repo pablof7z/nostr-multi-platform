@@ -1,6 +1,6 @@
 //! `RawEvent` ↔ `nostr::Event` conversion.
 //!
-//! ADR-0012 §"Decision": JSON round-trip per call is the M3 choice — simple
+//! ADR-0071 §"Decision": JSON round-trip per call is the M3 choice — simple
 //! and correct. A future optimization can cache the parsed `nostr::Event`
 //! inside `VerifiedEvent` (which already parses during `try_from_raw`).
 

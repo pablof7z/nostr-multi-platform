@@ -150,7 +150,7 @@ impl Kernel {
         self.metric_note_events = self.metric_note_events.saturating_add(1);
     }
 
-    // V-112 (ADR-0042): is_thread_hydration_requested() deleted —
+    // V-112 (ADR-0076): is_thread_hydration_requested() deleted —
     // ThreadViewState (including pending_ids / requested_ids) removed from kernel.
 
     /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store,

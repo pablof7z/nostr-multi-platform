@@ -271,7 +271,7 @@ impl ActionModule for PublishRelayListAction {
         );
     type Action = PublishRelayListInput;
 
-    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// ADR-0071 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PublishRelayListInput as ActionPayload>::decode(bytes))
@@ -336,7 +336,7 @@ impl ActionModule for PublishRelayListAction {
 }
 
 /// Register the `nmp.nip65.publish_relay_list` action module on the app as a
-/// **yielding default** (ADR-0049 Part 1): an app may pre-empt it regardless of
+/// **yielding default** (ADR-0069 Part 1): an app may pre-empt it regardless of
 /// call order.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(PublishRelayListAction);

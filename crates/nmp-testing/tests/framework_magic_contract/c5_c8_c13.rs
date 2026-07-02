@@ -232,21 +232,21 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///
 /// Integration proof of TWO contracts in one drain:
 ///
-/// 1. **ADR-0017 (D1 placeholder shape).** With no kind:0 ingested, the
+/// 1. **ADR-0070 (D1 placeholder shape).** With no kind:0 ingested, the
 ///    claimed event row still carries the raw author pubkey; avatar/display
 ///    placeholder selection is a presentation concern outside this projection.
-/// 2. **ADR-0001 / T103 (FFI envelope).** Every frame on the channel decodes
+/// 2. **ADR-0070 / T103 (FFI envelope).** Every frame on the channel decodes
 ///    as the single FlatBuffers `UpdateEnvelope` discriminated type — the tag
 ///    *is* the discriminant (D6). This test never sniffs payload keys to
 ///    decide snapshot-vs-update; it pattern-matches on
 ///    `UpdateEnvelope::Snapshot`.
 ///
 /// In-place refinement (placeholder → kind:0 URL) is covered by the kernel
-/// companion `c13_kernel_*` in `kernel/tests.rs`, per the ADR-0017 split.
+/// companion `c13_kernel_*` in `kernel/tests.rs`, per the ADR-0070 split.
 ///
-/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017,
+/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0070,
 ///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
-/// V-112 (ADR-0042): Updated to use event ref resolution + `refs.event`
+/// V-112 (ADR-0076): Updated to use event ref resolution + `refs.event`
 /// projection instead of the deleted `OpenAuthor` + `author_view` sidecar.
 /// C13 property remains the same: raw event projections do not synthesize
 /// presentation fields before kind:0.
@@ -294,7 +294,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     ))
     .expect("send IngestPreVerifiedEvents");
 
-    // V-112 (ADR-0042): OpenAuthor deleted. Use event ref resolution to surface the
+    // V-112 (ADR-0076): OpenAuthor deleted. Use event ref resolution to surface the
     // event in the `refs.event` typed sidecar for C13 observation.
     // D5: refs.event carries the entry only after a Resolve dispatch.
     tx.send(ActorCommand::Refs(RefsCommand::Resolve {
@@ -310,7 +310,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
 
     // Drain envelopes until we find a `Snapshot` carrying our event in the
     // `refs.event` sidecar. Every frame on the channel is a FlatBuffers
-    // update frame per ADR-0001 (T103); decoding through `UpdateEnvelope`
+    // update frame per ADR-0070 (T103); decoding through `UpdateEnvelope`
     // first proves the snapshot is delivered with the canonical discriminator
     // — non-snapshot frames are skipped on the typed tag, never by key
     // sniffing. PR-B (#991/#979): view payloads travel in the typed
@@ -324,7 +324,7 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                 Ok(frame) => {
                     let envelope = decode_update_frame(&frame)
                         .unwrap_or_else(|e| {
-                            panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame bytes: {frame:?}")
+                            panic!("every channel frame must decode as UpdateEnvelope (ADR-0070 / T103) — got error {e} on frame bytes: {frame:?}")
                         });
                     if !matches!(envelope, UpdateEnvelope::Snapshot(_)) {
                         continue;

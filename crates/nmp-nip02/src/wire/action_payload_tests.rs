@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the nip02 follow-action typed payload
-//! codecs (ADR-0064 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
+//! codecs (ADR-0071 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
 use crate::{FollowManyAction, PubkeyAction};

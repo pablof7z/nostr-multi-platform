@@ -100,7 +100,7 @@ The startup flow is deliberately ordered:
 1. The host registers a keyring capability handler before any start/restore
    path that can read secure storage.
 2. `Start` calls `restore_active_session` on the actor thread before the first
-   snapshot. This cold-start read chain is synchronous by ADR-0040 because it
+   snapshot. This cold-start read chain is synchronous by ADR-0072 because it
    runs once, before UI frames exist, and each read continuation decides the
    next restore step.
 3. App-managed local signers restore first. They are signable by explicit
@@ -116,7 +116,7 @@ The startup flow is deliberately ordered:
    through the serialized capability worker. The actor never lets native retry,
    reorder, or reinterpret keyring outcomes.
 
-For new lifecycle work, ADR-0059 is the target shape: `CreateLocal` and
+For new lifecycle work, ADR-0072 is the target shape: `CreateLocal` and
 `ImportLocal` explicitly request `persist: KeyringRequired { account_id }`
 when secure storage must gate account activation and bootstrap publish. Until
 that shape is fully projected, builders should use the typed sign-in and restore
@@ -301,4 +301,4 @@ to upgrade to a fully-connected `Nip46Signer`.
 - [10 — Outbox routing (NIP-65)](10-outbox-routing.md)
 - [12 — Publishing + the publish engine](12-publish-and-ledger.md)
 - [16 — Capabilities (D7)](16-capabilities.md)
-- [ADR-0059 — Account lifecycle is separate from bootstrap publish](../decisions/0059-account-lifecycle-bootstrap-policy.md)
+- [ADR-0072 — Account lifecycle is separate from bootstrap publish](../decisions/0072-runtime-capability-and-shell-boundary.md)

@@ -96,7 +96,7 @@ retains only test/test-support fallback URLs.
 ## NIP-42: challenge → response → re-emit
 
 The canonical state machine is in `crates/nmp-nip42/src/state.rs:23-46`
-(mirrors ADR-0007 §1). The placeholder `subs::trigger::RelayAuthState`
+(mirrors ADR-0072 §1). The placeholder `subs::trigger::RelayAuthState`
 (`subs/trigger.rs:34-47`) is the seam type; `nmp-nip42` owns the canonical
 one and translates one-way via `relay_auth_state_to_subs`
 (`state.rs:87-95`).

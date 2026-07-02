@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codec for the `nmp.nip57.zap` action
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 //!
 //! This is the WRITE-direction typed payload carried as the OPAQUE
 //! `DispatchEnvelope.payload`. The registry adapter decodes it through

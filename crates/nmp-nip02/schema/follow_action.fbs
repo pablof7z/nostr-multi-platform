@@ -1,6 +1,6 @@
 namespace nmp.nip02;
 
-// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow` /
+// ADR-0071 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow` /
 // `nmp.unfollow` `ActionModule`s (both carry the same single-pubkey shape).
 //
 // The OPAQUE `DispatchEnvelope.payload` for those namespaces; the registry

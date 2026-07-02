@@ -34,8 +34,8 @@ use std::sync::{Arc, RwLock};
 
 use super::{clock::SystemClock, Clock};
 use crate::substrate::{
-    PublishTrace, RoutedRelaySet, RoutingRelayUrl as RelayUrl,
-    RoutingSource, RoutingTraceObserver, SubscriptionTrace,
+    PublishTrace, RoutedRelaySet, RoutingRelayUrl as RelayUrl, RoutingSource, RoutingTraceObserver,
+    SubscriptionTrace,
 };
 
 /// Default ring-buffer capacity per stream (publishes / subscriptions). Sized

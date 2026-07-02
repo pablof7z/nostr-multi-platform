@@ -1,4 +1,4 @@
-//! Parked remote-signer ops — one unified park + one drain (ADR-0050 §D2).
+//! Parked remote-signer ops — one unified park + one drain (ADR-0072 §D2).
 //!
 //! Background: every publish/sign path on the actor signs through a
 //! `*_nonblocking` helper (`commands/identity.rs`) that hands back a raw
@@ -9,7 +9,7 @@
 //! [`drain::resolve_parked_op_at`] — a non-blocking `try_recv` — and runs the op's
 //! terminal the moment the broker turns the request around.
 //!
-//! Before ADR-0050 §D2 this lived in TWO queues with duplicated machinery: a
+//! Before ADR-0072 §D2 this lived in TWO queues with duplicated machinery: a
 //! publish queue (`PendingSign`) drained by a ~90-line inline block in
 //! `actor/mod.rs`, and a sign-and-return queue (`PendingSignReturn`) drained by
 //! `resolve_pending_sign_return`. Both collapsed into [`ParkedOp`] +
@@ -18,7 +18,7 @@
 //! is preserved by the loop's [`PublishObligation`] handler.
 //!
 //! `deadline` bounds the wait: a broker that never responds within the signing
-//! account's `RemoteSignerHandle::op_timeout()` budget (ADR-0050 D4 — NIP-46 =
+//! account's `RemoteSignerHandle::op_timeout()` budget (ADR-0072 D4 — NIP-46 =
 //! 5s, NIP-55 = 90s) has its op dropped and an error terminal delivered to its
 //! sink (D6 — the error becomes kernel state / a resolved continuation, the
 //! actor never wedges).
@@ -206,7 +206,7 @@ mod tests {
         assert_eq!(got.expect("Ok outcome").unsigned.content, "parked-op test");
     }
 
-    // ── CipherContinuation sink (ADR-0050 §D1, new) ──────────────────────
+    // ── CipherContinuation sink (ADR-0072 §D1, new) ──────────────────────
 
     /// The cipher sink parks a `SignerOp<String>` and delivers the resolved
     /// ciphertext / plaintext to the boxed cipher continuation.

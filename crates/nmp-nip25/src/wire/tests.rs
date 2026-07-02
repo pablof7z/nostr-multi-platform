@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the nip25 typed payload codecs
-//! (ADR-0064 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
+//! (ADR-0071 / S3 #1751). Every fail-closed gate asserts the NEGATIVE.
 
 use super::*;
 use crate::action::{ReactAction, UnreactAction};

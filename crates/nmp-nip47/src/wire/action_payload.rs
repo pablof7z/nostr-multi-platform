@@ -1,5 +1,5 @@
 //! Typed FlatBuffers payload codecs for the three wallet action payloads this
-//! crate owns (ADR-0064 / #1756): `nmp.wallet.connect`
+//! crate owns (ADR-0071 / #1756): `nmp.wallet.connect`
 //! ([`WalletConnectAction`]), `nmp.wallet.disconnect`
 //! ([`WalletDisconnectAction`]), and `nmp.wallet.pay_invoice`
 //! ([`WalletAction`]).

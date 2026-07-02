@@ -144,7 +144,7 @@ impl NmpRuntimeCore {
         serialize_events(&events)
     }
 
-    /// Handle raw binary `DispatchEnvelope` bytes (ADR-0064 binary write
+    /// Handle raw binary `DispatchEnvelope` bytes (ADR-0071 binary write
     /// doorway). Bypasses JSON serialization of the bytes (which would corrupt
     /// them to `{}`).
     pub fn handle_dispatch_bytes_raw(&mut self, bytes: &[u8]) -> String {

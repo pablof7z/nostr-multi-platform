@@ -1,133 +1,85 @@
 # ADR-0070: Typed read sessions own app-visible read lifecycles
 
-## Status
-
-Accepted for the architecture redesign direction.
-
-## Context
-
-Issue #2316 established the root read-path problem: one visible feature state is
-assembled by separately wiring acquisition, route planning, cache replay,
-observed sinks, admission predicates, projection sidecars, snapshot emission,
-dynamic dependencies, and teardown. Issue #2313 is the developer-facing symptom:
-an app author can open raw interest, but that is only half an app read model.
-
-Several old primitives protect real invariants. `ObservedProjection` carries
-replay-before-live and scoped delivery lessons. Dependent interests and
-`ReducedSource`-like code carry source-arrival/source-withdrawal lessons. Pull
-cursors and raw event logs remain useful for diagnostics and export. The failure
-is exposing these fragments as the way app developers assemble product screens.
-
 ## Decision
 
 The app-visible read model is a typed session descriptor plus handle, or a
-typed per-feature helper generated from such a descriptor.
+typed per-feature helper generated from that descriptor.
 
-A typed session owns the complete lifecycle for one read demand:
+A typed session owns the complete lifecycle for one product read demand:
+acquisition demand, route policy, replay, admission, output schema, load status,
+wake sources, dynamic source replacement, teardown, and output clearing.
 
-- acquisition demand;
-- route policy and relay provenance requirements;
-- bounded replay before live activation;
-- live event/store/capability sink;
-- admission predicate and fail-closed behavior;
-- typed output schema/status owner;
-- wake sources for event, store, source, mailbox, or capability changes;
-- teardown for owner close, child demand release, and clear/tombstone output.
+Shells open typed sessions and render typed outputs. They do not hand-author
+relay filters, raw `open_interest` calls, projection declarations, reducer
+names, dynamic source sets, or teardown recipes for production screens.
 
-From the app developer perspective, a screen asks for the thing it wants to
-show, not for each internal pipe needed to make that thing appear. For example,
-an article app should be able to express:
+`open_interest` is acquisition machinery. `ObservedProjection` and
+`ObservedProjectionSink` are scoped event-delivery and replay machinery.
+`ReducedSource` names private source reconciliation machinery. These mechanisms
+may exist inside substrate, protocol, diagnostics, tests, export paths, or
+migration gates, but they are not product read APIs.
 
-```text
-open articles where:
-  primary kind is 30023
-  authors are people the active user follows
-  OR articles were reacted to/commented on by those people
-```
+Empty dynamic source sets fail closed unless the typed session explicitly
+declares a fallback. Empty authors, tags, refs, groups, or relay sets never
+become wildcard relay demand by accident.
 
-That one read demand compiles into author/source resolution, outbox-aware relay
-planning, cache replay, live subscriptions, comment/reaction references, typed
-output, status, and teardown. If the active user's follows change, the session
-owner replaces dependent demand and clears withdrawn output without shell code
-resubscribing. If the resolved author/source set is empty, the session fails
-closed unless it explicitly declares a fallback.
+## Context
 
-Native, web, TUI, and desktop shells open typed sessions and render typed
-outputs. They do not hand-author relay filters, raw `open_interest` calls,
-projection declarations, reducer names, dynamic source sets, or teardown recipes
-for production product screens.
+Visible product reads were assembled from separate pipes: acquisition, route
+planning, cache replay, observed sinks, admission predicates, projection
+sidecars, snapshot emission, dynamic dependencies, and close. That lets one
+screen drift across many owners.
 
-`open_interest` is acquisition only. It may remain substrate, protocol-internal,
-diagnostic, test, export, or migration surface with owner and deletion or
-formalization criteria. It is not the normal product read API.
-
-`ObservedProjection` is private executor machinery unless a later ADR proves a
-public invariant. App developers should not assemble it. `ReducedSource` is
-private/provisional dynamic-source machinery unless a later ADR proves a real
-app-facing need. `open_feed(FeedParams)` may become a generated helper over typed
-sessions, a compatibility shim, or a retired feed-specific door; it must not stay
-beside typed sessions as an equal public lifecycle model.
-
-This ADR does not require flattening every read into a generic
-`subscribe(filter)` surface. Nostr routing, replay, provenance, dynamic sources,
-private relays, group hosts, and typed output are real concerns. The requirement
-is that those concerns are owned by one session contract per product read, with
-feature-shaped helpers where that is the humane API.
-
-Empty dynamic source sets fail closed unless the feature explicitly declares a
-fallback source. Empty authors, tags, refs, or groups never become wildcard
-relay demand by accident.
+Typed sessions make one owner responsible for the whole read lifecycle while
+still allowing lower-level Nostr machinery to remain private where it belongs.
 
 ## Consequences
 
-Positive:
+New product reads need a descriptor and a session contract instead of a loose
+set of raw plumbing calls. That costs design work up front, but source arrival,
+source withdrawal, replay-before-live, fail-closed empty sets, output clear, and
+owner close become testable in one place.
 
-- A new app or protocol read feature has one owner for demand, replay, output,
-  status, and close.
-- Existing safe machinery can be reused privately without making it app
-  vocabulary.
-- Source changes, account switches, and teardown become contract tests instead
-  of feature-local recipes.
-- Shells stop reimplementing protocol parsing and read-model ownership.
+Lower-level read machinery can stay in the codebase when it is internal,
+diagnostic, test, or export machinery. It must not be taught as the normal app
+surface.
 
-Negative/tradeoffs:
+## Boundaries
 
-- The first implementation must retire or scope old public read doors in the
-  same slice; otherwise this ADR only adds a facade.
-- Dynamic source families should not be over-generalized until multiple real
-  sessions prove shared diff, fail-closed, teardown, and dependent-interest
-  semantics.
-- Some existing builder-guide and product-spec pages must be rewritten because
-  they currently teach `open_interest`, `open_feed`, `ObservedProjection`, or
-  `ReducedSource` as app-facing concepts.
+Permitted:
 
-## Alternatives considered
+- typed read-session descriptors and handles;
+- generated helpers over typed descriptors;
+- internal acquisition, observer, replay, and source-reconciliation machinery;
+- diagnostic or export surfaces with a named owner.
 
-| Option | Why rejected |
-|---|---|
-| NDK-style raw `subscribe(filter)` from shell code | It moves protocol parsing, routing, cache replay, and output ownership to the shell. |
-| Add an `open_feature()` wrapper over the old fragments | It improves call-site ergonomics while preserving silent desync and duplicate lifecycle recipes. |
-| Make `ReducedSource` the public abstraction | It exposes source reconciliation before proving that different source families share one semantic model. |
-| Keep `open_feed` as the main public read model | It privileges one feed family and leaves refs, groups, search, embeds, and app-defined reads with parallel recipes. |
+Forbidden:
 
-## Fitness functions / enforcement
+- product screens opening raw relay interests;
+- app code declaring projection sinks or reducer names;
+- shell-owned dynamic source replacement;
+- wildcard demand from empty dynamic sources;
+- parallel public lifecycle models beside typed sessions.
 
-- Public product read APIs are typed session helpers or generated adapters, not
-  raw filter dictionaries.
-- `open_interest` callers are classified as substrate, protocol-internal,
-  diagnostic/test/export, or migration-with-deletion.
-- No product screen registers a filterless accepted-event observer and
-  self-filters later.
-- Session contract tests cover source arrival, source withdrawal, empty-source
-  fail-closed behavior, replay-before-live, route replanning, output clear, and
-  owner close.
-- Old public read-surface counts do not increase after the first ratchet lands.
+## Enforcement
 
-## Linked work
+Doctrine lint rejects raw read surfaces in product shells and starter templates.
+Clean-room docs gates reject `open_interest`, `ObservedProjection`,
+`ObservedProjectionSink`, and `ReducedSource` as app-facing guidance.
 
-- #2313: app-developer API complexity.
-- #2316: fragmented read lifecycle.
-- #2307: event-driven observed-projection reconciler.
-- #2320: stale ADR/doc cleanup.
-- Amends ADR-0035, ADR-0036, ADR-0039, ADR-0042, ADR-0053, ADR-0057,
-  ADR-0062, and ADR-0063 where they expose read internals as product API.
+Session tests cover source arrival, source withdrawal, empty-source fail-closed
+behavior, replay-before-live, route replanning, output clear, pagination where
+applicable, and owner close.
+
+## Related
+
+- [ADR-0076](0076-app-facing-feed-helpers.md) - feed helpers over typed
+  sessions.
+- [ADR-0075](0075-trellis-private-reconciliation-substrate.md) - private
+  reconciliation mechanics.
+- [ADR-0072](0072-runtime-capability-and-shell-boundary.md) - shell boundary.
+- [docs/product-spec/api-surface.md](../product-spec/api-surface.md) - public
+  app-facing API examples.
+- [docs/architecture/high-level-app-architecture.md](../architecture/high-level-app-architecture.md)
+  - developer-facing architecture overview.
+- #2746 - ADR current-only cleanup.

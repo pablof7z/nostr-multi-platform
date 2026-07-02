@@ -53,7 +53,7 @@ These are the public inputs for building a new app without issue-history context
 ## Where to go
 
 - **[nostr-mp.f7z.io](https://nostr-mp.f7z.io)** — landing page, component registry, doctrine in full.
-- **[`docs/decisions/README.md`](docs/decisions/README.md)** — ADR index. ADR-0069..0073 are the decision spine for the clean-break redesign; use them for rationale and migration history after reading the current API docs.
+- **[`docs/decisions/README.md`](docs/decisions/README.md)** — ADR index. ADR-0069..0073 are the decision spine for the clean-break redesign; use them for rationale and enforcement boundaries after reading the current API docs.
 - **[`docs/nips.md`](docs/nips.md)** — v1 NIP support matrix with platform and signer caveats.
 - **[`docs/migration.md`](docs/migration.md)** — v1 runtime and component migration guide.
 - **[`docs/aim.md`](docs/aim.md)** — the architectural north star (immutable foundation, not the current API guide).

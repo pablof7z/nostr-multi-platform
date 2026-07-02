@@ -1,5 +1,5 @@
 // `nmp.toml` app-manifest parser — consumed by `nmp upgrade` to read and bump
-// an app's NMP dependency policy. (ADR-0046 deleted the Rust-shell module
+// an app's NMP dependency policy. (ADR-0069 deleted the Rust-shell module
 // *generator* that also read this manifest; the manifest model itself survives
 // because the dependency-policy command still needs it.)
 mod manifest;
@@ -40,20 +40,20 @@ pub mod crate_ownership;
 // consumer off the JSON `payload` path. See module doc for the generated /
 // hand-written seam rationale.
 pub mod swift_typed_decoders;
-// ADR-0055 R3-S3 — generated `ProjectionMergeCache` (iOS). Sourced from the
+// ADR-0070 R3-S3 — generated `ProjectionMergeCache` (iOS). Sourced from the
 // SAME projection registry as `swift_typed_decoders` so the cache can never
 // drift from the decoder set. Implements the D3-3 merge algorithm +
 // decode-before-commit (D3-4) so app code is oblivious to delta mechanics.
 pub mod swift_projection_cache;
-// ADR-0055 R3-S4 — generated `ProjectionMergeCache` (Android/Kotlin). Sourced
+// ADR-0070 R3-S4 — generated `ProjectionMergeCache` (Android/Kotlin). Sourced
 // from the SAME projection registry as `swift_projection_cache` so the cache
 // is byte-for-byte semantically identical to the iOS implementation. Generates
 // `apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
 pub mod kotlin_projection_cache;
-// ADR-0053 / Workstream-E4 — projection-tier classification + the codegen-derived
+// ADR-0070 / Workstream-E4 — projection-tier classification + the codegen-derived
 // kernel built-in projection key set (derived from `swift_projections_registry`).
 pub mod projection_tier;
-// ADR-0053 / Workstream-E4 — generator for `nmp-core`'s
+// ADR-0070 / Workstream-E4 — generator for `nmp-core`'s
 // `KERNEL_BUILTIN_PROJECTION_KEYS` const. Renders `projection_tier`'s derived
 // list so the kernel built-in key set is not hand-maintained and cannot drift
 // from what codegen decodes / the kernel emits.
@@ -72,14 +72,14 @@ pub mod producer_consts;
 // can't drift from those producers until the full producer-const migration
 // reaches the NIP crates (a separate slice — see the module doc).
 pub mod projection_version_gate;
-// ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference caches for
+// ADR-0070 Lane A (#1671) — generated per-key (row-keyed) reference caches for
 // keyed projections (`refs.profile` / `refs.event`). Sourced from
 // `KEYED_PROJECTIONS`; decode `nmp.refs.RefRowDeltaBatch` and merge row deltas
 // under the five invariants, semantically identical to
 // `nmp_core::refs::RefRowCache` and to each other across platforms.
 pub mod kotlin_keyed_cache;
 pub mod swift_keyed_cache;
-// ADR-0063 Lane A twin (#2722) — the THIRD platform twin, generated
+// ADR-0070 Lane A twin (#2722) — the THIRD platform twin, generated
 // TypeScript `KeyedRefCache` for `@nmp/runtime-web`. Sourced from the SAME
 // `KEYED_PROJECTIONS` registry so it can never drift from the Swift/Kotlin
 // caches. See module doc for why it collapses hl's/nmp-gallery's separate
@@ -153,7 +153,7 @@ pub use ts_projection_contract::{
     check_ts_projection_contract, generate_ts_projection_contract, render_ts_projection_contract,
     TsProjectionContractCheckOutcome,
 };
-// ADR-0064 §3 (#1783) — generated typed action-builder codegen (Swift + Kotlin).
+// ADR-0071 §3 (#1783) — generated typed action-builder codegen (Swift + Kotlin).
 // Emits the host-facing typed write builders that construct the
 // `DispatchEnvelope` bytes for the native byte doorway from typed inputs, so the
 // shells never spell an `action_namespace` or hand-assemble FlatBuffers.

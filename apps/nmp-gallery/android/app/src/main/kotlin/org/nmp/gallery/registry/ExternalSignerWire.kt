@@ -9,7 +9,7 @@ import kotlinx.serialization.Serializable
 // ── Wire types mirroring nmp-signer-iface ExternalSignerRequest/Response ──────
 //
 // Vendored with ExternalSignerCapabilityBridge.kt + AmberIntentCodec.kt as one
-// unit (ADR-0048 Stage 2): byte-identical copies except the package line, see
+// unit (ADR-0072 Stage 2): byte-identical copies except the package line, see
 // VendorDriftGateTest.
 
 /**

@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference cache for
+//! ADR-0070 Lane A (#1671) — generated per-key (row-keyed) reference cache for
 //! Swift (iOS).
 //!
 //! Generates `apps/chirp/ios/Chirp/Bridge/Generated/KeyedRefCache.generated.swift`
@@ -10,7 +10,7 @@
 //! exactly one `AvatarView(pubkey:)` re-renders when that one pubkey updates —
 //! no app cache, no polling.
 //!
-//! The five ADR-0063 invariants are enforced at ROW grain, identically to the
+//! The five ADR-0070 invariants are enforced at ROW grain, identically to the
 //! Rust reference model (`nmp_core::refs::RefRowCache`) and the Kotlin twin:
 //! 1. an absent row is Unchanged (retained), never Cleared;
 //! 2. decode-before-commit per row (malformed → keep prior + latch resync);
@@ -22,7 +22,7 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
 
-// ADR-0063 Lane C (#1671): the TYPED row-payload rendering (accessors +
+// ADR-0070 Lane C (#1671): the TYPED row-payload rendering (accessors +
 // decode-before-commit seam + init) lives in a sibling file so neither source
 // exceeds the 500-LOC cap.
 #[path = "swift_keyed_cache_typed.rs"]
@@ -41,7 +41,7 @@ const HEADER: &str = "\
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.
 // The CI gate (`codegen-drift.yml`) fails any PR whose generated Swift differs.
 //
-// ADR-0063 Lane A (#1671): per-key row cache for keyed reference projections
+// ADR-0070 Lane A (#1671): per-key row cache for keyed reference projections
 // (`refs.profile` / `refs.event`). Decodes the `nmp.refs.RefRowDeltaBatch`
 // payload and merges row deltas under the five invariants — byte-for-byte
 // semantically identical to `nmp_core::refs::RefRowCache` and the Kotlin twin.
@@ -69,7 +69,7 @@ pub fn render_keyed_ref_cache(entries: &[KeyedProjectionEntry]) -> String {
     out.push('\n');
 
     out.push_str(STATIC_TYPES);
-    // ADR-0063 Lane C: install the real typed decode-before-commit seam at
+    // ADR-0070 Lane C: install the real typed decode-before-commit seam at
     // construction so the typed contract holds with no caller wiring.
     out.push_str(STATIC_INIT);
     out.push_str(&render_routing(entries));
@@ -123,7 +123,7 @@ struct KeyedRowChange: Equatable {
 }
 
 // MARK: - KeyedRefCache
-/// NMP-owned per-key row cache for keyed reference projections (ADR-0063).
+/// NMP-owned per-key row cache for keyed reference projections (ADR-0070).
 ///
 /// Thread-safety: fed only from the NMP update callback dispatched to
 /// `@MainActor`, identical to `ProjectionMergeCache`.
@@ -139,7 +139,7 @@ final class KeyedRefCache {
     /// Per-row change publisher (one event per changed key).
     let rowChanged = PassthroughSubject<KeyedRowChange, Never>()
 
-    /// Decode-before-commit seam (ADR-0063 invariant #2). The per-namespace
+    /// Decode-before-commit seam (ADR-0070 invariant #2). The per-namespace
     /// typed-row validator the cache runs on a `Changed` row's payload BEFORE it
     /// replaces a slot: it returns true iff `payload` decodes to the namespace's
     /// concrete ref type (`refs.profile` → ProfileRef/ProfileCard, `refs.event`

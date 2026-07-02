@@ -227,7 +227,7 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
 
 #[test]
 fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
-    // ADR-0050 §D5 — the gift-wrap DM chain pins its originating account by
+    // ADR-0072 §D5 — the gift-wrap DM chain pins its originating account by
     // resolving `ctx.active_account_pubkey()` ONCE at step 1, then passing
     // `signer_pubkey: Some(hex)` to every port step (so a mid-chain account
     // switch signs the seal with the originating account). This replaces the

@@ -15,7 +15,7 @@ updated: 2026-05-28
 
 - `crates/nmp-core/schema/nmp_update.fbs`
 - `crates/nmp-core/src/update_envelope.rs`
-- `docs/decisions/0037-typed-flatbuffers-runtime-projections.md`
+- `docs/decisions/0072-runtime-capability-and-shell-boundary.md`
 - `crates/nmp-feed/schema/feed_home.fbs`
 - `crates/nmp-feed/src/typed_wire/mod.rs`
 - `crates/nmp-nip01/schema/timeline_snapshot.fbs`
@@ -38,7 +38,7 @@ are opaque to `nmp-core`.
 
 ## Sidecar Rationale
 
-ADR-0037 rejects a transport-level union of app projection types. New typed
+legacy decision 0037 rejects a transport-level union of app projection types. New typed
 projections should land in the projection-owning crate, not in `nmp-core`.
 The transport schema carries opaque typed bytes and a descriptor so hosts can
 select a decoder without making the kernel schema know app or protocol nouns.
@@ -92,5 +92,5 @@ set did not show an Android typed app-feed decoder.
 
 ## Authority Notes
 
-The host preference contract is in ADR-0037. Actual host adoption is determined
+The host preference contract is in legacy decision 0037. Actual host adoption is determined
 by the platform bridge files listed above, not by the ADR rollout order.

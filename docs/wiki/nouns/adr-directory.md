@@ -10,4 +10,7 @@ source_refs:
 
 # ADR directory
 
-The decision record archive is not a museum; old ADRs survive only when they preserve invariants that don't conflict with the current spine; otherwise they are folded, amended, or retired in place
+The current architecture decision surface. It contains only ADRs that still own
+live invariants; obsolete decision files are deleted after any surviving rule
+moves to its current owner. Git history, closed issues, and PR bodies preserve
+the archive.

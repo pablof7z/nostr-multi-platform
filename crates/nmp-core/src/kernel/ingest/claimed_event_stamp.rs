@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1, codex #1 condition 2 (F1) — the store-ingest chokepoint
+//! ADR-0070 Rung 1, codex #1 condition 2 (F1) — the store-ingest chokepoint
 //! that bumps `claimed_event_content_ver` when a freshly persisted event matches
 //! a live `event_claims` key.
 //!
@@ -41,7 +41,7 @@ impl Kernel {
         let Some(id) = claimed_id else { return };
 
         // Collect EVERY live `event_claims` key this insert satisfies (the hex id,
-        // the addressable coordinate, AND each NIP-73 external ref) so ADR-0063's
+        // the addressable coordinate, AND each NIP-73 external ref) so ADR-0070's
         // per-key rev can bump every affected row (D6a), not just the first match.
         let mut matched_keys: Vec<String> = Vec::new();
 
@@ -83,7 +83,7 @@ impl Kernel {
         self.projection_rev_tracker
             .source_versions
             .bump_claimed_event_content();
-        // ADR-0063 Lane B (D6a) — per-key rev (ingest site 3 of 3): a freshly
+        // ADR-0070 Lane B (D6a) — per-key rev (ingest site 3 of 3): a freshly
         // persisted event rewrote THESE claimed rows' data; bump each one's rev so
         // every satisfied preview re-renders.
         for key in &matched_keys {

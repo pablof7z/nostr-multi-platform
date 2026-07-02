@@ -80,7 +80,7 @@ impl NmpAppBuilder<Unstarted> {
 
 // ── Projection-consumption decision (StorageSet → ProjectionsDeclared) ───────
 //
-// ADR-0053 DEBT 2: the host MUST make an explicit decision about which Tier-2
+// ADR-0070 DEBT 2: the host MUST make an explicit decision about which Tier-2
 // kernel built-in projections it consumes before `start()`. Forgetting is a
 // compile error (start() only exists on ProjectionsDeclared). Two ways to
 // decide — both advance the typestate:
@@ -93,7 +93,7 @@ impl NmpAppBuilder<StorageSet> {
     ///
     /// The kernel then serializes ONLY these built-ins (plus any Tier-1
     /// host-registered projections, which self-gate by registration) into each
-    /// pushed `SnapshotFrame` — the ADR-0053 narrowing optimization. Keys
+    /// pushed `SnapshotFrame` — the ADR-0070 narrowing optimization. Keys
     /// accumulate with any added earlier via the `AppHost` trait method (e.g.
     /// by a protocol crate during `register`), since the underlying
     /// `SnapshotRegistry` declaration is additive.
@@ -119,7 +119,7 @@ impl NmpAppBuilder<StorageSet> {
     ///
     /// This is the **visible, greppable** "I want everything" choice. It sets
     /// the kernel's declared set to the explicit `DeclaredProjections::All`
-    /// state (ADR-0053 / Workstream-E4: `All` is the ONE non-footgun way to mean
+    /// state (ADR-0070 / Workstream-E4: `All` is the ONE non-footgun way to mean
     /// "every Tier-2 built-in"). Use it only when the host genuinely consumes
     /// the full set (diagnostics shells, TUIs, tests). Production app shells
     /// should prefer [`Self::declare_consumed_projections`] to avoid serializing
@@ -237,7 +237,7 @@ impl NmpAppBuilder<RelaysDeclared> {
     ///
     /// `start()` is reachable ONLY after a projection-consumption decision
     /// (`.declare_consumed_projections` or `.consume_all_builtin_projections`)
-    /// — ADR-0053 DEBT 2's compile-time enforcement. After this call, the
+    /// — ADR-0070 DEBT 2's compile-time enforcement. After this call, the
     /// builder is gone — no setter is reachable (compile error). The returned
     /// pointer is owned by the caller.
     ///
@@ -288,7 +288,7 @@ impl NmpAppBuilder<RelaysDeclared> {
         // SAFETY: `app` non-null; not yet started.
         unsafe { &*app }.set_initial_relays_for_start(initial_relays);
 
-        // ADR-0053 DEBT 2: by the time we reach `start()` the host has ALREADY
+        // ADR-0070 DEBT 2: by the time we reach `start()` the host has ALREADY
         // made an explicit projection-consumption decision — the typestate
         // guarantees it (`ProjectionsDeclared` is only reachable via
         // `.declare_consumed_projections` or `.consume_all_builtin_projections`).

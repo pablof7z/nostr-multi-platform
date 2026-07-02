@@ -278,8 +278,8 @@ fn panicking_result_observer_does_not_kill_delivery() {
     );
 }
 
-// ADR-0049 Part 1 — directional registry semantics (order-independent yield).
-mod adr_0049_yield {
+// ADR-0069 Part 1 — directional registry semantics (order-independent yield).
+mod explicit_composition_yield {
     use super::*;
     use crate::kernel::composition_ledger::{CompositionLedger, Disposition};
     use std::sync::Arc;
@@ -289,8 +289,8 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: crate::substrate::DeclaredActionNamespace =
             crate::substrate::DeclaredActionNamespace::framework(
-                "nmp.test.adr0049.ns",
-                "test.action.nmp.test.adr0049.ns",
+                "nmp.test.composition.ns",
+                "test.action.nmp.test.composition.ns",
             );
         fn execute(
             &self,
@@ -308,8 +308,8 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: crate::substrate::DeclaredActionNamespace =
             crate::substrate::DeclaredActionNamespace::framework(
-                "nmp.test.adr0049.ns",
-                "test.action.nmp.test.adr0049.ns",
+                "nmp.test.composition.ns",
+                "test.action.nmp.test.composition.ns",
             );
         fn execute(
             &self,
@@ -327,8 +327,8 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: crate::substrate::DeclaredActionNamespace =
             crate::substrate::DeclaredActionNamespace::framework(
-                "nmp.test.adr0049.other",
-                "test.action.nmp.test.adr0049.other",
+                "nmp.test.composition.other",
+                "test.action.nmp.test.composition.other",
             );
         fn execute(
             &self,
@@ -349,7 +349,7 @@ mod adr_0049_yield {
             "first default install returns true"
         );
         let _ = registry.register(AppModule);
-        assert!(registry.contains("nmp.test.adr0049.ns"));
+        assert!(registry.contains("nmp.test.composition.ns"));
     }
 
     #[test]
@@ -361,7 +361,7 @@ mod adr_0049_yield {
             !installed,
             "default must yield (return false) when the namespace is already claimed by an app"
         );
-        assert!(registry.contains("nmp.test.adr0049.ns"));
+        assert!(registry.contains("nmp.test.composition.ns"));
     }
 
     #[test]
@@ -386,7 +386,7 @@ mod adr_0049_yield {
         assert_eq!(records.len(), 2);
 
         assert_eq!(records[0].seam, "action_registry");
-        assert_eq!(records[0].key, "nmp.test.adr0049.ns");
+        assert_eq!(records[0].key, "nmp.test.composition.ns");
         assert_eq!(records[0].disposition, Disposition::Installed);
         assert!(records[0].provider.contains("AppModule"));
         assert!(records[0].replaced.is_none());
@@ -436,7 +436,7 @@ mod adr_0049_yield {
         assert!(records
             .iter()
             .all(|r| r.disposition == Disposition::Installed));
-        assert!(registry.contains("nmp.test.adr0049.ns"));
-        assert!(registry.contains("nmp.test.adr0049.other"));
+        assert!(registry.contains("nmp.test.composition.ns"));
+        assert!(registry.contains("nmp.test.composition.other"));
     }
 }

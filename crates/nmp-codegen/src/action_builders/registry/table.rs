@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — the flat-table action-builder data table.
+//! ADR-0071 §3 (#1783) — the flat-table action-builder data table.
 //!
 //! Split out of [`super`] (`registry.rs`) as a size-management seam: the parent
 //! module owns the types + the union/publish/marmot builders; this submodule
@@ -14,7 +14,7 @@ use super::host_called::{
 };
 use super::{ActionBuilder, FieldKind, PayloadField};
 
-/// The flat-table builders (ADR-0064 §3 acceptance scope).
+/// The flat-table builders (ADR-0071 §3 acceptance scope).
 ///
 /// `nmp.publish` carries a FlatBuffers UNION body rather than a flat table, so
 /// it does NOT live here — its encode shape (a nested body table + a union type

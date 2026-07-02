@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.codegen",
     crate_name: "nmp-codegen",
-    summary: "NMP code generator for consumer-side Swift projection mirrors (KernelTypes + typed-FlatBuffer decoders) plus the nmp.toml manifest parser. The Rust-shell FFI-crate generator was removed by ADR-0046 (composition is a library, not a generator).",
+    summary: "NMP code generator for consumer-side Swift projection mirrors (KernelTypes + typed-FlatBuffer decoders) plus the nmp.toml manifest parser. The Rust-shell FFI-crate generator was removed by ADR-0069 (composition is a library, not a generator).",
     claims: [
         {
             claim_type: "mechanism",

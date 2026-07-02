@@ -12,7 +12,7 @@ import kotlinx.serialization.json.Json
 
 // Wire types live in ExternalSignerWire.kt; the Amber-specific Intent/URI/
 // permissions encoding and result extraction live in AmberIntentCodec.kt.
-// The three files are vendored together as one unit (ADR-0048 Stage 2):
+// The three files are vendored together as one unit (ADR-0072 Stage 2):
 // byte-identical copies except the package line, see VendorDriftGateTest.
 
 private val bridgeJson = Json {

@@ -1,4 +1,4 @@
-//! ADR-0058 §3 mirror pull-page surface — M14-C7 UniFFI migration.
+//! ADR-0072 §3 mirror pull-page surface — M14-C7 UniFFI migration.
 //!
 //! Typed `#[uniffi::export] impl NmpApp` mirror pull-page method. The
 //! COLLAPSE benefit: the byte payload rides UniFFI's `Vec<u8>` lifetime with no
@@ -14,7 +14,7 @@
 //! The runtime binary format (variant 0 = Page, 1 = Gap, 2 = Error) maps to
 //! the typed `MirrorPullResult` enum. For `Page`, the typed metadata fields
 //! are extracted and the entry-payload bytes are returned as `Vec<u8>` whose
-//! format is the ADR-0058 entry section (u32_LE count + entries).
+//! format is the ADR-0072 entry section (u32_LE count + entries).
 //!
 //! ## Implementation note
 //!
@@ -42,7 +42,7 @@ pub enum MirrorPullResult {
     /// - `has_more`       — `true` when the store head is ahead of
     ///   `next_after_seq`; call again to drain.
     /// - `bytes`          — serialized entry section: `u32_LE entry_count`
-    ///   followed by `entry_count × entry` in the ADR-0058 §3 wire format.
+    ///   followed by `entry_count × entry` in the ADR-0072 §3 wire format.
     ///   Identical to bytes `[18..]` of the runtime page payload.
     Page {
         next_after_seq: u64,
@@ -82,7 +82,7 @@ const ERROR_LEN: usize = 1 + 4; // 5 bytes
 
 #[uniffi::export]
 impl NmpApp {
-    /// ADR-0058 §3 — synchronously drain one page of the kernel ingest log.
+    /// ADR-0072 §3 — synchronously drain one page of the kernel ingest log.
     ///
     /// Returns a typed [`MirrorPullResult`]; UniFFI owns the returned `Vec<u8>`.
     ///

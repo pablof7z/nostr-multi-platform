@@ -1,6 +1,6 @@
 //! `ActionPayload` codecs for the core group-lifecycle / content actions:
 //! `join`, `leave`, `publish_group_event`, and `create_group`
-//! (ADR-0064 / S9 #1747).
+//! (ADR-0071 / S9 #1747).
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 

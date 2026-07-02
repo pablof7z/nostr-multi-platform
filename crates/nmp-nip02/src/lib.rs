@@ -16,7 +16,7 @@
 //! engine in `nmp-feed` consumes, with follow → planner-interest expansion done
 //! at the composition root (`explicit composition`) — no `FollowSetLookup` trait, no
 //! planner `SocialTimeline` seam. See
-//! [`active_follow_set`] and ADR-0036.
+//! [`active_follow_set`] and ADR-0076.
 //!
 //! # Why this exists
 //!
@@ -145,7 +145,7 @@ pub struct UnfollowModule;
 /// read-modify-write-publish cycle on its exclusive execution slot.
 pub struct FollowManyModule;
 
-// The `ActionModule` impls for these three structs (incl. the ADR-0064 / S3
+// The `ActionModule` impls for these three structs (incl. the ADR-0071 / S3
 // typed-payload `decode_payload` overrides) live in `action_modules.rs` — split
 // out to keep this file under the 500-LOC ceiling.
 
@@ -158,7 +158,7 @@ pub struct FollowManyModule;
 /// Registration MUST happen before `nmp_app_start` because
 /// the host-side action registrar requires `&mut self`.
 pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
-    // Yielding defaults (ADR-0049 Part 1): each module installs only if its
+    // Yielding defaults (ADR-0069 Part 1): each module installs only if its
     // namespace is unclaimed, so an app may pre-empt any of them regardless of
     // whether it registers before or after `explicit owner composition`.
     app.register_default_action(FollowModule);
@@ -180,7 +180,7 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// Wire the NIP-02 follow-list read runtime into `app`.
 ///
 /// Registers the `"nmp.follow_list"` typed FlatBuffers snapshot projection
-/// (ADR-0037) backed by the canonical event store — the single source of truth
+/// (ADR-0072) backed by the canonical event store — the single source of truth
 /// for the active account's kind:3 follow set — and enqueues a `{"kinds":[3]}`
 /// kind:3 interest so the kernel's cache-serve path populates the store before
 /// the first snapshot tick.
@@ -305,7 +305,7 @@ pub fn register_follow_state_runtime(
         }
     });
 
-    // Typed FlatBuffers sidecar (ADR-0037): PURE READ — reads the event store
+    // Typed FlatBuffers sidecar (ADR-0072): PURE READ — reads the event store
     // and encodes. Wire shape is preserved: key = "nmp.follow_list",
     // schema_id = "nmp.nip02.follow_list". D8: non-blocking lookup.
     let projection_typed = Arc::clone(&projection);

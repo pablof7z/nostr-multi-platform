@@ -8,21 +8,21 @@
 
 The four-lane model in
 `docs/design/subscription-compilation/diagnostics.md` §5.0 stretches to
-**seven lanes** once both ADR-0020 (this design) and ADR-0021 (relay
+**seven lanes** once both ADR-0071 (this design) and ADR-0072 (relay
 roles — Indexer + AppRelay) land:
 
 1. NIP-65
 2. Hint
 3. Provenance
 4. UserConfigured — account read/write, debug (the historical
-   `UserConfigured(Indexer)` sub-category is REMOVED here per ADR-0021
+   `UserConfigured(Indexer)` sub-category is REMOVED here per ADR-0072
    and promoted to lane 6)
 5. **ClassRouted** — sourced from NIP-51 lists; carries
    `class: EventClass` and `via: Personal | PublisherKeyed(author)`.
-6. **Indexer** (ADR-0021) — always-on for kind:0, kind:3, and
+6. **Indexer** (ADR-0072) — always-on for kind:0, kind:3, and
    kind:10000–19999. R+W symmetric. Source: operator default ∪ user's
    kind:10086 list.
-7. **AppRelay** (ADR-0021) — per-author substitutive fallback when an
+7. **AppRelay** (ADR-0072) — per-author substitutive fallback when an
    author has no known NIP-65 mailbox. Whole-session lifetime.
    Source: operator default ∪ user-settings override.
 
@@ -37,4 +37,4 @@ The diagnostic-discipline doc
 (`docs/design/subscription-compilation/diagnostics.md`) is updated as
 part of P3's deliverable — a single PR that introduces all three new
 role tags simultaneously: `ClassRouted` (this ADR), `Indexer`, and
-`AppRelay` (ADR-0021).
+`AppRelay` (ADR-0072).

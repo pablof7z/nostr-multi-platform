@@ -1,5 +1,5 @@
 //! Structural unit tests for the generated TypeScript `KeyedRefCache`
-//! (ADR-0063 twin, #2722). The vitest run over the emitted
+//! (ADR-0070 twin, #2722). The vitest run over the emitted
 //! `keyedRefCache.generated.ts` is the CI harness's runtime gate
 //! (`web/packages/runtime-web/src/keyedRefCache.generated.test.ts`); these
 //! Rust tests guard the generator's emitted shape, mirroring

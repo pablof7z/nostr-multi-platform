@@ -6,10 +6,10 @@ import os.log
 private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 
 /// Gallery-side mirror of the resolved event-ref embed envelope map derived
-/// from `refs.event` after `resolve_ref` (ADR-0063 / ADR-0034).
+/// from `refs.event` after `resolve_ref` (ADR-0070 / ADR-0072).
 ///
 /// The renderer (`NostrContentView` / `EmbeddedEvent`) is frontend-driven
-/// (ADR-0034 / M16): it walks a content tree, encounters an `EventRef(uri)`,
+/// (ADR-0072 / M16): it walks a content tree, encounters an `EventRef(uri)`,
 /// and the `EmbeddedEvent` view fires `sink.resolveEventRef(uri, consumerId)` via
 /// `EventRefResolverProtocol`. The host (`KernelEventRefResolver`) decodes the
 /// URI and forwards the raw event key through `resolve_ref`. The kernel

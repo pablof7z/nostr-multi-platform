@@ -62,7 +62,7 @@ use crate::kinds::{d_tag_value, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROU
 /// corresponding 39002 / 39001 has arrived; the booleans default to
 /// "public" / "open" (Highlighter convention) when no metadata has arrived.
 ///
-/// Raw protocol data only (ADR-0032): presentation-layer fields such as
+/// Raw protocol data only (ADR-0072): presentation-layer fields such as
 /// display-name fallback, avatar initials, and formatted subtitle are
 /// the shell's responsibility and must not be pre-computed here.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]

@@ -1,6 +1,6 @@
 namespace nmp.nip51;
 
-// ADR-0064 — typed FlatBuffers payload for
+// ADR-0071 — typed FlatBuffers payload for
 // `nmp.nip51.add_bookmark_set_item` /
 // `nmp.nip51.remove_bookmark_set_item`. Both namespaces carry the same
 // BookmarkSetUpdateInput { account_pubkey, set_kind, identifier, item } shape,

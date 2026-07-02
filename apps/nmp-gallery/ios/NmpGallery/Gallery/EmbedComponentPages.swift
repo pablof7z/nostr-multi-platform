@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Showcase pages for the kind-dispatch embed renderers (ADR-0034 / M16).
+/// Showcase pages for the kind-dispatch embed renderers (ADR-0072 / M16).
 ///
 /// Each page builds a `ContentTreeWire` containing surrounding prose plus an
 /// `EventRef` for a real bech32 URI. `NostrContentView` walks the tree; on

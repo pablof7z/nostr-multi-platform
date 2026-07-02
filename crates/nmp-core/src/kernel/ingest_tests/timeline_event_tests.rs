@@ -1,5 +1,5 @@
 //! `ingest_timeline_event` (kind:1) unit tests: subscribed-author admission
-//! into the `events` cache and `timeline` ordering projection, the ADR-0057
+//! into the `events` cache and `timeline` ordering projection, the ADR-0070
 //! persist-without-project oracle for non-followed authors, and duplicate-
 //! delivery idempotence.
 
@@ -51,7 +51,7 @@ fn ingest_timeline_event_from_subscribed_author_stores_event() {
     );
 }
 
-/// ADR-0057 oracle — a signed kind:1 from an author NOT in `timeline_authors`
+/// ADR-0070 oracle — a signed kind:1 from an author NOT in `timeline_authors`
 /// (and not matched by any `should_store_event` read-time bypass) PERSISTS to
 /// the authoritative store (admission = valid signature; persistence is no
 /// longer relevance-gated — #1442) but does NOT enter the timeline VIEW: the
@@ -74,7 +74,7 @@ fn non_subscribed_author_event_persists_but_does_not_timeline_project() {
         event,
     );
 
-    // ADR-0057 — the event IS now in the authoritative store (kind-agnostic,
+    // ADR-0070 — the event IS now in the authoritative store (kind-agnostic,
     // valid-sig admission). This closes the #1442 relevance-shaped hole.
     let id_bytes = crate::kernel::hex_to_pubkey_bytes(&event_id).expect("event id is 64-char hex");
     assert!(
@@ -83,7 +83,7 @@ fn non_subscribed_author_event_persists_but_does_not_timeline_project() {
             .get_by_id(&id_bytes)
             .expect("store get_by_id must not error")
             .is_some(),
-        "ADR-0057: a validly-signed non-followed-author event must be PERSISTED",
+        "ADR-0070: a validly-signed non-followed-author event must be PERSISTED",
     );
 
     // …but it is NOT projected into the timeline VIEW.

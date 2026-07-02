@@ -1,6 +1,6 @@
-//! D21 — no ambient authority (K2 / ADR-0052 §D6 regression gate).
+//! D21 — no ambient authority (K2 / ADR-0072 §D6 regression gate).
 //!
-//! Keystone K2 (instance-scoped registration, ADR-0052) deleted the five
+//! Keystone K2 (instance-scoped registration, ADR-0072) deleted the five
 //! process-global mutable singletons that the old TYPE-registered extension
 //! seams forced stateful modules to reach through:
 //!
@@ -312,7 +312,7 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
         col,
         format!(
             "`static {}: {}` is an ambient-authority process-global — D21 \
-             (K2 / ADR-0052) forbids module-level mutable/interior-mutable \
+             (K2 / ADR-0072) forbids module-level mutable/interior-mutable \
              statics that confer authority (handles, runtimes, senders, hooks). \
              K2 deleted the five such globals (ACTIVE_WALLET_RUNTIME, \
              GLOBAL_BROKER, GLOBAL_DRIVER, the bunker/NIP-55 HOOKs); a future PR \

@@ -4,7 +4,7 @@
 //! standalone, wasm32-only SQLite-on-OPFS engine that backs nmp-store's
 //! synchronous `EventStore` trait so the wasm build gains durable, indexed
 //! event storage instead of the in-memory `MemEventStore`. The design is fixed
-//! by [`docs/decisions/0054-web-persistence-opfs-sqlite.md`](../../../docs/decisions/0054-web-persistence-opfs-sqlite.md).
+//! by [`docs/decisions/0072-runtime-capability-and-shell-boundary.md`](../../../docs/decisions/0072-runtime-capability-and-shell-boundary.md).
 //!
 //! ## Dependency direction (mirrors `nmp-nostr-lmdb`)
 //!
@@ -45,7 +45,7 @@
 //! * `store_impl` — [`OpfsSqliteStore`]'s inherent impl (open, txn + statement
 //!   helpers, point reads) and the single scoped `unsafe impl Send + Sync`.
 //!
-//! ## Send + Sync soundness (ADR-0054 §3)
+//! ## Send + Sync soundness (ADR-0072 §3)
 //!
 //! The store handle is owned by exactly one single-threaded Worker actor; that
 //! ownership invariant — not "wasm has no threads" — is what makes the
@@ -59,7 +59,7 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(unused))]
 #![warn(missing_docs)]
 
-// ADR-0054 §3 soundness guard: the single-Worker-actor ownership that makes the
+// ADR-0072 §3 soundness guard: the single-Worker-actor ownership that makes the
 // upcoming `unsafe impl Send + Sync` sound is destroyed by wasm threads.
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
 compile_error!(
@@ -132,7 +132,7 @@ pub use types::{
 /// Handle to the OPFS-backed SQLite event store.
 ///
 /// On wasm32 it owns the SQLite connection behind a `RefCell` (interior
-/// mutability for the synchronous `&self` `EventStore` trait — ADR-0054 §3),
+/// mutability for the synchronous `&self` `EventStore` trait — ADR-0072 §3),
 /// opened via [`OpfsSqliteStore::open`]. The connection handle is `!Send +
 /// !Sync`; the store nonetheless carries a single scoped `unsafe impl Send +
 /// Sync` (in `store_impl`) justified by single-Worker-actor ownership and made

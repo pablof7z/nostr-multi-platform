@@ -1,111 +1,83 @@
-# ADR-0073: ADR reset and rolling architecture ratchets
-
-## Status
-
-Accepted for the architecture redesign direction.
-
-## Context
-
-The ADR directory has accumulated many accepted point decisions. Several protect
-current invariants. Others preserve milestone-specific or defaults-era guidance
-that now conflicts with the desired architecture. Issue #2320 states the source
-of truth correction: old ADRs that no longer describe accepted architecture
-should be folded, corrected, deleted, or retired. They should not survive as
-parallel current guidance.
-
-The redesign direction also must not become a big-bang rewrite plan. The
-architecture is valid only if each slice reduces permanent concepts, public
-doors, lifecycle recipes, shell policy sites, or duplicate owners while
-preserving behavior.
+# ADR-0073: ADR directory governance and rolling ratchets
 
 ## Decision
 
-ADR-0069 through ADR-0073 are the current redesign spine:
+`docs/decisions/` contains only decisions that still govern NMP architecture.
 
-- ADR-0069 owns explicit app composition and app/product policy boundaries.
-- ADR-0070 owns typed read sessions and private read machinery disposition.
-- ADR-0071 owns write intent, event construction/signing/publishing separation,
-  and route provenance.
-- ADR-0072 owns runtime, capability, and shell boundaries.
-- ADR-0073 owns the ADR reset and rolling ratchet discipline.
+One invariant has one owner. When a decision stops describing the architecture,
+any surviving rule moves to the owner that now governs it, and the obsolete ADR
+file is deleted. Git history, closed GitHub issues, and pull request bodies
+preserve prior context.
 
-Older ADRs remain authoritative only for current invariants that do not conflict
-with this redesign spine. When an older ADR teaches a superseded app-facing
-surface, its current rule must be amended in place or the ADR must be folded,
-deleted, or retired by the PR touching that area. Git history preserves decision
-history; the active ADR directory should not act as a museum of old public
-architecture.
+The current decision spine is:
 
-The ADR index classifies each older ADR as one of:
+- [ADR-0069](0069-explicit-feature-composition.md) - explicit composition and
+  app-owned product policy.
+- [ADR-0070](0070-typed-read-sessions.md) - app-visible read lifecycles.
+- [ADR-0071](0071-write-intents-and-route-provenance.md) - write intents,
+  drafts, signing/publishing separation, and route provenance.
+- [ADR-0072](0072-runtime-capability-and-shell-boundary.md) - runtime,
+  capability, and shell ownership.
+- ADR-0073 - this directory governance rule.
 
-- folded into the redesign spine;
-- folded into another durable owner such as architecture docs, product spec, or
-  builder guide;
-- still-current standalone invariant;
-- retired/deleted because it is milestone-specific, stale, or superseded.
+Architecture cleanup proceeds through PR-sized slices. Each slice must reduce or
+hold the line on old public doors, duplicate lifecycle recipes, shell policy
+sites, stale docs, and extra sources of truth. The issue queue remains the
+tactical tracker; ADRs and durable docs carry only rules that need to outlive a
+single task.
 
-The temporary `docs/new-arch/` candidate packet has been retired. Future
-architecture proposals must move surviving decisions into ADRs, durable docs,
-and GitHub issues instead of leaving a parallel architecture packet behind.
+## Context
 
-Migration proceeds by rolling horizon. At any point, only the next one to five
-PR-sized slices need implementation-level detail. After each slice, the project
-must recount old surfaces, record what was deleted/privatized/scoped, verify
-ratchets, and choose the next slice.
+An ADR directory that keeps every old point decision teaches competing
+architecture. NMP needs a small, readable decision surface that helps a future
+agent choose the present owner instead of archaeology through stale public APIs.
+
+The cleanup cannot be a one-time prose exercise. Ratchets are needed so old
+public surfaces do not return after the docs are cleaned.
 
 ## Consequences
 
-Positive:
+Deleting obsolete ADR files makes links and references stricter: stale guidance
+must move to an owner or disappear. That creates reference-update work in the
+same PR, but it removes parallel authority.
 
-- New contributors get one current architecture spine instead of dozens of
-  contradictory accepted records.
-- The project can aggressively delete stale docs without pretending a full
-  migration can be planned up front.
-- Progress is measured by shrinking old surfaces and passing ratchets, not by
-  landing prettier terminology.
+New ADRs carry a higher burden. If an existing ADR or durable doc can own the
+rule, update that owner instead of creating another packet.
 
-Negative/tradeoffs:
+## Boundaries
 
-- The cleanup is continuing work: many references in product specs, builder
-  guides, recipes, wiki pages, and older ADRs must be corrected in place as
-  implementation slices touch those areas.
-- Some historical detail will move out of active docs and into git history.
-- The ADR index is not permission to keep stale guidance forever. Folded and
-  amended ADRs should shrink when their implementation area is next edited.
+Permitted:
 
-## Alternatives considered
+- editing a current ADR in place when its rule changes;
+- moving reference material into architecture, product, API, design, perf, or
+  testing docs;
+- deleting obsolete ADR files once surviving rules have an owner;
+- linking issues and PRs for context in `Related`.
 
-| Option | Why rejected |
-|---|---|
-| Keep all old ADRs as accepted and add a new appendix | It preserves conflicting current guidance and violates the single-source rule. |
-| Delete old ADRs before accepting the redesign spine | It risks removing useful invariants before their new owner is clear. |
-| Plan the entire migration trajectory now | It would become stale and distract from PR-sized proof slices. |
-| Measure success by fewer files only | Fewer files can hide worse ownership. The real metric is fewer public nouns, doors, recipes, and sources of truth. |
+Forbidden:
 
-## Fitness functions / enforcement
+- tombstone ADR files;
+- status tables or lifecycle ledgers in the ADR README;
+- parallel architecture packets;
+- ADRs that are implementation diaries, migration notes, API manuals, or
+  release logs;
+- links that tell readers to decide which ADR wins.
 
-- `docs/decisions/README.md` owns the ADR classification ledger.
-- Every remaining ADR is either current standalone guidance or has a clear folded
-  owner.
-- Stale references to production `the hidden defaults preset`, app-facing
-  `open_interest`, public `ReducedSource`, public `ObservedProjection`, hidden
-  projection tiers, and anonymous explicit relay routes are corrected in place
-  or classified as compatibility with owner/removal trigger.
-- Architecture slices include a deletion ledger:
+## Enforcement
 
-```text
-old public doors deleted or privatized:
-old compatibility paths scoped:
-new public concepts added:
-net permanent concepts:
-```
+Reviewers reject ADR changes that add lifecycle sections, tombstones, status
+tables, long chronology, or stale links. Reference checks fail when Markdown
+links point to deleted ADR files or when raw ADR mentions cite missing numbers.
 
-- Ratchets prevent old-pattern counts from increasing before broad migration is
-  complete.
+Clean-room docs ratchets prevent production docs and starter templates from
+teaching hidden defaults, raw reads, public read internals, anonymous explicit
+routes, raw native framework bindings, or public Trellis concepts.
 
-## Linked work
+## Related
 
-- #2320: original ADR reset issue, now closed after the spine and index landed.
-- #2316: foundational feature-state decomposition.
-- #2313: app-developer API complexity.
-- #2324: landed the initial ADR reset/spine cleanup.
+- [ADR-0069](0069-explicit-feature-composition.md)
+- [ADR-0070](0070-typed-read-sessions.md)
+- [ADR-0071](0071-write-intents-and-route-provenance.md)
+- [ADR-0072](0072-runtime-capability-and-shell-boundary.md)
+- [docs/architecture/high-level-app-architecture.md](../architecture/high-level-app-architecture.md)
+- #2746 - ADR current-only cleanup.

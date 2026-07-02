@@ -1,4 +1,4 @@
-//! `PullFeedController` — ADR-0058 §8 step-6B.
+//! `PullFeedController` — ADR-0072 §8 step-6B.
 //!
 //! The single, on-demand paging path a feed rides when a host reports
 //! `load_older_feed` through the native session API. It replaces every
@@ -12,7 +12,7 @@
 //!    projection (D5).
 //! 2. Runs a bounded [`FeedPullPager`] drain over the kernel pull substrate
 //!    (`pull_fn`, injected by the composition root from the in-process event
-//!    store — NOT a new host pull accessor; ADR-0039 §6.1 preserved).
+//!    store — NOT a new host pull accessor; ADR-0070 §6.1 preserved).
 //! 3. Applies every drained positive row through the feed's **own** ingest path
 //!    (`apply`, the same `ObservedProjectionSink::on_kernel_event` the push fan-out
 //!    uses), so dedup + snapshot projection are identical to live ingest.
@@ -26,7 +26,7 @@
 //! register, decode, or consume `nmp.pull.wake`; the pager owns a private
 //! `GapAllowed` seq cursor. Completeness rides ingest seq — a late event with an
 //! old `created_at` lands at a *higher* seq, so the next drain sees it even
-//! though a `created_at` cursor would have skipped it (ADR-0058 §1).
+//! though a `created_at` cursor would have skipped it (ADR-0072 §1).
 
 use std::sync::{Arc, Mutex};
 
@@ -40,7 +40,7 @@ use crate::{FeedController, FeedLoadStatus, FeedLoadStopReason, FeedWindowPolicy
 
 /// The in-process pull seam: `(scope, after_seq) -> page`. The composition root
 /// builds this over the kernel event store (`nmp_core::pull_page_over`); it is a
-/// plain Rust closure, never a new C-ABI symbol (ADR-0039 §6.1). On an
+/// plain Rust closure, never a new C-ABI symbol (ADR-0070 §6.1). On an
 /// unsupported shape or unavailable store it MUST return an empty, exhausted
 /// page so the drain terminates and the feed fails closed (no broad-scan).
 pub type PullFn = Arc<dyn Fn(PullScope, u64, PullLimits) -> ScanLogResult + Send + Sync>;

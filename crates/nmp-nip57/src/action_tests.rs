@@ -31,7 +31,7 @@ impl PaymentPort for StubPaymentPort {
     }
 }
 
-/// A `ZapAction` bound to a stub payment port for unit tests (ADR-0052 rung 5.2
+/// A `ZapAction` bound to a stub payment port for unit tests (ADR-0072 rung 5.2
 /// — no process-global). These tests only assert the emitted
 /// `FetchLnurlInvoiceCommand` shape, so the stub exercises the `Some(_)` path.
 fn zap_action() -> ZapAction {

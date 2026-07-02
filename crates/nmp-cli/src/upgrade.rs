@@ -63,7 +63,7 @@ fn rewrite_app_module_dependencies(
             if let Some((name, _rest)) = line.split_once('=') {
                 let dep = name.trim();
                 // Repoint every `nmp-*` dependency at the new release tag.
-                // Consumers pin NMP by git rev (ADR-0046 /
+                // Consumers pin NMP by git rev (ADR-0069 /
                 // `docs/architecture/external-consumers.md`), so the rewrite
                 // emits a git-tag pin — the same shape `nmp init --nmp-version`
                 // produces — rather than a bare crates.io version.

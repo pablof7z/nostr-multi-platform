@@ -16,7 +16,7 @@ use crate::substrate::RelayInfoDoc;
 #[derive(Clone, Debug, Default)]
 pub(super) struct RelayTransportMap {
     rows: BTreeMap<CanonicalRelayUrl, RelayTransportStatus>,
-    /// ADR-0051 — per-URL relay-information documents (NIP-11), keyed by the
+    /// ADR-0072 — per-URL relay-information documents (NIP-11), keyed by the
     /// SAME canonical URL as `rows`. Stored independently of the role-keyed
     /// transport row so the `nmp-nip11` fetch result (which has no role) can
     /// attach a document to any connected URL, and so the doc survives the
@@ -138,7 +138,7 @@ impl RelayTransportMap {
     }
 
     /// Store / replace the relay-information document for `relay_url`,
-    /// anchoring its freshness to `now` (ADR-0051).
+    /// anchoring its freshness to `now` (ADR-0072).
     fn set_info(&mut self, relay_url: &str, doc: RelayInfoDoc, now: Instant) {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.info.insert(
@@ -238,7 +238,7 @@ impl Kernel {
         ordered
     }
 
-    /// ADR-0051 — fold a fetched relay-information document onto the per-URL
+    /// ADR-0072 — fold a fetched relay-information document onto the per-URL
     /// transport row and mark the snapshot dirty so the `relay_diagnostics`
     /// projection surfaces the new metadata on the next emit. Called from the
     /// actor's [`crate::ActorCommand::SetRelayInfo`] dispatch arm.
@@ -256,7 +256,7 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    /// ADR-0051 — whether a fresh (within `ttl`) relay-information document
+    /// ADR-0072 — whether a fresh (within `ttl`) relay-information document
     /// already exists for `relay_url`. Only used by relay_diagnostics tests.
     #[cfg(test)] // consumed by relay_diagnostics/tests.rs
     #[must_use]
@@ -265,7 +265,7 @@ impl Kernel {
             .info_is_fresh(relay_url, Instant::now(), ttl) // doctrine-allow: D9 — cfg(test) relay-info freshness helper
     }
 
-    /// ADR-0051 — read the cached relay-information document for `relay_url`.
+    /// ADR-0072 — read the cached relay-information document for `relay_url`.
     #[must_use]
     pub(crate) fn relay_info_for(&self, relay_url: &str) -> Option<&RelayInfoDoc> {
         self.transport_relays.info_for(relay_url)

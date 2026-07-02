@@ -161,7 +161,7 @@ fn record_action_success_surfaces_published_terminal_in_action_results() {
 
 #[test]
 fn record_action_success_with_result_json_carries_structured_result() {
-    // ADR-0043 Decision 4 — a success terminal that attaches an opaque
+    // ADR-0071 Decision 4 — a success terminal that attaches an opaque
     // structured result body surfaces it under the row's `result` field, as a
     // parsed JSON OBJECT (not a JSON-encoded string). `nmp-core` forwards it
     // verbatim and never interprets it — this is the linchpin the Blossom host

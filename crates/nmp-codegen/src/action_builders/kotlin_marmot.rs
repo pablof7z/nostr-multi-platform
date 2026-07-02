@@ -1,4 +1,4 @@
-//! ADR-0064 §3 / #2169 (M14-1c) — Kotlin emitter for the `nmp.marmot` UNION
+//! ADR-0071 §3 / #2169 (M14-1c) — Kotlin emitter for the `nmp.marmot` UNION
 //! builders.
 //!
 //! Split out of [`crate::action_builders::kotlin`] as a size-management seam

@@ -1,6 +1,6 @@
 namespace nmp.nip29;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the
 // `nmp.nip29.create_invite` admin `ActionModule` (publishes one or more
 // kind:9009 events fanning out invite codes).
 //

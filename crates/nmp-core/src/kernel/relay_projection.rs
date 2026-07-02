@@ -218,7 +218,7 @@ mod tests {
         // typed `AppRelay` records instead of bare URL strings.
         // `AppRelay` is built via `::new(url, role)` — the constructor
         // canonicalizes the role string only; no display fields are derived
-        // (ADR-0041: presentation strings were removed from kernel state).
+        // (ADR-0072: presentation strings were removed from kernel state).
         let mut rows = AppRelayList::new();
         rows.replace(vec![AppRelay::new(
             "wss://r.example".to_string(),

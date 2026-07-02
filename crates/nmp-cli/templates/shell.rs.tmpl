@@ -25,7 +25,7 @@ fn main() {
     // 3. Commit the storage choice, declare the kernel built-in projections,
     //    decide the initial relay set, and start the kernel. `.in_memory()`
     //    advances to `StorageSet`; `.declare_consumed_projections(...)` makes
-    //    the ADR-0053 decision for built-ins: profile rows (`refs.profile`),
+    //    the ADR-0070 decision for built-ins: profile rows (`refs.profile`),
     //    authoritative event refs (`refs.event`), and publish feedback
     //    (`publish_outbox`). Tier-1 starter projections such as this app's
     //    home timeline and `refs.event.envelopes` self-gate by registration, so
@@ -37,7 +37,7 @@ fn main() {
     //    `RelaysDeclared`, unlocking `.start()`. For production replace
     //    `.in_memory()` with `.storage_path("/path/to/lmdb")` and declare your
     //    relay set with `.with_relays([..])`. Omitting ANY decision is a
-    //    COMPILE ERROR (storage = V-94, projections = ADR-0053 DEBT 2,
+    //    COMPILE ERROR (storage = V-94, projections = ADR-0070 DEBT 2,
     //    relays = #1493).
     let app = builder
         .in_memory()

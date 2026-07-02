@@ -1,4 +1,4 @@
-//! `ContactsCommand` — active-account kind:3 follow-set publishing (ADR-0065).
+//! `ContactsCommand` — active-account kind:3 follow-set publishing (ADR-0071).
 //!
 //! Grouped under `ActorCommand::Contacts(ContactsCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_publish.rs` (kind:3 follow-set path).

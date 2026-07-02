@@ -1,4 +1,4 @@
-//! Smoke tests for D13 (DM-path raw-key isolation, ADR-0026),
+//! Smoke tests for D13 (DM-path raw-key isolation, ADR-0072),
 //! D14 (typed snapshot-projection slots), and D15 (host-closure
 //! invocations must be panic-guarded).
 //!
@@ -132,7 +132,7 @@ fn d14_skips_out_of_scope_crates() {
     );
 }
 
-// ─── D13 (DM-path raw-key isolation, ADR-0026) ───────────────────────────────
+// ─── D13 (DM-path raw-key isolation, ADR-0072) ───────────────────────────────
 
 #[test]
 fn d13_part_a_positive_fixture_fires() {

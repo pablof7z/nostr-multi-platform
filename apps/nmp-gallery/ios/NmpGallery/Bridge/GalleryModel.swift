@@ -71,7 +71,7 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
-/// ADR-0063 (#1671): the map is sourced from the kernel's `refs.profile`
+/// ADR-0070 (#1671): the map is sourced from the kernel's `refs.profile`
 /// row-delta projection (the resolve_ref output), materialised under the
 /// `refs.profile` JSON key by the app-owned UniFFI snapshot decoder.
 /// The app JSON adapter derives a
@@ -91,7 +91,7 @@ private struct RefProfileWire: Decodable, Sendable {
 /// gallery reads the resolved-profile key from it:
 ///
 ///   * `projections."refs.profile"[pubkey]` — the kernel's single resolved
-///     `ProfileCard` per pubkey (ADR-0063 #1671 — the resolve_ref output,
+///     `ProfileCard` per pubkey (ADR-0070 #1671 — the resolve_ref output,
 ///     materialised from the `refs.profile` row-delta store host-side). The
 ///     gallery owns no precedence merge. Always present (`{}` when empty).
 ///
@@ -107,7 +107,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     let profiles: [String: ProfileWire]
     let accounts: [AccountWire]
     /// Pre-resolved event-ref embed envelope map derived from `refs.event`
-    /// after `resolve_ref` (ADR-0063 / ADR-0034). Key = `primary_id`; value =
+    /// after `resolve_ref` (ADR-0070 / ADR-0072). Key = `primary_id`; value =
     /// fully resolved `EmbeddedEventEnvelope` with `projection` already
     /// kind-dispatched in Rust. Nil when the projection is absent.
     let resolvedEventEmbeds: [String: EmbeddedEventEnvelope]?
@@ -132,12 +132,12 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     }
 
     private enum ProjectionsKeys: String, CodingKey {
-        // ADR-0063 (#1671): the resolved-profile map is keyed by the dotted
+        // ADR-0070 (#1671): the resolved-profile map is keyed by the dotted
         // `refs.profile` projection key. `.convertFromSnakeCase` does NOT touch
         // a dotted key, so the raw value is spelled out explicitly here.
         case refsProfile = "refs.profile"
         case accounts
-        // ADR-0063 (#1671): event embed envelopes are derived from the
+        // ADR-0070 (#1671): event embed envelopes are derived from the
         // `refs.event` row-delta store under their own dotted projection key.
         case refEventEnvelopes = "refs.event.envelopes"
         // `relay_role_options` → camelCase after `.convertFromSnakeCase`.
@@ -159,7 +159,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
         ) {
-            // ADR-0063 (#1671): the kernel ships one resolved card per pubkey
+            // ADR-0070 (#1671): the kernel ships one resolved card per pubkey
             // under `refs.profile` (the resolve_ref output, materialised from
             // the row-delta store in Rust). The gallery just decodes the result.
             if let resolved = try? projections.decodeIfPresent(
@@ -177,7 +177,7 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
             ) {
                 resolvedAccounts = accs
             }
-            // Issue #1283 / ADR-0034: decode the pre-resolved embed map derived
+            // Issue #1283 / ADR-0072: decode the pre-resolved embed map derived
             // from `refs.event`. Fault-tolerant — nil when absent.
             resolvedEventEmbeds = try? projections.decodeIfPresent(
                 [String: EmbeddedEventEnvelope].self,
@@ -273,7 +273,7 @@ final class GalleryModel: NostrProfileHost {
     private let kernel: GalleryKernelHandle
 
     /// Embed-projection host. Reads resolved event-ref embed envelopes from every
-    /// snapshot push (M16 / ADR-0034) so kind-dispatched embed renderers see
+    /// snapshot push (M16 / ADR-0072) so kind-dispatched embed renderers see
     /// resolved envelopes without re-parsing the kernel wire.
     let embedHost = EmbedHost()
 

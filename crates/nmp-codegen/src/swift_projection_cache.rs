@@ -1,4 +1,4 @@
-//! R3-S3 (ADR-0055) — generated `ProjectionMergeCache` for Swift (iOS).
+//! R3-S3 (ADR-0070) — generated `ProjectionMergeCache` for Swift (iOS).
 //!
 //! Generates `apps/chirp/ios/Chirp/Bridge/Generated/ProjectionCache.generated.swift`
 //! from the SAME projection registry as [`crate::swift_typed_decoders`], so the
@@ -51,7 +51,7 @@ const HEADER: &str = "\
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.
 // The CI gate (`codegen-drift.yml`) fails any PR whose generated Swift differs.
 //
-// ADR-0055 R3-S3: NMP-owned rev-aware host apply layer. This cache implements
+// ADR-0070 R3-S3: NMP-owned rev-aware host apply layer. This cache implements
 // the D3-3 merge algorithm exactly so app code (KernelModel accessors, views)
 // stays byte-identical and oblivious to delta mechanics.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -127,7 +127,7 @@ pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
     // ── ProjectionMergeCache ──────────────────────────────────────────────────
     out.push_str(
         "// MARK: - ProjectionMergeCache\n\
-         /// NMP-owned rev-aware projection cache (ADR-0055 R3-S3).\n\
+         /// NMP-owned rev-aware projection cache (ADR-0070 R3-S3).\n\
          ///\n\
          /// Lives in `KernelHandle` (one instance per kernel app). Fed each\n\
          /// FlatBuffers frame before the TypedXDecoder family runs. Implements\n\

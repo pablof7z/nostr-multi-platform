@@ -104,7 +104,7 @@ entry links to the file that defines it on master.
   contact-list or mute-list stay in the protocol/defaults crate that owns the
   reducer. App code dispatches claim/release intents; the
   source-reconciliation detail is compiler-internal. *defined by:* #2092 and
-  ADR-0036/ADR-0042 amendments.
+  ADR-0076/ADR-0076 amendments.
 - **scope** — `InterestScope`: the account context for mailbox resolution
   (`ActiveAccount` / `Account(id)` / `Global`). Distinct from *session* and
   *account*. *defined in:* `crates/nmp-planner/src/interest.rs`.

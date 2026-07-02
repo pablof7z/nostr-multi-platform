@@ -1,4 +1,4 @@
-//! ADR-0058 §6 step-4 — Protected-cursor log-retention tests (LMDB backend).
+//! ADR-0072 §6 step-4 — Protected-cursor log-retention tests (LMDB backend).
 //!
 //! Mirrors the `MemEventStore` retention matrix for parity. The
 //! `DEFAULT_LOG_MAX_ENTRIES` (10_000) normal floor is crossed without inserting

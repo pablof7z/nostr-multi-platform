@@ -1,4 +1,4 @@
-//! Pull-cursor wake sidecar codec — ADR-0058 §4, step 3b.
+//! Pull-cursor wake sidecar codec — ADR-0072 §4, step 3b.
 //!
 //! Encodes the coalesced `{cursor_id, latest_seq}` rows drained from
 //! [`StoreWakeups::pull`](super::store_wakeup::StoreWakeups) into the transport
@@ -6,7 +6,7 @@
 //! [`TypedProjectionData`] under the reserved key [`PULL_WAKE_KEY`]. The wake is
 //! a **signal**, not event data: each row carries exactly `{ cursor_id,
 //! latest_seq }` — no scope, no consumer id, no event ids, no raw bytes
-//! (ADR-0058 §4). Consistent with ADR-0037 typed sidecars and ADR-0039 (this is
+//! (ADR-0072 §4). Consistent with ADR-0072 typed sidecars and ADR-0070 (this is
 //! NOT a projection pull accessor; it is the change-signal that keeps pull
 //! event-driven).
 //!
@@ -91,7 +91,7 @@ pub(crate) fn pull_wake_typed_projection(
         // Encoded standalone — no FlatBuffers file identifier (see module doc).
         file_identifier: String::new(),
         payload: encode_pull_wake_batch(wakes),
-        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
         ..Default::default()
     })
 }

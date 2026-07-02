@@ -40,7 +40,7 @@ The feature-gated implementation is split by subsystem:
 
 ## Shared-env rule
 
-**ADR-0011** (`docs/decisions/0011-lmdb-env-sharing.md`) still owns the durable
+**ADR-0072** (`docs/decisions/0072-runtime-capability-and-shell-boundary.md`) still owns the durable
 storage invariant: NMP owns one LMDB environment and injects it into the
 Nostr-LMDB layer (`Lmdb::with_env`). Event insert plus NMP secondaries must
 commit in one write transaction; two independent environments cannot roll back
@@ -141,7 +141,7 @@ against an in-memory store.
 2. **Cross-process LMDB sharing.** Use one environment per app data directory in
    one process. A second process touching the same env breaks the assumptions the
    store and GC make.
-3. **Sharing an `lmdb::Env` from another crate.** ADR-0011 requires NMP to own
+3. **Sharing an `lmdb::Env` from another crate.** ADR-0072 requires NMP to own
    the env and inject it into Nostr-LMDB so event and NMP secondary writes are
    atomic together.
 4. **Treating presence as coverage.** A local event is not proof of a complete

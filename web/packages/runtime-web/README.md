@@ -7,7 +7,7 @@ browser runtime owner** — that is the `nmp-browser-runtime` Rust crate.
 
 This package provides generic TypeScript glue for the worker-based ABI surface:
 
-- **DispatchEnvelope** — byte-frame builders for ADR-0064 typed write transport.
+- **DispatchEnvelope** — byte-frame builders for ADR-0071 typed write transport.
 - **WasmBridge** — FlatBuffers decoder + worker message router.
 - **DegradedRuntime** — fallback message handler when the wasm bridge is unavailable.
 - **Worker shim** — postMessage client that routes requests/responses between main thread and worker.

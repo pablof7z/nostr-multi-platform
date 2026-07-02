@@ -148,7 +148,7 @@ fn nip46_onboarding_ready_stage_is_terminal_success() {
     assert!(!decoded.is_in_flight);
 }
 
-// --- signer_state: conditionally present (ADR-0048 D6) ----------------------
+// --- signer_state: conditionally present (ADR-0072 D6) ----------------------
 
 #[test]
 fn signer_state_absent_when_slot_idle() {

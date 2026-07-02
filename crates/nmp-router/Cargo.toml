@@ -33,7 +33,7 @@ nmp-store = { path = "../nmp-store" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip65-types = { path = "../nmp-nip65-types" }
 serde = { workspace = true, features = ["derive"] }
-# Typed FlatBuffers action payloads (ADR-0064 / #1756) for the router-owned
+# Typed FlatBuffers action payloads (ADR-0071 / #1756) for the router-owned
 # NIP-65 publish relay-list action. Pinned
 # to the workspace version verified by ci/check-flatbuffers-version-pins.sh.
 flatbuffers = { workspace = true }

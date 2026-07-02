@@ -27,7 +27,7 @@ pub(super) struct NostrEvent {
     pub(super) sig: String,
 }
 
-// ADR-0057 PR 2 — `parse_profile` + `ProfileContent` (the kind:0 metadata
+// ADR-0070 PR 2 — `parse_profile` + `ProfileContent` (the kind:0 metadata
 // decoder) moved out of the kernel to `nmp_nip01::Kind0Parser` (the registered
 // `IngestParser` that writes the capability-owned `nmp_nip01::ProfileCache`).
 // The kernel no longer parses kind:0; it reads `crate::substrate::ProfileView`
@@ -61,7 +61,7 @@ pub fn is_hex_id(value: &str) -> bool {
     is_hex_pubkey(value)
 }
 
-// V-112 (ADR-0042): the NIP-10 thread-tag helpers (`event_references`,
+// V-112 (ADR-0076): the NIP-10 thread-tag helpers (`event_references`,
 // `referenced_event_ids`, `root_event_id`, `first_event_ref`,
 // `marked_event_ref`) were deleted — their only consumers were the legacy
 // `thread_items()` / `open_view_pins()` thread-hydration paths, retired with
@@ -95,7 +95,7 @@ pub(super) fn truncate(value: &str, limit: usize) -> String {
 // (`now_hms` in `status.rs`) are gated to match — the diagnostic strings
 // drop out alongside the FFI module.
 //
-// `format_timestamp` deleted by ADR-0032 / V-115 F4: publish_outbox now
+// `format_timestamp` deleted by ADR-0072 / V-115 F4: publish_outbox now
 // emits raw `created_at` (Unix seconds); shells format timestamps locally.
 #[cfg(feature = "native")]
 pub(super) fn now_hms() -> String {

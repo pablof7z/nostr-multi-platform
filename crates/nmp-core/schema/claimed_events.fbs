@@ -2,7 +2,7 @@ namespace nmp.kernel;
 
 // Typed FlatBuffers wire for a single `refs.event` row payload.
 //
-// `claimed_events` used to be a whole-map Tier-2 built-in projection. ADR-0063
+// `claimed_events` used to be a whole-map Tier-2 built-in projection. ADR-0070
 // Lane H deleted that host-visible projection. KCEV remains only as the
 // namespace-specific payload codec inside a `refs.event` NRRD row: each row's
 // payload is a `ClaimedEventsSnapshot` with exactly one

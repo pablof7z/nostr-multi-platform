@@ -3,7 +3,7 @@ title: "nostr-lmdb env-injection seam — Gate-1 audit status (T136)"
 status: blocked-on-upstream-decision
 date: 2026-05-18
 relates-to:
-  - docs/decisions/0011-lmdb-env-sharing.md
+  - docs/decisions/0072-runtime-capability-and-shell-boundary.md
   - docs/design/nostrdb-rs-evaluation.md
   - docs/design/lmdb/trait.md
 resolves: T136 Gate 1
@@ -13,14 +13,14 @@ opens: T136a (option selection), T136b (Gate 2+ implementation)
 # `nostr-lmdb` env-injection seam — Gate-1 audit
 
 T136 Gate 1 was a **STOP-and-report** if upstream `nostr-lmdb` lacks the
-env-injection seam ADR-0011 depends on. **It does.** This document records the
+env-injection seam ADR-0072 depends on. **It does.** This document records the
 evidence, the four options, and what each costs — so T136a can pick a path
 without re-doing the audit.
 
 ## 1. Verdict
 
 **Upstream `nostr-lmdb` v0.44.1 (current crates.io) and master** expose **no
-env-injection seam**. ADR-0011's primary design — "NMP owns the LMDB env and
+env-injection seam**. ADR-0072's primary design — "NMP owns the LMDB env and
 injects it into `nostr-lmdb`" — cannot be implemented against the published
 crate as-is. Gate 2 (implement the 33 `EventStore` methods routing to
 `nostr-lmdb`) is **blocked** until one of the four options below is selected.
@@ -79,7 +79,7 @@ pub(crate) fn store(
 ) -> Result<(), Error>
 ```
 
-This is exactly the shape ADR-0011 needs as `save_event_in_txn` — but it's
+This is exactly the shape ADR-0072 needs as `save_event_in_txn` — but it's
 private to the crate **and it doesn't implement NIP-09 deletion or
 replaceable/addressable supersession.** Those policies live in the ingester
 loop (`src/store/ingester.rs`, 411 LOC), not in `Lmdb::store`. Exposing
@@ -112,7 +112,7 @@ provenance / watermarks / claims / domain sub-dbs would fit here cleanly,
 ### 2.6 Heed version
 
 `nostr-lmdb` depends on `heed = "0.20"` (resolved to `0.20.5`). **Note for
-ADR-0011 readers:** ADR-0011 uses the names `lmdb::Environment` /
+ADR-0072 readers:** ADR-0072 uses the names `lmdb::Environment` /
 `lmdb::RwTxn` throughout, but the actual crate is `heed` (a pure-Rust LMDB
 wrapper, distinct from the `lmdb` crate). The ADR's architectural claim is
 unchanged but the type names need updating in a follow-up commit. Filing
@@ -173,7 +173,7 @@ home; depend on `heed = "0.20"` directly; re-implement the indexes
 `nostr-lmdb` provides (ci, akc, ac, kc, atc, ktc, tc + deleted_ids +
 deleted_coordinates — see `store/lmdb/mod.rs:73-98`) ourselves.
 
-**Cost:** ADR-0011 §"Alternatives B" estimates 2 000+ LOC of NIP-09 /
+**Cost:** ADR-0072 §"Alternatives B" estimates 2 000+ LOC of NIP-09 /
 replaceable / addressable logic plus the index machinery. The
 `store/lmdb/mod.rs` file in upstream is 1 429 LOC plus 411 LOC in
 `ingester.rs` plus 278 LOC in `lmdb/index.rs` — call it ~2 100 LOC of
@@ -185,13 +185,13 @@ the entire `heed::Env` lifecycle by construction. No PR latency.
 **Cons:** the largest one-shot LOC commitment of the four options; the
 NIP-09 policy bugs `nostr-lmdb` has already shaken out (see e.g.
 `test_kind5_deletion_query_bug_fix` in upstream tests) become NMP's bugs
-to find. ADR-0011 alternatives §B previously rejected this on "battle-
+to find. ADR-0072 alternatives §B previously rejected this on "battle-
 tested logic for free" grounds; that argument **weakens** once options
 A+B both require touching the policy layer anyway.
 
 ### Option D — Two-env fallback (rejected, listed for completeness)
 
-ADR-0011 §"Two-phase-write fallback" already rejected this on
+ADR-0072 §"Two-phase-write fallback" already rejected this on
 write-amplification + recovery-window-ambiguity grounds. Not a viable
 choice; mentioned only so anyone reading this doc later does not
 re-propose it.
@@ -224,13 +224,13 @@ GitHub issue labeled `category:decision`.
 
 ## 6. Follow-ups (not blocking T136a)
 
-1. **ADR-0011 type names:** ADR-0011 says `lmdb::Environment` /
+1. **ADR-0072 type names:** ADR-0072 says `lmdb::Environment` /
    `lmdb::RwTxn`; the real crate is `heed::Env` / `heed::RwTxn`.
    Single-line corrections, but worth doing once the option is chosen
    so the ADR matches the implementation.
 
 2. **`crates/nmp-core/src/store/lmdb.rs:23-27` doc comment** must match
-   ADR-0011's single-environment atomicity rule. Fix as part of T136b's
+   ADR-0072's single-environment atomicity rule. Fix as part of T136b's
    first commit.
 
 3. **`docs/design/lmdb/trait.md` §5** references

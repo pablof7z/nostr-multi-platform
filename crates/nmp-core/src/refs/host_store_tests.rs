@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 Lane F) — `RefProfileStore` host-consumption tests.
+//! ADR-0070 (#1671 Lane F) — `RefProfileStore` host-consumption tests.
 //!
 //! These assert the shell-facing contract the Rust shells rely on:
 //! - a `kind:0` ingest (a `Changed` `refs.profile` row carrying a fresh KPRF

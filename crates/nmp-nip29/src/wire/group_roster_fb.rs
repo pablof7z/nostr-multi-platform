@@ -2,12 +2,12 @@
 //!
 //! The canonical FFI shape is the serde JSON of `GroupRosterSnapshot`
 //! (`GroupRosterProjection::snapshot_json`). This module adds a **typed
-//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
+//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0072)
 //! carried under the `"nmp.nip29.group_roster"` key. The serde shape stays
 //! authoritative; this is the typed payload a `NGRS`-aware host decodes with
 //! generated accessors instead of JSON reflection.
 //!
-//! Raw data only (ADR-0032): every field is the raw protocol value — hex
+//! Raw data only (ADR-0072): every field is the raw protocol value — hex
 //! pubkeys and verbatim role tokens. No `display::` forwarder runs on the
 //! encode path.
 //!

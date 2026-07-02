@@ -1,12 +1,12 @@
 namespace nmp.transport;
 
-// ADR-0064 — Unified write/command boundary: the open write envelope.
+// ADR-0071 — Unified write/command boundary: the open write envelope.
 //
 // One generic *byte* transport doorway carries this envelope across BOTH
 // boundaries (native FFI `nmp_app_dispatch_action_bytes(app, ptr, len)` and the
 // wasm `WorkerRequest::DispatchBytes { bytes }`). The bytes are a finished
 // `DispatchEnvelope` FlatBuffers root — NOT a `Vec<u8>` inside a serde-JSON enum
-// (that would re-encode as a JSON number array; ADR-0064 §1).
+// (that would re-encode as a JSON number array; ADR-0071 §1).
 //
 // Runtime pins are intentionally asymmetric until every platform package
 // manager publishes the same FlatBuffers line:
@@ -21,14 +21,14 @@ namespace nmp.transport;
 // `nmp-core` enumerates NO action here. `action_namespace` is the open-registry
 // extension key (e.g. "nmp.publish", "nmp.nip25.react") that the `ActionModule`
 // registry routes on; it is GENERATED into typed host builders and never
-// hand-written by app code (ADR-0064 §2/§3). `payload` is an OPAQUE byte blob —
+// hand-written by app code (ADR-0071 §2/§3). `payload` is an OPAQUE byte blob —
 // a FlatBuffers root owned by the registering crate. The transport NEVER peeks
 // inside `payload`; the per-crate typed payload decode is the `ActionModule`'s
 // job (S3 / #1751), not the transport's. Keeping `payload` `[ubyte]` (not a
 // union) preserves the open seam: a NIP crate adds a write with zero `nmp-core`
 // edits.
 table DispatchEnvelope {
-  // Host-supplied operation identity, end to end (ADR-0064 §4). Threaded from
+  // Host-supplied operation identity, end to end (ADR-0071 §4). Threaded from
   // dispatch through every action stage; NEVER replaced by the event id.
   correlation_id:string (required);
 

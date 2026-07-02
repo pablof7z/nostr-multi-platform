@@ -9,7 +9,7 @@
 //! arrived, the field carries a deterministic placeholder value derived from
 //! the pubkey, so the UI can render immediately without special-casing.
 //!
-//! # Design (ADR-0017)
+//! # Design (ADR-0070)
 //!
 //! `Placeholder<T>` is a zero-cost newtype over `T`.  It:
 //!

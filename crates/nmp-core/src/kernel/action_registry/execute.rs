@@ -11,7 +11,7 @@ use crate::substrate::ActionContext;
 
 impl ActionRegistry {
     /// Execute the validated action via [`crate::substrate::ActionModule::execute`]
-    /// on the registered module (ADR-0027).
+    /// on the registered module (ADR-0071).
     ///
     /// On failure returns a typed [`ActionExecuteFailure`] carrying the
     /// taxonomy [`kind`](ActionFailureKind) (no-executor / sync-err / panic),

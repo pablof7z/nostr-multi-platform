@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — kernel-owned per-projection revision manifest.
+//! ADR-0070 Rung 1 — kernel-owned per-projection revision manifest.
 //!
 //! # Rung 1 scope
 //!
@@ -54,16 +54,16 @@
 //!   `Unchanged` while holding rows unchanged.
 
 pub(crate) mod source_versions;
-// ADR-0055 Rung 1: the `impl Kernel` manifest accessors live in a sibling file
+// ADR-0070 Rung 1: the `impl Kernel` manifest accessors live in a sibling file
 // so `kernel/mod.rs` stays at its file-size baseline.
 mod kernel_impl;
-// ADR-0055 Rung 3 S1b: the presence state-machine impls (`note_drain_emit`,
+// ADR-0070 Rung 3 S1b: the presence state-machine impls (`note_drain_emit`,
 // `note_copy_emit`, `presence_for`) live in a sibling file to keep this module
 // under the 500-LOC hard ceiling while adding the new copy-with-TTL edge machine.
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod oracle;
 mod presence;
-// ADR-0055 Rung 1 (F3): the `impl Kernel` oracle methods live in a sibling file
+// ADR-0070 Rung 1 (F3): the `impl Kernel` oracle methods live in a sibling file
 // (test-support only) so `kernel/mod.rs` stays at its file-size baseline.
 #[cfg(any(test, feature = "test-support"))]
 mod kernel_oracle;
@@ -71,7 +71,7 @@ mod kernel_oracle;
 mod tests;
 #[cfg(test)]
 mod tests_publish;
-// ADR-0055 Rung 1: scenario tests live in `tests.rs`; the dependency-table
+// ADR-0070 Rung 1: scenario tests live in `tests.rs`; the dependency-table
 // completeness + arithmetic unit tests live here to keep each test file under
 // the 500-LOC hard ceiling (AGENTS.md). Both share the same crate-private API.
 #[cfg(test)]
@@ -90,7 +90,7 @@ pub(crate) use source_versions::SourceVersions;
 /// - `Cleared`: the projection went absent this tick (e.g. drain emptied, view
 ///   closed). Payload omitted. NEVER conflated with `Unchanged` — prevents the
 ///   classic delta-protocol footgun where absence is ambiguous with clearing
-///   (ADR-0055 D3).
+///   (ADR-0070 D3).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProjectionPresence {
     Changed,
@@ -119,7 +119,7 @@ pub(crate) struct ProjectionState {
 #[derive(Clone, Debug)]
 pub(crate) struct ProjectionManifest {
     /// Kernel-start wall-clock stamp (`TimingMilestones::started_unix_ms`).
-    /// Reused rather than adding new state (ADR-0055 D4 decision). A host
+    /// Reused rather than adding new state (ADR-0070 D4 decision). A host
     /// detects "this is a new kernel run" when `session_id` changes.
     pub(crate) session_id: u64,
     /// Within-session monotonic counter. Bumped on epoch-class events:
@@ -147,7 +147,7 @@ pub(crate) const SRC_DIAGNOSTICS_INPUTS: &str = "diagnostics_inputs_ver";
 pub(crate) const SRC_SETTLEMENT_ENQUEUE: &str = "settlement_enqueue_ver";
 pub(crate) const SRC_SETTLEMENT_DRAIN: &str = "settlement_drain_ver";
 pub(crate) const SRC_TTL_EXPIRY: &str = "ttl_expiry_ver";
-// ADR-0063 (#1671 integration glue) — whole-projection monotonic stamps for the
+// ADR-0070 (#1671 integration glue) — whole-projection monotonic stamps for the
 // keyed `refs.profile` / `refs.event` row-delta projections. Co-bumped inside
 // the per-KEY `bump_*_row` / `clear_*_row` chokepoints so they advance whenever
 // ANY row of the namespace mutates (resolve / release / live-claimed ingest /
@@ -209,7 +209,7 @@ pub(crate) struct ProjectionRevTracker {
     /// `drain_prev_nonempty` but for the two keys whose tracker is copied (not
     /// drained) each tick: `action_stages` / `action_lifecycle`. Used by
     /// `note_copy_emit` to drive the same `Changed → Cleared → Unchanged`
-    /// tristate (ADR-0055 Rung 3 S1b / §10.4).
+    /// tristate (ADR-0070 Rung 3 S1b / §10.4).
     pub(super) copy_prev_nonempty: std::collections::HashMap<&'static str, bool>,
     /// This-tick presence OVERRIDE for keys whose presence cannot be derived from
     /// the rev alone — drain + copy-with-TTL projections. `note_drain_emit` /
@@ -222,7 +222,7 @@ pub(crate) struct ProjectionRevTracker {
     /// A false->true transition is a host-cache baseline edge even when the
     /// projection payload is logically empty and no source-version counter moved.
     pub(super) last_declared_permits: std::collections::HashMap<&'static str, bool>,
-    /// ADR-0055 Rung 1 (F5): fingerprint of the `relay_diagnostics` inputs at the
+    /// ADR-0070 Rung 1 (F5): fingerprint of the `relay_diagnostics` inputs at the
     /// LAST reconcile. The kernel re-fingerprints them each emit and folds any
     /// change into `diagnostics_inputs_ver` — see `reconcile_diagnostics_fingerprint`.
     last_seen_diagnostics_fingerprint: u64,
@@ -263,7 +263,7 @@ impl ProjectionRevTracker {
         // Use saturating_add fold (sum) so that ANY dep bump advances the rev,
         // even when two deps reach the same counter value. Using max() would
         // silently stall the rev when e.g. ttl_expiry_ver catches up with
-        // settlement_enqueue_ver (ADR-0055 codex #3 correctness — scenario S4).
+        // settlement_enqueue_ver (ADR-0070 codex #3 correctness — scenario S4).
         deps.iter()
             .map(|dep_name| self.source_versions.get(dep_name))
             .fold(0u64, |acc, v| acc.saturating_add(v))
@@ -308,7 +308,7 @@ impl ProjectionRevTracker {
     /// Bump the epoch. Called on account-switch / schema-change / kernel rebuild.
     /// The next emit MUST be a full baseline (all projections -> `Changed`).
     ///
-    /// ADR-0055 Rung 3 (D3-5): also clears the per-key `last_emitted` tracker
+    /// ADR-0070 Rung 3 (D3-5): also clears the per-key `last_emitted` tracker
     /// so every live Tier-2 projection is classified `Changed` on the next
     /// `make_update` tick, guaranteeing the mandatory full baseline frame.
     pub(crate) fn bump_epoch(&mut self) {
@@ -320,7 +320,7 @@ impl ProjectionRevTracker {
         self.last_emitted.clear();
     }
 
-    /// ADR-0055 Rung 3 (D3-5) — reset the per-key emitted-rev baseline so the
+    /// ADR-0070 Rung 3 (D3-5) — reset the per-key emitted-rev baseline so the
     /// NEXT `make_update` frame is a full baseline (every live Tier-2
     /// projection emitted as `Changed`).
     ///
@@ -333,7 +333,7 @@ impl ProjectionRevTracker {
         self.last_emitted.clear();
     }
 
-    /// ADR-0055 Rung 1 (F5): reconcile `diagnostics_inputs_ver` against a
+    /// ADR-0070 Rung 1 (F5): reconcile `diagnostics_inputs_ver` against a
     /// per-emit fingerprint of the EXACT `relay_diagnostics` inputs (relay
     /// statuses + wire subs + interests + transport rows). Called once per emit
     /// before the manifest is built.

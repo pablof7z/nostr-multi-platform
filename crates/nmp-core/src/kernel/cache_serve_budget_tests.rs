@@ -1,4 +1,4 @@
-//! ADR-0045 E1 — aggregate-budget continuation + §6 watermark⇄serve
+//! ADR-0070 E1 — aggregate-budget continuation + §6 watermark⇄serve
 //! invariant tests (split from `cache_serve_tests.rs` for the 500-LOC
 //! file ceiling; shared fixtures live there as `pub(super)` helpers).
 
@@ -138,7 +138,7 @@ fn e1_follow_feed_serves_single_authorskind_multi_author_newest_first() {
 
 // ─── 5. Watermark ⇄ serve invariant (§6) ────────────────────────────────────
 
-/// ADR-0045 §6 — the E1 shape→`StoreQuery` mapping (`shape_to_store_queries`):
+/// ADR-0070 §6 — the E1 shape→`StoreQuery` mapping (`shape_to_store_queries`):
 /// which store query each author+kind / kindtime / event-id shape produces.
 /// This is the single serve/pin mapping the floor-coherent pin set and
 /// cache-serve both ride on; pinning the variant mapping guards it from drift.
@@ -244,7 +244,7 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
 
 // ─── E3. Structural floored⇒served guard ────────────────────────────────────
 
-/// ADR-0045 §6 — E3 extension: the floored⇒served invariant now holds for
+/// ADR-0070 §6 — E3 extension: the floored⇒served invariant now holds for
 /// generic `Tags` shapes (threads `#e`, DM inbox / mentions `#p`, groups `#h`,
 /// hashtags `#t`, …) and KindDtag (addressable) as well as the E1 author+kind
 /// shapes.

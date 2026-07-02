@@ -1,5 +1,5 @@
 //! Integration test for the single waking actor inbox driven through the real
-//! `run_actor` loop (ADR-0050 §D3a, issue #1231 follow-up #3).
+//! `run_actor` loop (ADR-0072 §D3a, issue #1231 follow-up #3).
 //!
 //! This is a NEW sibling test module (kept off `actor/mod.rs`'s ratcheted
 //! module list and out of `tick.rs`'s `mod tests` block to avoid name
@@ -41,7 +41,7 @@ fn is_snapshot(frame: &[u8]) -> bool {
     }
 }
 
-/// ADR-0050 §D3a / issue #1231: a command sent to a relay-blocked, idle actor
+/// ADR-0072 §D3a / issue #1231: a command sent to a relay-blocked, idle actor
 /// wakes it well under the 250 ms idle cap, and the resulting snapshot is
 /// delivered promptly through the single `drain_command_lane` path.
 #[test]
@@ -85,7 +85,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     // replay dropping/deferring it) would stall up to the full idle cap.
     let pk = "0".repeat(64);
     let start = Instant::now();
-    // ADR-0063 Lane H: ClaimProfile deleted; use ResolveRef.
+    // ADR-0070 Lane H: ClaimProfile deleted; use ResolveRef.
     cmd_tx
         .send(ActorCommand::Refs(RefsCommand::Resolve {
             namespace: crate::kernel::RefNamespace::Profile,

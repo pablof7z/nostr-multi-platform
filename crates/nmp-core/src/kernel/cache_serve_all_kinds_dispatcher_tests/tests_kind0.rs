@@ -1,6 +1,6 @@
 use super::*;
 
-// ─── ADR-0057 unified post-store projection on the cache-serve path ───────────
+// ─── ADR-0070 unified post-store projection on the cache-serve path ───────────
 //
 // These prove the unification codex required: cache-serve replay runs the SAME
 // `Kernel::project_accepted_event` the live chokepoint runs, so the capability-

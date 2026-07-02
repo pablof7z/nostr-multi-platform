@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A — row-grain delta carrier for keyed reference projections.
+//! ADR-0070 Lane A — row-grain delta carrier for keyed reference projections.
 //!
 //! Issue #1671 unifies profile/event resolution into one kernel-owned
 //! `RefResolver` primitive and lands FULL per-key reactivity (owner decision,
@@ -17,7 +17,7 @@
 //! - [`tracker`] — [`tracker::RefRowDeltaTracker`], the producer that turns a
 //!   per-key rev source ([`tracker::RefRowRevSource`], **Lane B's interface**)
 //!   into a steady-state incremental batch (only changed/cleared rows) or a
-//!   full baseline batch (every live row) under the ADR-0063 invariants.
+//!   full baseline batch (every live row) under the ADR-0070 invariants.
 //! - [`cache`] — [`cache::RefRowCache`], the reference model of the generated
 //!   host-side per-key cache. The generated Swift / Kotlin keyed caches
 //!   (`nmp-codegen`) implement the SAME algorithm; this Rust model is what the
@@ -42,7 +42,7 @@ mod tracker;
 mod tests;
 
 pub use cache::{RefRowApplyOutcome, RefRowCache};
-// ADR-0063 (#1671 Lane F) — host-side `refs.profile` / `refs.event`
+// ADR-0070 (#1671 Lane F) — host-side `refs.profile` / `refs.event`
 // consumption helpers for the Rust shells.
 pub use host_store::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 pub use rowdelta::{

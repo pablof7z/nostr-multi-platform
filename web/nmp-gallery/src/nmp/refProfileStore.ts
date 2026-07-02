@@ -1,4 +1,4 @@
-// ADR-0063 Lane F — host-side `refs.profile` consumption helper (TypeScript).
+// ADR-0070 Lane F — host-side `refs.profile` consumption helper (TypeScript).
 //
 // The kernel emits `refs.profile` as a per-KEY row-delta projection: each tick's
 // sidecar payload is an NRRD `RefRowDeltaBatch` carrying only the changed/cleared

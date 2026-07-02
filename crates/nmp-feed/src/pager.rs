@@ -1,4 +1,4 @@
-//! Feed pull pager — ADR-0058 §8 step-6A.
+//! Feed pull pager — ADR-0072 §8 step-6A.
 //!
 //! The pager is the feed-side abstraction that `load_older` rides instead of
 //! the legacy `created_at` window-grow path (`window.rs` / `window_limit`,
@@ -11,7 +11,7 @@
 //!
 //! `created_at` is not arrival-monotonic: a relay can deliver an old event
 //! late, landing it *behind* a `created_at` cursor, so a cursor over
-//! `created_at` silently skips it (ADR-0058 §1). Pull completeness rides the
+//! `created_at` silently skips it (ADR-0072 §1). Pull completeness rides the
 //! **ingest seq** — a late event with an old `created_at` still gets a *higher*
 //! seq, so the next drain sees it. Display order is unchanged: the feed's
 //! snapshot still sorts roots newest-first by `(created_at, id)`
@@ -30,7 +30,7 @@
 //!
 //! The cursor is a feed-owned `GapAllowed` seq position (`after_seq`) called
 //! synchronously on the scroll action — it is **not** a registered, long-lived
-//! wake consumer. No `nmp.pull.wake` decode, no host pull accessor (ADR-0039
+//! wake consumer. No `nmp.pull.wake` decode, no host pull accessor (ADR-0070
 //! §6.1 preserved). 6B wires concrete feeds.
 
 use nmp_core::substrate::KernelEvent;
@@ -70,7 +70,7 @@ pub trait FeedInterestShape {
 /// Convert one positive (`Inserted`/`Replaced`) log row into a [`KernelEvent`].
 ///
 /// `Deleted` rows and positive rows missing their `raw_event` payload yield
-/// `None` — `InterestShape` pull only delivers positive rows (ADR-0058 §10), and
+/// `None` — `InterestShape` pull only delivers positive rows (ADR-0072 §10), and
 /// the feed applies deletes through its push projection, never through the pager.
 /// `source_relay` becomes the event's single-entry `relay_provenance`.
 #[must_use]
@@ -115,7 +115,7 @@ pub enum DrainStop {
     /// The store reported `has_more == false` — fully caught up.
     Exhausted,
     /// An explicit `PullGap` rebased the cursor; scoped continuity is not
-    /// provable, the caller MUST rebase its scoped state (ADR-0058 §10).
+    /// provable, the caller MUST rebase its scoped state (ADR-0072 §10).
     Gap {
         /// The seq the cursor was reset to (`first_available_seq`).
         rebased_to: u64,
@@ -140,7 +140,7 @@ pub struct DrainOutcome {
     ///
     /// Scope: ONLY `LogOp::Replaced` rows surface here. `LogOp::Deleted` rows are
     /// deliberately NOT surfaced as eviction ids — `InterestShape` pull delivers
-    /// positive rows only (ADR-0058 §10), and a NIP-09 deletion reaches the feed
+    /// positive rows only (ADR-0072 §10), and a NIP-09 deletion reaches the feed
     /// through its push projection, never through the pager. Widening this to
     /// deletes would double-evict (push + pull) and is out of scope here.
     ///

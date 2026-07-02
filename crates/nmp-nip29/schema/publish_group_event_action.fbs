@@ -1,6 +1,6 @@
 namespace nmp.nip29;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the generic
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the generic
 // `nmp.nip29.publish_group_event` `ActionModule`.
 //
 // This is the SINGLE app-facing surface for authoring any event into a NIP-29

@@ -40,7 +40,7 @@ This rules out, by construction:
 
 Relays are assumed adversarial in availability: any individual relay may be slow, disconnected, rate-limiting, policy-denying, or returning partial data at any moment. The framework degrades each failure mode silently to the next-best behavior:
 
-- **Disconnected relay.** The view renders cached data from the store. Connectivity surfaces as an observable diagnostic field (per ADR-0007), never as a render gate.
+- **Disconnected relay.** The view renders cached data from the store. Connectivity surfaces as an observable diagnostic field (per ADR-0072), never as a render gate.
 - **Partial EOSE.** Views render whatever events arrived so far. EOSE is a coverage hint that updates a watermark; it is not a "now you may paint" signal.
 - **Relay returns `policy_denied` / `auth_required` / `rate_limited`.** The kernel records the outcome for that `(relay, filter)` pair, skips that relay for the current subscription, and continues with the rest. No toast, no error dialog, no UI state change beyond the connectivity diagnostic.
 - **Every configured relay fails.** The view still renders from the local store. The connectivity indicator goes to "offline"; rendering does not stop.
@@ -104,4 +104,4 @@ For the gallery TUI, this is the existing `--smoke` headless mode plus a local-o
 
 - **Code review.** Any PR that introduces a wait, timeout, or block on relay state in a bootstrap, view-open, or snapshot-emit path is rejected on offline-first grounds.
 - **Smoke gate.** The local-only smoke test (§7) is a required CI lane for every viewer-class app.
-- **Diagnostic.** Per ADR-0007, the framework records each relay outcome; a viewer that fails to render with zero connectivity will show up as an empty render budget rather than as a user-visible error — that is the desired behavior.
+- **Diagnostic.** Per ADR-0072, the framework records each relay outcome; a viewer that fails to render with zero connectivity will show up as an empty render budget rather than as a user-visible error — that is the desired behavior.

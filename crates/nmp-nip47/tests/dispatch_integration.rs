@@ -1,5 +1,5 @@
 //! Registry-level trip tests for the three wallet typed FlatBuffers payload
-//! doorways (ADR-0064 / #1756): `nmp.wallet.connect`, `nmp.wallet.disconnect`,
+//! doorways (ADR-0071 / #1756): `nmp.wallet.connect`, `nmp.wallet.disconnect`,
 //! and `nmp.wallet.pay_invoice`.
 //!
 //! These tests prove the fail-closed `schema_version` gate in

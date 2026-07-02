@@ -2,7 +2,7 @@
 // only from `#[cfg(test)]` blocks in this file and transitively from `core.rs`.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
-//! ADR-0063 reference-resolution routing helpers for `NmpRuntimeCore` (#2038).
+//! ADR-0070 reference-resolution routing helpers for `NmpRuntimeCore` (#2038).
 //!
 //! Defined here so `nmp-browser-runtime` can handle `resolve_ref` /
 //! `release_ref` without depending on the retired `nmp-wasm` protocol crate. The

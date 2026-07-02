@@ -639,7 +639,7 @@ public protocol NmpAppProtocol: AnyObject, Sendable {
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
      * * `DispatchOutcome.correlation_id` — present on acceptance (the
-     * HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0064 §4).
+     * HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0071 §4).
      * * `DispatchOutcome.error` — present on rejection or post-mint failure.
      * * `DispatchOutcome.code` — present for coded rejections (issue #1734).
      *
@@ -1286,7 +1286,7 @@ open func deliverExternalSignerResponse(responseJson: String)  {try! rustCall() 
      * Dispatch an NMPD FlatBuffers action envelope and return the outcome.
      *
      * * `DispatchOutcome.correlation_id` — present on acceptance (the
-     * HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0064 §4).
+     * HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0071 §4).
      * * `DispatchOutcome.error` — present on rejection or post-mint failure.
      * * `DispatchOutcome.code` — present for coded rejections (issue #1734).
      *
@@ -4608,7 +4608,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_deliver_external_signer_response() != 57348) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 17275) {
+    if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_action() != 60107) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_nmp_uniffi_checksum_method_nmpapp_dispatch_capability_json() != 40688) {

@@ -1,7 +1,7 @@
-//! ADR-0063 Lane A twin (#2722) — generated per-key (row-keyed) reference cache
+//! ADR-0070 Lane A twin (#2722) — generated per-key (row-keyed) reference cache
 //! for TypeScript/web. The THIRD platform twin of [`crate::swift_keyed_cache`] /
 //! [`crate::kotlin_keyed_cache`]: decodes the `nmp.refs.RefRowDeltaBatch`
-//! payload and merges row deltas under the five ADR-0063 invariants,
+//! payload and merges row deltas under the five ADR-0070 invariants,
 //! byte-for-byte semantically identical to the Swift/Kotlin caches and the
 //! Rust reference model (`nmp_core::refs::RefRowCache`).
 //!
@@ -28,7 +28,7 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
 
-// ADR-0063 Lane G twin (#2722): the TYPED row-payload rendering (accessors +
+// ADR-0070 Lane G twin (#2722): the TYPED row-payload rendering (accessors +
 // decode-before-commit routing table) lives in a sibling file so neither
 // source exceeds the 500-LOC cap (the Swift/Kotlin `*_keyed_cache_typed.rs` twins).
 #[path = "ts_keyed_cache_typed.rs"]
@@ -48,7 +48,7 @@ const HEADER: &str = "\
 // The CI gate (`.github/workflows/codegen-drift.yml`) fails any PR whose
 // generated TypeScript differs.
 //
-// ADR-0063 Lane A twin (#2722): per-key row cache for keyed reference
+// ADR-0070 Lane A twin (#2722): per-key row cache for keyed reference
 // projections (`refs.profile` / `refs.event`) — byte-for-byte semantically
 // identical to `KeyedRefCache.generated.swift`, `KeyedRefCache.kt`, and
 // `nmp_core::refs::RefRowCache`.
@@ -180,7 +180,7 @@ fn render_routing(entries: &[KeyedProjectionEntry]) -> String {
 
 fn render_class_open() -> String {
     "/**\n\
-     \x20* NMP-owned per-key row cache for keyed reference projections (ADR-0063).\n\
+     \x20* NMP-owned per-key row cache for keyed reference projections (ADR-0070).\n\
      \x20*\n\
      \x20* Thread-safety: fed only from the worker's `update_bytes` handler on the\n\
      \x20* single main-thread event loop — no concurrent `merge()` calls.\n\

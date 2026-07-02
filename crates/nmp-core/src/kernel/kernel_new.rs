@@ -141,7 +141,7 @@ impl Kernel {
             Arc::clone(&publish_store),
         );
 
-        // T129 + K3 (ADR-0056) — install the coverage-ledger since-floor resolver
+        // T129 + K3 (ADR-0072) — install the coverage-ledger since-floor resolver
         // on the subscription lifecycle. The closure (the ledger read) lives in
         // `coverage_ledger::build_watermark_fn` as the cohesive owner of the
         // floor logic (the file-size cap forbids growing this constructor).
@@ -226,9 +226,9 @@ impl Kernel {
             clock,
             rev: 0,
             visible_limit,
-            // ADR-0055 Rung 1: default (all counters 0, epoch 0); free on Reset.
+            // ADR-0070 Rung 1: default (all counters 0, epoch 0); free on Reset.
             projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
-            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0063/0053 glue
+            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0070/0053 glue
             ref_row_last_identity: None,
             ref_row_last_permits: (false, false),
             #[cfg(any(test, feature = "test-support"))]
@@ -359,7 +359,7 @@ impl Kernel {
             pull_cursor_registry: std::sync::Arc::new(std::sync::RwLock::new(
                 pull_cursor::PullCursorRegistry::new(),
             )),
-            snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0055 Rung 3 (D3-6)
+            snapshot_builder: flatbuffers::FlatBufferBuilder::new(), // ADR-0070 Rung 3 (D3-6)
             _not_send: PhantomData,
         };
         if let Some(store) = store_bundle.relay_score_store {

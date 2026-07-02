@@ -1,7 +1,7 @@
 //! Reactive views per `docs/research/mdk-api.md`.
 //!
 //! `GroupList`, `GroupMessages`. All group-scoped views are
-//! relay-pinned to the group relay via `InterestShape::relay_pin` (ADR-0012);
+//! relay-pinned to the group relay via `InterestShape::relay_pin` (ADR-0071);
 //! the interest helpers in [`crate::interest`] carry the pin.
 //!
 //! ## Projection scope (this milestone)

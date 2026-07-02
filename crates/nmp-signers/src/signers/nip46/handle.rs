@@ -48,7 +48,7 @@ impl RemoteSignerHandle for Nip46Signer {
     }
 
     fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String> {
-        // ADR-0026: the actor-facing trait carries hex; parse it here before
+        // ADR-0072: the actor-facing trait carries hex; parse it here before
         // delegating to the existing `Nip44` impl. A malformed pubkey surfaces
         // as a `SignerOp` error (D6 — never a panic across the seam).
         let recipient = match PublicKey::from_hex(recipient_pubkey) {

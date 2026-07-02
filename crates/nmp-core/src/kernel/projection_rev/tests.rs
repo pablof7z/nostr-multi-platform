@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — REAL-driven scenario tests (review F3).
+//! ADR-0070 Rung 1 — REAL-driven scenario tests (review F3).
 //!
 //! These drive ACTUAL kernel entry points (ingest, claim, settle/drain a
 //! publish, RAM-evict, FixedClock TTL, account switch) and the REAL

@@ -1,6 +1,6 @@
 //! Narrow host-trait delegation surface for `NmpApp`.
 //!
-//! Extracted from `lib.rs` (ADR-0053 work) to keep that file within its size
+//! Extracted from `lib.rs` (ADR-0070 work) to keep that file within its size
 //! baseline. Every method delegates to the inherent `NmpApp` method of the same
 //! name; the traits exist so reusable protocol/composition crates can wire
 //! against `&impl <NarrowTrait>` without naming the concrete C-ABI `NmpApp`

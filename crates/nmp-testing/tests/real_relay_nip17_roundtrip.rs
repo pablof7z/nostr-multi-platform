@@ -138,7 +138,7 @@ fn nip17_giftwrap_roundtrip_over_damus() {
         .custom_created_at(Timestamp::now())
         .build(alice.public_key());
 
-    // ── Gift-wrap via the pure local-keys composition (ADR-0050 §D5) ────────
+    // ── Gift-wrap via the pure local-keys composition (ADR-0072 §D5) ────────
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
     let envelope = gift_wrap_local(&alice, &bob.public_key(), &rumor, tweaked)
         .expect("gift_wrap_local must succeed for local keys");

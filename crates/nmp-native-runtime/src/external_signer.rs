@@ -1,7 +1,7 @@
-//! NIP-55 external-signer native runtime adapter (ADR-0048 Stage 2).
+//! NIP-55 external-signer native runtime adapter (ADR-0072 Stage 2).
 //!
 //! The app/core adapter for the `external_signer` capability namespace —
-//! the NIP-55 analogue of [`crate::signer_broker`] (ADR-0031's
+//! the NIP-55 analogue of [`crate::signer_broker`] (ADR-0072's
 //! worker-feeds-actor indirection, with the relay transport swapped for the
 //! host capability bridge):
 //!
@@ -43,7 +43,7 @@ use super::NmpApp;
 
 /// Outbound transport: serialises an [`ExternalSignerRequest`] into a
 /// `CapabilityRequest { namespace: "external_signer" }` and routes it through
-/// the app's registered capability callback (the existing socket — ADR-0048
+/// the app's registered capability callback (the existing socket — ADR-0072
 /// D2: "no new FFI primitive").
 ///
 /// The host callback is expected to *accept* the dispatch synchronously
@@ -142,7 +142,7 @@ impl Nip55Driver {
         }
     }
 
-    /// Begin the first-connect `get_public_key` round-trip (ADR-0048 D2).
+    /// Begin the first-connect `get_public_key` round-trip (ADR-0072 D2).
     pub(crate) fn signin(&self, signer_package: Option<String>) {
         let permissions = self
             .connect_permissions
@@ -212,7 +212,7 @@ impl Nip55Driver {
             return;
         }
 
-        // Op reply for a live signer (ADR-0050 §D3b). Instead of fanning out to
+        // Op reply for a live signer (ADR-0072 §D3b). Instead of fanning out to
         // the signer handles on THIS (bridge) thread, send a
         // `DeliverSignerResponse` command so the fan-out runs on the actor
         // thread (D4 single-writer) and the parked op resolves the same loop
@@ -251,7 +251,7 @@ impl Nip55Driver {
         }
     }
 
-    /// Reconstruct a persisted NIP-55 signer (ADR-0048 D4 — pubkey-only
+    /// Reconstruct a persisted NIP-55 signer (ADR-0072 D4 — pubkey-only
     /// payload; no user interaction). Invoked by the nmp-core restore hook.
     pub(crate) fn restore(&self, payload_json: &str) {
         let payload = match serde_json::from_str::<SignerPayload>(payload_json) {
@@ -308,7 +308,7 @@ impl RemoteSignerHandle for ArcNip55Signer {
         RemoteSignerHandle::persistence_payload_json(&*self.0)
     }
 
-    /// 90s Intent-round-trip budget (ADR-0048 D3 / ADR-0050 D4) — MUST delegate
+    /// 90s Intent-round-trip budget (ADR-0072 D3 / ADR-0072 D4) — MUST delegate
     /// so the parked op carries the NIP-55 deadline, not the 5s NIP-46 default.
     fn op_timeout(&self) -> std::time::Duration {
         RemoteSignerHandle::op_timeout(&*self.0)
@@ -337,7 +337,7 @@ impl RemoteSignerHandle for ArcNip55Signer {
 
 /// Initialise the NIP-55 driver for `app` and install the per-app restore hook.
 /// Idempotent per app: repeated calls keep the existing per-app driver.
-/// ADR-0052 §D3 — the driver handle and the restore hook are **per-app** (no
+/// ADR-0072 §D3 — the driver handle and the restore hook are **per-app** (no
 /// `GLOBAL_DRIVER` / `register_external_signer_hook` process-global), so two
 /// apps have independent drivers and a freed-then-recreated app re-initialises
 /// cleanly.
@@ -355,7 +355,7 @@ pub(crate) fn init_external_signer_driver(app: &NmpApp) {
         let transport = Arc::new(CapabilitySignerTransport { callback });
         Arc::new(Nip55Driver::new(tx, transport))
     });
-    // ADR-0052 §D3 — install the restore hook into THIS app's per-app slot
+    // ADR-0072 §D3 — install the restore hook into THIS app's per-app slot
     // (the actor's `IdentityRuntime` reads the matching `Arc` clone). The
     // driver's actor re-entry uses the per-app `tx` captured above — responses
     // route to the originating app structurally, no correlation token.

@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
     private val model: GalleryModel by viewModels()
 
     /**
-     * ADR-0048 Stage 2 — D7 host adapter for the `external_signer`
+     * ADR-0072 Stage 2 — D7 host adapter for the `external_signer`
      * capability. Owns the Activity Result launcher (registered in
      * `onCreate`, before first `onStart`); raw results route back to Rust
      * via [GalleryModel.deliverSignerResponse].

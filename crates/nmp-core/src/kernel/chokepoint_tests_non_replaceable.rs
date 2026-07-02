@@ -1,4 +1,4 @@
-//! ADR-0057 §7 oracles: read-your-writes for non-replaceable kinds.
+//! ADR-0070 §7 oracles: read-your-writes for non-replaceable kinds.
 
 use super::*;
 
@@ -24,7 +24,7 @@ fn signed_kind(keys: &::nostr::Keys, kind: u32, content: &str, created_at: u64) 
     }
 }
 
-/// ADR-0057 oracle (#1440) — a locally-published kind:1 NOTE is delivered to
+/// ADR-0070 oracle (#1440) — a locally-published kind:1 NOTE is delivered to
 /// app observers and persisted immediately BEFORE any relay ACK. The deleted
 /// `record_local_publish_intent` ladder explicitly skipped non-replaceables, so
 /// a just-posted note could disappear until relay echo. Routing the local
@@ -71,7 +71,7 @@ fn local_kind1_note_read_your_writes_before_relay_ack() {
     );
 }
 
-/// ADR-0057 oracle (#1440) — a locally-published kind:7 REACTION is delivered to
+/// ADR-0070 oracle (#1440) — a locally-published kind:7 REACTION is delivered to
 /// app observers immediately and PERSISTED, even though it is neither a
 /// follow-feed timeline kind nor a replaceable (the old ladder dropped it).
 #[test]
@@ -108,7 +108,7 @@ fn local_kind7_reaction_read_your_writes() {
     );
 }
 
-/// ADR-0057 oracle — the read-your-writes pin source. A locally-published note
+/// ADR-0070 oracle — the read-your-writes pin source. A locally-published note
 /// from an author NOT in their own follow set (so it is NOT pinned by the
 /// `self.timeline` clause) must still be pinned by the publish-in-flight pin
 /// source in `derive_store_pin_set` so LRU cannot evict it before the relay echo
@@ -143,7 +143,7 @@ fn locally_published_event_is_pinned_until_relay_confirmation() {
     let (pins, _complete) = kernel.derive_store_pin_set();
     assert!(
         pins.contains(&id32),
-        "ADR-0057: an in-flight locally-published event must be pinned until relay confirmation \
+        "ADR-0070: an in-flight locally-published event must be pinned until relay confirmation \
          / terminal settlement so it is not LRU-evicted before its relay echo"
     );
 }

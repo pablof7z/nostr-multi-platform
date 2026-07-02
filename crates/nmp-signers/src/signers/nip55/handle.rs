@@ -11,7 +11,7 @@
 //! - `deliver_response` deserialises `ExternalSignerResponse` and resolves
 //!   the pending correlation id via `Nip55Signer::deliver_external_response`.
 //! - `op_timeout` overrides the default 5s with `EXTERNAL_SIGN_TIMEOUT`
-//!   = 90s (ADR-0048 D3 / ADR-0050 D4 — Intent round-trip requires user
+//!   = 90s (ADR-0072 D3 / ADR-0072 D4 — Intent round-trip requires user
 //!   interaction; the one budget now covers sign + nip44 verbs).
 //! - `disconnect` drains the pending table with an error so blocked ops fail
 //!   fast instead of waiting out the 90s deadline.
@@ -48,7 +48,7 @@ impl RemoteSignerHandle for Nip55Signer {
     /// Per-op deadline for NIP-55 signer operations (sign + nip44 verbs).
     ///
     /// 90s — an Android Intent round-trip requires the user to foreground Amber
-    /// and tap approve. ADR-0048 D3 / ADR-0050 D4; overrides the 5s NIP-46
+    /// and tap approve. ADR-0072 D3 / ADR-0072 D4; overrides the 5s NIP-46
     /// default.
     fn op_timeout(&self) -> Duration {
         EXTERNAL_SIGN_TIMEOUT

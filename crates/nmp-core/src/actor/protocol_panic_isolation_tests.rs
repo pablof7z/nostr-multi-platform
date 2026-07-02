@@ -1,4 +1,4 @@
-//! ADR-0052 §D4 (K2 rung 5.4) — guarantee #1: WHOLE-BODY panic isolation on
+//! ADR-0072 §D4 (K2 rung 5.4) — guarantee #1: WHOLE-BODY panic isolation on
 //! the `ActorCommand::Protocol` dispatch arm.
 //!
 //! Before this rung the `Protocol` arm called `cmd.run(&mut pctx)` BARE — only

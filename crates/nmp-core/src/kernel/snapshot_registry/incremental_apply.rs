@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 — the host-declared incremental-apply capability seam.
+//! ADR-0070 Rung 3 — the host-declared incremental-apply capability seam.
 //!
 //! Extracted from `snapshot_registry.rs` (the `impl SnapshotRegistry` methods
 //! that read/write the two `incremental_apply_*` fields) so that file stays
@@ -16,7 +16,7 @@ use std::sync::Arc;
 use super::SnapshotRegistry;
 
 impl SnapshotRegistry {
-    /// ADR-0055 R6-S1 — a clone of the single-source-of-truth incremental-apply
+    /// ADR-0070 R6-S1 — a clone of the single-source-of-truth incremental-apply
     /// flag, for a Tier-1 producer closure to read lock-free.
     ///
     /// The closure runs inside `run_typed()` while this registry's mutex is held,
@@ -30,7 +30,7 @@ impl SnapshotRegistry {
         Arc::clone(&self.incremental_apply_enabled)
     }
 
-    /// ADR-0055 R6-S1 — clones of the frame-identity handles
+    /// ADR-0070 R6-S1 — clones of the frame-identity handles
     /// `(session_id, snapshot_epoch)` the kernel publishes each tick.
     ///
     /// A Tier-1 producer closure that omits unchanged frames captures these and
@@ -45,7 +45,7 @@ impl SnapshotRegistry {
         )
     }
 
-    /// ADR-0055 R6-S1 — publish the current frame identity into the shared
+    /// ADR-0070 R6-S1 — publish the current frame identity into the shared
     /// handles. Called by the kernel at the top of `make_update` (before the
     /// typed projections run), so the producer closure reads THIS tick's values.
     ///
@@ -58,7 +58,7 @@ impl SnapshotRegistry {
             .store(snapshot_epoch, Ordering::Release);
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle.
+    /// ADR-0070 D7 (#1671 Lane H) — a clone of the per-tick rev handle.
     ///
     /// A [`FeedWindowSource`](nmp_feed::FeedWindowSource) captures this and reads
     /// it lock-free to key its per-tick window memo, so the author provider and
@@ -68,14 +68,14 @@ impl SnapshotRegistry {
         Arc::clone(&self.frame_tick_rev)
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — bump the per-tick rev. Called by the kernel at
+    /// ADR-0070 D7 (#1671 Lane H) — bump the per-tick rev. Called by the kernel at
     /// the TOP of `make_update` (alongside `publish_frame_identity`), BEFORE any
     /// feed-author provider or typed producer runs, so every closure this tick
     /// reads the SAME rev. A monotone `Release` add (the readers use `Acquire`).
     pub fn bump_frame_tick_rev(&self) {
         self.frame_tick_rev.fetch_add(1, Ordering::Release);
     }
-    /// ADR-0055 Rung 3 — declare that this host's runtime owns the NMP
+    /// ADR-0070 Rung 3 — declare that this host's runtime owns the NMP
     /// cache-merge layer (D3-3) and can therefore receive frames with
     /// `Unchanged` projections omitted.
     ///
@@ -115,7 +115,7 @@ impl SnapshotRegistry {
         self.incremental_apply_enabled.load(Ordering::Acquire)
     }
 
-    /// ADR-0055 Rung 3 (D3-5) — take the "baseline pending" latch.
+    /// ADR-0070 Rung 3 (D3-5) — take the "baseline pending" latch.
     ///
     /// Returns `true` exactly once after `declare_incremental_apply` sets the
     /// latch. The caller (`make_update`) must then call

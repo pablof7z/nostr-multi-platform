@@ -1,4 +1,4 @@
-//! ADR-0058 §8.1 parity tests for the LMDB ingest log.
+//! ADR-0072 §8.1 parity tests for the LMDB ingest log.
 //!
 //! Covers the required test matrix from the ADR:
 //!   - Late old event (low created_at) gets a higher seq and is delivered

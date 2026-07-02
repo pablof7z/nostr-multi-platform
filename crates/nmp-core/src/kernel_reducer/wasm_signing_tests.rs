@@ -82,7 +82,7 @@ fn begin_then_deliver_completes_roundtrip() {
 }
 
 /// Account-pinning: a signature authored by a DIFFERENT account than the one the
-/// request was pinned to is rejected (no cross-delivery). ADR-0050 §D5.
+/// request was pinned to is rejected (no cross-delivery). ADR-0072 §D5.
 #[test]
 fn account_pin_mismatch_is_rejected() {
     let mut r = KernelReducer::new();

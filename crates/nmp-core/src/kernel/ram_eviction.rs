@@ -18,7 +18,7 @@
 //! - The event id is a key in `self.event_claims` (a UI component is
 //!   currently holding a claim on it — evicting would make the next
 //!   snapshot omit the live `refs.event` row).
-//! - **Active open interest** (V-112 / ADR-0042): every cached event that
+//! - **Active open interest** (V-112 / ADR-0076): every cached event that
 //!   matches the wire-filter shape of any active `LogicalInterest` in the
 //!   planner registry (`self.lifecycle.registry().iter_active()` +
 //!   `shape.matches_event_with_id(..)` — the exact predicate
@@ -80,7 +80,7 @@
 //! *separate* call site (`evict_ram_caches`) that `run_gc_step` calls before
 //! the store GC pass.  The two paths are additive and do not touch each
 //! other's code paths.  #957 (retire the legacy author/thread view stack)
-//! is DONE (V-112 / ADR-0042): `AuthorViewState`/`ThreadViewState` were
+//! is DONE (V-112 / ADR-0076): `AuthorViewState`/`ThreadViewState` were
 //! deleted, and [`Kernel::open_view_pins`] is derived from the planner's
 //! active-interest registry — the read path that replaced
 //! `thread_items()`/`author_items()`.
@@ -99,10 +99,10 @@ pub static PROCESS_RAM_EVENTS_EVICTED: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 // Sibling files (kept out of at-baseline `kernel/mod.rs`): #1090 floor helpers +
-// tests, and the K3 Stage C (ADR-0056) floor⇄serve unification lock tests.
+// tests, and the K3 Stage C (ADR-0072) floor⇄serve unification lock tests.
 #[path = "ram_eviction_floor.rs"]
 mod floor;
-// K3 Stage D3 (ADR-0056 §3.D3) — pin-below-ledger-floor + coverage-guard set;
+// K3 Stage D3 (ADR-0072 §3.D3) — pin-below-ledger-floor + coverage-guard set;
 // also hosts the D3 kernel-layer tests (`gc_coverage_coherent_d3_tests`).
 #[path = "ram_eviction_coverage.rs"]
 mod coverage;
@@ -184,7 +184,7 @@ impl Kernel {
     // ─── open-interest pin derivation ──────────────────────────────────────
 
     /// Compute the open-interest working set from the planner's active
-    /// `LogicalInterest` registry (V-112 / ADR-0042 — the legacy
+    /// `LogicalInterest` registry (V-112 / ADR-0076 — the legacy
     /// `AuthorViewState`/`ThreadViewState` pin sources were deleted; open
     /// views are now per-app FlatFeeds backed by generic `open_interest`).
     ///
@@ -279,7 +279,7 @@ impl Kernel {
             Some(bytes)
         }
 
-        // ADR-0057 — read-your-writes pin source. A locally-published event is
+        // ADR-0070 — read-your-writes pin source. A locally-published event is
         // routed through the accepted-event chokepoint with `local://publish`
         // provenance and persisted immediately, but it is NOT in `self.timeline`
         // unless the author is followed AND it is a rendered timeline kind (a
@@ -416,7 +416,7 @@ impl Kernel {
     // ─── profiles ──────────────────────────────────────────────────────────
 
     fn evict_profiles_cache(&mut self, view_pins: &OpenViewPins) -> usize {
-        // ADR-0057 PR 2 — the profile cache is capability-owned
+        // ADR-0070 PR 2 — the profile cache is capability-owned
         // (`nmp_nip01::ProfileCache` behind `Arc<dyn ProfileLookup>`); the cache
         // owns the eviction *mechanism* (oldest-first, lexicographic-pubkey
         // tiebreak), the kernel owns the *policy* (which pubkeys are pinned + the
@@ -435,7 +435,7 @@ impl Kernel {
 
         let removed = self.profile_lookup().evict_to(&pinned, PROFILES_RAM_HWM);
         if removed > 0 {
-            // ADR-0055 Rung 1 (F4): stamp the removal so profile-derived
+            // ADR-0070 Rung 1 (F4): stamp the removal so profile-derived
             // projections' rev stays coherent (else the host serves an evicted one).
             self.projection_rev_tracker.source_versions.bump_profiles();
         }

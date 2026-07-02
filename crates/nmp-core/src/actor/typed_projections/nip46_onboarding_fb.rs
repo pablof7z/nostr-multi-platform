@@ -9,7 +9,7 @@
 //! always present (never JSON `null`) — the static signer-app probe table is
 //! emitted even when no handshake is in flight — so the typed closure always
 //! returns `Some`. This module adds a **typed FlatBuffers** encoding of the same
-//! shape, carried in the `typed_projections` sidecar (ADR-0037) ALONGSIDE —
+//! shape, carried in the `typed_projections` sidecar (ADR-0072) ALONGSIDE —
 //! never replacing — the generic `Value` projection.
 //!
 //! Honours D6 (no panics): decode returns `Err(String)` on any malformed input.

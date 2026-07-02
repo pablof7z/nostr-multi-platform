@@ -20,7 +20,7 @@ new protocol module copies. This section is the recipe.
 Heuristic: a protocol crate is a **reusable mechanism**; an app core is
 **policy + app nouns**. "I might reuse this someday" does **not** justify a
 protocol crate — concrete cross-app reuse does. The four-layer ownership table
-is ADR-0009 lines 44–62 (`docs/decisions/0009-app-extension-kernel-boundary.md`);
+is ADR-0072 lines 44–62 (`docs/decisions/0072-runtime-capability-and-shell-boundary.md`);
 the D0 rule (line 61): if your app needs a noun in `nmp-core`, the *kernel
 boundary* is wrong, not the app.
 
@@ -133,7 +133,7 @@ projection keys never use this path — they use `ProjectionKey::app_owned(...)`
 Each `ActionModule` carries a typed `GroupId` routing key so `execute` can
 call `send(ActorCommand::PublishUnsignedEventToRelays { relays: vec![group.host], … })`
 — the planner gets `relay_pin: Some(host)` and routes to the group relay,
-never the author's NIP-65 outbox (D3's third routing lane, ADR-0012).
+never the author's NIP-65 outbox (D3's third routing lane, ADR-0071).
 
 ## Default typed action contract
 
@@ -206,7 +206,7 @@ app's CI owns its drift gate.
 
 Some protocols route inverted relative to NIP-65: a subscription is bound to a
 *host relay*, not the author's mailboxes. NIP-29 group events are the canonical
-case. ADR-0012 (`docs/decisions/0012-relay-pinned-interest-and-third-routing-lane.md`)
+case. ADR-0071 (`docs/decisions/0071-write-intents-and-route-provenance.md`)
 weighed three shapes and shows the rubric:
 
 1. **Reusable mechanism, zero protocol nouns.** The kernel got a generic

@@ -11,7 +11,7 @@ impl Kernel {
         self.dm_inbox_relays = lookup;
     }
 
-    /// Inject the kind:0 profile lookup (composition seam, ADR-0057 PR 2).
+    /// Inject the kind:0 profile lookup (composition seam, ADR-0070 PR 2).
     /// The cache is an independent store, not a write-through pair, so late
     /// swaps would lose already-ingested entries.
     pub(crate) fn set_profile_lookup(&mut self, lookup: Arc<dyn ProfileLookup>) {

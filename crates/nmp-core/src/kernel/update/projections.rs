@@ -1,4 +1,4 @@
-// ADR-0063 Lane H: MentionProfilePayload + ProfileCard + claimed_events removed
+// ADR-0070 Lane H: MentionProfilePayload + ProfileCard + claimed_events removed
 // (mention_profiles / claimed_profiles / resolved_profiles / claimed_events
 // projection builders deleted).
 use super::super::Kernel;
@@ -27,7 +27,7 @@ use super::super::Kernel;
 // settled) are listed too: the gate asks "can the kernel produce this key",
 // not "is it present this tick".
 //
-// ## Codegen-derived (ADR-0053 / Workstream-E4) — not hand-maintained
+// ## Codegen-derived (ADR-0070 / Workstream-E4) — not hand-maintained
 //
 // This const is generated from the neutral `nmp-codegen` projection contract
 // (`projection_contract::kernel_builtin_projection_keys`, #1723) by
@@ -48,7 +48,7 @@ impl Kernel {
     /// so the `captured_*` fields are fresh when the typed path reads them.
     ///
     /// The drain methods (`take_action_results_projection`,
-    /// `take_signed_events_projection`) also drive the ADR-0055 Rung-1
+    /// `take_signed_events_projection`) also drive the ADR-0070 Rung-1
     /// `note_drain_emit` state machine — they MUST run each tick so the rev
     /// tracker sees the correct `Changed` / `Cleared` / `Unchanged` transitions.
     /// The copy-based projections (`action_stages`, `action_lifecycle`) run their
@@ -57,7 +57,7 @@ impl Kernel {
         let declared = self.declared_projections_snapshot();
 
         // `action_results` — drain-on-emit. Always drain (keeps the source
-        // bounded); capture only when declared (ADR-0053).
+        // bounded); capture only when declared (ADR-0070).
         let action_results = self.take_action_results_projection();
         self.captured_action_results = (declared.permits("action_results")
             && !action_results.is_null())
@@ -81,7 +81,7 @@ impl Kernel {
         .then(|| action_lifecycle);
 
         // `relay_diagnostics` — unconditional snapshot once declared.
-        // ADR-0053: the whole roll-up is skipped when undeclared.
+        // ADR-0070: the whole roll-up is skipped when undeclared.
         if declared.permits("relay_diagnostics") {
             self.captured_relay_diagnostics = Some(self.relay_diagnostics_snapshot());
         } else {
@@ -191,13 +191,13 @@ impl Kernel {
                 serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
             );
         }
-        // ADR-0063 Lane H: mention_profiles / claimed_profiles /
+        // ADR-0070 Lane H: mention_profiles / claimed_profiles /
         // resolved_profiles / claimed_events emission deleted. These projections
         // are replaced by refs.profile / refs.event row-delta sidecars.
         projections
     }
 
-    // ADR-0063 Lane H: mention_profiles(), claimed_profiles(), resolved_profiles()
+    // ADR-0070 Lane H: mention_profiles(), claimed_profiles(), resolved_profiles()
     // deleted. These were the old 3-tier JSON projection builders; profile data is
     // now delivered via the refs.profile KPRF NRRD row-delta sidecar.
 }

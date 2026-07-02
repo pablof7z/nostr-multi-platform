@@ -96,13 +96,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## nmp-v0.7.0 — 2026-06-14
 
-**BREAKING release — the keystone series (ADR-0050 / ADR-0052 / ADR-0056).**
+**BREAKING release — the keystone series (legacy decision 0050 / legacy decision 0052 / legacy decision 0056).**
 Git-rev-pinning consumers must adapt to the API changes below before bumping
 their pinned rev. Three keystones land together:
 
-- **K1 — signer-session capability port** (ADR-0050)
-- **K2 — instance-scoped registration** (ADR-0052)
-- **K3 — coverage ledger** (ADR-0056)
+- **K1 — signer-session capability port** (legacy decision 0050)
+- **K2 — instance-scoped registration** (legacy decision 0052)
+- **K3 — coverage ledger** (legacy decision 0056)
 
 ### Breaking — APIs consumers must adapt to
 
@@ -150,7 +150,7 @@ their pinned rev. Three keystones land together:
 
 - The `coverage_ledger_enabled` flag and its plumbing; the presence-floor
   heuristic (`shape_floor`, `watermark_from_queries`) and the Stage-B3
-  truncated-serve tracking — all superseded by the coverage ledger (ADR-0056
+  truncated-serve tracking — all superseded by the coverage ledger (legacy decision 0056
   Stage E).
 
 ## nmp-v0.6.2 — 2026-06-13
@@ -160,17 +160,17 @@ do not need call-site changes.
 
 ### Added
 
-- **NIP-55 (Amber) Android signing complete — ADR-0048 Stage 4 E2E passed**
+- **NIP-55 (Amber) Android signing complete — legacy decision 0048 Stage 4 E2E passed**
   (#1183, closes #1124). The registry `login-block` component is now
   `compose: stable`: signer detection (Amber + Primal), "Sign in with Amber"
   driving the full kernel flow (pubkey-only account, 90s interactive deadline,
-  `signer_state` projection), DM send via the ADR-0026 seal seam, and an
+  `signer_state` projection), DM send via the legacy decision 0026 seal seam, and an
   emulator-verified publish — kind:1 `11652d49…20a76a` signed by the
   Amber-held key, relay-fetched and schnorr-verified. Amber wire fixes shipped
   in the vendored Kotlin bridge (payload in the `nostrsigner:` data URI,
   type/params as Intent extras, `{"type","kind"}` permissions JSON, full-event
   reply via the `event` extra, `rejected` handling). E2E runbook:
-  `docs/testing/adr-0048-nip55-amber-e2e-runbook.md`. Android consumers:
+  `docs/testing/nip55-amber-e2e-runbook.md`. Android consumers:
   vendor the three login-block Kotlin files (`ExternalSignerWire.kt`,
   `AmberIntentCodec.kt`, `ExternalSignerCapabilityBridge.kt`) + the
   `<queries>` manifest entries, register the bridge, and call
@@ -191,7 +191,7 @@ existing symbol changed or removed). Rust API is additive.
 
 ### Added
 
-- **ADR-0051 — first-class NIP-11 relay information** (#1195). New `nmp-nip11`
+- **legacy decision 0051 — first-class NIP-11 relay information** (#1195). New `nmp-nip11`
   protocol crate owns the full NIP-11 lifecycle: when a relay connects, a
   `RelayConnectedHook` (new substrate seam, fanned on `PoolEvent::Opened`)
   fetches the relay's information document on an off-actor worker (`ureq`,
@@ -223,7 +223,7 @@ Rust API is additive; explicit composition behavior is unchanged.
 
 ### Added
 
-- **ADR-0049 — defaults yield; composition is observable** (#1185).
+- **legacy decision 0049 — defaults yield; composition is observable** (#1185).
   `ActionRegistry::register_default::<M>()` is an entry-or-insert *yielding*
   registration: the canonical defaults (nip02/nip17/nip57/nip65) now back off
   when the app already claimed the namespace, **regardless of call order**
@@ -247,7 +247,7 @@ Rust API is additive; explicit composition behavior is unchanged.
   observer + `nmp.nip51.mute_list` diagnostic projection wired into the
   `social` tier; `register_mute_runtime` exported for apps needing the `Arc`
   to wire timeline suppression.
-- **ADR-0048 NIP-55 external signer** Stages 2–3 (#1153, #1165, #1166): Android
+- **legacy decision 0048 NIP-55 external signer** Stages 2–3 (#1153, #1165, #1166): Android
   login-block + Chirp sign-in, proof lanes, DM send via the seal seam.
 - **Android**: Keystore keyring capability + synchronous capability routing +
   identity restore (#1188); Marmot leave/invite/remove/clear_pending parity
@@ -280,14 +280,14 @@ Rust API is additive; explicit composition behavior is unchanged.
 **BREAKING (C-ABI + Rust API).** Four breaking changes since v0.4.0; all require
 migration before pinning this revision (see **Removed** below).
 
-**ADR-0045 COMPLETE — v1 exit criterion satisfied.** Offline / second-launch
+**legacy decision 0045 COMPLETE — v1 exit criterion satisfied.** Offline / second-launch
 rendering now works for every open interest: contact feed, DM inbox, threads,
 and long-form articles all render from the local LMDB store before any relay
 delivers a single event.
 
 ### Added
 
-- **ADR-0045 universal cache-serve — E1+E2+E3, closes #1086** (#1107, #1117). The
+- **legacy decision 0045 universal cache-serve — E1+E2+E3, closes #1086** (#1107, #1117). The
   `kernel/cache_serve.rs` seam maps every `InterestShape` to LMDB `StoreQuery`
   variants, scans newest-first up to `CACHE_SERVE_BUDGET_EVENTS = 200`, and
   feeds matched events into the post-store projection-dispatch path (bypassing
@@ -298,7 +298,7 @@ delivers a single event.
   - **E2** (`#1117`): `Ptag` + kind:1059 → `StoreQuery::Ptag` for DM inbox
     gift-wraps; events fed through `notify_raw_event_observers` so
     `DmInboxProjection` receives the full sig-bearing JSON — one decrypt path
-    shared with live relay delivery (ADR-0045 R2.4(f)).
+    shared with live relay delivery (legacy decision 0045 R2.4(f)).
   - **E3** (`#1117`): `Etag` (thread replies), `KindDtag` (addressable /
     long-form), and `Ptag`-mentions. Watermark floors restored for all covered
     shapes; the `e3_structural_floored_implies_served` seam-identity test
@@ -311,7 +311,7 @@ delivers a single event.
 ### Removed (BREAKING)
 
 - **`nmp_app_open_timeline` deleted** — replaced by `nmp_app_open_contact_feed` /
-  `nmp_app_close_contact_feed` (ADR-0042 §2 amendment, closes #911; #1108). The
+  `nmp_app_close_contact_feed` (legacy decision 0042 §2 amendment, closes #911; #1108). The
   `{1,6}` social-kind literal that was hardcoded in the generic FFI layer (a D0
   violation) now lives in exactly one place: `HOME_FEED_KINDS_JSON` in
   `nmp-app-chirp`. Two new Chirp wrappers —
@@ -325,7 +325,7 @@ delivers a single event.
   array. Add a matching `nmp_app_close_contact_feed` (the prior
   `nmp_app_open_timeline` had no symmetric close).
 
-- **`nmp-codegen gen modules` scaffolder and `apps/fixture` deleted** (ADR-0046
+- **`nmp-codegen gen modules` scaffolder and `apps/fixture` deleted** (legacy decision 0046
   — "composition is a library, not a generator"; #1114). The Rust-shell FFI-crate
   generator (`generate.rs` / `ffi_gen.rs` / `workspace.rs`, the `gen modules`
   subcommand, `gen-modules` / `gen-modules-check` justfile targets) and its sole
@@ -362,7 +362,7 @@ delivers a single event.
 
 ### Fixed
 
-- **V-115 — display formatting removed from kernel projections** (ADR-0032; #1109,
+- **V-115 — display formatting removed from kernel projections** (legacy decision 0032; #1109,
   closes #1045). Three violations fixed; shells must adopt corresponding changes:
   - `ProfileCard.npub` (bech32 string) removed from the FlatBuffers struct and
     schema; slot marked `(deprecated)` for wire compat. Shells encode bech32 via
@@ -413,7 +413,7 @@ delivers a single event.
 
 ### Changed
 
-- **ADR-0045 Rev 2 — single-mechanism cache-serve** (`#1102` — docs-only ADR
+- **legacy decision 0045 Rev 2 — single-mechanism cache-serve** (`#1102` — docs-only ADR
   amendment). Supersedes the §9 staged-by-domain rollout: one always-on
   store-serve seam for every `LogicalInterest`, regardless of
   cold/warm/offline/online. Offline is the degenerate case where the network half
@@ -446,7 +446,7 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
 ### Removed (BREAKING)
 
 - **Legacy author/thread C-ABI open surfaces deleted** (V-68 / V-112,
-  ADR-0042; closes #958, #957). The following `nmp_app_*` symbols are
+  legacy decision 0042; closes #958, #957). The following `nmp_app_*` symbols are
   **removed** from `nmp-ffi` and `NmpCore.h` (#1100):
   - `nmp_app_open_author`
   - `nmp_app_close_author`
@@ -474,7 +474,7 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
   The `claimed_profiles` decode cluster is promoted to the public typed
   surface as part of this migration (#1100 fix round).
 
-- **`nmp gen modules` scaffolder + `apps/fixture` deleted** (ADR-0046 —
+- **`nmp gen modules` scaffolder + `apps/fixture` deleted** (legacy decision 0046 —
   "composition is a library, not a generator"). The Rust-shell FFI-crate
   generator (`nmp-codegen`'s `generate` / `ffi_gen` / `workspace` modules, the
   `gen modules` subcommand, the `gen-modules` justfile targets) and its sole
@@ -487,7 +487,7 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
 
 ### Changed (BREAKING)
 
-- **Legacy composition-template package rename** (ADR-0046, now superseded).
+- **Legacy composition-template package rename** (legacy decision 0046, now superseded).
   At this release, the old app-template dependency was renamed as a runtime
   composition library instead of a forkable template. That guidance is no longer
   current: modern consumers should depend on explicit owner crates and compose
@@ -522,9 +522,9 @@ rebuild from Tier-3 typed fields + sidecars (#1092).
 - **Bunker connection state surfaced on iOS and Android** — new `KBCS`
   (`bunker_connection_state`) typed projection via FlatBuffers, emitted by the
   actor and decoded by per-platform generated decoders (closes #963 / V-14,
-  #1098). Follow-up label/tone ADR-0032 conformance tracked in #1099.
+  #1098). Follow-up label/tone legacy decision 0032 conformance tracked in #1099.
 
-- **ADR-0045 store→projection replay accepted** (staged, #1095 / #1086). The
+- **legacy decision 0045 store→projection replay accepted** (staged, #1095 / #1086). The
   ADR is merged; implementation is tracked separately.
 
 ### Docs / Product
@@ -694,7 +694,7 @@ surface is available.
   handshake, and NIP-46 onboarding projections.
 
 - **Typed Tier-3 snapshot envelope fields.** `SnapshotFrame` now carries the
-  typed top-level envelope fields from ADR-0044, completing the typed sidecar
+  typed top-level envelope fields from legacy decision 0044, completing the typed sidecar
   release slice available to downstream apps pinning this baseline.
 
 ### Changed
@@ -741,7 +741,7 @@ surface is available.
 
 ### Added
 
-- **`nmp-blossom` crate — idiomatic Blossom (BUD-02) media uploads.** Dispatch `nmp_app_dispatch_action("nmp.blossom.upload", json)` with `{ file_path, content_type?, servers, signer_pubkey? }`; the crate streams + SHA-256-hashes the blob off the actor thread, builds and signs a kind:24242 auth event (5-minute TTL), PUTs to each server, and surfaces the blob descriptor (`url`, `sha256`, `size`, `type`, `uploaded`) via `action_results[correlation_id]`. The app never handles keys, base64, headers, or continuation-scanning. HTTP lives in the protocol crate (the `ProtocolCommand` seam, like `nmp-nip57`); `nmp-core` stays HTTP-free and noun-free (D0). v1 is upload-only; the `nmp.blossom.*` namespace is built to extend (ADR-0043).
+- **`nmp-blossom` crate — idiomatic Blossom (BUD-02) media uploads.** Dispatch `nmp_app_dispatch_action("nmp.blossom.upload", json)` with `{ file_path, content_type?, servers, signer_pubkey? }`; the crate streams + SHA-256-hashes the blob off the actor thread, builds and signs a kind:24242 auth event (5-minute TTL), PUTs to each server, and surfaces the blob descriptor (`url`, `sha256`, `size`, `type`, `uploaded`) via `action_results[correlation_id]`. The app never handles keys, base64, headers, or continuation-scanning. HTTP lives in the protocol crate (the `ProtocolCommand` seam, like `nmp-nip57`); `nmp-core` stays HTTP-free and noun-free (D0). v1 is upload-only; the `nmp.blossom.*` namespace is built to extend (legacy decision 0043).
 
 - **`PublishRaw { …, signer_pubkey: Option<String> }`** — a dispatched `nmp.publish` `PublishRaw` action can now sign with a registered non-active signer (an agent / per-podcast NIP-F4 key registered via `nmp_app_signin_nsec(make_active=0)`) by naming its pubkey. Omitted/`None` signs with the active account (unchanged default). The field is `#[serde(default)]`, so existing payloads are unaffected. Local-vs-bunker is transparent.
 
@@ -886,7 +886,7 @@ surface is available.
   push projection.
 
 - **Marmot canonical push projection** (#881/#884, V-107): `nmp-marmot` now delivers
-  snapshot and messages through the standard push-projection seam (ADR-0039).
+  snapshot and messages through the standard push-projection seam (legacy decision 0039).
   `MarmotBridge` reads push projections on iOS; legacy pull symbols are deleted.
 
 - **Web component-owned claim seam** (#885, F-CR-00): `nmp-wasm` and `chirp-web`
@@ -911,7 +911,7 @@ surface is available.
   diagnostic and `console.warn` on Worker fallback so the degraded code path is
   observable in production.
 
-- **ADR-0041 presentation strings stripped from kernel** (#890): `role_label` and
+- **legacy decision 0041 presentation strings stripped from kernel** (#890): `role_label` and
   `role_tint` fields removed from the relay kernel state; chirp-desktop and the
   nmp-cli scaffold template updated accordingly.
 
@@ -1007,7 +1007,7 @@ surface is available.
 - **Actor-thread freeze — bunker DM sends** (#861, V-90 Site 1): `nmp-nip17`
   gift-wrap `op.wait()` was called on the actor thread, blocking all kernel
   processing during NIP-46 remote-signer round trips. Moved to a capability worker
-  off-actor (ADR-0040).
+  off-actor (legacy decision 0040).
 
 - **Actor-thread freeze — Keychain dispatch** (#870, V-90 Site 2): a second
   synchronous capability call (OS keychain) on the actor thread similarly blocked
@@ -1107,7 +1107,7 @@ surface is available.
 ### Deprecated
 
 - **`nmp_marmot_snapshot` / `nmp_marmot_group_messages`** (pull-model Marmot
-  symbols): these C-ABI pull symbols remain functional. Per ADR-0039 the Marmot
+  symbols): these C-ABI pull symbols remain functional. Per legacy decision 0039 the Marmot
   projection layer is being migrated to the push-projection seam (same as every
   other kernel projection). New apps building on Marmot (MLS) group support should
   prefer the push path; the pull symbols will be removed in a future minor release.

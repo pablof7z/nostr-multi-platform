@@ -34,7 +34,7 @@ import org.nmp.gallery.registry.ProfileWire
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
  * the push callback only. Registry components resolve pubkeys while visible and
- * resolved profile cards arrive under `projections["refs.profile"]` (ADR-0063
+ * resolved profile cards arrive under `projections["refs.profile"]` (ADR-0070
  * #1671 — the resolve_ref output, materialised from the row-delta store in
  * Rust; this host owns no precedence merge).
  *
@@ -61,7 +61,7 @@ class GalleryModel : ViewModel() {
         _resolvedEventEmbeds.asStateFlow()
 
     /**
-     * ADR-0048 D6 — unified remote-signer health (`projections.signer_state`).
+     * ADR-0072 D6 — unified remote-signer health (`projections.signer_state`).
      * Null while no remote-signer session is active. Drives the login-block
      * showcase's inline status indicators.
      */
@@ -74,7 +74,7 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * ADR-0048 Stage 2 — the activity-owned NIP-55 host adapter
+     * ADR-0072 Stage 2 — the activity-owned NIP-55 host adapter
      * (`ExternalSignerCapabilityBridge.handleJson`). The push listener
      * hops each Rust-built request to Main (Intent launches require the
      * main thread). Null = no activity registered; the request is dropped
@@ -153,7 +153,7 @@ class GalleryModel : ViewModel() {
     }
 
     /**
-     * Hop a pushed NIP-55 request (ADR-0048 Stage 2 / #1612) onto the main
+     * Hop a pushed NIP-55 request (ADR-0072 Stage 2 / #1612) onto the main
      * thread before handing it to the activity-owned handler — the NIP-55
      * launch Intent requires the main thread. Rust invokes the listener on its
      * native capability-dispatch thread.
@@ -166,7 +166,7 @@ class GalleryModel : ViewModel() {
 
     /**
      * Decode one FlatBuffers snapshot frame. Profiles are read from
-     * `projections["refs.profile"]` — ADR-0063 (#1671): the kernel's
+     * `projections["refs.profile"]` — ADR-0070 (#1671): the kernel's
      * `refs.profile` row-delta projection (the resolve_ref output), merged
      * host-side across frames in the native session store and materialised
      * under that key by Rust. This host owns no precedence merge.
@@ -182,7 +182,7 @@ class GalleryModel : ViewModel() {
 
         val assembled = mutableMapOf<String, ProfileWire>()
 
-        // ADR-0063 (#1671): projections["refs.profile"][pubkey] is a
+        // ADR-0070 (#1671): projections["refs.profile"][pubkey] is a
         // ProfileWire-shaped entry materialised from the FULL current
         // refs.profile store set (snapshot_json re-materialises the whole store
         // every frame). `npub_short` is derived from `npub` by the ProfileWire
@@ -214,7 +214,7 @@ class GalleryModel : ViewModel() {
         }
         _resolvedEventEmbeds.value = embeds
 
-        // ADR-0048 D6 — the unified remote-signer health slot. Absent =
+        // ADR-0072 D6 — the unified remote-signer health slot. Absent =
         // no remote-signer session active (clears any prior state).
         _signerState.value = (projections["signer_state"] as? JsonObject)?.let { el ->
             runCatching { json.decodeFromJsonElement<LoginBlockSignerState>(el) }.getOrNull()

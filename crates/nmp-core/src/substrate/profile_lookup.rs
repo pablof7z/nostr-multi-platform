@@ -4,7 +4,7 @@
 //! The kernel needs to ask "for author `P`, what is P's cached display name /
 //! picture / nip05 / about / lightning address?" when it enriches timeline
 //! items, builds profile cards, gates kind:0 re-fetch (TTL / claim dedup),
-//! and resolves the zap LNURL. Before ADR-0057 PR 2 this lived in a
+//! and resolves the zap LNURL. Before ADR-0070 PR 2 this lived in a
 //! kernel-owned `profiles: HashMap<String, Profile>` field with a hardwired
 //! kind:0 ingest arm (`ingest_profile`) — both NIP-01 nouns inside
 //! `nmp-core`. PR 2 moves the cache out behind this trait, mirroring the

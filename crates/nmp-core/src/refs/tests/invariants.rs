@@ -1,6 +1,6 @@
-//! ADR-0063 Lane A — explicit invariant + behaviour unit tests.
+//! ADR-0070 Lane A — explicit invariant + behaviour unit tests.
 //!
-//! Each test pins one ADR-0063 invariant or BLOCKING-N contract individually.
+//! Each test pins one ADR-0070 invariant or BLOCKING-N contract individually.
 //! The property-test harness (the merge gate) lives in the sibling `property`
 //! module.
 

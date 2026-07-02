@@ -44,7 +44,7 @@ impl NmpApp {
 
         register_sidecar(self);
 
-        // The in-memory read-cache replay (ADR-0062) matches cached events by
+        // The in-memory read-cache replay (ADR-0070) matches cached events by
         // the SAME wire shape the live filter uses — `matches_event_with_id`
         // honours the `#h` generic-tag + kind dimensions. A malformed filter
         // yields no shapes; `open_observed_projection` validates the filter and

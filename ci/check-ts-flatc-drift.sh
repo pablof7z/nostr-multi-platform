@@ -14,7 +14,7 @@
 #              + crates/nmp-core/schema/profile.fbs
 #              + crates/nmp-core/schema/claimed_events.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
-#   NRRD        — crates/nmp-core/schema/ref_rowdelta.fbs (ADR-0063 / #1671)
+#   NRRD        — crates/nmp-core/schema/ref_rowdelta.fbs (ADR-0070 / #1671)
 #   NEMB        — crates/nmp-content/schema/embed_sidecar.fbs
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/nmp-gallery/package.json).
@@ -70,7 +70,7 @@ FEED_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
 )
 KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
-# KPRF kernel profile bindings (ADR-0063 #1671): `profile.fbs` (the
+# KPRF kernel profile bindings (ADR-0070 #1671): `profile.fbs` (the
 # `ProfileSnapshot` root carrying one `ProfileCard`, file id KPRF) is the
 # per-ROW payload of the `refs.profile` row-delta projection. `profile_card.fbs`
 # is its shared `include`d row table and MUST be a root argument so flatc emits
@@ -84,7 +84,7 @@ KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
-# NRRD reference row-delta carrier (ADR-0063 / #1671) — `namespace nmp.refs`,
+# NRRD reference row-delta carrier (ADR-0070 / #1671) — `namespace nmp.refs`,
 # generated independently into `nmp/refs/`. The keyed-projection row-delta
 # payload every web `RefRowCache` decodes.
 REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
@@ -171,7 +171,7 @@ flatc --ts -o "${TMP_DIR}" \
 
 # ── NRRD refs schema (ref_rowdelta → nmp/refs/) ──────────────────────────────
 # Self-contained (no includes). `namespace nmp.refs` lands in nmp/refs/. This is
-# the row-delta carrier the per-key RefRowCache merges (ADR-0063 / #1671).
+# the row-delta carrier the per-key RefRowCache merges (ADR-0070 / #1671).
 flatc --ts -o "${TMP_DIR}" "${REFS_SCHEMA}"
 
 # ── NEMB embed-sidecar schema (refs.event.envelopes → nmp/embed/) ────────────

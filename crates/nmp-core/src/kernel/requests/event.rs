@@ -4,7 +4,7 @@
 //! Symmetric with [`super::profile::resolve_profile_ref`] but addresses events.
 //! A "ref" is a refcounted assertion from one consumer that it wants the event
 //! identified by a raw key reachable in `self.events`. The kernel parses the
-//! **raw key** (ADR-0063 / FFI contract) into a canonical
+//! **raw key** (ADR-0070 / FFI contract) into a canonical
 //! [`super::event_key::EventTarget`] (a 64-char lowercase hex event-id OR a
 //! `kind:pubkey:d` coordinate), refcounts the `consumer_id` into
 //! `event_claims[primary_id]`, registers a `OneShot + Global` interest via
@@ -13,7 +13,7 @@
 //! compiles a wire REQ. `primary_id` is the `refs.event` row key (hex64 id, or
 //! `kind:pubkey:d_tag` matching `WireUri.primary_id`).
 //!
-//! ## One raw-key front door (ADR-0063 D1 — single path)
+//! ## One raw-key front door (ADR-0070 D1 — single path)
 //!
 //! [`Kernel::resolve_event_ref`] is the CANONICAL body and takes the raw key
 //! directly (the `event` arm of the origin-blind `resolve_ref` seam). Callers
@@ -31,7 +31,7 @@ use crate::kernel::refs::{EventShape, RefLiveness};
 use crate::planner::{HintSource, InterestScope, RelayHint};
 
 impl Kernel {
-    /// The `event` reference resolver (ADR-0063), CANONICAL raw-key entry. The
+    /// The `event` reference resolver (ADR-0070), CANONICAL raw-key entry. The
     /// `event` arm of the origin-blind `resolve_ref` seam (refs.rs) routes here.
     /// `key` is the raw FFI key — a 64-char lowercase hex event-id or a
     /// `kind:pubkey:d` coordinate — NOT a `nostr:` URI. Refcount the consumer,
@@ -39,7 +39,7 @@ impl Kernel {
     /// bump the per-key rev. `shape` selects the projected bytes (Lane C)
     /// orthogonally to `liveness`.
     ///
-    /// **Liveness (ADR-0063):** event refs were `OneShot`-only. A
+    /// **Liveness (ADR-0070):** event refs were `OneShot`-only. A
     /// [`RefLiveness::Live`] ref on an **addressable** coordinate now registers a
     /// *tailing* interest so replacements (a newer kind:3xxxx) arrive reactively
     /// — the event twin of a `Live` profile ref. Immutable event-ids cannot
@@ -191,7 +191,7 @@ impl Kernel {
         // Capture the before-state (the live-owner set mutates in the `Live` branch).
         let widest_before = self.ref_demanded_event_shape(&primary_id);
         let live_before = self.live_event_claims.contains_key(&primary_id);
-        // ADR-0063 D5 (HIGH 4) — record THIS consumer's demanded event shape
+        // ADR-0070 D5 (HIGH 4) — record THIS consumer's demanded event shape
         // (per-consumer so a release recomputes the widest; bounded to claimed
         // keys). Orthogonal to liveness; the wire filter is shape-independent.
         self.ref_event_shapes
@@ -209,17 +209,17 @@ impl Kernel {
         // the `refs.event[primary_id]` row to render the embed card).
         if mutated {
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
+            // ADR-0070 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
             self.projection_rev_tracker
                 .source_versions
                 .bump_claimed_event_content();
-            // ADR-0063 Lane B (D6a) — per-key rev (resolve site 1 of 3).
+            // ADR-0070 Lane B (D6a) — per-key rev (resolve site 1 of 3).
             self.projection_rev_tracker
                 .source_versions
                 .bump_event_row(&primary_id);
         }
 
-        // ADR-0063 — `Live` on an ADDRESSABLE coordinate registers a tailing
+        // ADR-0070 — `Live` on an ADDRESSABLE coordinate registers a tailing
         // interest (the event twin of a `Live` profile claim) so kind:3xxxx
         // replacements arrive reactively. Immutable event-ids
         // (`replaceable_coord == None`) can never change, so `Live` falls through
@@ -355,7 +355,7 @@ impl Kernel {
         Vec::new()
     }
 
-    /// The `event` reference release (ADR-0063), CANONICAL raw-key entry. The
+    /// The `event` reference release (ADR-0070), CANONICAL raw-key entry. The
     /// `event` arm of the origin-blind `release_ref` seam routes here with the
     /// raw key. Drop the consumer's refcount, tear the slot down on the last
     /// owner (incl. the `Live` tailing registry owner and event-claim one-shot
@@ -387,7 +387,7 @@ impl Kernel {
             remaining = consumers.len();
             remove_claim = consumers.is_empty();
         }
-        // ADR-0063 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
+        // ADR-0070 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
         // widest demanded shape recomputes over the currently-live consumers.
         if let Some(consumers) = self.ref_event_shapes.get_mut(&primary_id) {
             consumers.remove(consumer_id);
@@ -399,7 +399,7 @@ impl Kernel {
         // BLOCKING 1 — detach THIS consumer's `Live` tailing owner on EVERY release
         // (no-op for CacheOk-only); the slot tears down on the last live owner.
         self.release_event_claim_interest(&primary_id, consumer_id);
-        // ADR-0063 Lane B — drop THIS consumer's COLD-PARK stake from
+        // ADR-0070 Lane B — drop THIS consumer's COLD-PARK stake from
         // `pending_event_claims` so a hintless claim released before the
         // relay-ready drain is not resurrected (rationale on the fn).
         self.remove_parked_event_claim(&primary_id, consumer_id);
@@ -422,7 +422,7 @@ impl Kernel {
             self.projection_rev_tracker
                 .source_versions
                 .bump_claimed_event_content();
-            // ADR-0063 Lane B (D6a) — per-key rev (release site 2 of 3) ONLY on a
+            // ADR-0070 Lane B (D6a) — per-key rev (release site 2 of 3) ONLY on a
             // real surviving-row change (BLOCKING 2 (a): a spurious release of a
             // never-claimed key must not create a permanent row).
             self.projection_rev_tracker

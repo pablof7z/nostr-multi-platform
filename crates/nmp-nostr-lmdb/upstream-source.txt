@@ -20,7 +20,7 @@ either an upstream PR or a hand-rolled heed layer. The blocker that the
 T136 Gate-1 audit identified is the lack of an env-injection seam: NMP
 needs to own the `heed::Env` so that NMP-side sub-dbs (watermarks,
 provenance, claims, domain rows) commit atomically with event writes
-inside a single `RwTxn` (ADR-0011).
+inside a single `RwTxn` (ADR-0072).
 
 The audit doc (docs/design/lmdb/env-injection-status.md) overestimated the
 extraction work. Reality verified during Gate A:

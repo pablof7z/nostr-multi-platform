@@ -8,7 +8,7 @@
 //! (`Arc<Mutex<Option<BunkerHandshakeDto>>>`) — JSON `null` when the slot is
 //! `None`, else the serialised [`BunkerHandshakeDto`]. This module adds a
 //! **typed FlatBuffers** encoding of the same shape, carried in the
-//! `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing — the
+//! `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing — the
 //! generic `Value` projection, and only when the slot holds `Some` (the typed
 //! closure mirrors the JSON closure's `Some`/`None`: no sidecar entry while the
 //! slot is idle).

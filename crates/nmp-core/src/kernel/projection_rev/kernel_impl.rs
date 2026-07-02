@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — `impl Kernel` accessors for the projection-rev manifest.
+//! ADR-0070 Rung 1 — `impl Kernel` accessors for the projection-rev manifest.
 //!
 //! Lives in a sibling file (not `kernel/mod.rs`) so the already-at-baseline
 //! `kernel/mod.rs` is not grown past its file-size baseline (AGENTS.md). These
@@ -12,7 +12,7 @@ use crate::kernel::Kernel;
 impl Kernel {
     /// Return the full per-projection revision manifest for the current tick.
     ///
-    /// `session_id` = `TimingMilestones::started_unix_ms` (ADR-0055 D4).
+    /// `session_id` = `TimingMilestones::started_unix_ms` (ADR-0070 D4).
     pub(crate) fn projection_manifest(&self) -> projection_rev::ProjectionManifest {
         let session_id = self.timing.started_unix_ms.unwrap_or(0);
         projection_rev::build_manifest(&self.projection_rev_tracker, session_id)

@@ -16,7 +16,7 @@
 //! `PoolEvent::Opened` the actor reaches into the host-installed slot and gives
 //! each registered hook the freshly-connected URL plus an owned
 //! [`CommandSender`] it can hand to a spawned worker (the canonical
-//! off-thread-fetch → post-result-back pattern). The sender is the ADR-0050
+//! off-thread-fetch → post-result-back pattern). The sender is the ADR-0072
 //! §D3a waking inbox handle, so a worker posting its result genuinely wakes
 //! the actor. The trait is substrate-generic; `nmp-core` never names
 //! `nmp-nip11` (D0).
@@ -45,7 +45,7 @@ pub trait RelayConnectedHook: Send + Sync + 'static {
     /// React to `relay_url` having just connected. MUST NOT block (D8): spawn a
     /// worker and return. `command_sender` is an owned clone the worker keeps to
     /// post results (e.g. [`crate::ActorCommand::SetRelayInfo`]) back into the
-    /// actor loop — sends through it wake the actor (ADR-0050 §D3a).
+    /// actor loop — sends through it wake the actor (ADR-0072 §D3a).
     ///
     /// `is_reconnect` is `false` on the first `Opened` for a URL and `true` on
     /// every subsequent reconnect — hooks that only need a one-shot fetch can

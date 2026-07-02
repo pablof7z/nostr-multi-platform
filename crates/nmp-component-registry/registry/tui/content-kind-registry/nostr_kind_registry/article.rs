@@ -8,9 +8,9 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Paragraph, Widget};
 
-use super::super::kind_renderer::{author_byline, KindRenderer};
 use super::super::super::nostr_mention_chip::NostrMentionProfileHost;
-use super::text_layout::{estimate_reading_time, format_short_date, truncate_chars, tree_text};
+use super::super::kind_renderer::{author_byline, KindRenderer};
+use super::text_layout::{estimate_reading_time, format_short_date, tree_text, truncate_chars};
 use super::NostrKindRegistry;
 
 /// Default renderer for `ArticleProjection` (kind:30023).

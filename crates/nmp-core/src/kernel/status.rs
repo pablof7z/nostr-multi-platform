@@ -255,9 +255,9 @@ impl Kernel {
             cache_coverage: "local".to_string(),
             warming_until_ms: None,
         });
-        // V-68 / V-112 (ADR-0042): AuthorProfile / Thread logical-interest status
+        // V-68 / V-112 (ADR-0076): AuthorProfile / Thread logical-interest status
         // rows deleted — these interests now live in per-app FlatFeed state.
-        // M2 (ADR-0042): the `DiagnosticFirehose(#tag)` logical-interest status
+        // M2 (ADR-0076): the `DiagnosticFirehose(#tag)` logical-interest status
         // row was removed with the `open_firehose_tag` verb; generic
         // `open_interest` feeds surface through the standard registry/wire-sub
         // status rows like every other subscription.
@@ -349,7 +349,7 @@ impl Kernel {
         }
     }
 
-    // V-112 (ADR-0042): `author_interest_relays` deleted — its only caller was
+    // V-112 (ADR-0076): `author_interest_relays` deleted — its only caller was
     // the retired author_view status block. Interest relay routing is the
     // planner's job now (per-NIP-65 routing in the compile pass).
 
@@ -368,7 +368,7 @@ impl Kernel {
                     + 72
             })
             .sum();
-        // ADR-0057 PR 2 — the profile cache is capability-owned; it owns the
+        // ADR-0070 PR 2 — the profile cache is capability-owned; it owns the
         // per-entry byte accounting for its own value type (`estimated_bytes`),
         // returning the same formula this term used before the migration.
         let profile_bytes: usize = self.profile_lookup().estimated_bytes();

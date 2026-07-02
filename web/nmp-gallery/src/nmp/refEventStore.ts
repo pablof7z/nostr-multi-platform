@@ -1,4 +1,4 @@
-// ADR-0063 Lane F — host-side `refs.event` consumption helper (TypeScript).
+// ADR-0070 Lane F — host-side `refs.event` consumption helper (TypeScript).
 //
 // The kernel emits event refs as per-KEY row deltas under `refs.event`. Each
 // row payload is a single-entry KCEV `ClaimedEventsSnapshot`; the whole-map

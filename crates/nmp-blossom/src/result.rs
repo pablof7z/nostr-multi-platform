@@ -3,7 +3,7 @@
 //! Blossom uploads are async-completing: `nmp_app_dispatch_action_bytes` returns
 //! a `correlation_id` immediately; the blob descriptor (`url` + `sha256`, …)
 //! surfaces on a **later** snapshot tick in the kernel-owned `action_results`
-//! projection (ADR-0043 Decision 4). This is the canonical completion path —
+//! projection (ADR-0071 Decision 4). This is the canonical completion path —
 //! **not** `register_action_result_observer`, which fires only when the action
 //! is accepted/enqueued.
 //!
@@ -35,7 +35,7 @@ pub struct ServerUploadOutcome {
 }
 
 /// Parsed upload completion — single-server flat descriptor or multi-server
-/// aggregate (Decision 4 shapes in ADR-0043).
+/// aggregate (Decision 4 shapes in ADR-0071).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UploadCompletion {
     /// One server accepted — the flat BUD-02 descriptor is the `result` body.

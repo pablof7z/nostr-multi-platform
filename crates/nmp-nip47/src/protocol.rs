@@ -47,7 +47,7 @@ pub struct WalletPayInvoiceCommand {
     pub runtime: WalletRuntimeHandle,
 }
 
-/// ADR-0052 §D5: the wallet command reaches the kernel through the narrow
+/// ADR-0072 §D5: the wallet command reaches the kernel through the narrow
 /// [`WalletKernelAccess`] capability (the eight methods the runtime mutates),
 /// NOT the deleted `ctx.kernel_mut()` whole-kernel handle. The capability is a
 /// shared `&dyn`, so it is read before the runtime mutex is locked and handed

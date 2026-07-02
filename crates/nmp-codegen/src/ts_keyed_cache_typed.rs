@@ -1,4 +1,4 @@
-//! ADR-0063 Lane G twin (#2722) — the TYPED row-payload rendering for the
+//! ADR-0070 Lane G twin (#2722) — the TYPED row-payload rendering for the
 //! TypeScript `KeyedRefCache` generator. Split out of `ts_keyed_cache.rs` so
 //! neither source file exceeds the 500-LOC cap (the Swift
 //! `swift_keyed_cache_typed.rs` / Kotlin `kotlin_keyed_cache_typed.rs` twins).
@@ -25,7 +25,7 @@ fn typed_decode_fn_name(e: &KeyedProjectionEntry) -> String {
     format!("decode{capitalized}Row")
 }
 
-/// Render the per-namespace typed-decode helpers (ADR-0063 Lane G twin). Each
+/// Render the per-namespace typed-decode helpers (ADR-0070 Lane G twin). Each
 /// does a checked-enough decode of the row payload buffer (bufferHasIdentifier
 /// guard on the row payload's OWN file identifier, NOT the `NRRD` batch id)
 /// then hands the reader to the hand-written `refRowDecoders.ts` glue.
@@ -38,7 +38,7 @@ pub(super) fn render_typed_decode_fns(entries: &[KeyedProjectionEntry]) -> Strin
         let rp = &e.row_payload;
         let fn_name = typed_decode_fn_name(e);
         s.push_str(&format!(
-            "/** Decode one `{row_id}` row payload buffer into `{domain}` (ADR-0063 Lane G twin). */\n\
+            "/** Decode one `{row_id}` row payload buffer into `{domain}` (ADR-0070 Lane G twin). */\n\
              function {fn_name}(bytes: Uint8Array): {domain} | undefined {{\n\
              \x20\x20if (bytes.length < 8) return undefined;\n\
              \x20\x20try {{\n\
@@ -61,7 +61,7 @@ pub(super) fn render_typed_decode_fns(entries: &[KeyedProjectionEntry]) -> Strin
     s
 }
 
-/// Render the decode-before-commit routing table (ADR-0063 invariant #2): maps
+/// Render the decode-before-commit routing table (ADR-0070 invariant #2): maps
 /// each PROJECTION KEY (the `KeyedRefCache` class's own row-cache key — see
 /// `ts_keyed_cache.rs`'s module doc on why it routes by `projectionKey`, not
 /// the wire's self-reported `namespace`) with a typed decoder to its
@@ -70,7 +70,7 @@ pub(super) fn render_typed_decode_fns(entries: &[KeyedProjectionEntry]) -> Strin
 /// default).
 pub(super) fn render_row_decoder_table(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "  /** ADR-0063 invariant #2: a `Changed` row commits only after its\n\
+        "  /** ADR-0070 invariant #2: a `Changed` row commits only after its\n\
          \x20\x20 *  payload decodes to the namespace's concrete type. Projection keys\n\
          \x20\x20 *  with no typed decoder accept any non-empty payload (raw-bytes-only\n\
          \x20\x20 *  namespaces, e.g. `refs.event` until #2722 scopes it). */\n\
@@ -95,14 +95,14 @@ pub(super) fn render_row_decoder_table(entries: &[KeyedProjectionEntry]) -> Stri
     s
 }
 
-/// Render the per-key TYPED accessors (ADR-0063 Lane G twin): a `profile(key)`
+/// Render the per-key TYPED accessors (ADR-0070 Lane G twin): a `profile(key)`
 /// method PLUS a `profiles()` full-snapshot decode — the latter has no Swift/
 /// Kotlin equivalent (mobile apps observe per-row change events; a Solid/React
 /// web host derives a keyed store from the full decoded set each frame, the
 /// same pattern `RefProfileStore.profiles()` already established by hand).
 pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "  // ADR-0063 Lane G twin (#2722): per-key + full-snapshot TYPED accessors.\n\
+        "  // ADR-0070 Lane G twin (#2722): per-key + full-snapshot TYPED accessors.\n\
          \x20\x20// Each decodes the cached row-payload buffer through the namespace's\n\
          \x20\x20// typed reader (the SAME buffer the kernel's `ref_*_row_payload` encoder\n\
          \x20\x20// emits) into the concrete domain type — never a raw `Uint8Array`\n\

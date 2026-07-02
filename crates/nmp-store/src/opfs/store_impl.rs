@@ -47,7 +47,7 @@ pub struct OpfsSqliteEventStore {
 impl OpfsSqliteEventStore {
     /// Open (and schema-create) the OPFS-SQLite store named `database_name`.
     ///
-    /// Delegates to the engine's one-time async pool-open (ADR-0054 §1);
+    /// Delegates to the engine's one-time async pool-open (ADR-0072 §1);
     /// PR-7's `nmp-browser-runtime` calls this before `Start`. Every later
     /// `EventStore` method is synchronous over the returned handle.
     pub async fn open(database_name: &str) -> Result<Self, StoreError> {
@@ -433,7 +433,7 @@ impl EventStore for OpfsSqliteEventStore {
     }
 
     fn replace_log_retention_claims(&self, claims: &[LogRetentionClaim]) {
-        // VOLATILE wholesale replace (ADR-0058 §6). A fault is non-fatal: the
+        // VOLATILE wholesale replace (ADR-0072 §6). A fault is non-fatal: the
         // next append-time trim uses the prior set; the consumer degrades to an
         // explicit PullGap, never a silent skip.
         let _ = self

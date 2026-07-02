@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference cache for
+//! ADR-0070 Lane A (#1671) — generated per-key (row-keyed) reference cache for
 //! Kotlin (Android). The Android twin of [`crate::swift_keyed_cache`]: it
 //! decodes the `nmp.refs.RefRowDeltaBatch` payload and merges row deltas under
 //! the five invariants, byte-for-byte semantically identical to the Swift cache
@@ -11,7 +11,7 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{KeyedProjectionEntry, KEYED_PROJECTIONS};
 
-// ADR-0063 Lane G (#1671): the TYPED row-payload rendering (accessors +
+// ADR-0070 Lane G (#1671): the TYPED row-payload rendering (accessors +
 // decode-before-commit seam) lives in a sibling file so neither source exceeds
 // the 500-LOC cap (the Swift `swift_keyed_cache_typed.rs` twin).
 #[path = "kotlin_keyed_cache_typed.rs"]
@@ -30,7 +30,7 @@ const HEADER: &str = "\
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.
 // The CI gate (`codegen-drift.yml`) fails any PR whose generated Kotlin differs.
 //
-// ADR-0063 Lane A (#1671): per-key row cache for keyed reference projections
+// ADR-0070 Lane A (#1671): per-key row cache for keyed reference projections
 // (`refs.profile` / `refs.event`) — byte-for-byte semantically identical to
 // `KeyedRefCache.generated.swift` and `nmp_core::refs::RefRowCache`.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ data class KeyedRowChange(val projectionKey: String, val rowKey: String, val cle
 private data class DecodedRefRow(val key: String, val rev: ULong, val state: UByte, val payload: ByteArray)
 
 /**
- * NMP-owned per-key row cache for keyed reference projections (ADR-0063).
+ * NMP-owned per-key row cache for keyed reference projections (ADR-0070).
  *
  * Thread-safety: fed only from `KernelModel.applyFrame` on the single native
  * update-listener thread, identical to `ProjectionMergeCache`.
@@ -127,7 +127,7 @@ class KeyedRefCache {
     private val rowChangeListeners = mutableListOf<(KeyedRowChange) -> Unit>()
 
     /**
-     * Decode-before-commit seam (ADR-0063 invariant #2). The per-namespace
+     * Decode-before-commit seam (ADR-0070 invariant #2). The per-namespace
      * typed-row validator the cache runs on a `Changed` row's payload BEFORE it
      * replaces a slot: true iff `payload` decodes to the namespace's concrete
      * ref type (`refs.profile` -> ProfileRef, `refs.event` -> EventEmbed). The
@@ -137,7 +137,7 @@ class KeyedRefCache {
     var rowDecoder: (String, ByteArray) -> Boolean = { _, payload -> payload.isNotEmpty() }
 
     /**
-     * ADR-0063 Lane G (#1671): wire the real typed decode-before-commit seam at
+     * ADR-0070 Lane G (#1671): wire the real typed decode-before-commit seam at
      * construction so every `Changed` row is validated against the namespace's
      * concrete type (no caller setup required) — the Swift `init` twin.
      */
@@ -358,7 +358,7 @@ const STATIC_MERGE: &str = r#"    /**
      *
      * `internal` (NOT public): this is the cache's row-bytes merge primitive, not
      * a public refs API. The PUBLIC per-namespace surface is the TYPED accessor
-     * (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`, ADR-0063
+     * (`profile(key) -> ProfileCard?` / `event(key) -> ClaimedEventDto?`, ADR-0070
      * Lane G), which decodes these bytes through the namespace's typed reader.
      * Visible to same-module tests, never to external callers — no dishonest raw
      * surface.

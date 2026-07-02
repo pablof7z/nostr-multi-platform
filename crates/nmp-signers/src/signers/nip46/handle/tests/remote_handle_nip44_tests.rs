@@ -1,4 +1,4 @@
-//! `RemoteSignerHandle::nip44_*` seam (ADR-0026): the actor-facing methods
+//! `RemoteSignerHandle::nip44_*` seam (ADR-0072): the actor-facing methods
 //! parse hex pubkeys and delegate to the inner `Nip44` impl.
 
 use std::time::Duration;
@@ -12,7 +12,7 @@ use super::fixtures::{build_signer_with_remote, single_rpc};
 
 #[test]
 fn remote_handle_nip44_encrypt_queues_rpc_and_round_trips() {
-    // ADR-0026: the actor-facing `RemoteSignerHandle::nip44_encrypt` parses
+    // ADR-0072: the actor-facing `RemoteSignerHandle::nip44_encrypt` parses
     // hex, then delegates to the inner `Nip44` impl — the RPC must carry
     // the `nip44_encrypt` method and the opaque ciphertext result must
     // surface verbatim (no verify() step).

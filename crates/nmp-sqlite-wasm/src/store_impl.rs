@@ -1,6 +1,6 @@
 //! `OpfsSqliteStore` inherent impl: async `open` (now schema-creating), the
 //! transaction + prepared-statement helpers the write path shares, the point
-//! reads, and the single scoped `unsafe impl Send + Sync` (ADR-0054 §3).
+//! reads, and the single scoped `unsafe impl Send + Sync` (ADR-0072 §3).
 //!
 //! The `EventStore` trait impl lives in `nmp-store`, not here (#1007): this PR
 //! adds only real, complete inherent methods — no `todo!()`/`unimplemented!()`
@@ -34,7 +34,7 @@ mod wasm_impl {
     impl OpfsSqliteStore {
         /// Open the OPFS-SQLite store named `database_name` and ensure its schema.
         ///
-        /// This is the one-time async pool-open entry point (ADR-0054 §1):
+        /// This is the one-time async pool-open entry point (ADR-0072 §1):
         /// initialise the SQLite WASM module, install the opfs-sahpool VFS, open
         /// the database, then create/migrate the schema. Every later store
         /// operation is synchronous over the returned handle.
@@ -49,7 +49,7 @@ mod wasm_impl {
         /// Borrow the underlying connection cell.
         ///
         /// The `RefCell` enforces single-borrow discipline at runtime within the
-        /// owning Worker actor (ADR-0054 §3 — `RefCell`, not `Mutex`).
+        /// owning Worker actor (ADR-0072 §3 — `RefCell`, not `Mutex`).
         pub fn conn(&self) -> &RefCell<SqliteConn> {
             &self.db
         }
@@ -198,12 +198,12 @@ mod wasm_impl {
     // SAFETY: `OpfsSqliteStore` wraps a `RefCell<SqliteConn>` whose `JsValue`
     // engine handle is `!Send + !Sync`. The store is constructed inside, and
     // only ever observed by, the single Web Worker event loop that opened its
-    // OPFS SyncAccessHandle pool (ADR-0047 §1: the Worker IS the actor; D4
+    // OPFS SyncAccessHandle pool (ADR-0072 §1: the Worker IS the actor; D4
     // single writer). No other thread ever obtains a reference to the handle.
     // The `target_feature = "atomics"` `compile_error!` guard in the crate root
     // forbids the only build configuration (wasm threads) that could introduce
     // a second thread and make this impl unsound. This is the ONLY `unsafe` in
-    // the crate and is forbidden anywhere outside it (ADR-0054 §3).
+    // the crate and is forbidden anywhere outside it (ADR-0072 §3).
     unsafe impl Send for OpfsSqliteStore {}
     // SAFETY: see the `unsafe impl Send` justification directly above — the same
     // single-Worker-actor ownership invariant makes `&OpfsSqliteStore` safe to

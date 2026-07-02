@@ -6,7 +6,7 @@ namespace nmp.nip51;
 // `crates/explicit composition/src/runtimes/bookmarks_runtime.rs`, which serialises the
 // active account's NIP-51 kind:10003 `BookmarkListSnapshot`.
 //
-// Field-for-field mirror (raw protocol values only, ADR-0032):
+// Field-for-field mirror (raw protocol values only, ADR-0072):
 //   * item.kind  -> Event / Address / Url / Hashtag tagged-table discriminator
 //   * item.value -> event id, address coordinate, URL, or hashtag
 //   * item.relay -> optional relay hint for event/address bookmarks

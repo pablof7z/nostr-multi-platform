@@ -34,7 +34,7 @@ jobs:
       - name: Check FlatBuffers runtime pins
         run: bash ci/check-flatbuffers-version-pins.sh
 
-      # ADR-0053 / Workstream-E4 — the kernel built-in projection key const
+      # ADR-0070 / Workstream-E4 — the kernel built-in projection key const
       # (crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs)
       # is DERIVED from the SAME projection registry. Fails any PR whose
       # checked-in const differs from a fresh run, so the kernel built-in key
@@ -75,7 +75,7 @@ jobs:
       - name: Check per-projection producer-const codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen producer-consts --check
 
-      # ADR-0064 §3 (#1783) — the generated typed action-builders
+      # ADR-0071 §3 (#1783) — the generated typed action-builders
       # (`ActionBuilders.generated.ts`) are DERIVED from the `ACTION_BUILDERS`
       # registry. Fails any PR whose checked-in builders differ from a fresh run,
       # so the builders cannot drift from the registered modules.
@@ -146,7 +146,7 @@ jobs:
       - name: Check Rust FlatBuffers bindings are in sync with the schemas
         run: bash ci/check-rust-flatc-drift.sh
 
-      # ADR-0064 / S2 (#1750) — DispatchEnvelope fail-closed gates: the write
+      # ADR-0071 / S2 (#1750) — DispatchEnvelope fail-closed gates: the write
       # envelope keeps its own file identifier (NMPD), the schema_version
       # tripwire field, an opaque [ubyte] payload (NOT a union), the
       # MAX_DISPATCH_ENVELOPE_BYTES size bound in the decode path, and no two

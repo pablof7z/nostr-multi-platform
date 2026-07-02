@@ -35,9 +35,7 @@ use std::sync::{Arc, Mutex};
 use nmp_content::{PointerSortMode, PointerSourceModel};
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
-use nmp_core::substrate::{
-    KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
-};
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::{CommandSender, ObservedProjectionId, ObservedProjectionSink};
 use nmp_planner::InterestShape;
 

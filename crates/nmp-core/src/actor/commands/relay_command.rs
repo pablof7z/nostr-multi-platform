@@ -1,4 +1,4 @@
-//! `RelayCommand` — relay-list edits + transport-layer control (ADR-0065).
+//! `RelayCommand` — relay-list edits + transport-layer control (ADR-0071).
 //!
 //! Grouped under `ActorCommand::Relay(RelayCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_publish.rs` (relay-mutation path).
@@ -22,7 +22,7 @@ pub enum RelayCommand {
     /// idempotency and fail-closed contract.
     ReconnectRelays,
     /// Store a fetched relay-information document on the kernel's per-URL
-    /// transport row (ADR-0051). Posted by the `nmp-nip11` fetch worker; the
+    /// transport row (ADR-0072). Posted by the `nmp-nip11` fetch worker; the
     /// dispatch arm folds the parsed `RelayInfoDoc` via
     /// [`Kernel::set_relay_info`] so the `relay_diagnostics` projection
     /// surfaces it. `nmp-core` names no NIP-11 noun — it carries the

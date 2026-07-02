@@ -36,7 +36,7 @@ pub enum KernelAction {
     /// the correct logical interest + view: `npub`/`nprofile` → profile,
     /// `note`/`nevent` → thread, `naddr` → addressable-event. Relay hints
     /// carried by the entity are honoured as the `relay_pin` third routing
-    /// lane (ADR-0012).
+    /// lane (ADR-0071).
     OpenUri {
         uri: String,
     },
@@ -119,7 +119,7 @@ impl std::error::Error for OpenUriError {}
 /// Carries both halves the task requires: the [`LogicalInterest`] to register
 /// with the planner registry, and the [`KernelUpdate::ViewOpened`] the host
 /// app renders. Relay hints have already been folded into the interest's
-/// `relay_pin` (ADR-0012) and `hints` list.
+/// `relay_pin` (ADR-0071) and `hints` list.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OpenUriRouting {
     /// The interest to push into the subscription registry.
@@ -182,7 +182,7 @@ fn bare_entity_to_target(entity: nmp_nostr_id::Nip19Entity) -> Result<NostrUri, 
 
 /// Fold relay hints onto an interest shape + hint list.
 ///
-/// ADR-0012: the first relay hint becomes the `relay_pin` third routing lane
+/// ADR-0071: the first relay hint becomes the `relay_pin` third routing lane
 /// (subscriptions/publishes are addressed to that host regardless of the
 /// author's NIP-65 mailboxes). All hints are also surfaced as `RelayHint`s so
 /// the compiler can still use the remainder as soft outbox hints.

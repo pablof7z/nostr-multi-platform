@@ -6,7 +6,7 @@
 //! language-neutral binary the host platforms (Swift / Kotlin / TypeScript) can
 //! decode with generated accessors instead of JSON reflection. It is a sidecar
 //! codec: the serde shape stays authoritative; this is the typed payload carried
-//! in the `typed_projections` sidecar (ADR-0037,
+//! in the `typed_projections` sidecar (ADR-0072,
 //! `crates/nmp-core/schema/nmp_update.fbs`).
 //!
 //! The schema (`crates/nmp-marmot/schema/marmot_snapshot.fbs`) mirrors the Rust

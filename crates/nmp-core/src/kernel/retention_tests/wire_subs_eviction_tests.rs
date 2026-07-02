@@ -3,7 +3,7 @@
 //! teardown (`relay_closed`), and the URL-scoped (not role-wide) semantics
 //! that keep a sibling socket's subscriptions alive.
 //!
-//! V-112 (ADR-0042): `view_close_evicts_wire_subs_to_zero` deleted. That test
+//! V-112 (ADR-0076): `view_close_evicts_wire_subs_to_zero` deleted. That test
 //! called `kernel.open_author()` / `kernel.close_author()` (both deleted).
 //! T133 view-close eviction is now exercised at the FFI layer via
 //! `nmp_app_open_interest` / `nmp_app_close_interest`; the oneshot-EOSE and

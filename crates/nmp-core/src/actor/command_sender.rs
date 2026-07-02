@@ -66,7 +66,7 @@ impl ActorInboxTx {
 /// A cheap, cloneable handle for sending [`ActorCommand`]s into the actor
 /// inbox.
 ///
-/// This is the single command-send seam (ADR-0050 §D3a). It replaces the bare
+/// This is the single command-send seam (ADR-0072 §D3a). It replaces the bare
 /// `std::sync::mpsc::Sender<ActorCommand>` that used to be handed out to host
 /// code, capability/protocol workers, the broker adapter, and the actor's own
 /// self-feedback path. Because every send now lands on the *one* inbox the

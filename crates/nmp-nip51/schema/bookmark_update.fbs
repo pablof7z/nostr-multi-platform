@@ -1,6 +1,6 @@
 namespace nmp.nip51;
 
-// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// ADR-0071 / S9 (#1747) — typed FlatBuffers payload for the
 // `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark` `ActionModule`s. Both
 // namespaces carry the SAME `BookmarkUpdateInput { account_pubkey, item }`
 // shape, so they share this one schema.

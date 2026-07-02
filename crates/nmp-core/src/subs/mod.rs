@@ -147,7 +147,7 @@ pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 /// `KindTime`) and invokes `EventStore::query_visit` with `limit = 1`, which
 /// early-stops at the newest stored match on the relevant secondary index.
 ///
-/// # The `relay_url` parameter (K3 Stage D2, ADR-0056 §3.D2)
+/// # The `relay_url` parameter (K3 Stage D2, ADR-0072 §3.D2)
 ///
 /// The floor is now computed per-`(filter_hash, relay)`, not per-shape. The
 /// coverage ledger ([`crate::kernel::Kernel`] write path, D1) is keyed by
@@ -390,7 +390,7 @@ pub struct SubscriptionLifecycle {
     /// fingerprint on that same tick, so the trigger enqueue path maintains
     /// this counter here.
     mailbox_generation: u64,
-    /// Monotonic counter for coverage-ledger writes (K3 ADR-0056).
+    /// Monotonic counter for coverage-ledger writes (K3 ADR-0072).
     ///
     /// Bumped by [`Self::bump_watermark_generation`] each time the kernel
     /// records an EOSE or NEG-DONE coverage completion. Included in the

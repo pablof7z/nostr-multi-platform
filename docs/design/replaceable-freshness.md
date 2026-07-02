@@ -101,7 +101,7 @@ Complies with all D-series constraints:
 
 - **No polling:** the `pending_reverify` queue drains only during `pending_view_requests` ticks (event-driven)
 - **Freshness writes go through the `EventStore` trait** (`get_check_again_after` / `set_check_again_after`, `&self` interior-mutability — the kernel holds `Arc<dyn EventStore>`). The LMDB override opens its own write transaction, commits, and updates the in-memory cache **only after** the commit succeeds (no cache/DB divergence on abort). `MemEventStore` mirrors the same contract over an in-memory map, so the kernel's TTL gate behaves identically on both backends. (The freshness stamp is therefore a separate committed transaction from the event insert, not batched into the insert's `RwTxn` — the unavoidable cost of the clean trait boundary.)
-- **Sub-db shared environment:** `replaceable_freshness` lives in the same `lmdb::Environment` as the event store (ADR-0011)
+- **Sub-db shared environment:** `replaceable_freshness` lives in the same `lmdb::Environment` as the event store (ADR-0072)
 - **Bounded in-flight:** `pending_reverify` is a `VecDeque<ReplaceableKey>` with no artificial ceiling; natural load-shedding via interest-dropping at EOSE (planner closes subs when views close)
 
 ## FFI ABI stability
@@ -114,8 +114,8 @@ argument on `nmp_app_claim_profile`. The event-ref entry point is the unified
 - `nmp_app_resolve_ref(app, 1, key, consumer_id, shape, liveness)` → cached `naddr` coordinate → `claim_replaceable(kind, pubkey, Some(d_tag), false)` (TTL gate runs automatically)
 
 The earlier standalone event-claim and replaceable-refresh symbols were removed.
-`nmp_app_resolve_ref` is the unified replacement (ADR-0063 Lane D). See
-[ADR-0016 — F-TTL FFI surface](../decisions/0016-f-ttl-ffi-surface.md) for the
+`nmp_app_resolve_ref` is the unified replacement (ADR-0070 Lane D). See
+[ADR-0072 — F-TTL FFI surface](../decisions/0072-runtime-capability-and-shell-boundary.md) for the
 current ABI rule.
 
 ## Testing

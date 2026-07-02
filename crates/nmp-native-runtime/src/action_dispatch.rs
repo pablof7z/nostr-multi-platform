@@ -16,7 +16,7 @@
 //!   never a panic or an uninhabited struct.
 //! * One terminal per dispatch: `finish_dispatch_typed` honours the
 //!   `failure.enqueued` flag exactly as the JSON counterpart did (PR #1676).
-//! * ADR-0064 §4 identity contract: `correlation_id` in `DispatchOutcome` is
+//! * ADR-0071 §4 identity contract: `correlation_id` in `DispatchOutcome` is
 //!   always the HOST-SUPPLIED envelope id, never a kernel-minted replacement.
 
 use nmp_core::__ffi_internal::ActionExecuteFailure;
@@ -130,7 +130,7 @@ pub fn dispatch_action_bytes_typed(app: &NmpApp, bytes: &[u8]) -> DispatchOutcom
     };
 
     let mut ctx = ActionContext::with_event_store_slot(app.event_store_handle());
-    // ADR-0064 §4: the operation identity is the HOST-SUPPLIED envelope id.
+    // ADR-0071 §4: the operation identity is the HOST-SUPPLIED envelope id.
     let correlation_id = decoded.correlation_id;
 
     // S3 — route by namespace into the typed registry doorway.

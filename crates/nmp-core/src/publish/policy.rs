@@ -5,7 +5,7 @@
 //! Generic publish / outbox routing used to switch on raw NIP **kind literals**
 //! (`if kind == 0`, `if kind == 3`, …) scattered through `publish/action.rs`.
 //! That is the write-side mirror of the ingest-side D0 violation that
-//! ADR-0057 unified: the kernel substrate must not name NIP kind numbers in its
+//! ADR-0070 unified: the kernel substrate must not name NIP kind numbers in its
 //! routing logic — the only legal home for a kind→policy mapping is a single
 //! **declared policy table** (the substrate-honest equivalent of the ingest
 //! parser registry).

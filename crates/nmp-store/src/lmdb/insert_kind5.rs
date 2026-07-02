@@ -4,7 +4,7 @@
 //! (AGENTS.md). `handle_kind5` is called by `insert::insert` for kind:5
 //! events; everything else in the insert pipeline lives in `insert.rs`.
 //!
-//! ## Semantics (Mem-parity, ADR-0012)
+//! ## Semantics (Mem-parity, ADR-0071)
 //!
 //! Walks `e`-tags and `a`-tags, removes self-deleted targets (foreign targets
 //! are silently skipped — matching `mem/insert.rs:271 continue`), writes
@@ -34,7 +34,7 @@ use crate::StoreError;
 
 /// Mem-parity kind:5 handling.
 ///
-/// `claims` is the retention-claim snapshot for this event txn (ADR-0058 §6
+/// `claims` is the retention-claim snapshot for this event txn (ADR-0072 §6
 /// step-4), threaded into every append-time trim.
 pub(super) fn handle_kind5(
     inner: &Arc<Inner>,
@@ -117,7 +117,7 @@ pub(super) fn handle_kind5(
             fts::fts_remove_by_id(inner, txn, &target_id_bytes)?;
             // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
             gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
-            // ADR-0058 §3: emit Deleted(Nip09) for each self-deleted target.
+            // ADR-0072 §3: emit Deleted(Nip09) for each self-deleted target.
             ingest_log::append_deleted(
                 inner.ingest_log,
                 inner.ingest_meta,
@@ -194,7 +194,7 @@ pub(super) fn handle_kind5(
                         // #1811: drop the removed coordinate target's FTS rows.
                         fts::fts_remove_by_id(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
-                        // ADR-0058 §3: emit Deleted(Nip09) for the a-tag addressable target.
+                        // ADR-0072 §3: emit Deleted(Nip09) for the a-tag addressable target.
                         ingest_log::append_deleted(
                             inner.ingest_log,
                             inner.ingest_meta,
@@ -249,7 +249,7 @@ pub(super) fn handle_kind5(
                         // #1811: drop the removed coordinate target's FTS rows.
                         fts::fts_remove_by_id(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
-                        // ADR-0058 §3: emit Deleted(Nip09) for the a-tag replaceable target.
+                        // ADR-0072 §3: emit Deleted(Nip09) for the a-tag replaceable target.
                         ingest_log::append_deleted(
                             inner.ingest_log,
                             inner.ingest_meta,
@@ -342,7 +342,7 @@ pub(super) fn handle_kind5(
     if let Some(exp) = event.expiration() {
         gc::expiry_index_put(inner, txn, exp, &kind5_id)?;
     }
-    // ADR-0058 §3: emit Inserted log entry for the kind:5 event itself.
+    // ADR-0072 §3: emit Inserted log entry for the kind:5 event itself.
     ingest_log::append_inserted(
         inner.ingest_log,
         inner.ingest_meta,

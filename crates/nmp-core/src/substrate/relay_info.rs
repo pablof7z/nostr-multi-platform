@@ -17,7 +17,7 @@
 //!
 //! What `nmp-core` does **not** do: it never performs the HTTP fetch, never
 //! parses the JSON, and never names "NIP-11". The fetch + parse logic lives in
-//! the Layer-4 `nmp-nip11` protocol crate (ADR-0051), which constructs this
+//! the Layer-4 `nmp-nip11` protocol crate (ADR-0072), which constructs this
 //! struct and hands it back to the actor via
 //! [`crate::ActorCommand::SetRelayInfo`]. `nmp-core` imports no HTTP crate.
 //!

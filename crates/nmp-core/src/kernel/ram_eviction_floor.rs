@@ -16,7 +16,7 @@
 //! [`Kernel::pin_floor_for_shape`](super::Kernel::pin_floor_for_shape)) so
 //! `derive_store_pin_set` can pin them.
 //!
-//! ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
+//! ## K3 Stage C — single shape→query mapping (ADR-0072 §3)
 //!
 //! [`pin_shape_events_below_floor`] reads the SAME [`compile_store_query_plan`]
 //! mapping cache-serve reads (iterating the mapping and applying the `<= floor`
@@ -78,7 +78,7 @@ pub(super) enum PinScanOutcome {
 /// Add to `pins` the store id of every event matching `shape` with
 /// `created_at <= floor` (#1090 Stage 2 floor-coherence).
 ///
-/// ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
+/// ## K3 Stage C — single shape→query mapping (ADR-0072 §3)
 ///
 /// Derives its queries from the SAME [`compile_store_query_plan`] mapping
 /// `shape_floor` (and the live `watermark_fn`) read, then pins every match at or

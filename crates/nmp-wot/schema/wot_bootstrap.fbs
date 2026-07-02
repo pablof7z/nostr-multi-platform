@@ -8,7 +8,7 @@ namespace nmp.wot;
 // `WotBootstrapSnapshot`: the generic `Value` projection stays the source of
 // truth (`crate::runtime::register_runtime` still registers it via
 // `register_snapshot_projection`), and this buffer is emitted ALONGSIDE it in
-// every `SnapshotFrame`'s `typed_projections` sidecar (ADR-0037). A host with a
+// every `SnapshotFrame`'s `typed_projections` sidecar (ADR-0072). A host with a
 // `NWBS` decoder prefers this typed payload; an un-updated host falls back to
 // the generic `Value` subtree. Purely additive.
 //

@@ -1,4 +1,4 @@
-//! ADR-0052 §D5 — the single adapter that bridges a `Kernel` into the narrow
+//! ADR-0072 §D5 — the single adapter that bridges a `Kernel` into the narrow
 //! [`WalletKernelAccess`](crate::substrate::WalletKernelAccess) and
 //! [`ZapProfileLookup`](crate::substrate::ZapProfileLookup) capabilities.
 //!
@@ -176,7 +176,7 @@ impl<'a> ZapProfileLookup for KernelWalletAccess<'a> {
 }
 
 impl Kernel {
-    /// ADR-0052 §D5 — wrap `self` as the narrow
+    /// ADR-0072 §D5 — wrap `self` as the narrow
     /// [`WalletKernelAccess`](crate::substrate::WalletKernelAccess) /
     /// [`ZapProfileLookup`](crate::substrate::ZapProfileLookup) capability
     /// surface for a single actor-thread call.

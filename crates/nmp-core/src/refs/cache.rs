@@ -1,4 +1,4 @@
-//! ADR-0063 Lane A — reference host-side per-key cache (the Rust model).
+//! ADR-0070 Lane A — reference host-side per-key cache (the Rust model).
 //!
 //! [`RefRowCache`] is the canonical reference implementation of the row-keyed
 //! host cache. The generated Swift (`ProjectionCache.generated.swift`) and
@@ -7,7 +7,7 @@
 //! `incremental-applied == full-snapshot` against, so the three implementations
 //! cannot silently diverge on the correctness-critical merge.
 //!
-//! The algorithm enforces the five ADR-0063 invariants at ROW grain:
+//! The algorithm enforces the five ADR-0070 invariants at ROW grain:
 //! 1. an absent row is Unchanged (retained), never Cleared;
 //! 2. decode-before-commit: a `Changed` row commits only after its payload
 //!    decodes; a malformed row leaves the prior cached row intact + latches
@@ -46,7 +46,7 @@ pub struct RefRowCache {
     applied_session: u64,
     applied_epoch: u64,
     /// False until the first batch is applied after a (re)baseline. UI gates on
-    /// this (ADR-0055 D3-5).
+    /// this (ADR-0070 D3-5).
     baselined: bool,
     /// Sticky: latches on any decode-before-commit failure. Drained by a resync
     /// (a follow-on rung); cleared on session/epoch re-baseline.

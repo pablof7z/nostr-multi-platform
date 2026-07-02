@@ -57,7 +57,7 @@ pub struct ActorLaneTransport {
 impl ActorLaneTransport {
     /// Construct a new single-relay transport (common case).
     ///
-    /// - `sender`: the actor's waking-inbox sender (ADR-0050 §D3a).
+    /// - `sender`: the actor's waking-inbox sender (ADR-0072 §D3a).
     /// - `local_keys`: the session's ephemeral keypair (NIP-44 + event signing).
     /// - `remote_pubkey`: the remote signer's public key (NIP-44 recipient +
     ///   `["p", ...]` tag on the kind:24133 event).

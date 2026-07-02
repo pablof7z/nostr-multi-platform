@@ -19,7 +19,8 @@ use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Known-good test nsec (shared with `remote_signer_tests`).
-pub(super) const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+pub(super) const TEST_NSEC: &str =
+    "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 pub(super) fn test_keys() -> Keys {
     Keys::new(SecretKey::from_bech32(TEST_NSEC).expect("valid nsec"))
@@ -52,7 +53,7 @@ pub(super) struct PendingRemoteSigner {
     keys: Keys,
     pk: String,
     pub(super) sign_count: Arc<AtomicU32>,
-    /// Self-described per-op budget (ADR-0050 §D4). Defaults to the NIP-46 5s
+    /// Self-described per-op budget (ADR-0072 §D4). Defaults to the NIP-46 5s
     /// budget; the named-roster-key deadline test overrides it to a 90s
     /// NIP-55-style budget to prove the parked deadline reflects the SIGNING
     /// account's budget rather than the active account's.

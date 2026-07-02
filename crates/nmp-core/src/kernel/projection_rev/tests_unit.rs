@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 1 — dependency-table completeness + arithmetic unit tests.
+//! ADR-0070 Rung 1 — dependency-table completeness + arithmetic unit tests.
 //!
 //! Split out of `tests.rs` (which holds the REAL-driven scenario tests) so each
 //! test file stays under the 500-LOC hard ceiling (AGENTS.md). These tests
@@ -27,7 +27,7 @@ fn bump_named(tracker: &mut ProjectionRevTracker, source: &str, key: &str) {
         "settlement_enqueue_ver" => tracker.source_versions.bump_settlement_enqueue(),
         "settlement_drain_ver" => tracker.source_versions.bump_settlement_drain(),
         "ttl_expiry_ver" => tracker.source_versions.bump_ttl_expiry(),
-        // ADR-0063 (#1671 integration glue) — the two whole-projection ref-row
+        // ADR-0070 (#1671 integration glue) — the two whole-projection ref-row
         // stamps are co-bumped from the per-KEY `bump_*_row` chokepoints in
         // production; bumping one such row advances the scalar this test reads.
         "ref_profile_rows_ver" => tracker.source_versions.bump_profile_row("k"),
@@ -133,7 +133,7 @@ fn build_manifest_covers_all_builtin_keys() {
 
 /// `build_state` returns `Changed` at rev 0 for a fresh tracker.
 ///
-/// ADR-0055 Rung 3 (D3-5): a key absent from `last_emitted` (never emitted,
+/// ADR-0070 Rung 3 (D3-5): a key absent from `last_emitted` (never emitted,
 /// or cleared by `reset_last_emitted` / `bump_epoch`) is treated as `Changed`
 /// regardless of the current rev. This ensures that a full-baseline frame is
 /// emitted the very first time — even when all source versions are still 0.

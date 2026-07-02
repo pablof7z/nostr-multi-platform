@@ -1,13 +1,13 @@
-//! `PublishCommand` — sign-and-publish + publish-engine control (ADR-0065).
+//! `PublishCommand` — sign-and-publish + publish-engine control (ADR-0071).
 //!
 //! Grouped under `ActorCommand::Publish(PublishCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_publish.rs`.
 
 /// Sign-and-publish verbs + publish-engine control (retry / cancel).
 ///
-/// These are the *publish* paths — each signs (locally or via the ADR-0050
+/// These are the *publish* paths — each signs (locally or via the ADR-0072
 /// port) AND routes through the NIP-65 outbox / explicit relay set. The
-/// ADR-0050 *sign-only* verbs live in [`super::super::SignCommand`].
+/// ADR-0072 *sign-only* verbs live in [`super::super::SignCommand`].
 #[derive(Debug)]
 pub enum PublishCommand {
     /// Sign-and-publish an arbitrary event kind for the active account.

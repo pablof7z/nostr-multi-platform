@@ -1,6 +1,6 @@
 //! Transactional insert path for the OPFS-SQLite engine (#1007 PR-3).
 //!
-//! Mirrors the §7.1 / ADR-0012 insert order of the LMDB backend
+//! Mirrors the §7.1 / ADR-0071 insert order of the LMDB backend
 //! (`nmp-store/src/lmdb/insert.rs`), scoped to the index families PR-3 owns
 //! (primary row + every secondary tag row + provenance + ingest-seq + kind:5
 //! tombstones). The whole thing runs inside one SQLite transaction

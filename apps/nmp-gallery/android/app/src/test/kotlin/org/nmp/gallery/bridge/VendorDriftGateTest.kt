@@ -6,7 +6,7 @@ import org.junit.Test
 import java.io.File
 
 /**
- * ADR-0048 Stage 2 — vendoring drift gate.
+ * ADR-0072 Stage 2 — vendoring drift gate.
  *
  * The gallery is the canonical source of the `login-block` component; the CLI
  * install registry carries the in-repo vendored copy. The contract is

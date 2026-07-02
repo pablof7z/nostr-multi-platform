@@ -54,7 +54,7 @@ nostrdb's queue-based approach is the same shape decoupled.
 ### 2.5 Event-store backend choice
 
 NMP keeps its own `EventStore` semantics and does not use `nostrdb-rs` as the
-backend. The decisive requirements are D4 single-writer ownership, ADR-0011
+backend. The decisive requirements are D4 single-writer ownership, ADR-0072
 single-environment sidecar atomicity, D8 reverse-index/projection wakeups, and
 license clarity. Use nostrdb as prior art, not as the storage engine.
 
@@ -97,13 +97,13 @@ pub struct ScopedSubIdentity {
 
 Multiple owners (UI instances) can attach to the same `(scope, key)`. The runtime keeps the live wire sub alive while any owner is attached. Drops the wire sub when the last owner leaves.
 
-**Lesson for NMP:** our ADR-0005 refcounted wrappers do this implicitly — the platform wrapper increments a refcount per pubkey, dispatches `OpenView`/`CloseView`. Notedeck makes ownership explicit with a named `SubOwnerKey`. This explicit ownership is genuinely useful for:
+**Lesson for NMP:** our ADR-0070 refcounted wrappers do this implicitly — the platform wrapper increments a refcount per pubkey, dispatches `OpenView`/`CloseView`. Notedeck makes ownership explicit with a named `SubOwnerKey`. This explicit ownership is genuinely useful for:
 
 - **Diagnostics:** "which UI is keeping this subscription alive?"
 - **Tests:** simulate owner lifecycle without an actual UI.
 - **Hot-restart in dev:** if the UI reloads, owners attached to the old session are cleaned up explicitly.
 
-**Roadmap impact:** M2 should adopt the `(owner, key, scope)` triple as the kernel's subscription identity, with explicit named owners visible in ADR-0007 diagnostics.
+**Roadmap impact:** M2 should adopt the `(owner, key, scope)` triple as the kernel's subscription identity, with explicit named owners visible in ADR-0072 diagnostics.
 
 ### 3.3 `set_sub` (upsert) vs `ensure_sub` (create-if-absent)
 
@@ -225,7 +225,7 @@ or projection opens, the planner sends REQs, results land in the store, and the
 projection updates. Notedeck names the pair explicitly. Names matter for
 diagnostics.
 
-**Roadmap impact:** ADR-0007 diagnostics should distinguish "local cache hit served this view" from "remote subscription is delivering events to this view" — both are live, but they're different facts.
+**Roadmap impact:** ADR-0072 diagnostics should distinguish "local cache hit served this view" from "remote subscription is delivering events to this view" — both are live, but they're different facts.
 
 ### 3.12 `TimeCached<T>` generic TTL primitive
 
@@ -276,7 +276,7 @@ Concrete commitments by milestone:
 ### M3 (LMDB + persistence)
 
 - **Event-store backend** (§2.5). ✅ DONE — keep NMP `EventStore` semantics and
-  use the current LMDB backend path with tight sidecar ownership (ADR-0011).
+  use the current LMDB backend path with tight sidecar ownership (ADR-0072).
 - **Persist projection cache** alongside events (§2.2). Post-v1.
 - **EventStore trait exposes `query_visit`** (§2.3) for visitor-based queries. ✅ DONE —
   streaming `run_filter_visit` lands in epic #1523 (true lazy conversion, `Break` stops
@@ -324,7 +324,7 @@ The nostrdb visitor pattern (§2.3) is now fully implemented in NMP:
 | Item | Notedeck approach | NMP approach | Why |
 |---|---|---|---|
 | UI framework | egui (immediate mode, host-Rust) | SwiftUI / Compose / iced / wasm-bound (retained mode, native) | D5: native UX quality is the invariant. egui in production iOS would be a doctrine violation. |
-| State ownership | App holds nostrdb txn + state; egui re-renders synchronously | Actor owns all state; native gets snapshots / deltas via FFI | Per ADR-0009 + ADR-0005. Notedeck is single-process Rust; NMP crosses FFI to native UIs. |
+| State ownership | App holds nostrdb txn + state; egui re-renders synchronously | Actor owns all state; native gets snapshots / deltas via FFI | Per ADR-0072 + ADR-0070. Notedeck is single-process Rust; NMP crosses FFI to native UIs. |
 | Subscription dispatch | Direct `set_sub` calls in app code | `dispatch(OpenView)` action through the kernel | Per doctrine D0: native code is dumb; intent crosses as actions. |
 | Cross-platform | One Rust binary with egui everywhere | One Rust kernel + four native shells | Per the framing concern. Notedeck chose simplicity; we chose native UX. |
 | Persistence | nostrdb (LMDB-backed, may adopt as backend) | EventStore trait with pluggable backends | Different consumers want different backends (in-memory for tests, LMDB native, IndexedDB web). |

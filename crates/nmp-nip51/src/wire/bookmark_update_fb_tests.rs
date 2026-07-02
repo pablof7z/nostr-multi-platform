@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the nip51 bookmark-update typed payload
-//! codec (ADR-0064 / S9 #1747). Every fail-closed gate asserts the NEGATIVE,
+//! codec (ADR-0071 / S9 #1747). Every fail-closed gate asserts the NEGATIVE,
 //! and every `BookmarkItem` variant round-trips through the tagged table.
 
 use super::*;

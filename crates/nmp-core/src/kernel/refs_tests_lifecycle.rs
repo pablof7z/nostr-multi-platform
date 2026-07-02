@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 Lane B) — shared ref-resolver lifecycle unit tests: per-key
+//! ADR-0070 (#1671 Lane B) — shared ref-resolver lifecycle unit tests: per-key
 //! rev boundedness (BLOCKING 2), no-op-re-resolve rev gating (BLOCKING 3), the
 //! unified event terminal-miss teardown (BLOCKING 1 + 2), and the profile
 //! per-consumer Live-owner downgrade (HIGH 5).
@@ -17,7 +17,7 @@ fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
 }
 
-// ADR-0063 / FFI contract: the Event `resolve_ref` / `release_ref` seam takes a
+// ADR-0070 / FFI contract: the Event `resolve_ref` / `release_ref` seam takes a
 // RAW key (Lane D) — a hex64 event-id (`hex64(...)`) or a `kind:pubkey:d`
 // coordinate (`format!("{kind}:{author}:{d_tag}")`) — NOT a `nostr:` URI. The
 // `nevent_uri` / `naddr_uri` helpers were removed when the seam went raw-key.
@@ -53,7 +53,7 @@ fn spurious_release_of_never_claimed_key_creates_no_row() {
         "a spurious profile release must not grow the rev map (BLOCKING 2 (a))"
     );
 
-    // Raw hex64 event-id key (ADR-0063 / FFI contract). It parses cleanly, so the
+    // Raw hex64 event-id key (ADR-0070 / FFI contract). It parses cleanly, so the
     // release reaches the refcount logic and finds no claim (actually_removed =
     // false) — the real BLOCKING 2 (a) path, not a malformed-key early no-op.
     let key = hex64("9e7e7");
@@ -114,7 +114,7 @@ fn per_key_rev_map_stays_bounded_under_resolve_release_churn() {
 }
 
 /// BLOCKING 2 — after a full teardown emitted the explicit `Cleared` (which resets
-/// the host cache entry per ADR-0055 §D1), a re-resolve starts a FRESH row
+/// the host cache entry per ADR-0070 §D1), a re-resolve starts a FRESH row
 /// lifetime at rev 1. Monotonicity only has to hold WHILE a row is live between
 /// `Changed` and `Cleared`, so a reset-after-clear is sound (and required to keep
 /// the map bounded).
@@ -233,7 +233,7 @@ fn terminal_miss_runs_unified_teardown_leaving_no_live_shape_or_rev() {
     let d_tag = "doomed";
     let kind = 30023u32;
     let primary_id = format!("{kind}:{author}:{d_tag}");
-    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW
+    // ADR-0070 / FFI contract: the Event `resolve_ref` seam takes the RAW
     // `kind:pubkey:d` coordinate key (Lane D), NOT a `nostr:` naddr URI — the
     // raw coordinate IS `primary_id` here.
     let key = primary_id.clone();
@@ -300,7 +300,7 @@ fn event_no_op_re_resolve_does_not_advance_per_key_rev() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
     let id = hex64("57ab1e");
-    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
+    // ADR-0070 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
     // event-id key (Lane D), NOT a `nostr:` nevent URI.
     let key = id.clone();
 
@@ -336,7 +336,7 @@ fn event_no_op_re_resolve_does_not_advance_per_key_rev() {
 
 // ─── Lane B: released-before-drain parked claim is not resurrected ────────────
 
-/// ADR-0063 (#1671 Lane B, codex re-review) — a hintless event claim that PARKS
+/// ADR-0070 (#1671 Lane B, codex re-review) — a hintless event claim that PARKS
 /// in `pending_event_claims` (no relay connected) and is then RELEASED before
 /// the relay-ready drain runs must NOT be resurrected by
 /// `pending_event_claim_requests`.
@@ -359,7 +359,7 @@ fn parked_event_claim_released_before_drain_is_not_resurrected() {
         "precondition: no relay connected so the claim parks"
     );
     let id = hex64("dead10");
-    // ADR-0063 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
+    // ADR-0070 / FFI contract: the Event `resolve_ref` seam takes the RAW hex64
     // event-id key (Lane D), NOT a `nostr:` nevent URI. A bare event-id carries
     // no relay hints (the raw seam passes `Vec::new()`), so a cold claim with no
     // relay connected still takes the hintless cold-park branch.

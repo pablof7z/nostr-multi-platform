@@ -27,7 +27,7 @@ const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
 const WELCOME_E_TAG_HEX: &str = "0000000000000000000000000000000000000000000000000000000077656c63";
 
 /// Test-only shorthand. `gift_wrap_local` composes the pure seal/wrap steps
-/// synchronously with the sender's local keys (ADR-0050 §D5).
+/// synchronously with the sender's local keys (ADR-0072 §D5).
 fn wrap(sender: &Keys, receiver: &nostr::PublicKey, rumor: &UnsignedEvent) -> nostr::Event {
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
     gift_wrap_local(sender, receiver, rumor, tweaked).expect("gift_wrap_local should succeed")

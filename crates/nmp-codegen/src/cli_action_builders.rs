@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783) — `nmp gen action-builders` CLI handler.
+//! ADR-0071 §3 (#1783) — `nmp gen action-builders` CLI handler.
 //!
 //! Kept in its own module (not `cli.rs`) purely as a size-management seam so
 //! `cli.rs` stays under the 500-LOC ceiling (AGENTS.md / V-12). Mirrors the

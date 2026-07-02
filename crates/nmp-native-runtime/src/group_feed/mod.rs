@@ -24,7 +24,7 @@
 //! 1. register the typed FlatBuffers sidecar reading the projection snapshot;
 //! 2. open a relay-pinned observed projection internally via
 //!    [`ObservedProjectionRegistrar::open_observed_projection`] — which registers
-//!    the projection muted, replays the in-memory read-cache (ADR-0062
+//!    the projection muted, replays the in-memory read-cache (ADR-0070
 //!    `replay_read_cache_to_observer`, matched by the `#h` / kind shapes built
 //!    from the same wire filter) to that observer, and THEN activates scoped
 //!    live delivery for the declared interest;

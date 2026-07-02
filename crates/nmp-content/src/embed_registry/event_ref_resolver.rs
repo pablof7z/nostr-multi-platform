@@ -1,6 +1,6 @@
 //! `EventRefResolver` — renderer→host bridge for upstream event fetches.
 //!
-//! ADR-0034 / M16. The trait lives in `nmp-content` so renderers (e.g.
+//! ADR-0072 / M16. The trait lives in `nmp-content` so renderers (e.g.
 //! `NostrContentView` in the TUI registry) can take
 //! `Option<&dyn EventRefResolver>` without `nmp-content` ever gaining an
 //! `nmp-native-runtime` / `nmp-uniffi` dependency. Each platform host (TUI, iOS, Compose) supplies an
@@ -8,7 +8,7 @@
 //! `release_event_ref` to the unified `resolve_ref` / `release_ref` surface.
 
 /// Host-side bridge that lets a renderer initiate an upstream fetch for
-/// an embedded event (ADR-0034). The trait lives in nmp-content so
+/// an embedded event (ADR-0072). The trait lives in nmp-content so
 /// nmp-content never gains an nmp-native-runtime / nmp-uniffi dependency;
 /// each platform host supplies the impl that bridges to its native binding
 /// surface. URI decoding is

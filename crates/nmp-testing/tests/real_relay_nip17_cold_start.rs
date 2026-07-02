@@ -15,7 +15,7 @@
 //! `dm_inbox_full_round_trip_through_ffi`. The unique risk here is subscription
 //! timing (publish-before-subscribe + EOSE backfill) + projection decryption.
 //!
-//! ADR-0050 §D6: the projection decrypts through the signer port — it emits
+//! ADR-0072 §D6: the projection decrypts through the signer port — it emits
 //! `Nip44DecryptForAccount` commands which `drive_local_decrypts` resolves with
 //! Bob's local key (exactly the actor's local-backend dispatch arm).
 //!
@@ -113,7 +113,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
         .custom_created_at(Timestamp::now())
         .build(alice.public_key());
 
-    // Gift-wrap via the pure local-keys composition (ADR-0050 §D5).
+    // Gift-wrap via the pure local-keys composition (ADR-0072 §D5).
     let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
     let envelope = gift_wrap_local(&alice, &bob.public_key(), &rumor, tweaked)
         .map_err(|e| format!("gift_wrap_local failed: {e}"))?;
@@ -188,7 +188,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 
     println!("[nip17-cs] PHASE 2: Bob cold-starts — new projection, no prior state");
 
-    // Fresh projection bound to the signer port (ADR-0050 §D6). Bob's active
+    // Fresh projection bound to the signer port (ADR-0072 §D6). Bob's active
     // account is a LOCAL key here; the projection emits `Nip44DecryptForAccount`
     // commands which we drain (decrypting with Bob's local keys, exactly as the
     // actor's local-backend dispatch arm does) once the relay delivers the
@@ -336,7 +336,7 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 
     let before_ingest = bob_projection.snapshot();
     bob_projection.ingest_gift_wrap(&event_json, Some(relay_url));
-    // ADR-0050 §D6: drain the emitted port decrypts with Bob's local key.
+    // ADR-0072 §D6: drain the emitted port decrypts with Bob's local key.
     drive_local_decrypts(&bob_rx, &bob);
     let after_ingest = bob_projection.snapshot();
 

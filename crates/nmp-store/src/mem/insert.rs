@@ -195,7 +195,7 @@ pub(super) fn delete_by_filter(
         relay_kind_remove_id(&mut *st, &id);
         fts_index_remove(&mut *st, &id);
         access_remove(&mut *st, &id);
-        // ADR-0058 §3: emit AdminPurge log entry for semantic deletions.
+        // ADR-0072 §3: emit AdminPurge log entry for semantic deletions.
         // ByRelayOnly is a retention removal (no log); others are admin purges.
         if emit_purge {
             if let Some(event_id) = hex_to_event_id(&id) {
@@ -276,7 +276,7 @@ fn handle_supersession(
             fts_index_remove(st, existing_hex);
             access_remove(st, existing_hex);
             let new_id = id_bytes;
-            // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+            // ADR-0072 §3: clone raw event for ingest log before the Arc::new move.
             let raw_for_log = event.clone();
             st.events.insert(
                 id_hex.clone(),
@@ -291,7 +291,7 @@ fn handle_supersession(
             upsert_provenance(p, source.clone(), received_at_ms);
             relay_index_add(st, source, &id_hex);
             relay_kind_add(st, source, kind, &id_hex);
-            // ADR-0058 §3: emit Replaced log entry.
+            // ADR-0072 §3: emit Replaced log entry.
             ingest_log::emit_replaced(st, new_id, replaced_id, raw_for_log, source, received_at_ms);
             InsertOutcome::Replaced {
                 new_id,
@@ -306,7 +306,7 @@ fn handle_supersession(
             }
         }
     } else {
-        // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+        // ADR-0072 §3: clone raw event for ingest log before the Arc::new move.
         let raw_for_log = event.clone();
         st.events.insert(
             id_hex.clone(),
@@ -324,7 +324,7 @@ fn handle_supersession(
         };
         relay_index_add(st, source, &id_hex);
         relay_kind_add(st, source, kind, &id_hex);
-        // ADR-0058 §3: emit Inserted log entry.
+        // ADR-0072 §3: emit Inserted log entry.
         ingest_log::emit_inserted(st, id_bytes, raw_for_log, source, received_at_ms);
         InsertOutcome::Inserted {
             id: id_bytes,
@@ -369,7 +369,7 @@ fn handle_normal_insert(
         };
     }
 
-    // ADR-0058 §3: clone raw event for ingest log before the Arc::new move.
+    // ADR-0072 §3: clone raw event for ingest log before the Arc::new move.
     let raw_for_log = event.clone();
     st.events.insert(
         id_hex.clone(),
@@ -387,7 +387,7 @@ fn handle_normal_insert(
     };
     relay_index_add(st, source, &id_hex);
     relay_kind_add(st, source, kind, &id_hex);
-    // ADR-0058 §3: emit Inserted log entry.
+    // ADR-0072 §3: emit Inserted log entry.
     ingest_log::emit_inserted(st, id_bytes, raw_for_log, source, received_at_ms);
     InsertOutcome::Inserted {
         id: id_bytes,

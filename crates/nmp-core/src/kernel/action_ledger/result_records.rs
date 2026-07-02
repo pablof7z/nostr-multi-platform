@@ -18,7 +18,7 @@
 /// already-mapped WIRE `status` (`"published"` / `"failed"` / `"cancelled"` —
 /// the `ok → published` mapping is resolved at record time, not at serialise
 /// time) plus the fields the host reads off the row: the verbatim `error`, the
-/// opaque `result_json` (ADR-0043 Decision 4, forwarded into `result`), and the
+/// opaque `result_json` (ADR-0071 Decision 4, forwarded into `result`), and the
 /// signed `event_id` (#1702). These are stored ALONGSIDE the stage history
 /// rather than re-derived from it because the row's `error` is the terminal's
 /// own verbatim string (a `failed` terminal can carry an `error` distinct from
@@ -53,7 +53,7 @@ impl ActionResultRecord {
             "status": self.status,
             "error": self.error,
         });
-        // ADR-0043 Decision 4 — forward the opaque structured result body
+        // ADR-0071 Decision 4 — forward the opaque structured result body
         // verbatim under `result`. Re-parse so the host reads a JSON object (not
         // a JSON-encoded string); a non-JSON body forwards as a raw string. This
         // is forwarding, NOT interpretation (D0).

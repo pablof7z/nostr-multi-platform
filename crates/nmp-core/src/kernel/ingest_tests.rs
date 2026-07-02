@@ -31,9 +31,9 @@
 //!   - `contacts_tests` — `ingest_contacts` (kind:3) follow-graph writes and
 //!     the active-account-only source recompile trigger.
 //!   - `timeline_event_tests` — `ingest_timeline_event` (kind:1) subscribed-
-//!     author admission, the ADR-0057 persist-without-project oracle, and
+//!     author admission, the ADR-0070 persist-without-project oracle, and
 //!     duplicate-delivery idempotence.
-//!   - `open_interest_admission_tests` — ADR-0042 §5.1 generic `open_interest`
+//!   - `open_interest_admission_tests` — ADR-0076 §5.1 generic `open_interest`
 //!     store admission (author-matched and hashtag-matched, plus the
 //!     negative control).
 

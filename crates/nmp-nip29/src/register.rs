@@ -12,7 +12,7 @@
 //! were already cached hydrate live-only: it missed the cached tail
 //! (#2088). The hydrating composition now lives in `nmp-native-runtime`
 //! (`nmp_native_runtime::group_feed`), which registers the projection MUTED and routes its
-//! ingest through `NmpApp::open_observed_interest_pinned` (the ADR-0062
+//! ingest through `NmpApp::open_observed_interest_pinned` (the ADR-0070
 //! read-cache replay door) so a late-opened view catches up. That composition
 //! must name `NmpApp`, which is the composition-root type `nmp-nip29` may not
 //! name (D0), so it cannot live in this crate. `nmp-nip29` contributes only the

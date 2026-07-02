@@ -8,7 +8,7 @@
 //!
 //! # Why a taxonomy
 //!
-//! The OPFS SyncAccessHandle-pool VFS (`opfs-sahpool`, ADR-0054) can fail to open
+//! The OPFS SyncAccessHandle-pool VFS (`opfs-sahpool`, ADR-0072) can fail to open
 //! for several mutually-distinct reasons that a host UI must distinguish (offer
 //! "try a different browser" vs. "close your other tab" vs. "free up space"):
 //!

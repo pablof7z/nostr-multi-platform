@@ -39,7 +39,7 @@ pub enum NwcConnectionState {
 /// NIP-47 wallet connection status — projected to the snapshot under
 /// `projections["wallet"]`.
 ///
-/// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032): every field here is a raw
+/// RAW-DATA DOCTRINE (aim.md §2 / ADR-0072): every field here is a raw
 /// semantic token. No pre-rendered English label, tone string, or
 /// display-formatted number lives in this projection — the shells render the
 /// status label, semantic tone (colour/icon), and thousands-separated balance
@@ -60,7 +60,7 @@ pub struct WalletStatus {
     pub wallet_npub: String,
     /// The wallet service pubkey in raw hex form (64 chars). The shell formats
     /// it for display (bech32 / abbreviation are presentation concerns —
-    /// ADR-0032). Sourced from the same NWC connection the `wallet_npub` is
+    /// ADR-0072). Sourced from the same NWC connection the `wallet_npub` is
     /// derived from (`WalletConnection.wallet_pubkey_hex`).
     pub wallet_pubkey_hex: String,
     /// Balance in millisatoshis, if the wallet has responded to `get_balance`.

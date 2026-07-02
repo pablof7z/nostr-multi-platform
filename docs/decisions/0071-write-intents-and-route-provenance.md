@@ -1,172 +1,100 @@
-# ADR-0071: Publish intents, composable event drafts, and route provenance
-
-## Status
-
-Accepted for the architecture redesign direction.
-
-## Context
-
-ADR-0064 established the one typed write/command doorway and signer capability
-round-trip. The redesign keeps that doorway, but issue #2316 and downstream
-audits exposed a separate write-path ambiguity: event construction, event
-finalization, event signing, and event publishing are separable stages. Current
-publish variants can collapse manual relay overrides, NIP-29 host pins, NIP-17
-private inboxes, imported pre-signed events, and diagnostic sends into an
-indistinguishable explicit relay list.
-
-The missing invariant is not another broad routing context. Live GitHub state
-closed the old `RoutingContext::explicit_targets` direction in favor of the
-surviving `PublishTarget::Explicit` path. The remaining job is to carry intent
-identity and route provenance through the existing one publish stack.
+# ADR-0071: Publish intents, composable drafts, and route provenance
 
 ## Decision
 
 Every production write starts as a Rust-owned operation intent before signing,
-route resolution, relay sockets, or retry. The intent may be created by an
-action, by a generated host builder, by a protocol helper, or by an app Rust
-module, but it is owned by the actor once dispatched.
+route resolution, relay sockets, retry, or user-visible completion state.
 
-Event construction, event finalization, signing, and publishing are separate
-stages, but they remain one actor-owned workflow:
+Event construction, finalization, signing, publishing, local ingest, retry, and
+status reporting are separate stages of one actor-owned workflow:
 
 ```text
-record local publish intent
-  -> construct event draft
-  -> finalize protocol/app envelope
-  -> sign through selected signer capability
-  -> publish signed event through route policy
+record local intent
+  -> construct unsigned draft
+  -> finalize protocol or app envelope
+  -> sign through the selected signer capability
+  -> publish through route policy
   -> report structured status
 ```
 
-Event construction is composable. Protocol crates and app crates may provide
-builders such as reply, reaction, article, group publish, direct message, relay
-list, podcast episode publish, or Highlighter share. Builders produce mutable
-unsigned drafts or typed draft commands; they do not imply where the event will
-publish, which signer will sign, or whether the draft is final.
+Draft builders are composable. Protocol crates and app crates may provide
+builders for replies, reactions, articles, group publishes, direct messages,
+relay lists, app shares, and similar flows. Builders produce unsigned drafts or
+typed draft commands. They do not sign, publish, choose relays, or imply terminal
+success as hidden side effects.
 
-Finalizers may apply protocol-specific envelope mutation before signing:
-NIP-29 group `h` tags and host pins, NIP-17 private envelopes and inbox routes,
-NIP-22 reply shape, NIP-65 relay-list policy, client identity tags, or
-app-specific publish context. Finalization is the last stage that may change
-signed-event content.
+Finalizers may mutate signed-event content only before signing. Group tags,
+private envelopes, client identity tags, reply tags, relay-list policy, and
+app-specific publish context must be complete before the signature is created.
+After signing, event id and signature are immutable.
 
-After signing, event id and signature are immutable. Any required envelope
-mutation must happen before signing.
+Route provenance is typed. Product code cannot construct unclassified explicit
+relay lists. A route is classified as automatic public route, protocol host pin,
+verified private inbox, manual explicit override, imported external event, or
+diagnostic route. Private events fail closed without verified private-inbox
+provenance.
 
-From the app developer perspective, the write surface should feel like:
+Intent initiation is not artifact construction. Generic protocol artifact
+grammar has one owner. Apps and protocol crates request or wrap artifacts they
+do not own; they do not hand-build foreign wire events.
 
-```text
-draft = reply_to(event)
-draft.content = "nice!"
-publish(draft)
+## Context
 
-reaction = react_to(event, "+")
-publish(reaction)
+Loose publish surfaces collapsed different concerns into one relay list:
+manual overrides, group host pins, private inboxes, imported events, diagnostic
+sends, and ordinary outbox routing. The actor needs to know why a route is
+valid, not just where bytes are sent.
 
-article = new_article(title: "Hello World", content: "this is my article")
-publish_to_group(article, group_id)
-```
-
-Those examples are not API commitments. They describe the ownership boundary:
-construction helpers build unsigned drafts; publishing selects or receives a
-signer, applies any final envelope mutations, plans route policy, signs, sends,
-and reports status. A caller may choose a non-primary signer or audited manual
-relay override, but those choices become typed provenance, not anonymous relay
-lists.
-
-Protocol publish helpers may opt out of default NIP-65/outbox planning only by
-declaring a route class such as verified private inbox, group host pin, manual
-override, imported event, or diagnostic route. Examples: NIP-17 private messages
-route to verified inboxes rather than public outbox relays; NIP-29 group events
-route to the group host relay and add the group tag before signing.
-
-Publish routing status carries route provenance, not just relay URLs. The route
-class must remain distinguishable through dispatch, finalization, signing,
-remote-signer parking, retry/resume, local ingest, and status output:
-
-- automatic public route;
-- protocol host pin;
-- verified private inbox;
-- manual explicit override;
-- imported/verbatim external event;
-- diagnostic/test route.
-
-Product code cannot construct an unclassified explicit relay list. Private
-events require verified private-inbox provenance. Group writes require host-pin
-provenance or remain imported/manual with reduced guarantees. Pre-signed events
-do not silently upgrade into protocol-owned provenance after the fact.
-
-Signing is a capability stage, not a construction stage. A draft can be built,
-modified, finalized for a protocol envelope, and only then signed. Once signed,
-the only valid publish mutations are transport/status metadata outside the
-signed event. Publishing as a non-primary signer selects a different signer
-capability for the same workflow; it does not give the shell ownership of event
-construction, tag mutation, relay planning, retry policy, or local ingest.
-
-The preferred implementation path is to widen or pair existing carriers such as
-`PublishTarget`, relay selection reasons, publish commands, parked signer
-continuations, publish records, and status payloads. A broad new
-`PublishContext` type is justified only if the live code cannot carry the
-invariant without duplicating route/privacy/protocol state.
-
-Native/web shells dispatch typed actions or generated builders and render
-structured status. They do not mutate tags, choose Nostr relays, retry publish,
-or infer success from dispatch acceptance.
+NMP also needs app-visible draft ergonomics without giving shells ownership of
+signing, relay policy, retry, local ingest, or publish status.
 
 ## Consequences
 
-Positive:
+The publish pipeline carries more structured status and provenance. That makes
+offline-first pending, signed, planned, sent, failed, cancelled, and exhausted
+states replayable and auditable.
 
-- Offline-first pending, signed, planned, sent, failed, cancelled, and exhausted
-  states are replayable from one Rust-owned status stream.
-- NIP-17, NIP-29, manual, imported, and diagnostic routes stay auditable.
-- Event construction remains composable without making protocol crates import
-  each other's product types.
-- ADR-0064's one write doorway survives.
-- Apps can expose ergonomic draft builders without recreating a loose
-  build/sign/publish footgun.
+Some existing raw or verbatim publish paths are valid only as protocol-owned,
+imported, manual, or diagnostic flows. They are not the happy path for app
+writes.
 
-Negative/tradeoffs:
+## Boundaries
 
-- Existing explicit-relay callers need provenance classification.
-- Some downstream paths that report queued/dispatch state as completion must
-  change before they count as publish proof.
-- Status payloads need structured route/stage data; display strings are not a
-  durable route model.
-- Protocol finalizers need explicit ordering before signing, which requires
-  tests for tag mutation, signer selection, and route provenance together.
+Permitted:
 
-## Alternatives considered
+- app/protocol draft builders that produce unsigned drafts;
+- finalizers that mutate envelopes before signing;
+- typed manual overrides with provenance and reduced guarantees;
+- imported/verbatim signed events with imported provenance;
+- structured publish status emitted from Rust.
 
-| Option | Why rejected |
-|---|---|
-| Reintroduce a broad routing context | The dead explicit-target seam was already removed; adding a second route lane increases concepts. |
-| Treat `Explicit { relays }` as sufficient | It says where to send, not why that route is valid or what guarantees apply. |
-| Let publish helpers sign immediately | It prevents later protocol finalizers from mutating envelopes safely. |
-| Let native choose relays for expert cases | It violates Rust ownership of route, privacy, retry, and publish status policy. |
-| Forbid app-visible draft construction | It would make simple flows hostile and force all composition into monolithic actions. The bug is unmanaged signing/publishing, not draft construction. |
+Forbidden:
 
-## Fitness functions / enforcement
+- draft builders that sign, publish, or choose relays as side effects;
+- tag or envelope mutation after signing;
+- generic raw publish as app write guidance;
+- anonymous explicit relay lists in production product code;
+- shells treating dispatch acceptance, queued state, local signing, or local
+  ingest as terminal publish success.
 
-- Every production publish path creates a durable or replayable intent identity
-  before signing.
-- Publish status includes provenance class, owner/reason, stage, correlation id,
-  terminal state, and relay/server facts.
-- Private routes fail closed without verified inbox provenance.
-- NIP-29/group writes prove group context, host relay, and envelope mutation
-  before signing.
-- Event draft builders do not sign, publish, or choose relays as hidden side
-  effects.
-- Publish helpers that opt out of outbox planning carry typed route class and
-  reason through status output.
-- No product shell treats dispatch acceptance, queued state, or local signing as
-  terminal publish success.
-- Explicit-route callers are classified as automatic, host-pinned,
-  verified-private, manual, imported, or diagnostic.
+## Enforcement
 
-## Linked work
+Publish tests check route class, owner/reason, signer provenance, stage,
+correlation id, relay facts, terminal status, and fail-closed private routing.
 
-- ADR-0064: one typed write/command boundary.
-- #1538 and PR #1600: deleted the dead explicit-target routing-context seam.
-- #2316: foundational architecture decomposition.
-- #2320: stale ADR/doc cleanup.
+Ownership gates require protocol-owned artifact provenance for generic wire
+artifacts such as kind:5 deletion events. Doctrine and clean-room docs gates
+reject app-facing raw publish guidance, anonymous manual routes, and terminal
+success claims based only on dispatch or queue state.
+
+## Related
+
+- [ADR-0074](0074-nip09-generic-deletion-ownership.md) - NIP-09 deletion
+  artifact ownership.
+- [ADR-0069](0069-explicit-feature-composition.md) - protocol owner
+  composition.
+- [ADR-0072](0072-runtime-capability-and-shell-boundary.md) - shell boundary.
+- [docs/product-spec/api-surface.md](../product-spec/api-surface.md) - public
+  write API examples.
+- [docs/product-spec/doctrine.md](../product-spec/doctrine.md) - doctrine gates.
+- #2746 - ADR current-only cleanup.

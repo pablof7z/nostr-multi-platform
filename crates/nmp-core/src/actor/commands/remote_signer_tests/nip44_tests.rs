@@ -1,5 +1,5 @@
 #![cfg(test)]
-//! Tests for the `RemoteSignerHandle` NIP-44 seam (ADR-0026).
+//! Tests for the `RemoteSignerHandle` NIP-44 seam (ADR-0072).
 //!
 //! The actor reaches NIP-44 through the same trait it uses for `sign()`.
 //! These tests pin the new methods on the trait object via `StubRemoteSigner`.
@@ -11,14 +11,14 @@ use super::{stub_signer, StubRemoteSigner, TEST_NSEC};
 use nmp_signer_iface::RemoteSignerHandle;
 
 // ──────────────────────────────────────────────────────────────────────────
-// RemoteSignerHandle NIP-44 seam (ADR-0026): the actor reaches NIP-44
+// RemoteSignerHandle NIP-44 seam (ADR-0072): the actor reaches NIP-44
 // through the same trait it uses for `sign()`. These tests pin the new
 // methods on the trait object via the `StubRemoteSigner` double.
 // ──────────────────────────────────────────────────────────────────────────
 
 #[test]
 fn remote_handle_nip44_round_trips_through_the_seam() {
-    // ADR-0026: encrypt to a recipient, then decrypt from that recipient's
+    // ADR-0072: encrypt to a recipient, then decrypt from that recipient's
     // perspective — NIP-44 is symmetric in the shared conversation key, so a
     // ciphertext sealed by A to B decrypts with B's key against A's pubkey.
     let alice_sk = SecretKey::from_bech32(TEST_NSEC).expect("valid nsec");

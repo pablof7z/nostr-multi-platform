@@ -1,6 +1,6 @@
 //! Tier-1 (closure-path) typed-projection codecs for the actor-owned remote-
 //! signer built-in projections `"bunker_handshake"`, `"nip46_onboarding"`, and
-//! `"signer_state"` (ADR-0048 D6 — generalised from the former
+//! `"signer_state"` (ADR-0072 D6 — generalised from the former
 //! `"bunker_connection_state"` projection, V-14 step b / #963 / #1098).
 //!
 //! ## Why these live under `actor/` (not `kernel/typed_projections/`)
@@ -77,7 +77,7 @@ pub use signer_state_fb::{decode_signer_state, SignerStateModel, SIGNER_STATE_SC
 
 /// Build the typed `"signer_state"` sidecar entry from the shared slot.
 ///
-/// ADR-0048 D6 — generalises the former `"bunker_connection_state"` (V-14 step
+/// ADR-0072 D6 — generalises the former `"bunker_connection_state"` (V-14 step
 /// b) into a unified remote-signer health surface. Both NIP-46 and NIP-55
 /// write into the same slot via `IdentityRuntime::set_signer_state`. The typed
 /// payload is a field-for-field encode of the full `SignerStateDto`
@@ -110,7 +110,7 @@ pub(crate) fn signer_state_typed(slot: &SignerStateSlot) -> Option<TypedProjecti
         schema_version: SIGNER_STATE_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(SIGNER_STATE_FILE_IDENTIFIER).into_owned(),
         payload: encode_signer_state(&model),
-        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
         ..Default::default()
     })
 }
@@ -145,7 +145,7 @@ pub(crate) fn bunker_handshake_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         schema_version: BUNKER_HANDSHAKE_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(BUNKER_HANDSHAKE_FILE_IDENTIFIER).into_owned(),
         payload: encode_bunker_handshake(&model),
-        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
         ..Default::default()
     })
 }
@@ -191,7 +191,7 @@ pub(crate) fn nip46_onboarding_typed(slot: &BunkerHandshakeSlot) -> Option<Typed
         schema_version: NIP46_ONBOARDING_SCHEMA_VERSION,
         file_identifier: String::from_utf8_lossy(NIP46_ONBOARDING_FILE_IDENTIFIER).into_owned(),
         payload: encode_nip46_onboarding(&model),
-        // ADR-0055 Rung 2: rev + state stamped by make_update after emit.
+        // ADR-0070 Rung 2: rev + state stamped by make_update after emit.
         ..Default::default()
     })
 }

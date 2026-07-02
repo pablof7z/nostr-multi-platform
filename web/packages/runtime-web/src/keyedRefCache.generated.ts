@@ -10,7 +10,7 @@
 // The CI gate (`.github/workflows/codegen-drift.yml`) fails any PR whose
 // generated TypeScript differs.
 //
-// ADR-0063 Lane A twin (#2722): per-key row cache for keyed reference
+// ADR-0070 Lane A twin (#2722): per-key row cache for keyed reference
 // projections (`refs.profile` / `refs.event`) — byte-for-byte semantically
 // identical to `KeyedRefCache.generated.swift`, `KeyedRefCache.kt`, and
 // `nmp_core::refs::RefRowCache`.
@@ -92,7 +92,7 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
-/** Decode one `KPRF` row payload buffer into `ProfileWire` (ADR-0063 Lane G twin). */
+/** Decode one `KPRF` row payload buffer into `ProfileWire` (ADR-0070 Lane G twin). */
 function decodeProfileRow(bytes: Uint8Array): ProfileWire | undefined {
   if (bytes.length < 8) return undefined;
   try {
@@ -107,7 +107,7 @@ function decodeProfileRow(bytes: Uint8Array): ProfileWire | undefined {
 }
 
 /**
- * NMP-owned per-key row cache for keyed reference projections (ADR-0063).
+ * NMP-owned per-key row cache for keyed reference projections (ADR-0070).
  *
  * Thread-safety: fed only from the worker's `update_bytes` handler on the
  * single main-thread event loop — no concurrent `merge()` calls.
@@ -172,7 +172,7 @@ export class KeyedRefCache {
     }
   }
 
-  /** ADR-0063 invariant #2: a `Changed` row commits only after its
+  /** ADR-0070 invariant #2: a `Changed` row commits only after its
    *  payload decodes to the namespace's concrete type. Projection keys
    *  with no typed decoder accept any non-empty payload (raw-bytes-only
    *  namespaces, e.g. `refs.event` until #2722 scopes it). */
@@ -333,7 +333,7 @@ export class KeyedRefCache {
     return { changedKeys: [...changed].sort(), decodeFailed };
   }
 
-  // ADR-0063 Lane G twin (#2722): per-key + full-snapshot TYPED accessors.
+  // ADR-0070 Lane G twin (#2722): per-key + full-snapshot TYPED accessors.
   // Each decodes the cached row-payload buffer through the namespace's
   // typed reader (the SAME buffer the kernel's `ref_*_row_payload` encoder
   // emits) into the concrete domain type — never a raw `Uint8Array`

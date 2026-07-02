@@ -139,7 +139,7 @@ pub(super) fn maybe_emit_after_dispatch(
 #[cfg(all(test, feature = "native"))]
 mod emit_hz_clamp_tests;
 
-// ADR-0050 §D3a / issue #1231 — drives the real `run_actor` loop to lock the
+// ADR-0072 §D3a / issue #1231 — drives the real `run_actor` loop to lock the
 // single-waking-inbox wake property AND the single `drain_command_lane` routing
 // (follow-up #3). Kept here (sibling module, off `actor/mod.rs`'s ratcheted
 // list and out of `mod tests` to avoid collisions).
@@ -296,8 +296,8 @@ mod tests {
             }))
             .unwrap();
         let pk = "0".repeat(64);
-        // V-68 / V-112 (ADR-0042): OpenAuthor / CloseAuthor deleted.
-        // ADR-0063 Lane H: ClaimProfile/ReleaseProfile deleted; use ResolveRef/ReleaseRef.
+        // V-68 / V-112 (ADR-0076): OpenAuthor / CloseAuthor deleted.
+        // ADR-0070 Lane H: ClaimProfile/ReleaseProfile deleted; use ResolveRef/ReleaseRef.
         // Dispatch resolve/release_ref to flood the queue (same fire-and-forget path).
         for i in 0..50u64 {
             cmd_tx

@@ -7,7 +7,7 @@ repository.workspace = true
 description = "NMP developer CLI: scaffold apps as explicit owner-crate composition shells, install app-owned components, and inspect/upgrade the NMP dependency policy."
 
 # The user-facing developer command is `nmp`. `nmp init` scaffolds a new app as
-# a thin composition shell that calls owner crates directly (ADR-0046 —
+# a thin composition shell that calls owner crates directly (ADR-0069 —
 # composition is explicit Rust, not a generator). See docs/cli.md for the
 # relationship to the `nmp-codegen` binary that ships the Swift CI-gated emitters.
 [[bin]]

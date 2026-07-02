@@ -1,10 +1,10 @@
-//! `SignCommand` — ADR-0050 signer-session capability port verbs
+//! `SignCommand` — ADR-0072 signer-session capability port verbs
 //! (`sign | nip44_encrypt | nip44_decrypt`).
 //!
 //! Grouped under `ActorCommand::Sign(SignCommand)`. Dispatch home:
 //! `actor/signer_port_dispatch.rs` (the capability-port dispatch seam).
 //!
-//! D0: `nip44_*` is a crypto capability (present since ADR-0026), not an app
+//! D0: `nip44_*` is a crypto capability (present since ADR-0072), not an app
 //! noun. D13: the continuation receives only the signed event / ciphertext /
 //! plaintext, never raw key bytes. D8: the continuation runs on the actor
 //! thread and MUST only enqueue further work, never block.
@@ -51,7 +51,7 @@ pub enum SignCommand {
         correlation_id: String,
     },
     /// Generic, backend-transparent sign-account port for `ProtocolCommand`
-    /// workers (ADR-0043 Decision 2). Sign `unsigned` with the named account
+    /// workers (ADR-0071 Decision 2). Sign `unsigned` with the named account
     /// (`signer_pubkey = Some(hex)`) or the active account (`None`), then
     /// invoke `continuation` with the resolved [`SignedEvent`] (or an error
     /// string).
@@ -77,7 +77,7 @@ pub enum SignCommand {
         continuation: SignContinuation,
     },
     /// Backend-transparent NIP-44 ENCRYPT-account port — the cipher sibling of
-    /// [`Self::EventForAccount`] (ADR-0050 §D1). Encrypt `plaintext` to
+    /// [`Self::EventForAccount`] (ADR-0072 §D1). Encrypt `plaintext` to
     /// `peer_pubkey` with the named (`Some(hex)`) or active (`None`) account,
     /// then invoke `continuation` with the ciphertext (or error). Local
     /// accounts run `nostr::nips::nip44` inside the identity runtime (D13);
@@ -94,7 +94,7 @@ pub enum SignCommand {
         continuation: CipherContinuation,
     },
     /// Backend-transparent NIP-44 DECRYPT-account port — the inbound twin of
-    /// [`Self::Nip44EncryptForAccount`] (ADR-0050 §D1). Same contract; decrypts
+    /// [`Self::Nip44EncryptForAccount`] (ADR-0072 §D1). Same contract; decrypts
     /// `ciphertext` from `peer_pubkey` to plaintext.
     Nip44DecryptForAccount {
         /// Sender pubkey (lowercase hex) the ciphertext was encrypted from.

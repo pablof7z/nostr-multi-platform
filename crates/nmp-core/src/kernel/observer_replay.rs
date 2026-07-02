@@ -1,4 +1,4 @@
-//! ADR-0062 — observer-scoped read-model catch-up.
+//! ADR-0070 — observer-scoped read-model catch-up.
 //!
 //! When a late-joining per-open feed (Chirp author/thread profile) registers a
 //! `ObservedProjectionSink` AFTER events matching its interest have already been
@@ -25,7 +25,7 @@
 //!
 //! The replay step reads from `self.events` (the in-memory read-cache) which is
 //! populated by `project_accepted_event` ONLY for events that passed through the
-//! live ingest chokepoint (ADR-0057). Events served from the store by the
+//! live ingest chokepoint (ADR-0070). Events served from the store by the
 //! cache-serve path (continuation.rs) are deduplicated against this same cache
 //! (`events_cache.contains_key` — line 99, DO NOT TOUCH). So replaying from
 //! `self.events` means the observer sees exactly the events that already fired
@@ -67,7 +67,7 @@ use crate::subs::SubIdentity;
 use crate::substrate::KernelEvent;
 
 /// Replay request carrying the registration parameters for targeted
-/// read-cache catch-up (ADR-0062 §6).
+/// read-cache catch-up (ADR-0070 §6).
 pub(crate) struct ObserverReplayRequest {
     /// The muted observer id to deliver replayed events to.
     pub observer_id: ObservedProjectionId,
@@ -82,7 +82,7 @@ pub(crate) struct ObserverReplayRequest {
 }
 
 impl Kernel {
-    /// ADR-0062 — open an interest AND immediately replay matching in-memory
+    /// ADR-0070 — open an interest AND immediately replay matching in-memory
     /// cached events to the nominated muted observer, then activate it.
     ///
     /// Calls `register_interest` with `EnsureAbsent` (unchanged relay-subscribe

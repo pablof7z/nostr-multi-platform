@@ -1,4 +1,4 @@
-//! ADR-0044 — typed Tier-3 envelope encoding for `SnapshotFrame`.
+//! ADR-0072 — typed Tier-3 envelope encoding for `SnapshotFrame`.
 //!
 //! Builds the typed `SnapshotFrame` envelope offsets (`rev`, `running`,
 //! `metrics`, `relay_statuses`, …) directly from the `KernelSnapshot` struct.
@@ -11,7 +11,7 @@
 //! the same builder to assemble the final `SnapshotFrame` — the same pattern
 //! `encode_typed_projections` already uses.
 //!
-//! Values are raw per ADR-0032. `usize`/`u128` counters narrow to `u64`
+//! Values are raw per ADR-0072. `usize`/`u128` counters narrow to `u64`
 //! (saturating, so an impossibly-large value clamps rather than wraps);
 //! `Option<u128>`/`Option<bool>` become FlatBuffers native-optional scalars;
 //! `Option<String>` becomes a string field that is simply absent when `None`

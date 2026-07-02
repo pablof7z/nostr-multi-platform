@@ -1,6 +1,6 @@
 //! `SendGiftWrappedDmCommand` — the NIP-17 gift-wrapped DM send handler.
 //!
-//! # ADR-0050 §D5 — a continuation chain through the signer port
+//! # ADR-0072 §D5 — a continuation chain through the signer port
 //!
 //! The send is a chain of port requests composed via the cloned actor command
 //! sender ([`ProtocolCommandContext::command_sender_clone`]). There is no
@@ -74,7 +74,7 @@ use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, Tag, Timestamp};
 /// on the actor thread; it pins the active account, validates inputs, resolves
 /// both receivers' DM-inbox relays, then launches the recipient gift-wrap chain
 /// (whose success continuation launches the self-copy chain) — all through the
-/// signer port (ADR-0050 §D5).
+/// signer port (ADR-0072 §D5).
 #[derive(Clone, Debug)]
 pub struct SendGiftWrappedDmCommand {
     /// The kind:14 chat-message rumor (unsigned) the host built via

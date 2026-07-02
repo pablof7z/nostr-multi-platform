@@ -8,14 +8,14 @@ export type {
 } from "./protocol";
 export { protocolVersion, eventCorrelationId, labelRuntimeStatus } from "./protocol";
 
-// ADR-0064 typed write transport — the `DispatchEnvelope` byte encoder.
+// ADR-0071 typed write transport — the `DispatchEnvelope` byte encoder.
 export {
   encodeDispatchEnvelope,
   DISPATCH_ENVELOPE_FILE_IDENTIFIER,
   DISPATCH_ENVELOPE_SCHEMA_VERSION,
 } from "./dispatchEnvelope";
 
-// ADR-0064 §3 (#1776) — generated typed write builders. Field-level sugar that
+// ADR-0071 §3 (#1776) — generated typed write builders. Field-level sugar that
 // encodes the per-crate FlatBuffers payload + wraps it in a `DispatchEnvelope`
 // for the `dispatch_bytes` doorway, so the host never hand-assembles FlatBuffers
 // or spells an `action_namespace`. GENERATED — see

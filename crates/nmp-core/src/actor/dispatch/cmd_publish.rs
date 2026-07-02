@@ -454,7 +454,7 @@ pub(super) fn set_relay_info(
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
-    // ADR-0051 — fold the nmp-nip11 fetch result onto the kernel's
+    // ADR-0072 — fold the nmp-nip11 fetch result onto the kernel's
     // per-URL transport row (marks the snapshot dirty so the
     // `relay_diagnostics` projection surfaces it). Malformed JSON is a
     // silent no-op (D6).
@@ -476,7 +476,7 @@ pub(super) fn record_action_success(
     // Symmetric counterpart to RecordActionFailure: off-thread workers
     // and runtime responders fan success back through the actor
     // channel. Writes `Accepted` to `action_stages` and a terminal
-    // verdict to `action_results`. `result_json` (ADR-0043 Decision 4)
+    // verdict to `action_results`. `result_json` (ADR-0071 Decision 4)
     // rides into the `action_results` row's `result` field verbatim.
     ctx.kernel
         .record_action_success(correlation_id, result_json);

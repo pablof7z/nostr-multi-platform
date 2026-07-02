@@ -6,7 +6,7 @@
 //! `"accounts"`: the serialisation of `accounts_enriched()`, a
 //! `Vec<AccountSummary>` patched with kind:0 `display_name` / `picture_url`.
 //! This module adds a **typed FlatBuffers** encoding of the same shape, carried
-//! in the `typed_projections` sidecar (ADR-0037) ALONGSIDE — never replacing —
+//! in the `typed_projections` sidecar (ADR-0072) ALONGSIDE — never replacing —
 //! the generic `Value` projection.
 //!
 //! [`AccountsModel`] is built from the same `accounts_enriched()` vector the

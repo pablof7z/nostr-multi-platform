@@ -222,7 +222,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | `nmp-codegen` | Focused host-helper emitters and drift gates for typed decoders, projection caches, keyed-ref caches, feed/action helpers, and registry builtins | Binary + library |
 | `nmp-substrate` | Reusable substrate floor: shared router/mailbox/profile/contacts cache-parser construction for delivery roots that cannot hand-copy substrate wiring. Protocol features are composed explicitly by app/runtime roots. | Pure Rust |
 | `nmp-uniffi` | Public native binding surface over `nmp-native-runtime` for generated Swift/Kotlin app crates | UniFFI |
-| `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |
+| `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0072; `nmp-wasm` deleted #2202) | wasm-bindgen |
 | `nmp-nip01` | Event, Filter, Profile/Timeline views, SendNote/Delete actions | Pure Rust |
 | `nmp-nip02` | Contacts view convenience module | Pure Rust |
 | `nmp-nip10` | Reply marker/thread modules | Pure Rust |

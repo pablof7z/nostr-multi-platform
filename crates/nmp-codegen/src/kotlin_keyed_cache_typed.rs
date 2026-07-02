@@ -1,4 +1,4 @@
-//! ADR-0063 Lane G (#1671) — the TYPED row-payload rendering for the Kotlin
+//! ADR-0070 Lane G (#1671) — the TYPED row-payload rendering for the Kotlin
 //! `KeyedRefCache` generator. Split out of `kotlin_keyed_cache.rs` so neither
 //! source file exceeds the 500-LOC cap (the Swift `swift_keyed_cache_typed.rs`
 //! twin).
@@ -27,13 +27,13 @@ fn typed_decode_fn_name(e: &KeyedProjectionEntry) -> String {
     format!("decode{capitalized}Row")
 }
 
-/// Render the per-key TYPED accessors (ADR-0063 Lane G, #1671). Each decodes the
+/// Render the per-key TYPED accessors (ADR-0070 Lane G, #1671). Each decodes the
 /// cached row-payload buffer through the namespace's typed Kotlin reader into the
 /// concrete domain type — NOT a raw `ByteArray` passthrough. Byte-for-byte
 /// semantically identical to the Swift `render_accessors`.
 pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "    // ADR-0063 Lane G (#1671): per-key TYPED accessors — the #1671 host\n\
+        "    // ADR-0070 Lane G (#1671): per-key TYPED accessors — the #1671 host\n\
          \x20\x20\x20\x20// per-key reactive read API (the Swift typed twin). A view reads\n\
          \x20\x20\x20\x20// `model.profile(pubkey)` and observes `addRowChangeListener` filtered\n\
          \x20\x20\x20\x20// on its key, so exactly one avatar re-renders when that pubkey's row\n\
@@ -45,7 +45,7 @@ pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
     );
     for e in entries {
         let kotlin = e.row_payload.kotlin.as_ref().expect(
-            "ADR-0063 Lane G: every keyed projection must carry a Kotlin typed \
+            "ADR-0070 Lane G: every keyed projection must carry a Kotlin typed \
              row-payload descriptor (KotlinRefRowPayload)",
         );
         s.push_str(&format!(
@@ -60,7 +60,7 @@ pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
 }
 
 /// Render the per-namespace typed-decode helpers + the real, typed `rowDecoder`
-/// injection (ADR-0063 invariant #2: decode-before-commit). Each helper does a
+/// injection (ADR-0070 invariant #2: decode-before-commit). Each helper does a
 /// CHECKED root decode of the row payload buffer (verifying the row-payload
 /// `file_identifier` — KPRF / KCEV, NOT the `NRRD` batch id) and hands the reader
 /// to the hand-written `KeyedRefDecoders` glue. The `rowDecoder` returns `true`
@@ -68,7 +68,7 @@ pub(super) fn render_accessors(entries: &[KeyedProjectionEntry]) -> String {
 /// committed (prior row retained, `needsResync` latches). Mirrors the Swift twin.
 pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String {
     let mut s = String::from(
-        "    // ── Typed row decode (ADR-0063 Lane G, #1671) ───────────────────────\n\
+        "    // ── Typed row decode (ADR-0070 Lane G, #1671) ───────────────────────\n\
          \x20\x20\x20\x20//\n\
          \x20\x20\x20\x20// The real per-namespace typed decoders. Each does a CHECKED root\n\
          \x20\x20\x20\x20// decode of the row payload buffer (verifying its OWN file_identifier\n\
@@ -80,12 +80,12 @@ pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String 
     );
     for e in entries {
         let kotlin = e.row_payload.kotlin.as_ref().expect(
-            "ADR-0063 Lane G: every keyed projection must carry a Kotlin typed \
+            "ADR-0070 Lane G: every keyed projection must carry a Kotlin typed \
              row-payload descriptor (KotlinRefRowPayload)",
         );
         let fn_name = typed_decode_fn_name(e);
         s.push_str(&format!(
-            "    /** Decode one `{}` row payload buffer into `{}` (ADR-0063 Lane G). */\n\
+            "    /** Decode one `{}` row payload buffer into `{}` (ADR-0070 Lane G). */\n\
              \x20\x20\x20\x20private fun {}(bytes: ByteArray): {}? {{\n\
              \x20\x20\x20\x20\x20\x20\x20\x20if (bytes.isEmpty()) return null\n\
              \x20\x20\x20\x20\x20\x20\x20\x20return try {{\n\
@@ -120,7 +120,7 @@ pub(super) fn render_typed_decoders(entries: &[KeyedProjectionEntry]) -> String 
     // helper (invariant #2). Called once at construction (see init).
     s.push_str(
         "    /**\n\
-         \x20\x20\x20\x20 * Wire the real typed decode-before-commit seam (ADR-0063 #2): a\n\
+         \x20\x20\x20\x20 * Wire the real typed decode-before-commit seam (ADR-0070 #2): a\n\
          \x20\x20\x20\x20 * `Changed` row commits ONLY if its payload decodes to the namespace's\n\
          \x20\x20\x20\x20 * concrete type. Called from `init` so the typed contract holds with no\n\
          \x20\x20\x20\x20 * caller wiring (the Swift `installTypedRowDecoder` twin).\n\

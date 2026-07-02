@@ -23,7 +23,7 @@
 //! * [`ActionRegistry::execute`] drives the validated action to the actor by
 //!   calling `M::execute` through the dyn-safe [`ErasedActionModule`] facade.
 //!   Each module is registered once via [`ActionRegistry::register::<M>`];
-//!   no separate executor seam exists (ADR-0027).
+//!   no separate executor seam exists (ADR-0071).
 //!
 //! # Type erasure
 //!
@@ -55,7 +55,7 @@ pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
 use result_observer::{new_result_observer_slot, ResultObserverSlot};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
-/// or from an explicit app registration? (ADR-0049 Part 1.)
+/// or from an explicit app registration? (ADR-0069 Part 1.)
 ///
 /// The distinction drives two behaviours:
 /// * [`ActionRegistry::register_default`] yields (declines to install) when the
@@ -84,12 +84,12 @@ enum Provenance {
 pub struct ActionRegistry {
     modules: HashMap<String, Box<dyn ErasedActionModule>>,
     /// Per-namespace provenance + the registering provider's type name
-    /// (ADR-0049 Part 1). Keyed identically to `modules`; an entry is present
+    /// (ADR-0069 Part 1). Keyed identically to `modules`; an entry is present
     /// iff `modules` holds the namespace. The `provider` string feeds the
     /// composition ledger's `replaced` field and the app-over-app collision
     /// diagnostic.
     provenance: HashMap<String, (Provenance, &'static str)>,
-    /// Optional composition ledger (ADR-0049 Part 2). `None` for a bare
+    /// Optional composition ledger (ADR-0069 Part 2). `None` for a bare
     /// registry (the kernel's `default_registry` and most unit tests); the
     /// host wires a shared `Arc<CompositionLedger>` via
     /// [`Self::with_composition_ledger`] so registration decisions are
@@ -121,7 +121,7 @@ impl ActionRegistry {
     }
 
     /// Attach a shared composition ledger so registration decisions are
-    /// recorded for `nmp_app_composition_report` (ADR-0049 Part 2).
+    /// recorded for `nmp_app_composition_report` (ADR-0069 Part 2).
     ///
     /// Builder-style: the host calls this once, right after `ActionRegistry::new`,
     /// before any registration. A registry with no ledger records nothing — the
@@ -133,7 +133,7 @@ impl ActionRegistry {
     }
 
     /// Register module `M` under its [`ActionModule::NAMESPACE`] via the **app
-    /// path** — an explicit, intentional registration (ADR-0049 Part 1).
+    /// path** — an explicit, intentional registration (ADR-0069 Part 1).
     ///
     /// Semantics by what currently holds the namespace:
     /// * **unclaimed** → install `M` ([`Disposition::Installed`]).
@@ -144,19 +144,19 @@ impl ActionRegistry {
     ///   is a composition bug: a hard `debug_assert!` failure in dev/test builds,
     ///   recorded-but-soft in release (D6 — no panic across the C-ABI). The new
     ///   module still replaces the old (last-writer-wins) so release behaviour
-    ///   is unchanged from before ADR-0049; the ledger makes the collision
+    ///   is unchanged from before ADR-0069; the ledger makes the collision
     ///   visible either way.
     ///
     /// `M::start` handles validation and `M::execute` handles execution — both
     /// under the same `M::NAMESPACE`, so namespace mismatch between validator
-    /// and executor is structurally impossible (ADR-0027).
+    /// and executor is structurally impossible (ADR-0071).
     ///
-    /// ADR-0052 rung 5.2: takes the module **value** so a stateful module
+    /// ADR-0072 rung 5.2: takes the module **value** so a stateful module
     /// stores its captured dependencies in the registry.
     ///
     /// Returns `Ok(())` on success. Returns `Err(`[`RegistrationError`]`)` when
     /// the namespace is ALREADY held by another **app** registration — an
-    /// app-over-app collision (ADR-0049). The new module still replaces the old
+    /// app-over-app collision (ADR-0069). The new module still replaces the old
     /// (last-writer-wins for release resilience, D6 — no panic across the
     /// C-ABI); the error is returned so the caller can surface it in BOTH dev
     /// AND release builds (#1724). Overriding a yielding default is legal and
@@ -205,7 +205,7 @@ impl ActionRegistry {
     }
 
     /// Register module `M` as a **yielding default** under its
-    /// [`ActionModule::NAMESPACE`] (ADR-0049 Part 1).
+    /// [`ActionModule::NAMESPACE`] (ADR-0069 Part 1).
     ///
     /// Entry-or-insert: install `M` ONLY if the namespace is unclaimed. If any
     /// registration (app OR an earlier default) already holds the namespace,
@@ -216,10 +216,10 @@ impl ActionRegistry {
     /// default that an app can pre-empt REGARDLESS of call order. Because the
     /// default yields rather than clobbers, an app registering its own module
     /// under a default namespace BEFORE `explicit owner composition` runs is no longer
-    /// silently overwritten — the inverted, order-dependent behaviour ADR-0049
+    /// silently overwritten — the inverted, order-dependent behaviour ADR-0069
     /// fixes.
     ///
-    /// ADR-0052 rung 5.2: takes the module **value**. When the namespace is
+    /// ADR-0072 rung 5.2: takes the module **value**. When the namespace is
     /// already claimed the value is dropped (the existing registration wins),
     /// exactly as before — only the storage shape changed.
     pub fn register_default<M: ActionModule + 'static>(&mut self, module: M) -> bool {
@@ -362,7 +362,7 @@ impl ActionRegistry {
         self.modules.contains_key(namespace)
     }
 
-    /// Intrinsic typed-only gate (ADR-0064 / #1756): sorted namespaces of
+    /// Intrinsic typed-only gate (ADR-0071 / #1756): sorted namespaces of
     /// registered modules NOT typed-capable. See [`erased::untyped_namespaces`].
     #[must_use]
     pub fn untyped_namespaces(&self) -> Vec<String> {

@@ -27,7 +27,7 @@ pub enum WalletConnectAction {
 /// `ActionModule` for `nmp.wallet.connect`. Replaces the pre-V-38 bespoke
 /// `nmp_app_wallet_connect` FFI symbol's direct ActorCommand construction.
 ///
-/// ADR-0052 rung 5.2: owns its `WalletRuntimeHandle` by value (cloned from
+/// ADR-0072 rung 5.2: owns its `WalletRuntimeHandle` by value (cloned from
 /// the composition root). `execute` reaches the runtime through `self.runtime`
 /// — no process-global. Two `NmpApp` instances therefore drive independent
 /// runtimes.
@@ -52,7 +52,7 @@ impl ActionModule for WalletConnectModule {
         );
     type Action = WalletConnectAction;
 
-    /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
+    /// Typed FlatBuffers payload decode (ADR-0071 / #1756) — delegates to the
     /// `nmp.wallet.connect` `ActionPayload` codec (`N47C`). The registry adapter
     /// runs the fail-closed `schema_version` gate BEFORE `start()`.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
@@ -122,7 +122,7 @@ pub enum WalletDisconnectAction {
 
 /// `ActionModule` for `nmp.wallet.disconnect`.
 ///
-/// ADR-0052 rung 5.2: owns its per-app `WalletRuntimeHandle` by value.
+/// ADR-0072 rung 5.2: owns its per-app `WalletRuntimeHandle` by value.
 pub struct WalletDisconnectModule {
     pub runtime: WalletRuntimeHandle,
 }
@@ -143,7 +143,7 @@ impl ActionModule for WalletDisconnectModule {
         );
     type Action = WalletDisconnectAction;
 
-    /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
+    /// Typed FlatBuffers payload decode (ADR-0071 / #1756) — delegates to the
     /// `nmp.wallet.disconnect` `ActionPayload` codec (`N47D`). The registry
     /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {

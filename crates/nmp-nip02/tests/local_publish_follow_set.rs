@@ -126,7 +126,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         nmp_nip02::register_actions(&mut *app);
     }
 
-    // Register both observed projections BEFORE start. ADR-0049:
+    // Register both observed projections BEFORE start. ADR-0069:
     // the actor reads every wiring slot once at kernel construction
     // (`ActorCommand::Start`); a registration after start would be recorded as
     // `DroppedLateWiring` and never bound onto the kernel. Each observer

@@ -49,7 +49,7 @@
 pub enum ProjectionTier {
     /// Tier-2 **kernel-owned built-in**: emitted directly by
     /// `Kernel::snapshot_projections_with_publish_cluster` and gated by the
-    /// host-declared consumed-projection set (ADR-0053). These are exactly the
+    /// host-declared consumed-projection set (ADR-0070). These are exactly the
     /// keys `nmp_core::KERNEL_BUILTIN_PROJECTION_KEYS` enumerates.
     KernelBuiltin,
     /// Tier-1 **host/protocol-registered** projection: produced by a

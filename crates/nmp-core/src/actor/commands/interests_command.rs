@@ -1,5 +1,5 @@
 //! `InterestsCommand` — subscription registry + pull cursors
-//! (ADR-0042 M2 / ADR-0058).
+//! (ADR-0076 M2 / ADR-0072).
 //!
 //! Grouped under `ActorCommand::Interests(InterestsCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_interests.rs`.
@@ -36,7 +36,7 @@ pub enum InterestsCommand {
     /// Detach one owner from a logical interest registered through
     /// [`Self::EnsureInterest`].
     DropInterestOwner(crate::subs::SubIdentity),
-    /// ADR-0058 §10, step 3a — open (or replace-by-id) a pull cursor in the
+    /// ADR-0072 §10, step 3a — open (or replace-by-id) a pull cursor in the
     /// non-durable cursor registry. Fire-and-forget. The host mints the
     /// `handle` via the kernel's cursor-allocation doorway (#1897). Arms an
     /// immediate pull wake when the cursor is behind the store head.
@@ -44,7 +44,7 @@ pub enum InterestsCommand {
         handle: crate::kernel::pull_cursor::PullCursorHandle,
         spec: crate::kernel::pull_cursor::PullCursorSpec,
     },
-    /// ADR-0058 §10, step 3a — monotonically advance a registered cursor's
+    /// ADR-0072 §10, step 3a — monotonically advance a registered cursor's
     /// `after_seq` (`max(old, new)`). Fire-and-forget. Re-arms an immediate
     /// pull wake when the cursor is still behind the store head. Unknown id is
     /// a no-op.
@@ -52,12 +52,12 @@ pub enum InterestsCommand {
         cursor_id: crate::kernel::pull_cursor::PullCursorId,
         after_seq: u64,
     },
-    /// ADR-0058 §10, step 3a — remove a cursor's registry row AND any pending
+    /// ADR-0072 §10, step 3a — remove a cursor's registry row AND any pending
     /// pull wake entry. Fire-and-forget.
     UnregisterPullCursor {
         cursor_id: crate::kernel::pull_cursor::PullCursorId,
     },
-    /// M2 (ADR-0042) — the generic FFI-facing feed-subscription front door
+    /// M2 (ADR-0076) — the generic FFI-facing feed-subscription front door
     /// that replaced the bespoke `OpenAuthor` / `OpenThread` /
     /// `OpenFirehoseTag` variants. The host passes a verbatim NIP-01 REQ
     /// filter; the dispatch arm parses it into an `InterestShape`, builds a
@@ -79,7 +79,7 @@ pub enum InterestsCommand {
         /// `1` = `InterestScope::Global` (account-agnostic).
         scope: u32,
     },
-    /// ADR-0062 — open an interest AND simultaneously replay matching in-memory
+    /// ADR-0070 — open an interest AND simultaneously replay matching in-memory
     /// cached events to a single muted observer, then activate it.
     ///
     /// This solves the late-joiner problem: a per-open feed observer that
@@ -120,7 +120,7 @@ pub enum InterestsCommand {
         /// delivery). Typically the feed's visible window limit.
         replay_limit: usize,
     },
-    /// M2 (ADR-0042) — detach one owner from an interest registered via
+    /// M2 (ADR-0076) — detach one owner from an interest registered via
     /// [`Self::OpenInterest`]. Drops the live subscription when the last owner
     /// leaves (mirrors [`Self::DropInterestOwner`]).
     CloseInterest {

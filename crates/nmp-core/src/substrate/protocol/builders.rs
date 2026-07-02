@@ -13,7 +13,7 @@
 use crate::actor::ActorCommand;
 use crate::actor::{ActionLedgerCommand, SignCommand};
 
-/// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) — the
+/// Build an [`ActorCommand::SignEventForAccount`] (ADR-0071 Decision 2) — the
 /// generic, backend-transparent sign-account port.
 ///
 /// The actor's dispatch arm signs (active account when `signer_pubkey` is
@@ -36,7 +36,7 @@ pub fn build_sign_event_for_account(
     })
 }
 
-/// Build an [`ActorCommand::Nip44EncryptForAccount`] (ADR-0050 §D1) — the NIP-44
+/// Build an [`ActorCommand::Nip44EncryptForAccount`] (ADR-0072 §D1) — the NIP-44
 /// encrypt twin of [`build_sign_event_for_account`].
 ///
 /// The actor's dispatch arm encrypts `plaintext` → `peer_pubkey` with the named
@@ -60,7 +60,7 @@ pub fn build_nip44_encrypt_for_account(
     })
 }
 
-/// Build an [`ActorCommand::Nip44DecryptForAccount`] (ADR-0050 §D1) — the
+/// Build an [`ActorCommand::Nip44DecryptForAccount`] (ADR-0072 §D1) — the
 /// inbound twin of [`build_nip44_encrypt_for_account`].
 ///
 /// The actor's dispatch arm decrypts `ciphertext` (encrypted FROM `peer_pubkey`)
@@ -68,7 +68,7 @@ pub fn build_nip44_encrypt_for_account(
 /// `continuation` with the recovered plaintext or an error string — inline for a
 /// local key, from the idle-loop drain for a parked NIP-46 bunker. This is the
 /// receive-side primitive the NIP-17 DM inbox composes its two-step gift-UNWRAP
-/// chain from (ADR-0050 §D6): outer wrap decrypt → seal decrypt, so a bunker
+/// chain from (ADR-0072 §D6): outer wrap decrypt → seal decrypt, so a bunker
 /// account can unseal a gift-wrap without the inbox ever holding raw `Keys`.
 ///
 /// The continuation runs on the actor thread; it must only enqueue further work

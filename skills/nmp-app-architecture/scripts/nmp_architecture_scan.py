@@ -381,9 +381,9 @@ RULES = [
     ),
     (
         "warning",
-        "ADR-0053/retired-projection-tier-vocab",
+        "ADR-0070/old-projection-tier-vocab",
         re.compile(r"\b(declare_consumed_projections|Tier-1|Tier-2|Tier-3)\b"),
-        "Retired projection-tier vocabulary (ADR-0053 folded into ADR-0070). Product reads open typed "
+        "Old projection-tier vocabulary. Product reads open typed "
         "read sessions; declare_consumed_projections is output-transport plumbing, not a read API.",
         {".rs"},
         is_app_code,

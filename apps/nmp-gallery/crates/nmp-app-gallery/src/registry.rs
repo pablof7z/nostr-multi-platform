@@ -65,7 +65,7 @@ mod tests {
         let total_components: usize = reg.sections.iter().map(|s| s.components.len()).sum();
         assert_eq!(total_components, 17);
 
-        // Verify auth section has login-block component (ADR-0048 Stage 4)
+        // Verify auth section has login-block component (ADR-0072 Stage 4)
         let auth_section = reg.sections.iter().find(|s| s.id == "auth").unwrap();
         assert_eq!(auth_section.components.len(), 1);
         assert_eq!(auth_section.components[0].id, "login-block");

@@ -7,7 +7,7 @@
 //! [`OutboxSummarySnapshot`](crate::kernel::OutboxSummarySnapshot)
 //! (per-status counters + the pre-formatted English `title` / `subtitle`
 //! strings). This module adds a **typed FlatBuffers** encoding of the same
-//! shape, carried in the `typed_projections` sidecar (ADR-0037) ALONGSIDE —
+//! shape, carried in the `typed_projections` sidecar (ADR-0072) ALONGSIDE —
 //! never replacing — the generic `Value` projection.
 //!
 //! [`OutboxSummaryModel`] is built directly from the same summary struct the
@@ -45,7 +45,7 @@ include!("outbox_summary_producer_consts.generated.rs");
 
 /// The `"outbox_summary"` read model — a field-for-field mirror of the
 /// SERIALISED [`OutboxSummarySnapshot`](crate::kernel::OutboxSummarySnapshot).
-/// ADR-0032 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
+/// ADR-0072 / aim.md §2 #4: `title` / `subtitle` pre-formatted strings
 /// removed; shells derive display strings from the raw counters.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct OutboxSummaryModel {

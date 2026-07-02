@@ -7,7 +7,7 @@ fn hex(byte: &str) -> String {
     byte.repeat(32)
 }
 
-// ─── matches_event (ADR-0042 §5.1 store-admission predicate) ─────────────
+// ─── matches_event (ADR-0076 §5.1 store-admission predicate) ─────────────
 
 #[test]
 fn matches_event_default_shape_is_wildcard() {

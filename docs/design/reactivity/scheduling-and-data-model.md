@@ -10,7 +10,7 @@ All `on_event_inserted` / `on_event_removed` / `on_projection_changed` calls hap
 
 No view code spawns tokio tasks. No view code awaits. If a view needs async work (e.g., fetching a NIP-05 record to verify a domain), it returns immediately and the actor schedules a separate `CoreMsg` to handle the async completion.
 
-### 7.2 Delta buffer with within-view coalescing (ADR-0002)
+### 7.2 Delta buffer with within-view coalescing (ADR-0070)
 
 ```rust
 pub struct DeltaBuffer {
@@ -67,7 +67,7 @@ This is lossless: the `FullState` snapshot includes every open view's current pa
 
 ---
 
-## 7.4 The three-tier data model (ADR-0005 codifies the boundary)
+## 7.4 The three-tier data model (ADR-0070 codifies the boundary)
 
 Data lives in three derived tiers; only the bottom is source of truth.
 
@@ -102,12 +102,12 @@ Data lives in three derived tiers; only the bottom is source of truth.
 Properties:
 
 - **Tier 1** is the only persisted layer. Tier 2 is rebuilt from Tier 1 on actor restart. Tier 3 is rebuilt from Tier 2 on app restart.
-- **Tier 2 is bounded** (working-set policy, ADR-0003). The reverse index keys on attributes, not bodies, so it can cover unbounded Tier-1 events.
-- **Tier 3 is TTL-bounded** (ADR-0005). The platform shadow holds only domain entries with active component interest.
+- **Tier 2 is bounded** (working-set policy, ADR-0070). The reverse index keys on attributes, not bodies, so it can cover unbounded Tier-1 events.
+- **Tier 3 is TTL-bounded** (ADR-0070). The platform shadow holds only domain entries with active component interest.
 - **Reads flow up; updates flow down.** Component reads happen entirely in Tier 3 — no FFI on the read path. Updates from relays land in Tier 1, propagate to Tier 2 working set + projections, then to Tier 3 via `ViewBatch`.
 - **Subscription lifecycle is refcounted per tier.** Component refcount in Tier 3 drives `OpenView`/`CloseView` to Rust; Rust's claim count in Tier 2 drives planner REQ subscriptions to relays; relay REQs on the wire are the bottom of the stack.
 
-## 7.5 Working-set discipline (ADR-0003)
+## 7.5 Working-set discipline (ADR-0070)
 
 The `EventStore` holds a **bounded hot working set** in memory; cold events live in the durable storage backend. The reverse index covers both.
 
@@ -125,7 +125,7 @@ The working-set memory budget (≤ 100 MB at 100 active views, 10k hot events)
 is the D8 target for any current instrumentation covering this path. Total
 cached events on disk is unbounded.
 
-## 7.6 Allocation discipline (ADR-0004)
+## 7.6 Allocation discipline (ADR-0070)
 
 The harness binary uses a counting allocator (custom `GlobalAlloc` wrapper or `dhat`) to verify the zero-allocation-per-event steady-state invariant.
 

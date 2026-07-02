@@ -1,4 +1,4 @@
-//! `LifecycleCommand` — actor + app lifecycle verbs (ADR-0065).
+//! `LifecycleCommand` — actor + app lifecycle verbs (ADR-0071).
 //!
 //! Grouped under `ActorCommand::Lifecycle(LifecycleCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_lifecycle.rs`.

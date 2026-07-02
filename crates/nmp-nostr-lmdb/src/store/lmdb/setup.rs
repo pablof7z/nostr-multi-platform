@@ -182,7 +182,7 @@ impl Lmdb {
 
     /// NMP fork: build the LMDB index layer against a caller-owned env.
     ///
-    /// **The reason this fork exists.** ADR-0011 requires NMP to own the
+    /// **The reason this fork exists.** ADR-0072 requires NMP to own the
     /// `heed::Env` so its sub-dbs (watermarks, claims, provenance, domain
     /// rows) commit atomically with event writes inside a single `RwTxn`.
     /// `with_env` lets the caller hand in a pre-opened env (typically via

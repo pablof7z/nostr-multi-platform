@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 S1b cleared-signal regression tests.
+//! ADR-0070 Rung 3 S1b cleared-signal regression tests.
 //!
 //! Drives the full incremental-apply path for drain and copy-with-TTL keys:
 //! `Changed` non-empty, exactly one empty `Cleared`, then absent/unchanged.

@@ -55,7 +55,7 @@
 //!
 //! `profile_claims` (the `HashMap<pubkey, BTreeSet<consumer_id>>` refcount)
 //! is RETAINED as the resolve-refcount source-of-truth; the registry interest
-//! is driven off it (ADR-0063 Lane H: the `claimed_profiles` projection it once
+//! is driven off it (ADR-0070 Lane H: the `claimed_profiles` projection it once
 //! fed is deleted — resolved cards now flow through `refs.profile`).
 
 use super::super::{short_hex, truncate, Kernel, OutboundMessage};
@@ -114,7 +114,7 @@ fn profile_claim_interest_id(pubkey: &str) -> InterestId {
 }
 
 impl Kernel {
-    // ADR-0063 Lane H: claim_profile / claim_profile_with_hints deleted.
+    // ADR-0070 Lane H: claim_profile / claim_profile_with_hints deleted.
     // Call resolve_ref(RefNamespace::Profile, pubkey, consumer_id,
     //   RefShape::Profile(ProfileShape::Card), liveness.into(), force, Vec::new())
     // directly instead.
@@ -122,7 +122,7 @@ impl Kernel {
     // release_profile deleted. Call release_ref(RefNamespace::Profile, pubkey, consumer_id)
     // directly instead.
 
-    /// The `profile` reference resolver (ADR-0063). Generalizes the former
+    /// The `profile` reference resolver (ADR-0070). Generalizes the former
     /// `claim_profile_inner`: refcount the consumer, register/upgrade the
     /// kernel-owned kind:0 interest, record the widest demanded shape, and bump
     /// the per-key rev. `shape` selects the projected bytes (Lane C) and is
@@ -164,7 +164,7 @@ impl Kernel {
         // the after-state comparison below detects a real widen / upgrade.
         let widest_before = self.ref_demanded_profile_shape(&pubkey);
         let live_before = self.live_profile_claims.contains_key(&pubkey);
-        // ADR-0063 D5 — record THIS consumer's demanded shape (per-consumer so a
+        // ADR-0070 D5 — record THIS consumer's demanded shape (per-consumer so a
         // later release recomputes the widest among currently-live consumers —
         // HIGH 4). Only reached for a real claim (overflow returned above), so the
         // map stays bounded to claimed pubkeys. Independent of liveness.
@@ -191,12 +191,12 @@ impl Kernel {
         // so it must not advance any rev (the host already has the current row).
         if mutated {
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump profile_claims_ver. (the `refs.profile` projection
+            // ADR-0070 Rung 1: bump profile_claims_ver. (the `refs.profile` projection
             // derives from `profile_claims`, untouched by the registry migration.)
             self.projection_rev_tracker
                 .source_versions
                 .bump_profile_claims();
-            // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1
+            // ADR-0070 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1
             // of 3). The row appears / re-asserts; only this key's row need cross FFI.
             self.projection_rev_tracker
                 .source_versions
@@ -310,7 +310,7 @@ impl Kernel {
         );
     }
 
-    /// The `profile` reference release (ADR-0063). Generalizes the former
+    /// The `profile` reference release (ADR-0070). Generalizes the former
     /// `release_profile`: drop the consumer's refcount + registry owner, tear the
     /// slot down on the last owner, and bump the per-key rev.
     pub(in crate::kernel) fn release_profile_ref(
@@ -330,7 +330,7 @@ impl Kernel {
             remaining = consumers.len();
             remove_claim = consumers.is_empty();
         }
-        // ADR-0063 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
+        // ADR-0070 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
         // widest demanded shape recomputes over the CURRENTLY-LIVE consumers. A
         // Card consumer leaving while a Ref consumer remains narrows the row to
         // Ref (instead of staying Card until full teardown); the per-key rev bump
@@ -402,7 +402,7 @@ impl Kernel {
                 .source_versions
                 .bump_profile_claims();
         }
-        // ADR-0063 Lane B (D6a) — per-key rev. On a full teardown the row is gone:
+        // ADR-0070 Lane B (D6a) — per-key rev. On a full teardown the row is gone:
         // `clear_profile_row` bumps it to the final post-clear rev and immediately
         // removes the entry IN THE SAME CALL (BLOCKING 2 (b) — no retained-rev /
         // pending-clear state; the map stays bounded to live keys, D8). Otherwise a
@@ -413,7 +413,7 @@ impl Kernel {
                 .projection_rev_tracker
                 .source_versions
                 .clear_profile_row(pubkey);
-            // `_final_rev` is the value an ADR-0055 `Cleared` row would carry; the
+            // `_final_rev` is the value an ADR-0070 `Cleared` row would carry; the
             // downstream row-delta emitter (Lane A) is out of this branch's scope,
             // so it is dropped here and the rev entry is already gone.
         } else if mutated {

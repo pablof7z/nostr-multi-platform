@@ -8,11 +8,11 @@ namespace nmp.nip51;
 // Vec<String>, muted_event_ids: Vec<String> }`. That generic `Value` projection
 // stays the source of truth (still registered via `register_snapshot_projection`);
 // this buffer is emitted ALONGSIDE it in every `SnapshotFrame`'s
-// `typed_projections` sidecar (ADR-0037). A host with a `NMUT` decoder prefers
+// `typed_projections` sidecar (ADR-0072). A host with a `NMUT` decoder prefers
 // this typed payload; an un-updated host falls back to the generic `Value`
 // subtree. Purely additive.
 //
-// Field-for-field mirror (raw protocol values only, ADR-0032):
+// Field-for-field mirror (raw protocol values only, ADR-0072):
 //   * `muted_pubkeys: Vec<String>`  -> a FlatBuffers vector of 64-char lowercase
 //     hex author pubkeys, in the producer's (sorted) order.
 //   * `muted_event_ids: Vec<String>` -> a FlatBuffers vector of 64-char lowercase

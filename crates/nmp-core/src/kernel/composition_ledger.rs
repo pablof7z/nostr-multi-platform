@@ -1,4 +1,4 @@
-//! `CompositionLedger` — the explain-the-composition surface (ADR-0049 Part 2).
+//! `CompositionLedger` — the explain-the-composition surface (ADR-0069 Part 2).
 //!
 //! # Why this exists
 //!
@@ -41,7 +41,7 @@ use serde::Serialize;
 /// What happened to a single registration attempt.
 ///
 /// The four dispositions mirror the order-independent-yielding semantics of
-/// ADR-0049 Part 1 plus the late-wiring drop of Part 2.
+/// ADR-0069 Part 1 plus the late-wiring drop of Part 2.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub enum Disposition {
     /// A first-time registration: the key/slot was unclaimed and is now held

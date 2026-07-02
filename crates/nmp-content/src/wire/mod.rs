@@ -1,5 +1,5 @@
 //! `ContentTreeWire` — the serde-serializable FFI wire projection of
-//! [`crate::ContentTree`]. See `docs/decisions/0018-content-tree-ffi-projection.md`.
+//! [`crate::ContentTree`]. See `docs/decisions/0072-runtime-capability-and-shell-boundary.md`.
 //!
 //! The internal [`crate::Segment`] / [`crate::MarkdownNode`] tree is recursive
 //! and deliberately serde-free (it transitively contains

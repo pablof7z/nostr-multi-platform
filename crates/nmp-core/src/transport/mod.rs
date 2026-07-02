@@ -12,7 +12,7 @@ pub mod nmp_update_generated;
 
 pub use nmp_update_generated::nmp::transport as wire;
 
-// ADR-0064 / S2 (#1750) — the open write envelope (`DispatchEnvelope`). Separate
+// ADR-0071 / S2 (#1750) — the open write envelope (`DispatchEnvelope`). Separate
 // flatc-generated unit from the read-direction `UpdateFrame`; carried as raw
 // bytes across the one byte doorway on each boundary. The decode + fail-closed
 // gates + namespace routing live in `super::dispatch_envelope`.

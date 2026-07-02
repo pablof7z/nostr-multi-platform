@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1776) — TypeScript emitter for the `nmp.publish` UNION builders.
+//! ADR-0071 §3 (#1776) — TypeScript emitter for the `nmp.publish` UNION builders.
 //!
 //! Split out of [`crate::action_builders::ts`] purely as a size-management seam
 //! (AGENTS.md / V-12). This file hand-rolls the `PublishPayload` encode — a

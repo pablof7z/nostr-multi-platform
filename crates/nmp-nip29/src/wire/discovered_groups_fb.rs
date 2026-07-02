@@ -2,13 +2,13 @@
 //!
 //! The canonical FFI shape is the serde JSON of `DiscoveredGroupsSnapshot`
 //! (`DiscoveredGroupsProjection::snapshot_json`). This module adds a **typed
-//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
+//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0072)
 //! carried alongside the generic `Value` projection under the same
 //! `"nmp.nip29.discovered_groups"` key. The serde shape stays authoritative; this
 //! is the typed payload a `NDGS`-aware host decodes with generated accessors
 //! instead of JSON reflection.
 //!
-//! Raw data only (ADR-0032): protocol fields are raw values. Presentation-layer
+//! Raw data only (ADR-0072): protocol fields are raw values. Presentation-layer
 //! formatting (display-name fallback, avatar initials, subtitle) is the shell's
 //! responsibility and is not encoded here.
 //!

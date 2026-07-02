@@ -15,7 +15,7 @@ This crate is the missing end-to-end proof that the *full durable path* works
 over OPFS through the **real composition** (`BrowserAppBuilder` →
 `BrowserRuntimeHandle`), not just the bare engine — and that the durable state
 survives a real close+reopen of the same OPFS database. It is "coverage, not new
-mechanism": the hydration replay (ADR-0045 store→projection) and
+mechanism": the hydration replay (ADR-0070 store→projection) and
 `PublishStore`/`PublishEngine::resume_from_store` already exist; this harness
 exercises them over the durable OPFS-SQLite store inside a dedicated Worker (the
 only context where the OPFS SyncAccessHandle pool VFS works) and asserts every
@@ -42,7 +42,7 @@ non-zero.
 ### Honest scope boundary
 
 The hydration proofs assert the durable **read-model** (`EventStore`) the
-projection cache-serve (ADR-0045) reads from — both directly and **through the
+projection cache-serve (ADR-0070) reads from — both directly and **through the
 running runtime's reducer store** — plus that the full runtime composes and
 renders a frame over the reopened store with no relay. They do not decode the
 FlatBuffers projection payload in JS (no TS feed-projection decoder exists yet;

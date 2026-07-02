@@ -171,7 +171,7 @@ fn signed_event_gift_wrap_auto_d10_guard() {
         !toast
             .as_deref()
             .map_or(false, |t| t.contains("signed event rejected")),
-        "D10 refusal must NOT set the malformed-event toast (opacity ADR-0025); got: {toast:?}"
+        "D10 refusal must NOT set the malformed-event toast (opacity ADR-0072); got: {toast:?}"
     );
 }
 

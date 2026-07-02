@@ -1,4 +1,4 @@
-//! ADR-0058 §6 step-4 — Protected-cursor retention-claim publish wiring.
+//! ADR-0072 §6 step-4 — Protected-cursor retention-claim publish wiring.
 //!
 //! The kernel is the single writer of the store's log-retention claim set:
 //! after every register / advance / unregister it rebuilds the claims from its

@@ -1,4 +1,4 @@
-//! ADR-0064 / S2 (#1750) — the open write-command byte transport.
+//! ADR-0071 / S2 (#1750) — the open write-command byte transport.
 //!
 //! One generic *byte* doorway carries a [`DispatchEnvelope`] across both
 //! boundaries (native FFI `ptr,len` and the wasm `DispatchBytes { bytes }`).
@@ -23,7 +23,7 @@
 
 use crate::transport::write_wire::DispatchEnvelope;
 
-/// The single recognised envelope schema version (ADR-0064 §1 tripwire). An
+/// The single recognised envelope schema version (ADR-0071 §1 tripwire). An
 /// envelope carrying any other value is rejected — this is a fail-closed
 /// tripwire, not a version-negotiation field. Bumping it is a deliberate,
 /// lockstep change across every host builder + the registry decode.
@@ -51,7 +51,7 @@ pub const MAX_DISPATCH_ENVELOPE_BYTES: usize = 1024 * 1024;
 /// never interprets them (S3 owns the typed decode).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DecodedDispatch {
-    /// Host-supplied operation identity (ADR-0064 §4).
+    /// Host-supplied operation identity (ADR-0071 §4).
     pub correlation_id: String,
     /// Open-registry routing key — never hand-written by app code.
     pub action_namespace: String,
@@ -141,7 +141,7 @@ pub fn decode_dispatch_envelope(bytes: &[u8]) -> Result<DecodedDispatch, Dispatc
 
     // Gate 4 — schema_version tripwire. Read the RAW value and reject any
     // version we do not recognise. We do NOT attempt to decode an unknown
-    // version — fail closed (ADR-0064 §1).
+    // version — fail closed (ADR-0071 §1).
     let found_version = envelope.schema_version();
     if found_version != DISPATCH_ENVELOPE_SCHEMA_VERSION {
         return Err(DispatchDecodeError::SchemaVersionMismatch {
@@ -174,7 +174,7 @@ pub fn decode_dispatch_envelope(bytes: &[u8]) -> Result<DecodedDispatch, Dispatc
 }
 
 /// Encode a [`DispatchEnvelope`] to finished, file-identified bytes. The
-/// production app-facing path is the **generated typed builders** (ADR-0064 §3);
+/// production app-facing path is the **generated typed builders** (ADR-0071 §3);
 /// this constructor is the kernel-side primitive they (and round-trip tests)
 /// build on. `payload` is carried verbatim — the caller owns its typed encoding.
 #[must_use]

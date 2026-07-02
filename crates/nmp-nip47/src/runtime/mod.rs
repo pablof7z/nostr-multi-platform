@@ -4,7 +4,7 @@
 //! behind a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`).
 //! Each wallet `ActionModule` value and the `WalletInterceptor` hold their own
 //! `Arc` clone of the handle, obtained at composition time via
-//! [`crate::register::register_wallet`] (ADR-0052 rung 5.2 — register-by-value,
+//! [`crate::register::register_wallet`] (ADR-0072 rung 5.2 — register-by-value,
 //! no process-global install).
 //!
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path
@@ -183,13 +183,13 @@ pub type WalletRuntimeHandle = Arc<Mutex<Option<WalletRuntime>>>;
 /// Construct a fresh, empty [`WalletRuntimeHandle`]. The host clones it into
 /// (a) each wallet `ActionModule` value, (b) each `ProtocolCommand` those
 /// modules construct, and (c) the relay-text interceptor — every consumer
-/// carries the handle by value (ADR-0052 rung 5.2). No process-global slot.
+/// carries the handle by value (ADR-0072 rung 5.2). No process-global slot.
 #[must_use]
 pub fn new_wallet_runtime_handle() -> WalletRuntimeHandle {
     Arc::new(Mutex::new(None))
 }
 
-// ADR-0052 rung 5.2: the process-global `ACTIVE_WALLET_RUNTIME`
+// ADR-0072 rung 5.2: the process-global `ACTIVE_WALLET_RUNTIME`
 // (`OnceLock<WalletRuntimeHandle>`) plus `install_wallet_runtime` /
 // `active_wallet_runtime` were DELETED. The wallet runtime is now owned by
 // value: each of the three wallet `ActionModule`s holds an

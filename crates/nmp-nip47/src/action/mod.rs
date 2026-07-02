@@ -13,7 +13,7 @@
 //!
 //! #1607 — the bolt11 double-tap dedup guard that previously lived in the
 //! FFI layer (`nmp-ffi::wallet::NmpApp::inflight_bolt11`) was moved into
-//! [`WalletPayInvoiceModule`]. The guard is per-module-instance (ADR-0052 rung
+//! [`WalletPayInvoiceModule`]. The guard is per-module-instance (ADR-0072 rung
 //! 5.2: owned by value, no process-global), so two `NmpApp` instances in one
 //! process dedup independently. The FFI shims `nmp_app_wallet_*` were deleted;
 //! callers use `nmp_app_dispatch_action("nmp.wallet.*", …)` directly.
@@ -64,13 +64,13 @@ pub enum WalletAction {
 
 /// `ActionModule` implementation for `nmp.wallet.pay_invoice`.
 ///
-/// ADR-0052 rung 5.2: owns its per-app `WalletRuntimeHandle` by value, so the
+/// ADR-0072 rung 5.2: owns its per-app `WalletRuntimeHandle` by value, so the
 /// pay request reaches THIS app's wallet runtime (no process-global). This is
 /// what makes two `NmpApp` instances pay through independent wallets.
 ///
 /// #1607: the UI-layer bolt11 double-tap guard (`inflight_bolt11`) that
 /// previously lived in `nmp-ffi::NmpApp` is now owned here by value —
-/// the same ADR-0052 rung 5.2 principle that removed the wallet runtime
+/// the same ADR-0072 rung 5.2 principle that removed the wallet runtime
 /// process-global. Two `NmpApp` instances therefore dedup independently;
 /// neither can observe the other's in-flight invoices.
 pub struct WalletPayInvoiceModule {
@@ -100,7 +100,7 @@ impl ActionModule for WalletPayInvoiceModule {
 
     type Action = WalletAction;
 
-    /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
+    /// Typed FlatBuffers payload decode (ADR-0071 / #1756) — delegates to the
     /// `nmp.wallet.pay_invoice` `ActionPayload` codec (`N47P`). The registry
     /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
@@ -177,7 +177,7 @@ mod tests {
         ActionContext::default()
     }
 
-    /// A fresh, empty per-instance handle for unit tests. ADR-0052 rung 5.2:
+    /// A fresh, empty per-instance handle for unit tests. ADR-0072 rung 5.2:
     /// each module owns its handle, so tests no longer touch a process-global
     /// (the prior `OnceLock` install path that self-admittedly raced sibling
     /// tests is gone).
@@ -256,7 +256,7 @@ mod tests {
     /// `execute` emits exactly one `Protocol`-wrapped `WalletPayInvoiceCommand`
     /// carrying the registry-minted `correlation_id`.
     ///
-    /// ADR-0052 rung 5.2: the module owns its own handle, so this test no
+    /// ADR-0072 rung 5.2: the module owns its own handle, so this test no
     /// longer installs a process-global and CANNOT race a sibling test — the
     /// self-admitted `OnceLock` race documented here pre-rung is gone. Each
     /// test constructs an independent module value.

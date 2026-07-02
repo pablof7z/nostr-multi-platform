@@ -1,8 +1,9 @@
 # Projections and Incremental Emission
 
-> Primary authority: ADR-0055 (implemented), ADR-0037, ADR-0044, ADR-0045, ADR-0053 (folded →
-> ADR-0070). For the app-facing read lifecycle that drives projections, see
-> `read-sessions.md`. Verify symbols below against `crates/nmp-core/src/` before citing.
+> Primary authority: ADR-0070 for read/session ownership and ADR-0072 for the
+> runtime/binding boundary. For the app-facing read lifecycle that drives
+> projections, see `read-sessions.md`. Verify symbols below against
+> `crates/nmp-core/src/` before citing.
 
 ## What a projection is
 
@@ -10,7 +11,7 @@ A **typed projection** is a push-frame slice of kernel state serialized as opaqu
 bytes by the crate that owns it, carried under a string key in the snapshot frame's
 `typed_projections` sidecar (`TypedProjectionData`). `nmp-core` never interprets the bytes —
 it carries, routes, and omits them. The generic `payload:Value` / JSON projection lane is
-permanently deleted from the wire (`update_envelope.rs`; ADR-0044). Every projection encodes
+permanently deleted from the wire (`update_envelope.rs`; ADR-0072). Every projection encodes
 its own `schema_id` / `schema_version` / `file_identifier`.
 
 ## Registration seam
@@ -32,7 +33,7 @@ registry.register_typed("app.workspace.overview", || {
 - `remove(key)` enqueues one-shot `WireProjectionState::Cleared`. Use it when a transient feed
   closes — never silently stop returning `Some`.
 
-## Emission contract (ADR-0055)
+## Emission contract (ADR-0070)
 
 ### Incremental is the default, not an optimization
 
@@ -81,7 +82,7 @@ signal.
 ### Capability gate: `declare_incremental_apply`
 
 `app.declare_incremental_apply()` must be called before `nmp_app_start` (single-writer). Until
-called, the kernel emits full rows every tick (byte-identical to pre-ADR-0055 behavior). After,
+called, the kernel emits full rows every tick (byte-identical to pre-ADR-0070 behavior). After,
 the kernel may omit Unchanged projections. The gate is a shared `Arc<AtomicBool>`; calling it
 post-start returns `Err(AlreadyStarted)`. This is durable architecture, not a compat shim.
 
@@ -104,7 +105,7 @@ non-blocking (no I/O, no mutex the actor could hold), MUST NOT allocate in stead
 scans. Panic inside a closure is caught by `catch_unwind` (D6); the key is absent for that
 tick.
 
-## Store → projection fan-out (ADR-0045)
+## Store → projection fan-out (ADR-0070)
 
 `project_accepted_event` is the single post-insert projection seam for both live relay delivery
 and local store replay. Replay never goes through `store.insert` (re-inserting returns
@@ -112,10 +113,10 @@ Duplicate → no fan-out). Replay is interest-scoped, newest-window-bounded, bud
 tick (D8, D1), and idempotent. Both paths carry `Provenance` (relay vs `LocalStore`);
 supersession and fan-out are provenance-agnostic.
 
-## Retired vocabulary (do not teach)
+## Old vocabulary (do not teach)
 
-- **Tier-1/Tier-2/Tier-3** projection-tier vocabulary — retired (ADR-0053 folded into
-  ADR-0070).
+- **Tier-1/Tier-2/Tier-3** projection-tier vocabulary — ADR-0070 owns the
+  current typed-session rule.
 - **`declare_consumed_projections` as a composition step** — it is output transport narrowing,
   not a product read API.
 - **`open_interest` as the product read API** — substrate/diagnostic only; use typed read
@@ -131,7 +132,7 @@ supersession and fan-out are provenance-agnostic.
 - Treating absence of a key as Cleared — protocol contract violation.
 - Blocking, awaiting, or allocating (post-warmup) inside a registered closure — D8.
 - Re-composing a product screen with raw `open_interest` + `declare_consumed_projections` +
-  manual observer sinks — retired; use typed read sessions.
+  manual observer sinks; use typed read sessions.
 
 ## Key symbols (verify before citing)
 

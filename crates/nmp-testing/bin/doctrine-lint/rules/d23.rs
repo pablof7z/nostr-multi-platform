@@ -3,7 +3,7 @@
 //! The event-flow spine landed a SINGLE accepted-event persistence path: the
 //! kernel's `verify_and_persist` (`crates/nmp-core/src/kernel/ingest/persistence.rs`)
 //! owns the `sig-verify → store.insert → raw-tap → provenance → TTL` sequence
-//! (ADR-0057). Every event that enters the store does so
+//! (ADR-0070). Every event that enters the store does so
 //! through that one door. A NEW ingest ladder — a second function that writes
 //! to the `EventStore` directly — would re-fragment the spine: it would bypass
 //! provenance accounting, the raw-tap, TTL stamping, and the dispatcher, and
@@ -131,7 +131,7 @@ fn message() -> String {
      (event-flow PR1 lock). The kernel's `verify_and_persist` \
      (kernel/ingest/persistence.rs) is the SINGLE accepted-event persistence path \
      (sig-verify → store.insert → raw-tap → provenance → TTL, \
-     ADR-0057). A second store-insert site is a new ingest ladder that bypasses \
+     ADR-0070). A second store-insert site is a new ingest ladder that bypasses \
      provenance accounting, the raw-tap, TTL stamping, and the dispatcher"
         .to_string()
 }

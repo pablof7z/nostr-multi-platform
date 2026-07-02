@@ -48,7 +48,7 @@ impl super::KernelReducer {
     ///
     /// The `EventStore` trait stays synchronous and unchanged; platform
     /// composition opens any platform-specific backend first, then injects the
-    /// ready handle here. This is the accepted ADR-0054 Stage #5 seam for the
+    /// ready handle here. This is the accepted ADR-0072 Stage #5 seam for the
     /// future OPFS-SQLite wasm backend.
     #[must_use]
     pub fn with_store(store: Arc<dyn EventStore>) -> Self {

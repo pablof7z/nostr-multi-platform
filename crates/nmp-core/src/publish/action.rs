@@ -160,7 +160,7 @@ impl ActionModule for PublishModule {
         true
     }
 
-    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway. The decode
+    /// ADR-0071 / S3: opt into the typed FlatBuffers payload doorway. The decode
     /// (including the fail-closed `schema_version` gate, run BEFORE `start()`)
     /// delegates to `<PublishAction as ActionPayload>::decode` in
     /// `publish/wire.rs` — the single typed-decode site.

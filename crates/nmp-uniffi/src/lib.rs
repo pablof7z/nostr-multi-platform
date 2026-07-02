@@ -207,7 +207,7 @@ impl NmpApp {
     /// Dispatch an NMPD FlatBuffers action envelope and return the outcome.
     ///
     /// * `DispatchOutcome.correlation_id` — present on acceptance (the
-    ///   HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0064 §4).
+    ///   HOST-SUPPLIED envelope id, not a kernel-minted one, per ADR-0071 §4).
     /// * `DispatchOutcome.error` — present on rejection or post-mint failure.
     /// * `DispatchOutcome.code` — present for coded rejections (issue #1734).
     ///

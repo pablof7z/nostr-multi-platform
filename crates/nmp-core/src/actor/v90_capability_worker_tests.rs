@@ -1,6 +1,6 @@
 //! V-90 Site 2 — `CapabilityResultReady` dispatch-arm tests.
 //!
-//! Tests the four required properties from ADR-0040 §3:
+//! Tests the four required properties from ADR-0072 §3:
 //!
 //! 1. **Actor does not block** — a slow capability callback does NOT stall
 //!    the actor; it continues processing other commands while the capability
@@ -219,7 +219,7 @@ fn dispatch_capability_result(
 // Test: removed-account result is dropped — no toast for the active account
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// ADR-0040 §3 account-switch safety: a `CapabilityResultReady` for a
+/// ADR-0072 §3 account-switch safety: a `CapabilityResultReady` for a
 /// since-removed account is silently dropped. The ACTIVE account's toast must
 /// NOT be set (no spurious cross-account error). This is the core guarantee of
 /// the serialized FIFO design: removed-account results never pollute the

@@ -1,7 +1,7 @@
-//! ADR-0063 Lane A — the invariant property-test harness (THE MERGE GATE).
+//! ADR-0070 Lane A — the invariant property-test harness (THE MERGE GATE).
 //!
 //! This is the correctness gate for the whole #1671 campaign. It asserts the
-//! row-delta carrier + reference host-cache satisfy the five ADR-0063
+//! row-delta carrier + reference host-cache satisfy the five ADR-0070
 //! invariants at ROW grain, under random claim/release/ingest/epoch-reset
 //! sequences, with every batch round-tripped through the actual FlatBuffers
 //! wire codec (`encode_ref_row_delta_batch` → `decode_ref_row_delta_batch`)
@@ -13,7 +13,7 @@
 //!   incremental stream applied == the full snapshot of the final state.
 //! - [`prop_baseline_repairs_after_perturbation`] — under injected drops /
 //!   reorders / corruption, a final baseline reconstructs the full truth (the
-//!   ADR-0055 D5 "worst case is one extra full snapshot, never a permanent
+//!   ADR-0070 D5 "worst case is one extra full snapshot, never a permanent
 //!   desync" guarantee).
 //!
 //! The explicit `invariant_*` / behaviour tests pin each invariant individually
@@ -193,7 +193,7 @@ proptest! {
 
     /// Invariant #3 (resync repairs): under injected drops / reorders /
     /// corruption, a FINAL BASELINE reconstructs the complete truth — the
-    /// ADR-0055 D5 guarantee that the worst case is one extra full snapshot,
+    /// ADR-0070 D5 guarantee that the worst case is one extra full snapshot,
     /// never a permanent desync.
     #[test]
     fn prop_baseline_repairs_after_perturbation(
@@ -226,7 +226,7 @@ proptest! {
     /// transition as its own per-namespace incremental batch, deliver the whole
     /// stream in a RANDOM permutation with random drops/gaps, then apply a final
     /// reliable baseline. The rev-safe clears + per-key reorder guard keep every
-    /// out-of-order apply panic-free and non-corrupting, and the ADR-0055 D5
+    /// out-of-order apply panic-free and non-corrupting, and the ADR-0070 D5
     /// repair baseline reconstructs the EXACT final ground truth — proving
     /// incremental-applied == full-snapshot-of-final-state under reorder + drop +
     /// gap + epoch.

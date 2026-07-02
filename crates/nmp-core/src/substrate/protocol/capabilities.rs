@@ -33,7 +33,7 @@ pub trait LocalSignerAccess {
     /// Active account's hex pubkey, backend-transparent (local nsec OR remote
     /// signer). `None` when no account is active.
     ///
-    /// ADR-0050 §D5 — the gift-wrap DM chain resolves the active account's
+    /// ADR-0072 §D5 — the gift-wrap DM chain resolves the active account's
     /// pubkey ONCE at step 1 through this accessor and pins every subsequent
     /// port step with `signer_pubkey: Some(hex)`, so a mid-chain account switch
     /// signs the seal with the originating account. Replaces `signer_for_seal`.
@@ -101,7 +101,7 @@ pub trait RecipientRelayLookup {
     fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String>;
 }
 
-/// ADR-0052 §D5 — the narrow kernel surface the NIP-47 wallet runtime
+/// ADR-0072 §D5 — the narrow kernel surface the NIP-47 wallet runtime
 /// mutates on the actor thread, promoted off the deleted `kernel_mut()`
 /// escape hatch.
 ///
@@ -166,7 +166,7 @@ pub trait WalletKernelAccess {
     fn mark_changed_since_emit(&self);
 }
 
-/// ADR-0052 §D5 — the zap-specific cached-profile read, promoted off the
+/// ADR-0072 §D5 — the zap-specific cached-profile read, promoted off the
 /// generic [`ProtocolCommandContext`](super::ProtocolCommandContext) (where it
 /// was `lnurl_for_pubkey`, visible to *every* command) onto a dedicated
 /// capability only the NIP-57 zap path reaches.
@@ -183,7 +183,7 @@ pub trait ZapProfileLookup {
     fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String>;
 }
 
-/// ADR-0052 §D4 — the narrow capability that reaches the actor's configured
+/// ADR-0072 §D4 — the narrow capability that reaches the actor's configured
 /// [`HostOpHandler`](crate::substrate::HostOpHandler).
 ///
 /// This is the seam K2 rung 5.4 adds so the persistent, host-installed handler

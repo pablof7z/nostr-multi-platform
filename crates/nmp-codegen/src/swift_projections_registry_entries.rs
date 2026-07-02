@@ -88,7 +88,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_Nip46Onboarding"),
         }),
     },
-    // Unified remote-signer health (ADR-0048 D6 — generalises the V-14 step b
+    // Unified remote-signer health (ADR-0072 D6 — generalises the V-14 step b
     // `bunker_connection_state` projection; hard-break rename, no compat key).
     // `projections["signer_state"]` — null when no remote-signer session is
     // active; `{ signer_kind, state, reason, is_ready, is_awaiting_approval,
@@ -252,7 +252,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_ActionLifecycleSnapshot"),
         }),
     },
-    // D0 views cluster — `profile` (typed). V-112 (ADR-0042): author_view /
+    // D0 views cluster — `profile` (typed). V-112 (ADR-0076): author_view /
     // thread_view deleted. #1610: the JSON-era `timeline`, `inserted`,
     // `updated`, `removed` per-tick delta slots deleted. OP-feed sessions are
     // app-owned projections that decode the shared `nmp.note_feed.opfeed` /
@@ -374,7 +374,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         }),
     },
     // Pre-resolved embed-envelope map over authoritative `refs.event` rows
-    // (issue #1283 / ADR-0034 §embed-sidecar) — keyed by `primary_id`, one
+    // (issue #1283 / ADR-0072 §embed-sidecar) — keyed by `primary_id`, one
     // `EmbeddedEventEnvelope` (the kind-dispatched `EmbedKindProjection`) per
     // currently resolved event ref. Produced by `crates/nmp-native-runtime/src/embed_sidecar.rs`,
     // which materialises `refs.event` rows through
@@ -419,7 +419,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             swift_reader_type: Some("nmp_kernel_SettingsHubSnapshot"),
         }),
     },
-    // V-107 / ADR-0039 / ADR-0025-amended: Marmot (MLS-over-Nostr) push
+    // V-107 / ADR-0070 / ADR-0072-amended: Marmot (MLS-over-Nostr) push
     // projections. Both are registered by `nmp_marmot::install` during
     // explicit Rust composition. The runtime emits empty objects when no
     // local-key Marmot projection is active.

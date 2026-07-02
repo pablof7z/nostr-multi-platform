@@ -17,10 +17,13 @@ pub(super) use super::*;
 mod fixtures_tests;
 pub(super) use fixtures_tests::{follow, pubkey, push_legacy};
 
-/// Compile-count smoke tests and the `apply_selection` selection-budget
-/// wiring (relay-cap pruning, app-relay preservation, dropped-relay CLOSE
-/// emission, indexer-relay override threading).
-mod selection_and_apply_tests;
+/// PD-033-C bootstrap content/indexer relay wiring, plus the remaining
+/// `lifecycle.rs` setter/accessor round-trips (indexer replace semantics,
+/// planner-error seam, probed-mailbox clearing).
+mod bootstrap_relays_tests;
+/// `lifecycle.rs` constructor + accessor/setter surface: `new`/`Default`
+/// zero-state parity and the dead-relay state-machine trigger contract.
+mod constructor_and_relay_state_tests;
 /// Dead-relay exclusion and recovery: authors route off dead relays and
 /// back on once marked alive again; `mark_relay_dead`/`mark_relay_alive`
 /// idempotency and trigger emission.
@@ -28,10 +31,7 @@ mod dead_relay_exclusion_tests;
 /// T142 `drain_tick()` actor-idle-loop driver: empty-inbox no-op, trigger
 /// side effects (auth-gate pause/flush), and per-tick compile coalescing.
 mod drain_tick_tests;
-/// `lifecycle.rs` constructor + accessor/setter surface: `new`/`Default`
-/// zero-state parity and the dead-relay state-machine trigger contract.
-mod constructor_and_relay_state_tests;
-/// PD-033-C bootstrap content/indexer relay wiring, plus the remaining
-/// `lifecycle.rs` setter/accessor round-trips (indexer replace semantics,
-/// planner-error seam, probed-mailbox clearing).
-mod bootstrap_relays_tests;
+/// Compile-count smoke tests and the `apply_selection` selection-budget
+/// wiring (relay-cap pruning, app-relay preservation, dropped-relay CLOSE
+/// emission, indexer-relay override threading).
+mod selection_and_apply_tests;

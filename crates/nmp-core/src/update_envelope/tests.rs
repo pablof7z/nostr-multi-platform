@@ -81,10 +81,10 @@ fn golden_envelope() -> SnapshotEnvelope {
         last_error_toast: Some("boom".to_string()),
         last_error_category: Some("publish".to_string()),
         last_planner_error: None,
-        // ADR-0055 Rung 2: non-default values to catch codec transpositions.
+        // ADR-0070 Rung 2: non-default values to catch codec transpositions.
         snapshot_epoch: 3,
         session_id: 1_700_000_000_000,
-        // ADR-0055 Rung 3 S5: serialize_us is produced by the production kernel
+        // ADR-0070 Rung 3 S5: serialize_us is produced by the production kernel
         // path (encode_snapshot_with_envelope) which reads self.last_serialize_us.
         // The auxiliary encode_snapshot_frame path writes 0 via MetricsArgs default,
         // so the round-trip of this fixture reads back 0.
@@ -156,7 +156,7 @@ fn typed_sidecar_round_trips_opaque_payloads_alongside_envelope() {
             schema_version: 3,
             file_identifier: "TMLN".to_string(),
             payload: vec![0x00, 0x01, 0xfe, 0xff, 0x42],
-            // ADR-0055 Rung 2: explicit defaults so assert_eq round-trips correctly.
+            // ADR-0070 Rung 2: explicit defaults so assert_eq round-trips correctly.
             ..Default::default()
         },
         TypedProjectionData {

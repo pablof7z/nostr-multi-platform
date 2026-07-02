@@ -23,12 +23,11 @@ decision spine is [ADR-0069 through ADR-0073](../decisions/README.md).
 Document roles:
 
 - **[ADR-0069..0073](../decisions/README.md)** — the decision spine; start
-  here for rationale, migration history, and the "why" behind each constraint.
+  here for rationale, enforcement boundaries, and the "why" behind each
+  constraint.
 - **[`docs/aim.md`](../aim.md)** — the immutable architectural north star and
   foundation. It states what NMP must always be; it is not a guide to the
   current developer API.
-- **`docs/new-arch/`** — retired; all guidance has migrated into ADR-0069..0073
-  and this document.
 - **[`docs/product-spec/doctrine.md`](../product-spec/doctrine.md)** — D0–D10
   doctrine; authoritative for kernel constraints and agent extensions.
 - **[`docs/architecture/crate-boundaries.md`](crate-boundaries.md)** — crate

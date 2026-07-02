@@ -3,7 +3,7 @@
 //! The `handle_text` dispatch routes the `["EOSE", sub_id]` frame here. This is
 //! the keep-live decision (follow-feed / firehose / persistent subs survive
 //! EOSE; everything else is CLOSEd and evicted), the F-TTL freshness stamp, and
-//! the K3 Stage D1 coverage-ledger write (ADR-0056 §3).
+//! the K3 Stage D1 coverage-ledger write (ADR-0072 §3).
 
 use serde_json::json;
 
@@ -46,14 +46,14 @@ impl Kernel {
             sub.state = if keep_live { "live" } else { "closed" }.to_string();
             sub.since_floor
         });
-        // K3 Stage D1 (ADR-0056 §3) — record completed coverage at EOSE.
+        // K3 Stage D1 (ADR-0072 §3) — record completed coverage at EOSE.
         // `record_eose_coverage` also bumps `lifecycle.watermark_generation`
         // for un-floored planner subs so the compile-input fingerprint reflects
         // the new since-floor on the next triggered recompile.
         if let Some(since_floor) = eose_row_floor {
             self.record_eose_coverage(sub_id, relay_url, since_floor, self.now_secs());
         }
-        // V-112 (ADR-0042): thread-ids-/thread-replies- inflight-flag updates
+        // V-112 (ADR-0076): thread-ids-/thread-replies- inflight-flag updates
         // deleted; thread_view state no longer exists in the kernel.
         // T82/T104: a discovery oneshot's first stored set has landed (OneShot
         // lifecycle == "EOSE closes"). Complete + release the token; the generic

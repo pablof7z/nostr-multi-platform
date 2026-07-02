@@ -22,7 +22,7 @@
 //! * registers the three wallet `ActionModule` values
 //!   ([`WalletConnectModule`] / [`WalletDisconnectModule`] /
 //!   [`WalletPayInvoiceModule`]) — each owns an `Arc` clone of the handle
-//!   (ADR-0052 rung 5.2: register-by-value, no process-global);
+//!   (ADR-0072 rung 5.2: register-by-value, no process-global);
 //! * installs a `WalletInterceptor` (implementing the substrate-generic
 //!   `RelayTextInterceptor` trait) via `app.add_relay_text_interceptor` — the
 //!   interceptor holds its own `Arc` clone of the handle and drives inbound
@@ -33,7 +33,7 @@
 //!
 //! Two `NmpApp` instances in one process therefore drive fully independent
 //! wallet runtimes — the deleted `ACTIVE_WALLET_RUNTIME` process-global is
-//! gone (ADR-0052 rung 5.2).
+//! gone (ADR-0072 rung 5.2).
 //!
 //! D0: the kernel never names "wallet" / "NWC" / "kind:23194" — those nouns
 //! live entirely here.

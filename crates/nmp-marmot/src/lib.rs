@@ -45,7 +45,7 @@
 //!    under the `"nmp.marmot"` action namespace installed by [`install`]. The
 //!    runtime's normal action dispatcher targets that namespace, and a typed
 //!    protocol command runs the op against the live crate-owned runtime on the
-//!    actor thread. The ADR-0025 native lifecycle exception is retired;
+//!    actor thread. The ADR-0072 native lifecycle exception is retired;
 //!    explicit Rust composition installs the runtime.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate

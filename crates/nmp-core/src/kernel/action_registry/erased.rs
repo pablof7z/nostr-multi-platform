@@ -9,9 +9,9 @@
 //!
 //! * **JSON** (`start` / `execute` taking `action_json: &str`) — the legacy
 //!   `nmp_app_dispatch_action(namespace, action_json)` doorway every module
-//!   still supports; ADR-0064 migrates it away per-crate.
+//!   still supports; ADR-0071 migrates it away per-crate.
 //! * **Typed FlatBuffers bytes** (`start_bytes` / `execute_bytes` taking
-//!   `payload: &[u8]`) — ADR-0064 / S3 (#1751). This adapter is the SOLE
+//!   `payload: &[u8]`) — ADR-0071 / S3 (#1751). This adapter is the SOLE
 //!   decoder of the open transport's opaque per-crate payload: there is exactly
 //!   ONE decode function, [`ActionModule::decode_payload`] (which delegates to
 //!   the module's [`crate::substrate::ActionPayload`] impl, running the
@@ -34,7 +34,7 @@ use crate::substrate::{ActionContext, ActionModule, ActionPayloadDecodeError, Ac
 /// `ActionModule` carries an associated `Action` type, so it cannot be stored
 /// as `Box<dyn ActionModule>` directly. This trait erases it to a JSON string
 /// at the boundary so the registry can hold a heterogeneous map of modules.
-/// [`ActionModuleAdapter`] is the sole implementor (ADR-0027 deleted the
+/// [`ActionModuleAdapter`] is the sole implementor (ADR-0071 deleted the
 /// pre-existing `ClosureModule` half); it round-trips each module's typed
 /// action shape through serde.
 pub(super) trait ErasedActionModule: Send + Sync {
@@ -59,7 +59,7 @@ pub(super) trait ErasedActionModule: Send + Sync {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String>;
 
-    /// Typed-payload (ADR-0064 / S3) twin of [`Self::start`]: decode the OPAQUE
+    /// Typed-payload (ADR-0071 / S3) twin of [`Self::start`]: decode the OPAQUE
     /// FlatBuffers `payload` into the module's `Action` and validate it.
     ///
     /// The decode runs the fail-closed `schema_version` gate BEFORE `start()`
@@ -91,7 +91,7 @@ pub(super) trait ErasedActionModule: Send + Sync {
     ) -> Result<(), TypedDispatchError>;
 
     /// `true` iff the module has migrated to a typed FlatBuffers payload — i.e.
-    /// it overrides [`ActionModule::decode_payload`] to return `Some` (ADR-0064
+    /// it overrides [`ActionModule::decode_payload`] to return `Some` (ADR-0071
     /// / S3, #1756). This is the intrinsic typed-only invariant probe: the byte
     /// doorway ([`Self::start_bytes`] / [`Self::execute_bytes`]) fails closed as
     /// [`TypedDispatchError::NotTypedCapable`] on any module for which this is
@@ -139,7 +139,7 @@ impl core::fmt::Display for TypedDispatchError {
 /// Adapter binding a concrete [`ActionModule`] `M` to the dyn-safe
 /// [`ErasedActionModule`] facade.
 ///
-/// ADR-0052 rung 5.2: the adapter holds the module **by value** (was a ZST
+/// ADR-0072 rung 5.2: the adapter holds the module **by value** (was a ZST
 /// `PhantomData<M>`). This lets a stateful module own its dependencies (an
 /// `Arc<WalletRuntimeHandle>`, an `Arc<DmRelayCache>`, …) captured by the host
 /// at composition time, so `start`/`execute` reach that state through
@@ -170,7 +170,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         ctx: &mut ActionContext,
         payload: &[u8],
     ) -> Result<(), TypedDispatchError> {
-        // THE single typed-decode site (ADR-0064 / S3). `decode_payload` is the
+        // THE single typed-decode site (ADR-0071 / S3). `decode_payload` is the
         // module's opt-in hook; `None` means it has not migrated. The decode
         // (which runs the fail-closed `schema_version` gate) happens HERE,
         // BEFORE `start()`.
@@ -212,7 +212,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 }
 
 /// Sorted namespaces of the registry's modules that are NOT typed-capable — the
-/// intrinsic typed-only byte-doorway gate's core (ADR-0064 / #1756). Lives here,
+/// intrinsic typed-only byte-doorway gate's core (ADR-0071 / #1756). Lives here,
 /// beside [`ErasedActionModule::is_typed_capable`] (the per-module probe it
 /// folds over), to keep the registry orchestrator file under the 500-LOC ceiling
 /// (V-12); [`super::ActionRegistry::untyped_namespaces`] is the thin delegator.

@@ -1,4 +1,4 @@
-//! ADR-0042 §5.1 — generic `open_interest` store admission.
+//! ADR-0076 §5.1 — generic `open_interest` store admission.
 //!
 //! `should_store_event` must admit an inbound event when it matches the
 //! `InterestShape` of ANY active registered interest — not only the bespoke
@@ -63,7 +63,7 @@ fn register_open_interest(kernel: &mut Kernel, shape: crate::planner::InterestSh
 /// named by an active `open_interest` (`{"kinds":[1],"authors":["<hex>"]}`),
 /// is admitted to the `events` read-cache (so the feed-engine observer fan-out
 /// can expose it) — yet it must NOT enter the follow-only home `timeline`
-/// ordering projection (ADR-0042 §5.1 exposure point 2).
+/// ordering projection (ADR-0076 §5.1 exposure point 2).
 #[test]
 fn open_interest_admits_non_followed_author_event_without_home_timeline_pollution() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

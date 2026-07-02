@@ -7,12 +7,12 @@
 //! - native timers that periodically query framework state;
 //! - native construction of raw publish envelopes (`PublishRaw`,
 //!   `PublishProfile`);
-//! - app-facing **namespace/body** action dispatch that leaks the ADR-0064
+//! - app-facing **namespace/body** action dispatch that leaks the ADR-0071
 //!   byte transport vocabulary above generated or bridge-internal code.
 //!   Specifically: any dispatch token (see `TRANSPORT_DISPATCH_TOKENS`) that
 //!   appears on the same line as a `"nmp.` namespace string literal.  The
 //!   pure-bytes doorway `appHandle?.dispatchActionBytes(bytes)` — with no
-//!   namespace literal — is the sanctioned ADR-0064 endpoint and is NOT
+//!   namespace literal — is the sanctioned ADR-0071 endpoint and is NOT
 //!   flagged by this rule.  Hand-written wrappers must be named without the
 //!   transport vocabulary (e.g. `dispatchBytes`) so they are not confused with
 //!   transport-shaped calls;
@@ -171,7 +171,7 @@ fn check_line(path: &Path, line: &str, is_comment: bool, in_loop: bool) -> Vec<H
         // Only flag transport-dispatch tokens when a namespace string literal
         // is present on the same line.  The pure-bytes doorway call
         // `appHandle?.dispatchActionBytes(bytes)` (no "nmp." literal) is
-        // the sanctioned ADR-0064 endpoint and must NOT be flagged.
+        // the sanctioned ADR-0071 endpoint and must NOT be flagged.
         if line.contains("\"nmp.") {
             for token in TRANSPORT_DISPATCH_TOKENS {
                 push_token_hits(

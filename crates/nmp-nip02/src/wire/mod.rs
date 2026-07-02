@@ -1,9 +1,9 @@
 //! Typed FlatBuffers wire codecs for `nmp-nip02`.
 //!
-//! * [`typed_fb`] — the READ-direction projection sidecar (ADR-0037): the serde
+//! * [`typed_fb`] — the READ-direction projection sidecar (ADR-0072): the serde
 //!   JSON `"nmp.follow_list"` snapshot stays authoritative and this typed
 //!   sidecar rides alongside it in every `SnapshotFrame`.
-//! * [`action_payload`] — the WRITE-direction action payloads (ADR-0064 / S3
+//! * [`action_payload`] — the WRITE-direction action payloads (ADR-0071 / S3
 //!   #1751): the `ActionPayload` impls for `PubkeyAction` (follow/unfollow) and
 //!   `FollowManyAction` (follow_many), decoded by the registry adapter.
 

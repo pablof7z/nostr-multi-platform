@@ -4,7 +4,7 @@ namespace nmp.nip17;
 //
 // The producer is the `nmp_nip17::register_runtime` typed projection closure.
 // This buffer is emitted in every `SnapshotFrame`'s `typed_projections` sidecar
-// (ADR-0037).
+// (ADR-0072).
 //
 // Field-for-field mirror (raw protocol values only):
 //   * `active_pubkey: Option<String>` carries a `has_active_pubkey` presence

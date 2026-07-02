@@ -2,7 +2,7 @@
 //!
 //! [`SignContinuation`] and [`CipherContinuation`] are the resolution callbacks
 //! the backend-transparent signer-port commands carry
-//! (`ActorCommand::SignEventForAccount` and the ADR-0050 §D1
+//! (`ActorCommand::SignEventForAccount` and the ADR-0072 §D1
 //! `Nip44{Encrypt,Decrypt}ForAccount` cipher verbs). They live here — outside
 //! the `native`-gated `pending_sign` module — because the `ActorCommand` enum
 //! that names them is always-compiled (only the actor *runtime* that consumes it
@@ -44,7 +44,7 @@ impl std::fmt::Debug for SignContinuation {
 }
 
 /// Boxed continuation invoked with the resolved NIP-44 cipher outcome — the
-/// `String`-payload twin of [`SignContinuation`] (ADR-0050 §D1). Resolved with
+/// `String`-payload twin of [`SignContinuation`] (ADR-0072 §D1). Resolved with
 /// the ciphertext (encrypt) / plaintext (decrypt), or `Err(reason)` on failure.
 pub struct CipherContinuation(pub Box<dyn FnOnce(Result<String, String>) + Send>);
 

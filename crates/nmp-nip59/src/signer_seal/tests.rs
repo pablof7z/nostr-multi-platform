@@ -1,4 +1,4 @@
-//! Tests for the pure NIP-59 seal/wrap functions (ADR-0050 §D5).
+//! Tests for the pure NIP-59 seal/wrap functions (ADR-0072 §D5).
 //!
 //! [`gift_wrap_local`] composes the four pure steps end-to-end; the chain it
 //! produces must round-trip through [`unwrap_gift_wrap`] to the original rumor.

@@ -32,7 +32,7 @@ namespace nmp.kernel;
 // producer already maps engine `"ok"` -> `"published"`). `error` is
 // `Option<String>` (serialises as JSON `null`-when-`None`, key always present)
 // carried as an explicit `has_error` flag. The opaque structured `result` body
-// (ADR-0043 Decision 4) is arbitrary forwarded JSON — modelled as the SERIALISED
+// (ADR-0071 Decision 4) is arbitrary forwarded JSON — modelled as the SERIALISED
 // JSON string with a `has_result` presence flag (nmp-core forwards, never
 // interprets — D0).
 //
@@ -56,7 +56,7 @@ table ActionResult {
   // Error prose; `has_error == false` mirrors JSON `null`.
   has_error:bool;
   error:string;
-  // Opaque forwarded structured result body (ADR-0043 Decision 4), carried as
+  // Opaque forwarded structured result body (ADR-0071 Decision 4), carried as
   // the SERIALISED JSON string; `has_result == false` mirrors an absent
   // `result` field.
   has_result:bool;

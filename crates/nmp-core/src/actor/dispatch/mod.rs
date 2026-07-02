@@ -59,7 +59,7 @@ mod nip65_tests;
 #[cfg(test)]
 mod open_interest_tests;
 
-/// M2 (ADR-0042) — thin shim delegating to the always-compiled
+/// M2 (ADR-0076) — thin shim delegating to the always-compiled
 /// [`crate::subs::interest_builder::build_interest_pair`].
 pub(crate) fn build_open_interest(
     filter_json: &str,
@@ -101,11 +101,11 @@ pub(super) struct ActorContext<'a> {
     /// Active-account `nostr::Keys` slot; written with `mls_local_nsec` on every identity mutation.
     pub(super) active_local_keys: &'a ActiveLocalKeysSlot,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
-    /// Unified parked-op queue (ADR-0050 §D2).
+    /// Unified parked-op queue (ADR-0072 §D2).
     pub(super) parked_ops: &'a mut ParkedSignerOps,
-    /// Actor's own waking inbox sender (ADR-0050 §D3a). D8 — only cloned out, never recv'd.
+    /// Actor's own waking inbox sender (ADR-0072 §D3a). D8 — only cloned out, never recv'd.
     pub(super) command_tx_self: &'a crate::actor::CommandSender,
-    /// Capability-worker queue sender (ADR-0040 §3 / V-90). D8 — only sends.
+    /// Capability-worker queue sender (ADR-0072 §3 / V-90). D8 — only sends.
     pub(super) capability_work_tx: &'a CapabilityWorkSender,
     /// Snapshotted actor setup; Reset re-applies the same immutable view.
     pub(super) config: &'a ActorConfig,
@@ -114,7 +114,7 @@ pub(super) struct ActorContext<'a> {
         &'a Arc<Mutex<Option<Arc<crate::kernel::routing_trace::RoutingTraceProjection>>>>,
     /// V-83 event-store slot — re-published on Reset.
     pub(super) event_store_slot: &'a crate::slots::EventStoreSlot,
-    /// ADR-0058 pull-cursor registry slot — re-published on Reset.
+    /// ADR-0072 pull-cursor registry slot — re-published on Reset.
     pub(super) pull_cursor_registry_slot: &'a crate::slots::PullCursorRegistryHandleSlot,
     /// V-82 FFI-shared active-account slot — re-bound on Reset.
     pub(super) active_account_slot: &'a crate::slots::ActiveAccountSlot,
@@ -151,7 +151,7 @@ impl<'a> ActorContext<'a> {
     }
 }
 
-/// Family-level dispatch delegator (ADR-0065). Matches the `ActorCommand`
+/// Family-level dispatch delegator (ADR-0071). Matches the `ActorCommand`
 /// family first, then delegates to the per-family `dispatch` function in the
 /// matching `cmd_*.rs` sub-module.
 pub(super) fn dispatch_command(
@@ -200,7 +200,7 @@ pub(super) fn dispatch_command(
     }
 }
 
-/// ADR-0050 signer-session capability port dispatch (the `Sign` family).
+/// ADR-0072 signer-session capability port dispatch (the `Sign` family).
 /// Routes through `signer_port_dispatch` — local keys resolve inline, remote
 /// signers park under the continuation sink.
 fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
@@ -367,7 +367,7 @@ fn dispatch_test_support(
     }
 }
 
-// ── ADR-0065 family dispatchers (Publish / Contacts / Relay / ActionLedger) ─
+// ── ADR-0071 family dispatchers (Publish / Contacts / Relay / ActionLedger) ─
 // Moved here from cmd_publish.rs to keep that file under the 500-LOC ceiling.
 
 /// `PublishCommand` family dispatch.

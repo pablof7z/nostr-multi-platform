@@ -1,7 +1,7 @@
 # M6 — Signers + Accounts impl phase 1
 
 > Task #43 — `nmp-signers` crate landing.  Reports `cargo test`,
-> `cargo clippy`, fuzz timings.  See `docs/decisions/0015-m6-signer-design.md`
+> `cargo clippy`, fuzz timings.  See `docs/decisions/0072-runtime-capability-and-shell-boundary.md`
 > for the design rationale.
 
 ## Scope landed
@@ -20,7 +20,7 @@
 - `Kind3RewireObserver` — captures active-account flips into a kernel-drained
   buffer for kind:3 + kind:10002 re-subscription.
 - 37 tests total: 24 unit + 4 fuzz (incl. 1000-URI suite) + 9 integration.
-- ADR-0015 documenting trait shape + synthesis reconciliation.
+- ADR-0072 documenting trait shape + synthesis reconciliation.
 
 ## Test results
 
@@ -77,7 +77,7 @@ URI shell itself parses in <1 µs.
 - **D6** — `Signer` trait operations return `SignerOp<T>` /
   `Result<_, SignerError>` internally only; no error type crosses FFI.
   The FFI surface (separate commit) will convert all errors to
-  `toast: Option<String>` per ADR-0007.
+  `toast: Option<String>` per ADR-0072.
 - **D7** — `Nip46Signer` does not own the relay pool.  The transport is
   injected (`Arc<dyn Nip46Transport>`); the kernel applies routing policy.
 - **D8** — `pubkey()` is synchronous and cached; the hot path never blocks
@@ -87,10 +87,10 @@ URI shell itself parses in <1 µs.
 
 ## Forward references
 
-- ADR-0015 (this commit) — full design rationale, synthesis reconciliation,
+- ADR-0072 (this commit) — full design rationale, synthesis reconciliation,
   follow-ups.
 - PD-004 — `IdentityId` → ULID before M8.
-- M6 signers milestone (shipped; durable design is ADR-0015, `docs/decisions/0015-m6-signer-design.md`).
+- M6 signers milestone (shipped; durable design is ADR-0072, `docs/decisions/0072-runtime-capability-and-shell-boundary.md`).
 - `nmp-nip42` crate — depends on `Signer` trait + `signer_active()` to route AUTH challenges.
 - M7 interaction-loop (SendNote write-path) — depends on this crate for the active signer.
 

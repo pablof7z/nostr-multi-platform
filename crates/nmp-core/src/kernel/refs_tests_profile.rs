@@ -1,4 +1,4 @@
-//! ADR-0063 (#1671 Lane B) — profile-resolver + shared lifecycle/dedup/rev unit
+//! ADR-0070 (#1671 Lane B) — profile-resolver + shared lifecycle/dedup/rev unit
 //! tests for the kernel-owned `RefResolver` primitive.
 //!
 //! Event-resolver tests live in `refs_tests_event.rs` (Lane D merge target).
@@ -307,10 +307,10 @@ fn profile_shape_narrows_when_widest_consumer_releases() {
 //
 // Symmetrically, releasing an already-absent consumer must not bump the dirty
 // flag — a spurious release of a never-claimed (or already-released) consumer
-// is a structural no-op (ADR-0063 BLOCKING 3 / BLOCKING 2(a)).
+// is a structural no-op (ADR-0070 BLOCKING 3 / BLOCKING 2(a)).
 //
 // Reconciles the intent from preserved stash `stash-preserve/20260615-7-profile-claim-loop`
-// (branch `pr1436-investigate`) against the current ADR-0063 `resolve_ref` /
+// (branch `pr1436-investigate`) against the current ADR-0070 `resolve_ref` /
 // `release_ref` API (the stash's `claim_profile` / `release_profile` names and
 // `profile_claim_projection_tests.rs` file no longer exist).
 

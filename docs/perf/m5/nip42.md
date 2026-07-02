@@ -24,7 +24,7 @@ crates/nmp-nip42/
 
 ### Surface details
 
-**`state::RelayAuthState`** matches ADR-0007 §1 exactly:
+**`state::RelayAuthState`** matches ADR-0072 §1 exactly:
 `NotRequired | ChallengeReceived | Authenticating | Authenticated | Failed`.
 `relay_auth_state_to_subs` translates to `nmp_core::subs::trigger::RelayAuthState`
 so the lifecycle inbox can fan transitions through `CompileTrigger::
@@ -52,7 +52,7 @@ cargo test -p nmp-nip42
 test result: ok. 25 passed; 0 failed
 ```
 
-- `state::tests` (3) — ADR-0007 wire-key alignment, subs translation totality, default value.
+- `state::tests` (3) — ADR-0072 wire-key alignment, subs translation totality, default value.
 - `frame::tests` (6) — AUTH parser shape + rejection cases; OK parser shape + reason handling + rejection cases.
 - `builder::tests` (6) — kind:22242 template construction; validator round-trips for valid events and rejects wrong-kind / missing-echo / malformed-id / empty-sig; wire-frame structural shape.
 - `flow::tests` (10) — happy path (challenge → AUTH → OK true → Authenticated); rejected OK surfaces reason and transitions to Failed; signer failure surfaces reason without dispatching wire frame; signer returning structurally-invalid event flagged as failure; unrelated OK is a no-op; reset_on_disconnect clears state and challenge; mid-session re-auth drops back to ChallengeReceived; run_handshake one-call helper; deliver_signed without pending challenge is a no-op.
@@ -145,7 +145,7 @@ path: `nmp-nip42`.
 - **D5 — capabilities report, never decide.** The `Signer` reports a signed event; this crate decides the FSM transitions and what to emit on the wire. Pause/flush of held REQs is owned by `subs::AuthGate`.
 - **D6 — errors never cross FFI.** `Nip42Error` is internal flow control only; `HandshakeOutcome::failure_reason` is the data point the M10.5 toast-field bridge will read.
 - **D8 — reactivity contract.** The driver is stateful but allocation-free per tick (modulo the wire-frame `String` which is unavoidable). One driver per relay; allocations are linear in active relays, not in events.
-- **ADR-0007 §1** — `RelayAuthState` enum matches the diagnostics contract exactly with snake-case wire keys (`not_required`, `challenge_received`, `authenticating`, `authenticated`, `failed`).
+- **ADR-0072 §1** — `RelayAuthState` enum matches the diagnostics contract exactly with snake-case wire keys (`not_required`, `challenge_received`, `authenticating`, `authenticated`, `failed`).
 
 ---
 

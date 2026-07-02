@@ -1,4 +1,4 @@
-//! ADR-0064 §3 (#1783 / #1776) — generated typed action-builder codegen
+//! ADR-0071 §3 (#1783 / #1776) — generated typed action-builder codegen
 //! (Swift + Kotlin + TypeScript).
 //!
 //! Emits the app-facing typed write builders that let the iOS (Swift), Android

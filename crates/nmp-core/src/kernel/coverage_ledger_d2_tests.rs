@@ -1,4 +1,4 @@
-//! K3 (ADR-0056 §3.D2) — coverage-ledger since-floor READ tests.
+//! K3 (ADR-0072 §3.D2) — coverage-ledger since-floor READ tests.
 //!
 //! D1 (`coverage_ledger_d1_tests.rs`) proved the WRITE path; these tests prove
 //! the READ: the since-floor reads the coverage ledger for
@@ -19,7 +19,7 @@
 //! The fixture-relay journey test (the merge gate) lives in
 //! `coverage_ledger_d2_journey_tests.rs` and exercises the real
 //! recompile→REQ→ingest path end to end; these unit tests are necessary but,
-//! per ADR-0056 §4, not sufficient on their own.
+//! per ADR-0072 §4, not sufficient on their own.
 
 use std::collections::BTreeSet;
 

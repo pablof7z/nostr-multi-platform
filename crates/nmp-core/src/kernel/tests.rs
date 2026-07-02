@@ -38,7 +38,7 @@ fn install_kind10002_projection_probe(kernel: &mut Kernel) {
     );
 }
 
-// V-68 / V-112 (ADR-0042): open_author_emits_profile_and_note_reqs,
+// V-68 / V-112 (ADR-0076): open_author_emits_profile_and_note_reqs,
 // open_author_with_cached_nip65_routes_notes_to_resolved_write_relays,
 // open_thread_emits_context_and_reply_reqs,
 // close_author_refcounts_and_closes_view_subscriptions,

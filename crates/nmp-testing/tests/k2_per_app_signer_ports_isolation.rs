@@ -1,11 +1,11 @@
 //! K2 rung 5.3 oracle — per-app bunker + NIP-55 signer ports.
 //!
-//! ADR-0052 §D3. Proves the four process-globals that K2 rung 5.3 deletes
+//! ADR-0072 §D3. Proves the four process-globals that K2 rung 5.3 deletes
 //! (`GLOBAL_BROKER`, `GLOBAL_DRIVER`, and the two `nmp-core` hook statics
 //! `bunker_hook::HOOK` / `external_signer_hook::HOOK`) are replaced by per-app
 //! `Arc` slots created in `nmp_app_new` and dropped in `nmp_app_free` — the
 //! same "no global aliasing across `nmp_app_free`" invariant the rest of
-//! `NmpApp`'s slots obey (ADR-0050 / ADR-0051 relay-connected hook slot).
+//! `NmpApp`'s slots obey (ADR-0072 / ADR-0072 relay-connected hook slot).
 //!
 //! ## Why this DEAD-ENDS against the current global design
 //!

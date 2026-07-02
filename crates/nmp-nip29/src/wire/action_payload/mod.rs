@@ -1,4 +1,4 @@
-//! WRITE-direction typed FlatBuffers action payload codecs (ADR-0064 / S9
+//! WRITE-direction typed FlatBuffers action payload codecs (ADR-0071 / S9
 //! #1747).
 //!
 //! Each event-authoring NIP-29 `ActionModule` carries its `start()` input as the

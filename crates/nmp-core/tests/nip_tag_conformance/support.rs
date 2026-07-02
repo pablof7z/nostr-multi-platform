@@ -6,7 +6,8 @@ use nmp_core::testing::ConformanceHarness;
 use serde_json::Value;
 
 /// Deterministic test identity. Same fixture key the in-crate command tests use.
-pub(crate) const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+pub(crate) const TEST_NSEC: &str =
+    "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 /// NIP-65 write relays seeded for the active account so the (fail-closed)
 /// outbox resolver has targets and publish commands produce outbound frames.

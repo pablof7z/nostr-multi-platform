@@ -5,7 +5,7 @@
 //   version). Regenerate + verify drift via
 //   `.github/workflows/codegen-drift.yml` (gen producer-consts --check).
 /// Stable schema identifier carried in the typed-projection envelope. Equals the
-/// snapshot key (ADR-0037 shared-keyspace contract).
+/// snapshot key (ADR-0072 shared-keyspace contract).
 pub const BUNKER_HANDSHAKE_SCHEMA_ID: &str = "bunker_handshake";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub(crate) const BUNKER_HANDSHAKE_FILE_IDENTIFIER: &[u8; 4] = b"KBHS";

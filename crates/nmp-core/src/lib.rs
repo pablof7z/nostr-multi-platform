@@ -44,7 +44,7 @@ pub(crate) mod profile_card_generated {
     pub use inner::nmp::kernel::*;
 }
 
-// V-112 (ADR-0042): the shared FlatBuffers `TimelineItem` row cluster
+// V-112 (ADR-0076): the shared FlatBuffers `TimelineItem` row cluster
 // (`timeline_item.fbs`, `timeline_item_generated.rs`, and the
 // `timeline_item_generated` wrapper mod that mirrored
 // `profile_card_generated` above) was deleted — its only consumers were the
@@ -130,7 +130,7 @@ pub mod browse;
 pub mod publish;
 mod relay;
 mod transport;
-// ADR-0064 / S2 (#1750) — the open write-command byte transport: decode +
+// ADR-0071 / S2 (#1750) — the open write-command byte transport: decode +
 // fail-closed gates + the opaque-payload carry. Public so the wasm runtime and
 // the native FFI byte doorway both reach the one inbound decode path.
 pub use transport::dispatch_envelope;
@@ -151,8 +151,8 @@ pub(crate) mod stable_hash {
 pub(crate) mod store {
     pub use nmp_store::*;
 }
-pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
-pub mod refs; // ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
+pub mod projection_emission; // ADR-0070 R6-S2: byte-equality typed-projection omit helper.
+pub mod refs; // ADR-0070 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
               // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
               // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
               // (private); promoted here so the crate-private actor module can still name them after
@@ -188,22 +188,22 @@ pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, DependentInterestChild, Kernel,
     ProfileLiveness, KERNEL_BUILTIN_PROJECTION_KEYS,
 };
-// ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
-pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
+// ADR-0070 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
+pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0072
 pub use kernel::pull_cursor::{InvalidCursorSpec, PullConsumerId, PullCursorHandle};
 pub use kernel::pull_cursor::{PullCursorId, PullCursorMode, PullCursorRegistry, PullCursorSpec};
 pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};
-pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
+pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0070 D7 (#1671)
 pub use kernel::{
     EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
 };
-// ADR-0049 — the composition ledger (explain-the-composition surface) and its
+// ADR-0069 — the composition ledger (explain-the-composition surface) and its
 // record types. Re-exported at the crate root so `nmp-ffi` (the C-ABI host) and
 // downstream composition crates can name them without reaching into `kernel`.
 pub use kernel::{default_registry, ActionRegistry};
 pub use kernel::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
-}; // ADR-0064/S3 (#1751/#1008): crate-root registry for the no-`native` WASM path.
+}; // ADR-0071/S3 (#1751/#1008): crate-root registry for the no-`native` WASM path.
    // Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
    // `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
    // nameable across crates. Production installs nothing (the kernel keeps its
@@ -220,14 +220,13 @@ pub use kernel::MonotonicSecondClock;
 // and `RelayAuthorScoreMap` without reaching into the private `kernel` module.
 pub mod relay_score {
     pub use super::kernel::relay_score::{
-        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS,
-        WARM_THRESHOLD,
+        ClaimOutcome, RelayAuthorScore, RelayAuthorScoreMap, DECAY_HALFLIFE_DAYS, WARM_THRESHOLD,
     };
 }
 // V-38: NIP crates (`nmp-nip47`) registering per-lane NIP-42 signers need the
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
-pub use kernel::{wallet_access::KernelWalletAccess, AuthSignerFn}; // KernelWalletAccess: ADR-0052 §D5 wallet/zap adapter
+pub use kernel::{wallet_access::KernelWalletAccess, AuthSignerFn}; // KernelWalletAccess: ADR-0072 §D5 wallet/zap adapter
                                                                    // V-51 phase 4 (validation harness) — the projection's three public types
                                                                    // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
                                                                    // is the bounded ring-buffer the kernel hands to production composition
@@ -276,7 +275,7 @@ pub use update_envelope::{
 };
 
 /// Public decode surface for the kernel-owned (Tier-2) typed-projection
-/// sidecar (ADR-0037).
+/// sidecar (ADR-0072).
 ///
 /// Pair these per-key decoders with [`decode_snapshot_typed_projections`],
 /// which returns the snapshot's [`TypedProjectionData`] entries: look an entry
@@ -325,12 +324,12 @@ pub use signer_state_codec::{
 // when constructing an `AddSigner` command.
 //
 // `SignContinuation` is the boxed sign-outcome callback carried by the
-// `ActorCommand::SignEventForAccount` port (ADR-0043 Decision 2). Re-exported
+// `ActorCommand::SignEventForAccount` port (ADR-0071 Decision 2). Re-exported
 // so protocol crates that consume the port through
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
 pub use actor::{CipherContinuation, SignContinuation, SignerSource};
-// ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
+// ADR-0072 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle passed to relay-connected hooks, DM inbox
 // chains, and similar substrate seams that post commands from worker threads.
 // `CommandSendError` is `send`'s disconnect error (mpsc-`SendError` parity);
@@ -405,7 +404,7 @@ pub mod __ffi_internal {
     pub use crate::actor::ActorMail;
     // V-38: `WalletStatusSlot` / `new_wallet_status_slot` moved to `nmp-nip47`.
     // The host (per-app crate) constructs the slot itself and registers the typed
-    // `"wallet"` sidecar via `register_typed_snapshot_projection` (ADR-0037).
+    // `"wallet"` sidecar via `register_typed_snapshot_projection` (ADR-0072).
     pub use crate::app::KernelAction;
     pub use crate::capability_socket::{
         capability_error_envelope, dispatch_capability, new_capability_callback_slot,
@@ -417,7 +416,7 @@ pub mod __ffi_internal {
         new_snapshot_projection_slot, routing_trace, ActionExecuteFailure, ActionFailureKind,
         ActionRegistry, LifecyclePhase, RegistrationError, SnapshotProjectionSlot,
     };
-    // ADR-0037: the typed-projection closure type; `nmp-ffi` reaches it
+    // ADR-0072: the typed-projection closure type; `nmp-ffi` reaches it
     // through this internal surface to type the
     // `register_typed_snapshot_projection` seam on the `AppHost` trait.
     pub use crate::kernel::snapshot_registry::TypedProjectionFn;

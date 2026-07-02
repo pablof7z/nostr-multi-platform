@@ -1,4 +1,4 @@
-//! Dispatch helpers for the ADR-0050 signer-session capability port verbs —
+//! Dispatch helpers for the ADR-0072 signer-session capability port verbs —
 //! the NIP-44 cipher port (§D1) and the mailbox-completion delivery (§D3b).
 //!
 //! These are the bodies of the `Nip44EncryptForAccount` /
@@ -47,13 +47,13 @@ pub(super) fn dispatch_cipher_op(
     }
 }
 
-/// Full `SignEventForAccount` arm (ADR-0043 Decision 2 generic sign port).
+/// Full `SignEventForAccount` arm (ADR-0071 Decision 2 generic sign port).
 /// Sign with the active (`signer_pubkey == None`) or named account, then deliver
 /// the resolved `SignedEvent` (or error) to the boxed continuation. Local-vs-
 /// bunker is invisible (D8); the continuation is the sole consumer (D0 — core
 /// never parses it); only a `SignedEvent` crosses (D13). A local key resolves
 /// `Ready` inline; a remote signer parks under the `SignContinuation` sink with
-/// the NAMED account's per-op deadline (ADR-0050 §D4).
+/// the NAMED account's per-op deadline (ADR-0072 §D4).
 pub(super) fn sign_for_account(
     ctx: &mut ActorContext,
     unsigned: &nmp_signer_iface::UnsignedEvent,

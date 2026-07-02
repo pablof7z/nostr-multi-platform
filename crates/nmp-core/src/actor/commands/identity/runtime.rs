@@ -38,9 +38,9 @@ pub(crate) struct IdentityRuntime {
     pub(super) signer_state: SignerStateSlot,
     /// Stashed flags for an in-flight `bunker://` handshake.
     pub(super) pending_bunker_make_active: bool,
-    /// ADR-0052 §D3 — per-app bunker-URI hook slot.
+    /// ADR-0072 §D3 — per-app bunker-URI hook slot.
     pub(super) bunker_hook: crate::bunker_hook::BunkerHookSlot,
-    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot.
+    /// ADR-0072 §D3 — per-app NIP-55 restore hook slot.
     pub(super) external_signer_hook: crate::external_signer_hook::ExternalSignerHookSlot,
 }
 
@@ -59,14 +59,14 @@ impl IdentityRuntime {
             bunker_handshake,
             signer_state,
             pending_bunker_make_active: false,
-            // ADR-0052 §D3 — empty per-app hook slots; production replaces them
+            // ADR-0072 §D3 — empty per-app hook slots; production replaces them
             // with the `NmpApp`'s `Arc` clones via `set_signer_hook_slots`.
             bunker_hook: crate::bunker_hook::new_bunker_hook_slot(),
             external_signer_hook: crate::external_signer_hook::new_external_signer_hook_slot(),
         }
     }
 
-    // ADR-0052 §D3 — per-app signer-hook bind/install/invoke methods live in
+    // ADR-0072 §D3 — per-app signer-hook bind/install/invoke methods live in
     // the sibling `signer_hooks` module; these accessors keep the slot fields
     // private to this owner.
     pub(crate) fn bunker_hook_slot(&self) -> &crate::bunker_hook::BunkerHookSlot {
@@ -159,7 +159,7 @@ impl IdentityRuntime {
         // `Box<dyn T>` → `Arc<dyn T>` via `Arc::from(box)`. The actor's
         // boundary (`ActorCommand::AddSigner` / `SignerSource::RemoteHandle`)
         // still takes `Box<dyn>` so the broker / nmp-signers contract is
-        // unchanged; the actor converts on insertion (ADR-0026 Phase 2 — see
+        // unchanged; the actor converts on insertion (ADR-0072 Phase 2 — see
         // the `remote_signers` field doc on [`IdentityRuntime`]).
         self.remote_signers.insert(id.clone(), Arc::from(handle));
         id
@@ -174,7 +174,7 @@ impl IdentityRuntime {
     /// Returns `None` both when no account is active AND when the active
     /// account is a remote (NIP-46) signer — a remote signer holds no local
     /// secret key. Backend-transparent signing (incl. the NIP-17 gift-wrap DM
-    /// chain after ADR-0050 §D5) goes through the actor's signer port
+    /// chain after ADR-0072 §D5) goes through the actor's signer port
     /// (`SignEventForAccount` / `Nip44EncryptForAccount`), which routes both
     /// backends; this accessor is for the residual local-only consumers
     /// (e.g. Marmot's MLS identity) that genuinely hold `&Keys`.
@@ -230,7 +230,7 @@ impl IdentityRuntime {
     }
 
     /// Fan an inbound remote-signer response out to every remote handle for
-    /// correlation-keyed dispatch (ADR-0050 §D3b — the `DeliverSignerResponse`
+    /// correlation-keyed dispatch (ADR-0072 §D3b — the `DeliverSignerResponse`
     /// command). Each handle's `deliver_response` drops a non-matching id (the
     /// trait contract), so a stray frame degrades into the op's normal timeout
     /// (D6). Runs on the actor thread — single writer (D4).
@@ -280,7 +280,7 @@ impl IdentityRuntime {
     /// Wall-clock deadline for the active account's next parked op. Reads
     /// `RemoteSignerHandle::op_timeout()` for remote signers (NIP-46 = 5s,
     /// NIP-55 = 90s); `PENDING_SIGN_TIMEOUT` otherwise (local ops are `Ready`
-    /// and never park, so the default is safe). ADR-0048 D3 per-op deadline.
+    /// and never park, so the default is safe). ADR-0072 D3 per-op deadline.
     pub(crate) fn active_sign_deadline(&self) -> crate::time::Instant {
         let duration = self
             .active_remote()
@@ -292,7 +292,7 @@ impl IdentityRuntime {
     /// Wall-clock deadline for a parked op on a SPECIFIC account — the
     /// account-addressed sibling of [`Self::active_sign_deadline`]. Reads THAT
     /// account's signer budget (the active account may be a different backend);
-    /// `None` falls back to the active account. ADR-0050 §D4.
+    /// `None` falls back to the active account. ADR-0072 §D4.
     pub(crate) fn sign_deadline_for(&self, pubkey: Option<&str>) -> crate::time::Instant {
         let handle = match pubkey {
             Some(pk) => self.remote_signers.get(pk).map(|h| h.as_ref()),

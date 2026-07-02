@@ -11,7 +11,7 @@ fn op_timeout_is_90s() {
     assert_eq!(
         RemoteSignerHandle::op_timeout(&signer),
         EXTERNAL_SIGN_TIMEOUT,
-        "Nip55Signer must report 90s op_timeout (ADR-0050 D4)"
+        "Nip55Signer must report 90s op_timeout (ADR-0072 D4)"
     );
 }
 

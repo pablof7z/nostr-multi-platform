@@ -1,6 +1,6 @@
 //! KindRenderer trait for TUI kind-dispatched content rendering (F-CR-06).
 //!
-//! See ADR-0034 for the cross-platform projection contract.
+//! See ADR-0072 for the cross-platform projection contract.
 
 use ratatui::{buffer::Buffer, layout::Rect};
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use super::NostrKindRegistry;
 
 /// Resolve the author byline for an embed, component-owned (mirrors iOS #833).
 ///
-/// ADR-0063 (#1671): the renderer that *displays* an author's name issues the
+/// ADR-0070 (#1671): the renderer that *displays* an author's name issues the
 /// typed profile-ref resolve itself
 /// — no separate hidden trigger. The resolved row arrives via the shell's
 /// `RefProfileStore` mirror and is read back through `profile_for_pubkey`.

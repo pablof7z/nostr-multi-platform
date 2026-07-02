@@ -352,7 +352,7 @@ impl MarmotService {
     ///
     /// Marmot is local-key-only by construction (it holds its own MLS identity
     /// `Keys`), so this seals + wraps synchronously through the pure
-    /// `nmp_nip59::gift_wrap_local` composition (ADR-0050 §D5 — the
+    /// `nmp_nip59::gift_wrap_local` composition (ADR-0072 §D5 — the
     /// `SignerForSeal` trait + driver-thread execution model is gone). No port,
     /// no thread, no `SignerOp`.
     pub fn wrap_welcome(

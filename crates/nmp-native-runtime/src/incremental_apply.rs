@@ -1,4 +1,4 @@
-//! ADR-0055 Rung 3 / R6-S1 — incremental-apply capability + frame-identity
+//! ADR-0070 Rung 3 / R6-S1 — incremental-apply capability + frame-identity
 //! accessors on [`NmpApp`].
 //!
 //! Split out of `lib.rs` (file-size discipline) as a cohesive `impl NmpApp`
@@ -13,7 +13,7 @@ use std::sync::Arc;
 use super::NmpApp;
 
 impl NmpApp {
-    /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP
+    /// ADR-0070 Rung 3 — declare that this host runtime owns the NMP
     /// cache-merge layer (D3-3) and is ready to receive frames with
     /// `Unchanged` projections omitted.
     ///
@@ -35,7 +35,7 @@ impl NmpApp {
             tracing::error!(
                 "declare_incremental_apply called after nmp_app_start — \
                  the incremental-apply flag must be set before the kernel emits \
-                 its first real frame (ADR-0055 Rung 3 / init-only invariant)"
+                 its first real frame (ADR-0070 Rung 3 / init-only invariant)"
             );
             return Err(IncrementalApplyError::AlreadyStarted);
         }
@@ -49,7 +49,7 @@ impl NmpApp {
             .map_err(|_| IncrementalApplyError::RegistryUnavailable)
     }
 
-    /// ADR-0055 Rung 6 S1 — return a clone of the single-source-of-truth
+    /// ADR-0070 Rung 6 S1 — return a clone of the single-source-of-truth
     /// incremental-apply capability flag held by the `SnapshotRegistry`.
     ///
     /// The returned `Arc<AtomicBool>` is THE flag `declare_incremental_apply`
@@ -72,7 +72,7 @@ impl NmpApp {
             .unwrap_or_else(|_| Arc::new(AtomicBool::new(false)))
     }
 
-    /// ADR-0055 R6-S1 — return clones of the frame-identity handles
+    /// ADR-0070 R6-S1 — return clones of the frame-identity handles
     /// `(session_id, snapshot_epoch)` the kernel publishes each tick into the
     /// shared `SnapshotRegistry`.
     ///
@@ -91,7 +91,7 @@ impl NmpApp {
             .unwrap_or_else(|_| (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0))))
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle the kernel
+    /// ADR-0070 D7 (#1671 Lane H) — a clone of the per-tick rev handle the kernel
     /// bumps at the top of every `make_update`.
     ///
     /// A [`nmp_feed::FeedWindowSource`] captures this once at registration and
@@ -107,7 +107,7 @@ impl NmpApp {
             .unwrap_or_else(|_| Arc::new(AtomicU64::new(0)))
     }
 
-    /// ADR-0063 D7 (#1671 Lane H) — a clone of the emitted-author sink handle for
+    /// ADR-0070 D7 (#1671 Lane H) — a clone of the emitted-author sink handle for
     /// the structural guardrail (BLOCKING 2).
     ///
     /// A feed's typed-producer closure captures this once at registration and

@@ -2,7 +2,7 @@
 
 > Parent: `docs/design/intent-routing.md`.
 > Cross-refs: planner integration in `planner.md` (§4); search FFI lives in
-> `nmp-nip50` (higher-order), see ADR-0020 2026-06-22 amendment.
+> `nmp-nip50` (higher-order), see ADR-0071 2026-06-22 amendment.
 
 ## 3. Type surface
 
@@ -39,7 +39,7 @@ pub enum EventClass {
     DM,
     /// NIP-29 group-messaging kinds. Kept for diagnostic clarity. NEVER
     /// participates in `class_relays`; NIP-29 events use the existing
-    /// `InterestShape::relay_pin` lane (ADR-0012).
+    /// `InterestShape::relay_pin` lane (ADR-0071).
     GroupMessage,
     /// Anything not enumerated above. Falls through to NIP-65 routing.
     Other,
@@ -47,7 +47,7 @@ pub enum EventClass {
     // not need a planner class. The generic InterestShape.search wire-filter
     // field is sufficient; relay selection from kind:10007 is performed at the
     // higher layer by SearchRelayListProjection (nmp-nip51), consumed by
-    // nmp-nip50. See ADR-0020 higher-order search amendment.
+    // nmp-nip50. See ADR-0071 higher-order search amendment.
 }
 
 impl EventClass {
@@ -80,7 +80,7 @@ pub enum RoutingFamily {
     /// Publisher's NIP-51 list, consulted per author at compile time.
     /// Used by: Wiki.
     PublisherKeyed,
-    /// Existing relay_pin lane (ADR-0012). Used by: GroupMessage.
+    /// Existing relay_pin lane (ADR-0071). Used by: GroupMessage.
     /// `class_relays` is never called for this family.
     RelayPin,
     /// No class routing — falls through to NIP-65 / four-lane planner.
@@ -462,7 +462,7 @@ The FFI surface is one function:
 pub fn open_search(query: SearchQuery) -> SearchResultView
 ```
 
-ADR-0020 decision 15 defines registered input scopes; only free text becomes `SearchQuery`.
+ADR-0071 decision 15 defines registered input scopes; only free text becomes `SearchQuery`.
 
 ### 3.7 Kernel-init defaults
 

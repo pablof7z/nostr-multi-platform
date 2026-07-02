@@ -2,7 +2,7 @@
 //!
 //! # Overview
 //!
-//! ADR-0050 §D5 reduced this crate to **pure functions** — the `SignerForSeal`
+//! ADR-0072 §D5 reduced this crate to **pure functions** — the `SignerForSeal`
 //! trait + driver-thread execution model is deleted. The seal step for a DM send
 //! is now a continuation chain through the actor's signer port (composed in
 //! `nmp-nip17`); this crate supplies the pure building blocks both that chain and
@@ -20,7 +20,7 @@
 //! Unwrapping (`wrap`):
 //! - [`unwrap_gift_wrap`]: local-keys kind:1059 → verify seal → extract rumor.
 //! - [`parse_outer_for_decrypt`] / [`parse_seal_for_decrypt`] / [`parse_rumor`]:
-//!   the three PURE halves the unwrap composes, split out so ADR-0050 Stage 4 can
+//!   the three PURE halves the unwrap composes, split out so ADR-0072 Stage 4 can
 //!   route the two NIP-44 decrypts through `Nip44DecryptForAccount`.
 //!
 //! # D0: no app/protocol nouns

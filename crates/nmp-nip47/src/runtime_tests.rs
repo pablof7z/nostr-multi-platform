@@ -228,7 +228,7 @@ fn disconnect_drain_transitions_to_unknown_not_failure() {
     rt.connection = Some(make_connection(payments));
 
     // wallet_disconnect_inner needs the narrow wallet kernel capability
-    // (ADR-0052 §D5); wrap the test-support kernel with `as_wallet_access`.
+    // (ADR-0072 §D5); wrap the test-support kernel with `as_wallet_access`.
     let mut kernel = nmp_core::Kernel::testing_new(64);
     let _ = wallet_disconnect_inner(&mut rt, &kernel.as_wallet_access());
 

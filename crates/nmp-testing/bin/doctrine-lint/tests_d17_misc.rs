@@ -237,7 +237,7 @@ fn d17_does_not_fire_in_chirp_app_path() {
     );
 }
 
-// ─── Cache-serve enqueue seal (ADR-0045 store-first by construction) ─────────
+// ─── Cache-serve enqueue seal (ADR-0070 store-first by construction) ─────────
 
 /// Seal guard: the two low-level enqueue helpers
 /// (`enqueue_cache_serve`, `enqueue_interest_cache_serve_deferred`) MUST remain

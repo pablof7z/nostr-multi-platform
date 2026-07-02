@@ -110,7 +110,7 @@ pub(crate) const PENDING_STAGE_RETENTION_MS: u64 = 120_000;
 
 /// One stage in an async action's lifecycle.
 ///
-/// The vocabulary is intentionally GENERIC (ADR-0064 §lifecycle): signing and
+/// The vocabulary is intentionally GENERIC (ADR-0071 §lifecycle): signing and
 /// publishing are decoupled, neither implies the other, and no stage names a
 /// specific capability backend.
 ///

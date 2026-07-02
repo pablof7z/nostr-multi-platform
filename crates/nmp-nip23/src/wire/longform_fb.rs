@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire codec for the NIP-23 long-form snapshot projection
 //! ([`crate::LongformProjection`]).
 //!
-//! This is the **typed sidecar** (ADR-0037) carried in every `SnapshotFrame`'s
+//! This is the **typed sidecar** (ADR-0072) carried in every `SnapshotFrame`'s
 //! `typed_projections` slot under the key `nmp.nip23.articles`. Unlike the other
 //! typed codecs in this crate, the long-form projection has **no** generic JSON
 //! `projections` counterpart: the projection is registered through

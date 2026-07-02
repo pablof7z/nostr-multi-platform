@@ -50,7 +50,7 @@ pub(super) fn protocol(
     // single-threaded sync, so the inner `borrow`/`borrow_mut`
     // calls serialize naturally.
     //
-    // ADR-0052 §D5: ALL kernel-touching capability adapters — including
+    // ADR-0072 §D5: ALL kernel-touching capability adapters — including
     // the unified `KernelWalletAccess::borrowed` (mutating wallet +
     // reading zap profile, #1927) — go through this one `kernel_cell`
     // via per-call `try_borrow[_mut]`. The prior V-38 `with_kernel`
@@ -76,7 +76,7 @@ pub(super) fn protocol(
     let recipients = RecipientRelayLookupAdapter {
         kernel: &kernel_cell,
     };
-    // ADR-0052 §D4 — per-app host-op handler accessor, so the
+    // ADR-0072 §D4 — per-app host-op handler accessor, so the
     // `HostOpCommand` (which replaced the deleted `DispatchHostOp` arm)
     // can clone the start-time configured handler at `run` time.
     // Reaches no kernel/identity state, so it needs no `RefCell`
@@ -84,7 +84,7 @@ pub(super) fn protocol(
     let host_op_handler = HostOpHandlerAccessAdapter {
         handler: ports.host_op_handler.clone(),
     };
-    // ADR-0052 §D5 + #1927 — single unified wallet/zap adapter
+    // ADR-0072 §D5 + #1927 — single unified wallet/zap adapter
     // (`KernelWalletAccess::borrowed`) replaces the deleted `kernel_mut()` /
     // `lnurl_for_pubkey` surfaces AND the two byte-identical `*Adapter`
     // duplicates that used to live in `substrate_adapters.rs`. It borrows the
@@ -101,7 +101,7 @@ pub(super) fn protocol(
     // dispatch arm always populates this slot in production.
     let worker_tx = ports.command_tx_self.clone();
     let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
-    // ADR-0052 §D4 guarantee #1 — WHOLE-BODY panic isolation. Before
+    // ADR-0072 §D4 guarantee #1 — WHOLE-BODY panic isolation. Before
     // this rung the `Protocol` arm called `cmd.run` bare; a panic in a
     // command's own non-capability logic unwound the actor thread
     // (only per-accessor D15 shortcuts were caught). The
@@ -111,7 +111,7 @@ pub(super) fn protocol(
     // `ProtocolCommand panicked` (the same observable surface as an
     // `Err` return) and the actor survives.
     //
-    // Borrow scoping (#1364 / ADR-0052 §D5): NO long-lived
+    // Borrow scoping (#1364 / ADR-0072 §D5): NO long-lived
     // `kernel_cell.borrow_mut()` is held across `cmd.run`. Every kernel
     // touch a command makes — including the very first one, the
     // `HostOpCommand`'s `record_action_stage_requested` write — goes
@@ -144,7 +144,7 @@ pub(super) fn protocol(
                 stages: &stages,
                 recipients: &recipients,
                 host_op_handler: &host_op_handler,
-                // ADR-0052 §D5 — the narrow wallet kernel-mutation +
+                // ADR-0072 §D5 — the narrow wallet kernel-mutation +
                 // zap-profile-read capabilities. A wallet/zap command
                 // reaches its needs through these; every other command
                 // ignores them (it holds the noop singleton's surface).

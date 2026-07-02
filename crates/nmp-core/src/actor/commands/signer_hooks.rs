@@ -1,4 +1,4 @@
-//! ADR-0052 §D3 — per-app signer-hook accessors on [`IdentityRuntime`].
+//! ADR-0072 §D3 — per-app signer-hook accessors on [`IdentityRuntime`].
 //!
 //! Split out of `identity.rs` (file-size discipline) as a cohesive
 //! `impl IdentityRuntime` block. These methods bind / install / invoke the
@@ -12,7 +12,7 @@
 use super::identity::IdentityRuntime;
 
 impl IdentityRuntime {
-    /// ADR-0052 §D3 — bind this runtime's per-app signer hook slots to the
+    /// ADR-0072 §D3 — bind this runtime's per-app signer hook slots to the
     /// `Arc` clones the `NmpApp` holds, so the FFI composition root
     /// (`nmp_signer_broker_init` / `nmp_external_signer_init`) installs hooks
     /// into the SAME slots `start_bunker_handshake` / `restore_nip55_session`

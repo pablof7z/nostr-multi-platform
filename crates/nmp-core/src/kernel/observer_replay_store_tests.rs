@@ -1,4 +1,4 @@
-//! NIT-1 regression tests for ADR-0062: store point-lookup for evicted event ids.
+//! NIT-1 regression tests for ADR-0070: store point-lookup for evicted event ids.
 //!
 //! These tests verify that `replay_read_cache_to_observer` serves events that
 //! have been evicted from the in-RAM LRU cache (`Kernel::events`) but are still

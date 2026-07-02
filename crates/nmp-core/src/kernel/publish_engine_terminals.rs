@@ -11,7 +11,7 @@
 //!     SAME terminal, refines the event-id-keyed `PublishQueueEntry` row to its
 //!     terminal `"ok"` / `"failed"` / `"cancelled"` status (S11 slice 4, #1758 —
 //!     the prior parallel `recently_completed` lane is deleted).
-//!   - `bump_publish_if_engine_view_changed` — keeps ADR-0055's `publish_engine_ver`
+//!   - `bump_publish_if_engine_view_changed` — keeps ADR-0070's `publish_engine_ver`
 //!     aligned with the engine-owned in-flight view used by `publish_outbox`.
 //!
 //! Plus the free-standing `classify_terminal_outcome` helper that maps a
@@ -22,7 +22,7 @@ use crate::publish::{PublishQueueTerminal, TerminalOutcome};
 use super::super::Kernel;
 
 impl Kernel {
-    /// ADR-0055 / #1412: `publish_outbox` and `outbox_summary` derive from
+    /// ADR-0070 / #1412: `publish_outbox` and `outbox_summary` derive from
     /// `publish_engine.snapshot().in_flight`, not just `publish_queue`. Whenever
     /// an engine entrypoint advances its view rev, the publish-engine source
     /// counter must advance too or Rung 3 can omit a changed outbox payload.
@@ -195,7 +195,7 @@ impl Kernel {
         self.drain_engine_terminals_into_ledger();
         // Drain the ledger's per-tick terminal buffer — the single source.
         let rows = self.action_ledger.take_terminal_results();
-        // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit.
+        // ADR-0070 Rung 1 (F2): drive the drain tristate exactly once per emit.
         // `note_drain_emit` bumps `settlement_drain_ver` only on a non-empty
         // drain (Changed) or on the non-empty -> empty transition (Cleared, so
         // the host drops its prior copy without a replay); a stably-empty drain

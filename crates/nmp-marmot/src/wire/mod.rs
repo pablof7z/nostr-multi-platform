@@ -1,6 +1,6 @@
 //! Typed FlatBuffers wire codecs for `nmp-marmot`.
 //!
-//! ## Write-direction (ADR-0064 / #2169)
+//! ## Write-direction (ADR-0071 / #2169)
 //!
 //! [`action_payload`] — `nmp.marmot` (`NMMA`) — the typed
 //! `DispatchEnvelope.payload` codec for Marmot's installed action namespace.
@@ -8,7 +8,7 @@
 //! [`crate::projection::action::MarmotAction`] so the byte doorway routes
 //! `nmp.marmot` dispatches through the crate-owned decoder.
 //!
-//! ## Read-direction (ADR-0037 snapshot sidecars)
+//! ## Read-direction (ADR-0072 snapshot sidecars)
 //!
 //! Sidecar to the authoritative serde JSON projections: the generic `Value`
 //! shape stays the source of truth, and these modules carry the typed payloads

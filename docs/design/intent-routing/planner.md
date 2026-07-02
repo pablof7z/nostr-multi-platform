@@ -39,7 +39,7 @@ and runs the existing four-lane partition.
 `InterestShape` (one with `search: Some(_)`) routes via the generic
 four-lane planner with relay URLs supplied directly by `nmp-nip50` from
 `SearchRelayListProjection`; the planner does not inspect `EventClass` for
-search-bearing shapes. This is the higher-order model (ADR-0020 2026-06-22
+search-bearing shapes. This is the higher-order model (ADR-0071 2026-06-22
 amendment): search relay selection is performed entirely above the planner.
 
 `case_g_class_routed` runs after `case_a_authors` and before
@@ -65,7 +65,7 @@ explain the shrinkage.
 **If every relay in the plan is subtracted, the compiler returns
 `PlannerError::AllRelaysBlocked`** — no silent empty plan. The publish
 engine maps the equivalent error to `PublishOutcome::AllRelaysBlocked`.
-This is a deliberate fail-loud choice (ADR-0020 decision 7); the UX
+This is a deliberate fail-loud choice (ADR-0071 decision 7); the UX
 must surface this clearly because a user who blocked all their relays
 by mistake will otherwise see nothing happen.
 

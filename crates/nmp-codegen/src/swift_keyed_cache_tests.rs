@@ -1,4 +1,4 @@
-//! Structural unit tests for the generated Swift `KeyedRefCache` (ADR-0063).
+//! Structural unit tests for the generated Swift `KeyedRefCache` (ADR-0070).
 //!
 //! These assert the generator emits the correctness-critical constructs (the
 //! five invariants) and one accessor per keyed namespace. The Swift COMPILE +
@@ -32,7 +32,7 @@ fn emits_namespace_routing_for_every_keyed_projection() {
 fn emits_one_typed_accessor_per_namespace() {
     let out = rendered();
     for e in KEYED_PROJECTIONS {
-        // ADR-0063 Lane C: the accessor returns the TYPED domain type, NOT the
+        // ADR-0070 Lane C: the accessor returns the TYPED domain type, NOT the
         // Lane-A raw `Data?` passthrough.
         assert!(
             out.contains(&format!(
@@ -55,7 +55,7 @@ fn emits_one_typed_accessor_per_namespace() {
     }
 }
 
-/// ADR-0063 Lane C: the generator must emit a REAL typed decode-before-commit
+/// ADR-0070 Lane C: the generator must emit a REAL typed decode-before-commit
 /// seam (a CHECKED root decode of the ROW payload buffer into the namespace's
 /// concrete reader + the hand-written glue), wired in at construction. This is
 /// what replaces Lane A's `!payload.isEmpty` default and makes the host surface

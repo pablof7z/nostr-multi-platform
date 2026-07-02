@@ -54,7 +54,7 @@ impl NmpApp {
         self.load_older_feed_by_key_status(projection_key.as_str())
     }
 
-    /// ADR-0062 + relay-pin — open an observed interest and route it to exactly
+    /// ADR-0070 + relay-pin — open an observed interest and route it to exactly
     /// one relay (the planner's relay-pin lane).
     ///
     /// `relay_pin` — `Some(host)` pins the interest to that relay, bypassing
@@ -134,7 +134,7 @@ impl NmpApp {
     /// join remains the hard fence for in-flight callbacks.
     pub fn unregister_feed(&self, key: &str) -> bool {
         let removed_feed = self.feed_registry.unregister(key);
-        // ADR-0063 D7 (#1671 Lane H) — remove this feed's typed projection AND
+        // ADR-0070 D7 (#1671 Lane H) — remove this feed's typed projection AND
         // its feed-author provider in the same lock.
         let removed_projection = self
             .snapshot_projections
@@ -211,7 +211,7 @@ impl NmpApp {
         nmp_core::__ffi_internal::rust_observer_count(&self.event_observers)
     }
 
-    /// ADR-0058 §8 step-6B — the in-process pull seam a feed's
+    /// ADR-0072 §8 step-6B — the in-process pull seam a feed's
     /// [`nmp_feed::PullFeedController`] drains on `load_older`.
     ///
     /// Returns a plain Rust closure `(scope, after_seq) -> page` that reads the
@@ -219,7 +219,7 @@ impl NmpApp {
     /// via [`nmp_core::pull_page_over`]. This is **not** a C-ABI symbol and
     /// **not** a projection accessor: it reuses the same raw ingest-log pull
     /// machinery exposed to hosts only through the typed UniFFI
-    /// `NmpApp::mirror_pull_page` surface (ADR-0039 §6.1 preserved — no host
+    /// `NmpApp::mirror_pull_page` surface (ADR-0070 §6.1 preserved — no host
     /// projection-pull accessor is added). The composition root hands this to
     /// `PullFeedController`; the host never sees it.
     #[must_use]

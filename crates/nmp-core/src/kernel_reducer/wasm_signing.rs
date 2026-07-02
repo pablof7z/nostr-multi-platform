@@ -1,5 +1,5 @@
 //! #1753 S6 — the wasm signing capability round-trip on `KernelReducer`
-//! (ADR-0050 §D1/§D3b, pure message re-entry, NO polling — D8).
+//! (ADR-0072 §D1/§D3b, pure message re-entry, NO polling — D8).
 //!
 //! # The round-trip
 //!
@@ -38,7 +38,7 @@
 //! [`begin_sign_roundtrip_at`] records the active account pubkey at park time. The
 //! continuation cross-checks the signed event's author against that pin and
 //! rejects a mismatch — a mid-flight account switch cannot deliver a signature
-//! from a different key into the originating request (ADR-0050 §D5 pinning).
+//! from a different key into the originating request (ADR-0072 §D5 pinning).
 //!
 //! # Round-trip completion and publish
 //!
@@ -254,14 +254,14 @@ impl super::KernelReducer {
         let completions = std::sync::Arc::clone(&self.sign_roundtrip.completions);
         let continuation = SignContinuation::new(move |outcome| {
             // Account-pinning enforcement: verify author matches the request's
-            // pinned pubkey (ADR-0050 §D5), then record the signed event JSON
+            // pinned pubkey (ADR-0072 §D5), then record the signed event JSON
             // in the completion sink.
             let recorded = match outcome {
                 Ok(signed) => {
                     if signed.unsigned.pubkey != pin {
                         Err(format!(
                             "account-pin mismatch: request pinned to {pin}, signature \
-                             authored by {} — refusing to cross-deliver (ADR-0050 §D5)",
+                             authored by {} — refusing to cross-deliver (ADR-0072 §D5)",
                             signed.unsigned.pubkey
                         ))
                     } else {

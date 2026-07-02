@@ -1,5 +1,5 @@
 //! Typed FlatBuffers wire codec for the `refs.event.envelopes` snapshot sidecar
-//! (issue #1283 / ADR-0034 §embed-sidecar).
+//! (issue #1283 / ADR-0072 §embed-sidecar).
 //!
 //! The payload is derived from the authoritative `refs.event` row store and
 //! carries a pre-resolved `primary_id -> EmbeddedEventEnvelope` map so a

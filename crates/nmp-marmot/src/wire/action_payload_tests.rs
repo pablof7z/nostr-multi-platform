@@ -1,5 +1,5 @@
 //! Round-trip + fail-closed tests for the `nmp.marmot` action-payload codec
-//! (ADR-0064 / #2169, M14-1c). Every arm of the `MarmotAction` union is
+//! (ADR-0071 / #2169, M14-1c). Every arm of the `MarmotAction` union is
 //! covered, including optional-field variants (`None` vs `Some`, empty vs
 //! non-empty vec). Fail-closed gates: wrong identifier, wrong schema_version,
 //! junk bytes, and wrong-namespace twin.

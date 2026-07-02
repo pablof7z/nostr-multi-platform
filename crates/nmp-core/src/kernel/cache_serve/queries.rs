@@ -1,4 +1,4 @@
-//! `InterestShape` → `StoreQuery` mapping (ADR-0045 §3) and completion-key
+//! `InterestShape` → `StoreQuery` mapping (ADR-0070 §3) and completion-key
 //! derivation.
 //!
 //! ## E1 shapes (authors + kinds, KindTime)
@@ -43,7 +43,7 @@ pub(in crate::kernel) struct StoreQueryPlan {
 /// The reason a shape cannot be compiled to a store query plan.
 ///
 /// Each variant names the tracked exception documented in the
-/// `shape_to_store_queries` doc comment (ADR-0045 §3).
+/// `shape_to_store_queries` doc comment (ADR-0070 §3).
 pub(in crate::kernel) enum UnsupportedShapeReason {
     /// `kinds` is empty AND the shape carries no generic tag dimension — a pure
     /// kind/author wildcard scan would read unbounded data. (Tag-bearing shapes
