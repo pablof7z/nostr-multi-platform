@@ -1,0 +1,11 @@
+//! `{{facade_pkg}}`'s own `uniffi-bindgen` binary.
+//!
+//! There is no shared framework bindgen crate to borrow (#2763 deleted the
+//! reference `nmp-uniffi` facade — it had zero real consumers). Each
+//! app-owned UniFFI facade carries its own bindgen entry point over its own
+//! cdylib, built only when the `bindgen` feature is enabled
+//! (`cargo run -p {{facade_pkg}} --features bindgen --bin uniffi-bindgen`).
+
+fn main() {
+    uniffi::uniffi_bindgen_main()
+}
