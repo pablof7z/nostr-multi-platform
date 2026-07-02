@@ -42,25 +42,12 @@ fn classify_frame_kind(text: &str) -> &'static str {
 /// Turn drained [`DroppedOutboundFrame`]s into host events, un-sticking the
 /// publish engine for every evicted `EVENT` frame.
 ///
-/// For `kind == "EVENT"` this calls `reducer.handle_relay_failed`, which
-/// mirrors the native relay worker's transient-failure path: the kernel marks
-/// the relay unavailable for publish routing and moves the affected `InFlight`
-/// publish attempts back to `Pending`, so they re-dispatch on the relay's next
-/// `Connected` rather than staying stranded forever (the frame that overflowed
-/// the pre-connect buffer never reached the socket at all, so retry — not a
-/// hard terminal failure — is the correct recovery: the relay may still open
-/// and receive a fresh attempt).
-///
-/// KNOWN MISATTRIBUTION (tracked in
-/// <https://github.com/pablof7z/nostr-multi-platform/issues/2784>):
-/// `handle_relay_failed` also flips the still-healthy, still-connecting
-/// relay's `RelayStatus` to `backing_off`/`ERR_TRANSIENT` and bumps
-/// `reconnect_count` once per evicted frame, even though the socket itself
-/// never failed — only the local pre-connect buffer overflowed. The publish
-/// re-dispatch side effect (`mark_publish_relay_unavailable`) is correct and
-/// load-bearing; the relay-health side effect is not. #2784 tracks adding a
-/// narrow `KernelReducer::handle_relay_outbound_dropped` in nmp-core (out of
-/// this crate's lane) that keeps only the former.
+/// For `kind == "EVENT"` this calls
+/// `reducer.handle_relay_outbound_dropped`, which moves affected `InFlight`
+/// publish attempts back to `Pending` without marking the still-healthy,
+/// still-connecting relay as failed. The frame that overflowed the pre-connect
+/// buffer never reached the socket, so retry is correct; relay-health churn is
+/// not.
 pub(crate) fn surface_outbound_drops(
     drops: &[DroppedOutboundFrame],
     reducer: &mut KernelReducer,
@@ -73,15 +60,7 @@ pub(crate) fn surface_outbound_drops(
             kind: kind.to_string(),
         });
         if kind == "EVENT" {
-            // TODO(#2784): this misattributes a local buffer overflow as a
-            // relay transport failure (backing_off/ERR_TRANSIENT/reconnect_count
-            // churn on a healthy, still-connecting relay). Replace with a
-            // narrow `handle_relay_outbound_dropped` once nmp-core exposes it.
-            reducer.handle_relay_failed(
-                drop.role,
-                &drop.url,
-                "pre-connect send buffer overflow: outbound frame evicted".to_string(),
-            );
+            reducer.handle_relay_outbound_dropped(drop.role, &drop.url);
         }
     }
     events

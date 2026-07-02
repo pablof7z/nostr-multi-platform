@@ -75,6 +75,16 @@ impl super::KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
+    /// An outbound `EVENT` frame was evicted before it reached the transport.
+    ///
+    /// This is not a relay lifecycle failure: the socket may still be healthy
+    /// and connecting. The only kernel state transition is publish-engine
+    /// recovery, moving in-flight attempts for this relay back to pending so a
+    /// future `Connected` event can re-dispatch them.
+    pub fn handle_relay_outbound_dropped(&mut self, _role: RelayRole, relay_url: &str) {
+        self.kernel.mark_publish_relay_unavailable(relay_url);
+    }
+
     /// A relay socket was torn down.
     pub fn handle_relay_closed(&mut self, role: RelayRole, relay_url: &str) {
         self.kernel.relay_closed(role, relay_url);
