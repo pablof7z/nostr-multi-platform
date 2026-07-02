@@ -1,0 +1,51 @@
+namespace nmp.zaps;
+
+// Typed FlatBuffers wire for the zap-summary read model
+// (`nmp_zaps::ZapSummarySnapshot`), schema_id "nmp.zaps.summary".
+//
+// The zap owner folds validated NIP-57 kind:9735 zap receipts (`#e`) for ONE
+// target event and exposes the aggregate: total millisats, distinct accepted
+// receipt count, and a per-zapper breakdown keyed by the RAW sender pubkey
+// (from the receipt's validated embedded zap request). Receipt decode,
+// amount consistency, and provider validation are nmp-nip57's job
+// (`try_from_kernel_event_validated`); this schema carries only the result.
+//
+// Raw data only (aim.md Section 2): `target_id` and every `pubkey` are raw
+// identifiers; no `display::` forwarder runs on the encode path. Whether the
+// ACTIVE user zapped is derived by the shell comparing its own
+// active-account pubkey against `zappers` — this concept never depends on
+// viewer identity (mirrors `nmp-reposts`' `reposter_pubkeys`).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-zaps/src/wire/generated \
+//         crates/nmp-zaps/schema/zap_summary.fbs
+
+table ZapperTotal {
+  // Raw sender pubkey from the validated embedded zap request, or absent for
+  // an anonymous receipt (NIP-57 permits a zap with no discoverable sender;
+  // every anonymous receipt aggregates into the one absent-pubkey entry).
+  pubkey:string;
+  // Millisats this sender (or the anonymous bucket) has sent to the target.
+  total_msats:uint64;
+  // Distinct accepted receipts from this sender (or the anonymous bucket).
+  zap_count:uint32;
+}
+
+table ZapSummarySnapshot {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint32 = 1;
+  // The zapped target: raw kind:1 note event id.
+  target_id:string;
+  // Sum of `amount_msats` across every distinct accepted receipt.
+  total_msats:uint64;
+  // Distinct accepted receipts (deduplicated by receipt event id).
+  zap_count:uint64;
+  // Per-sender aggregation, one entry per distinct sender pubkey (plus one
+  // entry for the anonymous bucket if any anonymous receipts were accepted).
+  // Bounded by the reducer's input map capacity (`MAX_PROJECTION_MESSAGES`).
+  zappers:[ZapperTotal];
+}
+
+file_identifier "NZSM";
+root_type ZapSummarySnapshot;

@@ -4725,6 +4725,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-zaps"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-kinds",
+ "nmp-nip57",
+ "nmp-ownership",
+ "nmp-read-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
