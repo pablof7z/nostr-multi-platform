@@ -84,6 +84,11 @@ jobs:
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
+      - name: Check web feed-helper codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-codegen -- gen feed-helpers --platform ts --check \
+            --out web/packages/runtime-web/src/feedHelpers.generated.ts
+
       # #1931 — the native write boundary must stay behind generated action
       # builders for every migrated namespace. The self-test proves the gate
       # trips when Swift/Kotlin production code hand-spells a migrated

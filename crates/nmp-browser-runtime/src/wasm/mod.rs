@@ -46,6 +46,7 @@
 pub(crate) mod core;
 pub(crate) mod dispatch;
 pub(crate) mod dispatch_support;
+pub(crate) mod feed;
 pub(crate) mod group_discovery;
 pub(crate) mod group_events;
 pub(crate) mod identity;

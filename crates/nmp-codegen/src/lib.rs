@@ -169,7 +169,7 @@ pub use action_builders::{
     Platform as ActionBuilderPlatform,
 };
 /// #1626 — generated app-facing native feed helpers over the canonical
-/// `FeedParams` JSON doorway. These emit Swift/Kotlin convenience helpers only;
+/// `FeedParams` JSON doorway. These emit Swift/Kotlin/TS convenience helpers;
 /// Rust/NMP still owns feed declaration, compilation, reactivity, and session
 /// lifecycle.
 pub mod feed_helpers;

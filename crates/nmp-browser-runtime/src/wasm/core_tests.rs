@@ -60,6 +60,8 @@ fn release_profile_ref_req(correlation_id: &str) -> String {
     .to_string()
 }
 
+#[path = "core_feed_tests.rs"]
+mod feed_tests;
 #[path = "core_profile_claim_tests.rs"]
 mod profile_claim_tests;
 

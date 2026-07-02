@@ -1,9 +1,10 @@
-//! Generated app-facing native feed helpers over the canonical `FeedParams` JSON seam.
+//! Generated app-facing feed helpers over the canonical `FeedParams` JSON seam.
 //!
 //! These helpers are host-language convenience only. They build the same
 //! serializable declaration that Rust app code builds with `FeedKey::app(...)`,
 //! `feed::events()`, `source::active_user().follows()`, and
-//! `app.feeds().open_spec(...)`, then call the existing `openFeedJson` binding.
+//! `app.feeds().open_spec(...)`, then call the host platform's feed-session
+//! opening door.
 //! They do not introduce another feed runtime or expose Trellis/session
 //! compiler internals.
 
@@ -11,6 +12,7 @@ use std::path::Path;
 
 pub mod kotlin;
 pub mod swift;
+pub mod ts;
 
 /// Which host language to emit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,6 +21,8 @@ pub enum Platform {
     Swift,
     /// Emit `FeedHelpers.kt`.
     Kotlin,
+    /// Emit `feedHelpers.generated.ts`.
+    Ts,
 }
 
 impl Platform {
@@ -30,8 +34,9 @@ impl Platform {
         match value {
             "swift" => Ok(Self::Swift),
             "kotlin" => Ok(Self::Kotlin),
+            "ts" => Ok(Self::Ts),
             other => Err(format!(
-                "unknown --platform `{other}` (expected swift|kotlin)"
+                "unknown --platform `{other}` (expected swift|kotlin|ts)"
             )),
         }
     }
@@ -52,6 +57,7 @@ pub fn render_feed_helpers(platform: Platform) -> String {
     match platform {
         Platform::Swift => swift::render(),
         Platform::Kotlin => kotlin::render(),
+        Platform::Ts => ts::render(),
     }
 }
 

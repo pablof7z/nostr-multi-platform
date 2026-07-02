@@ -24,11 +24,13 @@ native/browser `feeds().open/load_older/close` facades, native/browser
 `open_spec(feed_key, feed_spec)` helpers, UniFFI support helpers that call the
 default compiler, app-owned dynamic projection keys, separate `FeedParams.key` /
 `FeedParams.item_projection` fields, and the `FeedSpec` builder over
-`FeedParams`, explicit pointer-target-hydration naming, generated Swift/Kotlin
-helper surfaces over the existing UniFFI `openFeedJson` doorway, and starter
-docs/code that teach `FeedKey::app(...)`, `feed::events()`,
-`source::active_user().follows()`, and `app.feeds().open_spec(...)`. Issue
-#1626 remains open for broader product adoption and web/package helper coverage.
+`FeedParams`, explicit pointer-target-hydration naming, generated
+Swift/Kotlin/TypeScript helper surfaces over the platform feed-session doorway,
+and starter docs/code that teach `FeedKey::app(...)`, `feed::events()`,
+`source::active_user().follows()`, and `app.feeds().open_spec(...)`. Web
+runtime/package coverage now exposes the same descriptor through
+`feed_open_json` and generated TypeScript helpers. Issue #1626 remains open for
+broader product adoption.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -51,12 +53,12 @@ The long-term generated-helper spelling may expose this as
 Rust facade uses `open_spec` alongside `open(&FeedParams)` so the canonical
 serializable descriptor remains directly available.
 
-Generated Swift/Kotlin feed helpers are a native-binding convenience over the
+Generated Swift/Kotlin/TypeScript feed helpers are binding conveniences over the
 same descriptor. The first generated helper family builds an active-user-follows
-feed descriptor with typed `RootIndexed`/`Flat` shape selection and calls UniFFI
-`openFeedJson`; it does not choose a compiler, register observers, own source
-reduction, or add a second runtime path. Web/package helper coverage remains
-future #1626 work until `runtime-web` exposes an equivalent feed session door.
+feed descriptor with typed `RootIndexed`/`Flat` shape selection and calls the
+platform feed-session door (`openFeedJson` on native bindings,
+`feed_open_json` in `runtime-web`); it does not choose a compiler, register
+observers, own source reduction, or add a second runtime path.
 
 The helper uses the standard NMP feed compiler. App, native, browser, TUI, and
 generated helper code do not pass a `FeedCompiler`, observer registrar,
