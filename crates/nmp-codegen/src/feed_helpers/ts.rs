@@ -26,6 +26,48 @@ export type FeedRuntime = {
   openFeedJson?: (paramsJson: string, correlationId: string) => FeedSessionHandle | undefined;
 };
 
+function buildFeedParamsJson(
+  feedKey: string,
+  primaryKinds: number[],
+  source: unknown,
+  visibleLimit: number,
+  shape: FeedHelperShape,
+): string {
+  return JSON.stringify({
+    primary_kinds: primaryKinds,
+    shape,
+    source,
+    admission: "All",
+    order: "NewestByFeedPosition",
+    window: {
+      initial_limit: visibleLimit,
+      page_size: visibleLimit,
+      source_page_size: visibleLimit,
+    },
+    key: feedKey,
+    item_projection: "FeedRows",
+  });
+}
+
+function feedHandleFromEvents(events: WorkerEvent[]): FeedSessionHandle | undefined {
+  return events.find((event) => event.type === "feed_opened")?.handle;
+}
+
+function openFeedRequest(paramsJson: string, correlationId: string): WorkerRequest {
+  return { type: "feed_open_json", params_json: paramsJson, correlation_id: correlationId };
+}
+
+function openFeed(
+  runtime: FeedRuntime,
+  correlationId: string,
+  paramsJson: string,
+): FeedSessionHandle | undefined {
+  if (typeof runtime.openFeedJson === "function") {
+    return runtime.openFeedJson(paramsJson, correlationId);
+  }
+  return feedHandleFromEvents(runtime.handle(openFeedRequest(paramsJson, correlationId)));
+}
+
 export const GeneratedFeedHelpers = {
   activeUserFollowsFeedParamsJson(
     feedKey: string,
@@ -33,20 +75,7 @@ export const GeneratedFeedHelpers = {
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
   ): string {
-    return JSON.stringify({
-      primary_kinds: primaryKinds,
-      shape,
-      source: "ActiveUserFollows",
-      admission: "All",
-      order: "NewestByFeedPosition",
-      window: {
-        initial_limit: visibleLimit,
-        page_size: visibleLimit,
-        source_page_size: visibleLimit,
-      },
-      key: feedKey,
-      item_projection: "FeedRows",
-    });
+    return buildFeedParamsJson(feedKey, primaryKinds, "ActiveUserFollows", visibleLimit, shape);
   },
 
   openActiveUserFollowsFeedRequest(
@@ -56,16 +85,10 @@ export const GeneratedFeedHelpers = {
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
   ): WorkerRequest {
-    return {
-      type: "feed_open_json",
-      params_json: GeneratedFeedHelpers.activeUserFollowsFeedParamsJson(
-        feedKey,
-        primaryKinds,
-        visibleLimit,
-        shape,
-      ),
-      correlation_id: correlationId,
-    };
+    return openFeedRequest(
+      GeneratedFeedHelpers.activeUserFollowsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
+      correlationId,
+    );
   },
 
   openActiveUserFollowsFeed(
@@ -76,21 +99,130 @@ export const GeneratedFeedHelpers = {
     visibleLimit = 80,
     shape: FeedHelperShape = "RootIndexed",
   ): FeedSessionHandle | undefined {
-    const paramsJson = GeneratedFeedHelpers.activeUserFollowsFeedParamsJson(
-      feedKey,
-      primaryKinds,
-      visibleLimit,
-      shape,
+    return openFeed(
+      runtime,
+      correlationId,
+      GeneratedFeedHelpers.activeUserFollowsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
     );
-    if (typeof runtime.openFeedJson === "function") {
-      return runtime.openFeedJson(paramsJson, correlationId);
-    }
-    return feedHandleFromEvents(
-      runtime.handle({
-        type: "feed_open_json",
-        params_json: paramsJson,
-        correlation_id: correlationId,
-      }),
+  },
+
+  /** The active account's hosted-group set. See `FeedSourceExpr::ActiveUserHostedGroups`. */
+  hostedGroupsFeedParamsJson(
+    feedKey: string,
+    primaryKinds: number[],
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): string {
+    return buildFeedParamsJson(feedKey, primaryKinds, "ActiveUserHostedGroups", visibleLimit, shape);
+  },
+
+  openHostedGroupsFeedRequest(
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): WorkerRequest {
+    return openFeedRequest(
+      GeneratedFeedHelpers.hostedGroupsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
+      correlationId,
+    );
+  },
+
+  openHostedGroupsFeed(
+    runtime: FeedRuntime,
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): FeedSessionHandle | undefined {
+    return openFeed(
+      runtime,
+      correlationId,
+      GeneratedFeedHelpers.hostedGroupsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
+    );
+  },
+
+  /** Members of an app/defaults-registered list id. See `FeedSourceExpr::ListMembers`. */
+  listMembersFeedParamsJson(
+    feedKey: string,
+    primaryKinds: number[],
+    listId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): string {
+    return buildFeedParamsJson(feedKey, primaryKinds, { ListMembers: { list: listId } }, visibleLimit, shape);
+  },
+
+  openListMembersFeedRequest(
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    listId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): WorkerRequest {
+    return openFeedRequest(
+      GeneratedFeedHelpers.listMembersFeedParamsJson(feedKey, primaryKinds, listId, visibleLimit, shape),
+      correlationId,
+    );
+  },
+
+  openListMembersFeed(
+    runtime: FeedRuntime,
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    listId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): FeedSessionHandle | undefined {
+    return openFeed(
+      runtime,
+      correlationId,
+      GeneratedFeedHelpers.listMembersFeedParamsJson(feedKey, primaryKinds, listId, visibleLimit, shape),
+    );
+  },
+
+  /** An app-registered relay set. See `FeedSourceExpr::RelaySet`. */
+  relaySetFeedParamsJson(
+    feedKey: string,
+    primaryKinds: number[],
+    relaySetId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): string {
+    return buildFeedParamsJson(feedKey, primaryKinds, { RelaySet: { relays: relaySetId } }, visibleLimit, shape);
+  },
+
+  openRelaySetFeedRequest(
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    relaySetId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): WorkerRequest {
+    return openFeedRequest(
+      GeneratedFeedHelpers.relaySetFeedParamsJson(feedKey, primaryKinds, relaySetId, visibleLimit, shape),
+      correlationId,
+    );
+  },
+
+  openRelaySetFeed(
+    runtime: FeedRuntime,
+    correlationId: string,
+    feedKey: string,
+    primaryKinds: number[],
+    relaySetId: string,
+    visibleLimit = 80,
+    shape: FeedHelperShape = "RootIndexed",
+  ): FeedSessionHandle | undefined {
+    return openFeed(
+      runtime,
+      correlationId,
+      GeneratedFeedHelpers.relaySetFeedParamsJson(feedKey, primaryKinds, relaySetId, visibleLimit, shape),
     );
   },
 
@@ -102,10 +234,6 @@ export const GeneratedFeedHelpers = {
     return { type: "feed_close", handle, correlation_id: correlationId };
   },
 };
-
-function feedHandleFromEvents(events: WorkerEvent[]): FeedSessionHandle | undefined {
-  return events.find((event) => event.type === "feed_opened")?.handle;
-}
 "#
     .to_string()
 }

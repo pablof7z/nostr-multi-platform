@@ -31,6 +31,40 @@ fn helpers_use_canonical_json_bridge_shape() {
 }
 
 #[test]
+fn helpers_cover_group_list_and_relay_set_families() {
+    // #2723: generated helper coverage must extend beyond active-user-follows
+    // so group-scoped, list-scoped, and relay-set-scoped consumers (29er, hl)
+    // do not hand-write FeedParams literals.
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
+        let rendered = render_feed_helpers(platform);
+        assert!(
+            rendered.contains("ActiveUserHostedGroups"),
+            "{platform:?} missing hosted-groups family"
+        );
+        assert!(
+            rendered.contains("ListMembers"),
+            "{platform:?} missing list-members family"
+        );
+        assert!(
+            rendered.contains("RelaySet"),
+            "{platform:?} missing relay-set family"
+        );
+        assert!(
+            rendered.to_lowercase().contains("hostedgroupsfeed"),
+            "{platform:?} missing hosted-groups helper entry points"
+        );
+        assert!(
+            rendered.to_lowercase().contains("listmembersfeed"),
+            "{platform:?} missing list-members helper entry points"
+        );
+        assert!(
+            rendered.to_lowercase().contains("relaysetfeed"),
+            "{platform:?} missing relay-set helper entry points"
+        );
+    }
+}
+
+#[test]
 fn generate_then_check_is_up_to_date() {
     for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
         let tmp = std::env::temp_dir().join(format!(

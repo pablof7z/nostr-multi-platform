@@ -103,11 +103,14 @@ surfaces, not the taught product API.
 
 Generated host-language helpers are allowed only as a convenience over that
 same descriptor. `nmp gen feed-helpers` emits Swift/Kotlin/TypeScript helpers
-that construct canonical `FeedParams` JSON for active-user-follows feeds with
-typed `RootIndexed`/`Flat` shape selection and call the platform feed-session
-door (`openFeedJson` on native bindings, `feed_open_json` in `runtime-web`).
-They do not choose a compiler, own feed reactivity, or replace the handle-owned
-session lifecycle.
+for four source families — active-user-follows, active-user-hosted-groups,
+list-members, and relay-set — each with typed `RootIndexed`/`Flat` shape
+selection, constructing canonical `FeedParams` JSON and calling the platform
+feed-session door (`openFeedJson` on native bindings, `feed_open_json` in
+`runtime-web`). They do not choose a compiler, own feed reactivity, or replace
+the handle-owned session lifecycle. `NmpApp::open_observed_feed_source`
+predates this facade and is `#[deprecated]`; new app code opens typed feed rows
+through `app.feeds()` or a generated helper instead.
 
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item
