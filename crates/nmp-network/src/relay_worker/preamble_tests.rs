@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{accept, Message};
 
-use super::tests::drain_until;
+use super::tests::support::drain_until;
 use super::{spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
