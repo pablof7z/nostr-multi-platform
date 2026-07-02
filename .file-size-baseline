@@ -25,7 +25,6 @@ crates/nmp-core/src/kernel/retention_tests.rs	530
 crates/nmp-core/src/kernel/state_projection_tests.rs	584
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
-crates/nmp-marmot/src/tests.rs	748
 crates/nmp-network/src/pool/tests.rs	554
 crates/nmp-network/src/relay_worker/tests.rs	741
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
