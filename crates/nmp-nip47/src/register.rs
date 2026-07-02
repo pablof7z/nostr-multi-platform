@@ -34,6 +34,31 @@ use crate::{
     WALLET_STATUS_FILE_IDENTIFIER, WALLET_STATUS_SCHEMA_ID, WALLET_STATUS_SCHEMA_VERSION,
 };
 
+#[derive(Clone, Debug, Default)]
+pub struct Config {
+    pub storage_path: Option<String>,
+}
+
+impl Config {
+    #[must_use]
+    pub fn new(storage_path: Option<String>) -> Self {
+        Self { storage_path }
+    }
+}
+
+#[derive(Clone)]
+pub struct Handles {
+    pub wallet: WalletRuntimeHandle,
+}
+
+impl std::fmt::Debug for Handles {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Handles")
+            .field("wallet", &"WalletRuntimeHandle")
+            .finish()
+    }
+}
+
 /// Adapter that wires the wallet runtime's [`dispatch_nwc_relay_text`] into the
 /// substrate-generic [`RelayTextInterceptor`] trait the actor calls.
 ///
@@ -144,7 +169,7 @@ impl RelayTextInterceptor for WalletInterceptor {
 ///
 /// Returns the per-app [`WalletRuntimeHandle`] so the caller can wrap it in a
 /// `PaymentPort` ([`crate::wallet_payment_port`]) and inject it into the NIP-57
-/// zap auto-chain (`nmp_nip57::register_zap_with_payment_port`) — the zap
+/// zap auto-chain (`nmp_nip57::Config::with_payment_port`) — the zap
 /// override lives at the caller because `nmp-nip47` must not depend on
 /// `nmp-nip57` (layer/D0). Two `NmpApp` instances therefore drive fully
 /// independent wallet runtimes (no `ACTIVE_WALLET_RUNTIME` global — deleted).
@@ -153,10 +178,10 @@ impl RelayTextInterceptor for WalletInterceptor {
 /// the interceptor + action registry once, at kernel construction). The
 /// `NmpAppBuilder::with_wallet` step in `explicit composition` enforces this ordering
 /// at compile time for Rust callers.
-pub fn register_wallet(
+pub fn register(
     app: &mut (impl ActionRegistrar + RelayTextInterceptorRegistrar + SnapshotProjectionRegistrar),
-    storage_path: Option<String>,
-) -> WalletRuntimeHandle {
+    config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
     //    writer, D4), the other is captured below by the typed snapshot
     //    projection closure.
@@ -173,7 +198,7 @@ pub fn register_wallet(
     // tri-state reconciliation path: in-flight payments survive a process kill
     // and a TTL/disconnect transitions them to `Unknown` (never `Failed`) so a
     // `lookup_invoice` on reconnect settles them to the true outcome.
-    if let Some(storage_path) = storage_path.filter(|p| !p.trim().is_empty()) {
+    if let Some(storage_path) = config.storage_path.filter(|p| !p.trim().is_empty()) {
         runtime.set_payment_store(FsPaymentStore::new(storage_path));
     }
 
@@ -185,12 +210,9 @@ pub fn register_wallet(
     // 3. Action modules — exposed under `nmp.wallet.{connect,disconnect,
     //    pay_invoice}`. ADR-0072 rung 5.2: each module VALUE owns a clone of
     //    the per-app handle (no process-global install).
-    app.register_action(WalletConnectModule::new(Arc::clone(&handle)))
-        .expect("duplicate registration: nmp-nip47 WalletConnectModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
-    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)))
-        .expect("duplicate registration: nmp-nip47 WalletDisconnectModule"); // doctrine-allow: D6 — startup-only call; see above
-    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)))
-        .expect("duplicate registration: nmp-nip47 WalletPayInvoiceModule"); // doctrine-allow: D6 — startup-only call; see above
+    app.register_action(WalletConnectModule::new(Arc::clone(&handle)))?;
+    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)))?;
+    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)))?;
 
     // 4. Substrate-generic relay-text interceptor — the actor calls this for
     //    every inbound text frame.
@@ -208,7 +230,7 @@ pub fn register_wallet(
     // Hand the per-app handle back so the caller can thread it into the NIP-57
     // zap auto-chain (ADR-0072 rung 5.2; `nmp-nip47` must not depend on
     // `nmp-nip57`, so the zap override lives at the caller).
-    handle
+    Ok(Handles { wallet: handle })
 }
 
 /// Build the typed `"wallet"` sidecar entry from the shared status slot, or

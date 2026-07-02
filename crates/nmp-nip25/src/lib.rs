@@ -21,8 +21,8 @@ mod projection;
 mod wire;
 
 pub use action::{
-    build_reaction_event, Nip25Descriptor, PublishReactionCommand, ReactAction, ReactModule,
-    UnreactAction, UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
+    build_reaction_event, PublishReactionCommand, ReactAction, ReactModule, UnreactAction,
+    UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
 };
 pub use aggregate::{
     ReactionAggregateProjection, ReactionAggregateSnapshot, ReactionEmojiCount,
@@ -37,3 +37,17 @@ pub use wire::reaction_aggregate_fb::{
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
+
+#[derive(Clone, Debug, Default)]
+pub struct Config;
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles;
+
+pub fn register(
+    app: &mut impl nmp_core::substrate::ActionRegistrar,
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    action::register_actions(app);
+    Ok(Handles)
+}

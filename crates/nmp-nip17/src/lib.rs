@@ -90,9 +90,8 @@ pub use inbox::{
     active_giftwrap_inbox_interest_id, peer_dm_relay_list_identity, peer_dm_relay_list_interest,
     DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
-pub use installer::{register_dm_runtime, DmInboxController};
+pub use installer::{register, Config, Handles};
 pub use kind10050_parser::Kind10050Parser;
-pub use runtime::register_runtime;
 pub use wire::dm_inbox_fb::{
     decode_dm_inbox_snapshot, encode_dm_inbox_snapshot, DM_INBOX_FILE_IDENTIFIER,
     DM_INBOX_SCHEMA_ID, DM_INBOX_SCHEMA_VERSION,
@@ -182,7 +181,7 @@ pub fn build_dm_rumor(input: &DmInput) -> UnsignedEvent {
 /// swapped each call, so callers that need a stable handle should
 /// store the cache themselves and pass it explicitly. The default
 /// path (one composition, one cache) is the common case.
-pub fn register_actions(
+pub(crate) fn register_actions(
     app: &mut (impl ActionRegistrar + DmInboxRelayRegistrar + IngestParserRegistrar),
 ) {
     // Yielding defaults (ADR-0069 Part 1): an app may pre-empt either DM action

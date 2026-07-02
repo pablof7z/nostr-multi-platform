@@ -95,7 +95,7 @@ impl ProtocolCommand for ReplyCommand {
     }
 }
 
-pub fn register_actions(app: &mut impl ActionRegistrar) {
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(ReplyModule);
 }
 

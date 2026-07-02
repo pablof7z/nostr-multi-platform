@@ -28,13 +28,17 @@ pub mod hook;
 pub mod parse;
 pub mod url;
 
-use std::sync::Arc;
-
 pub use fetch::fetch_relay_info_blocking;
 pub use hook::{Nip11FetchHook, NIP11_TTL};
 pub use nmp_core::substrate::RelayInfoDoc;
 pub use parse::parse_relay_info;
 pub use url::http_url_for_relay;
+
+#[derive(Clone, Debug, Default)]
+pub struct Config;
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles;
 
 /// Install the automatic NIP-11 fetch hook on `app`. After this call, every
 /// relay the pool connects to has its information document fetched and surfaced
@@ -48,8 +52,12 @@ pub use url::http_url_for_relay;
 /// surface by depending on the narrow relay-connected-hook registration
 /// trait, not the concrete app and not the broad `AppHost` (D6 capability
 /// honesty: this crate only reacts to relay connects).
-pub fn register(app: &impl nmp_core::substrate::RelayConnectedHookRegistrar) {
-    app.add_relay_connected_hook(Arc::new(Nip11FetchHook::new()));
+pub fn register(
+    app: &impl nmp_core::substrate::RelayConnectedHookRegistrar,
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    app.add_relay_connected_hook(std::sync::Arc::new(Nip11FetchHook::new()));
+    Ok(Handles)
 }
 
 /// On-demand probe of an arbitrary relay URL that may not be in the pool
@@ -68,6 +76,7 @@ mod tests {
         fan_relay_connected, install_relay_connected_hook, new_relay_connected_hook_slot,
     };
     use nmp_core::{ActorMail, CommandSender};
+    use std::sync::Arc;
 
     /// End-to-end of the hook seam without a real `AppHost`: install the
     /// `Nip11FetchHook` on a bare slot, fan a connect, and assert the hook

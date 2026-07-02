@@ -68,7 +68,7 @@ use nmp_core::ObservedProjectionSink;
 ///
 /// Exposed as a named per-feature installer so app composition roots can wire
 /// mute support without pulling in any defaults bundle.
-pub fn register_mute_runtime(
+pub(crate) fn register_mute_runtime(
     app: &(impl ObservedProjectionRegistrar
           + HostCapabilities
           + SnapshotProjectionRegistrar

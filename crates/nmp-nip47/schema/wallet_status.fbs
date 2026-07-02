@@ -5,7 +5,7 @@ namespace nmp.nip47;
 //
 // This is the typed sidecar counterpart to the authoritative serde JSON of
 // `WalletStatus`: the generic `Value` projection stays the source of truth
-// (`nmp_nip47::register_wallet`, `crates/nmp-nip47/src/register.rs`, still
+// (`nmp_nip47::register`, `crates/nmp-nip47/src/register.rs`, still
 // registers it), and this buffer is emitted ALONGSIDE it in every
 // `SnapshotFrame`'s `typed_projections` sidecar
 // (ADR-0072). A host with a `NWST` decoder prefers this typed payload; an

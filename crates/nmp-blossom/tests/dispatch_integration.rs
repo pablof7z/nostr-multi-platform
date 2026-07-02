@@ -21,7 +21,8 @@ fn start_bytes_rejects_wrong_schema_version_for_upload() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_blossom::register_actions(&mut registry);
+    nmp_blossom::register(&mut registry, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
 
     let bad_version = build_bad_version_upload_payload();
     let err = registry
@@ -50,7 +51,8 @@ fn start_bytes_accepts_well_formed_upload_payload() {
     use nmp_core::substrate::{ActionContext, ActionPayload};
 
     let mut registry = ActionRegistry::new();
-    nmp_blossom::register_actions(&mut registry);
+    nmp_blossom::register(&mut registry, nmp_blossom::Config::default())
+        .expect("nmp-blossom registration must not collide");
 
     let action = UploadInput {
         file_path: "/tmp/avatar.png".to_string(),

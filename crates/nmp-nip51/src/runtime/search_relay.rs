@@ -73,7 +73,7 @@ use crate::SearchRelayListProjection;
 /// policy is explicit at every call site; pass
 /// [`SearchFallbackRelays::default()`] only when the app deliberately wants no
 /// fallback relays.
-pub fn register_search_relay_runtime_with_fallbacks(
+pub(crate) fn register_search_relay_runtime_with_fallbacks(
     app: &(impl ObservedProjectionRegistrar
           + HostCapabilities
           + SnapshotProjectionRegistrar

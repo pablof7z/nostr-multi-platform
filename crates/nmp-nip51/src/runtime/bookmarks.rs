@@ -17,9 +17,11 @@
 
 use std::sync::Arc;
 
+use crate::bookmark_sets::register_bookmark_set_actions;
+use crate::bookmarks::register_bookmark_actions;
+use crate::web_bookmarks::register_web_bookmark_actions;
 use crate::{
-    active_bookmark_list_interest, encode_bookmark_list, register_bookmark_actions,
-    register_bookmark_set_actions, register_web_bookmark_actions, BookmarkListProjection,
+    active_bookmark_list_interest, encode_bookmark_list, BookmarkListProjection,
     BookmarkSetsProjection, WebBookmarksProjection, BOOKMARK_LIST_FILE_IDENTIFIER,
     BOOKMARK_LIST_SCHEMA_ID, BOOKMARK_LIST_SCHEMA_VERSION,
 };
@@ -38,7 +40,7 @@ use nmp_core::ObservedProjectionSink;
 ///    projection only for `authors=[active]`.
 /// 3. Registers the add/remove bookmark action modules (read-modify-write
 ///    against the same projection).
-pub fn register_bookmark_runtime(
+pub(crate) fn register_bookmark_runtime(
     app: &mut (impl ActionRegistrar
               + ObservedProjectionRegistrar
               + HostCapabilities
@@ -103,7 +105,7 @@ pub fn register_bookmark_runtime(
 /// Creates one [`crate::BookmarkSetsProjection`] and registers both
 /// [`crate::AddBookmarkSetItemAction`] and
 /// [`crate::RemoveBookmarkSetItemAction`] against it.
-pub fn register_bookmark_set_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
+pub(crate) fn register_bookmark_set_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
     let projection = Arc::new(BookmarkSetsProjection::new(app.active_pubkey()));
     register_bookmark_set_actions(app, projection);
 }
@@ -112,7 +114,7 @@ pub fn register_bookmark_set_runtime(app: &mut (impl ActionRegistrar + HostCapab
 ///
 /// Creates one [`crate::WebBookmarksProjection`] and registers
 /// [`crate::PublishWebBookmarkAction`] against it.
-pub fn register_web_bookmark_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
+pub(crate) fn register_web_bookmark_runtime(app: &mut (impl ActionRegistrar + HostCapabilities)) {
     let projection = Arc::new(WebBookmarksProjection::new(app.active_pubkey()));
     register_web_bookmark_actions(app, projection);
 }

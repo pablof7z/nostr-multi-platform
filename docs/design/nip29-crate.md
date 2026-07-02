@@ -59,7 +59,7 @@ views to open and which actions to expose.
 |---|---|---|
 | Typed group identity | `GroupId { host_relay_url, local_id }` plus the host-pinned `group_metadata_filter_json` builder. Kind policy lives on the consumer, not on `GroupId`: a `GroupEventsQuery { group, kinds }` (with `GroupEventKinds::{All, Specific}`) builds the group read filter via `GroupEventsQuery::filter_json`. | Every read/write path carries the host relay explicitly; a bare `h` value is never enough to identify a group. NIP-29 owns only the `["h", local_id]` routing; the consumer declares which kinds it wants (issue #2187). |
 | Read projections | `GroupEventsProjection` (consumer-parameterized by group + kind set), `DiscoveredGroupsProjection`, and `JoinedGroupsProjection` | Per-open read views are hydrated through typed group sessions in the native/browser runtimes. A chat view is a consumer that opens `GroupEventsProjection` with kinds `[9, 11]`. |
-| Actions | `register_actions` installs the supported NIP-29 write actions with the app action registrar | Writes remain protocol-owned and host-pinned; the app shell does not derive relay routing from UI state. |
+| Actions | `register` installs the supported NIP-29 write actions with the app action registrar | Writes remain protocol-owned and host-pinned; the app shell does not derive relay routing from UI state. |
 | Small protocol caches/helpers | `RecentGroupEvents`, `JoinedHostsCache`, input-scope recognizers, and previous-tag helpers | These are protocol-internal helpers; durable app read state is exposed through projections and snapshot sidecars. |
 
 The app-side typed group session registers a projection muted, opens a

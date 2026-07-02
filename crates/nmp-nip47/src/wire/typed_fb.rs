@@ -1,7 +1,7 @@
 //! Typed FlatBuffers wire codec for [`crate::status::WalletStatus`].
 //!
 //! The authoritative FFI shape of the `"wallet"` projection is the serde JSON
-//! of [`WalletStatus`], registered by [`crate::register::register_wallet`] —
+//! of [`WalletStatus`], registered by [`crate::register::register`] —
 //! the app-neutral composition root every app wires through
 //! `NmpAppBuilder::with_wallet` (`crates/nmp-native-runtime/src/builder/wallet.rs`).
 //! This module adds a

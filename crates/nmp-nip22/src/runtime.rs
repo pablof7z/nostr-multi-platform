@@ -16,7 +16,7 @@ use crate::{CommentThreadProjection, KIND_NIP22_COMMENT};
 /// Returns the shared [`CommentThreadProjection`] so an app that renders
 /// comment threads can snapshot it directly; callers that only need the publish
 /// path may drop it.
-pub fn register_runtime(
+pub(crate) fn register_runtime(
     app: &mut impl ObservedProjectionRegistrar,
 ) -> Arc<CommentThreadProjection> {
     let projection = Arc::new(CommentThreadProjection::new());

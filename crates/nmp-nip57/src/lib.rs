@@ -41,38 +41,54 @@ pub use pending::{
 };
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
-/// Register the NIP-57 zap action module as a yielding default, with NO payment
-/// port wired (ADR-0069 Part 1: an app may pre-empt it regardless of call
-/// order).
-///
-/// ADR-0072 rung 5.2: the arity is STABLE across the `native` feature (cargo
-/// feature unification flips `native` on globally for any consumer that
-/// enables it; a feature-dependent arity would break this call site). The zap
-/// auto-chain reaches the wallet through the per-app `PaymentPort` the
-/// `ZapAction` value owns — `None` here. A wallet-capable composition root
-/// replaces this default with a port-carrying value via
-/// [`register_zap_with_payment_port`].
-pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
-    app.register_default_action(ZapAction::new());
+#[derive(Clone, Default)]
+pub struct Config {
+    #[cfg(feature = "native")]
+    payment_port: Option<std::sync::Arc<dyn nmp_core::substrate::PaymentPort>>,
 }
 
-/// Register the NIP-57 zap action module bound to a per-app [`PaymentPort`],
-/// via the **app path** (overriding any prior yielding default — ADR-0069: an
-/// app replacing a default is legal and order-independent).
-///
-/// ADR-0072 rung 5.2: the composition root injects a payment port backed by the
-/// SAME wallet it wires into the rest of the app (e.g.
-/// `nmp_nip47::wallet_payment_port(handle)`), so the zap → LNURL-pay →
-/// pay-invoice auto-chain pays through THIS app's wallet (no process-global).
-/// `native` only — the LNURL-pay → pay-invoice chain requires the `native`
-/// HTTP worker.
 #[cfg(feature = "native")]
-pub fn register_zap_with_payment_port(
+impl Config {
+    #[must_use]
+    pub fn with_payment_port(
+        payment_port: std::sync::Arc<dyn nmp_core::substrate::PaymentPort>,
+    ) -> Self {
+        Self {
+            payment_port: Some(payment_port),
+        }
+    }
+}
+
+impl core::fmt::Debug for Config {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut debug = f.debug_struct("Config");
+        #[cfg(feature = "native")]
+        debug.field("payment_port", &self.payment_port.is_some());
+        debug.finish()
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles {}
+
+/// Register the NIP-57 zap action module.
+///
+/// Without a payment port, the module is a yielding default (ADR-0069 Part 1).
+/// With a payment port, the module is installed on the app path so a
+/// wallet-capable composition root can override the default and route zap
+/// payment through its own wallet runtime.
+pub fn register(
     app: &mut impl nmp_core::substrate::ActionRegistrar,
-    payment_port: std::sync::Arc<dyn nmp_core::substrate::PaymentPort>,
-) {
-    app.register_action(ZapAction::with_payment_port(payment_port))
-        .expect("duplicate registration: nmp-nip57 ZapAction"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    #[cfg(feature = "native")]
+    if let Some(payment_port) = _config.payment_port {
+        app.register_action(ZapAction::with_payment_port(payment_port))?;
+        return Ok(Handles {});
+    }
+
+    app.register_default_action(ZapAction::new());
+    Ok(Handles {})
 }
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /

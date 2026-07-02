@@ -228,7 +228,8 @@ pub fn install(
     let blocked_parser: Arc<dyn nmp_core::substrate::IngestParser> =
         Arc::new(nmp_nip51::Kind10006Parser::new(Arc::clone(&blocked_cache)));
     app.register_ingest_parser(10_006, blocked_parser);
-    nmp_nip51::register_block_relay_actions(app, blocked_cache);
+    app.register_default_action(nmp_nip51::BlockRelayAction::new(Arc::clone(&blocked_cache)));
+    app.register_default_action(nmp_nip51::UnblockRelayAction::new(blocked_cache));
 
     app.set_publish_resolver_factory(
         |_store: Arc<dyn EventStore>,
@@ -271,7 +272,8 @@ pub fn install(
     }));
 
     #[cfg(feature = "native")]
-    nmp_nip11::register(app);
+    let _nip11 = nmp_nip11::register(app, nmp_nip11::Config::default())
+        .expect("nmp-nip11 registration must not collide");
 
     SubstrateHandles {
         mailbox_cache,

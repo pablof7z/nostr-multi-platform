@@ -81,7 +81,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use nmp_native_runtime::{NmpApp, NmpAppBuilder, RunConfig};
-use nmp_nip51::{register_bookmark_runtime, BookmarkItem, BookmarkListProjection};
+use nmp_nip51::{BookmarkItem, BookmarkListProjection};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 
@@ -123,7 +123,7 @@ impl BookmarkApp {
     /// return the app with its bookmark projection handle.
     ///
     /// Composition = `nmp_substrate::install` (the always-on cache-serve / routing
-    /// correctness floor) + `register_bookmark_runtime` (the kind:10003 observer
+    /// correctness floor) + `nmp_nip51::register` (the kind:10003 observer
     /// + the identity-driven demand-interest reconciler). No hand-built kernel
     /// state.
     fn boot() -> Self {
@@ -135,7 +135,9 @@ impl BookmarkApp {
         // Bookmark tier — registers the projection observer BEFORE the first
         // tick (the ordering contract) and the runtime that pushes the demand
         // interest on sign-in. Capture the projection handle.
-        let projection = register_bookmark_runtime(&mut builder);
+        let handles = nmp_nip51::register(&mut builder, nmp_nip51::Config::default())
+            .expect("nmp-nip51 registration must not collide");
+        let projection = handles.bookmarks;
 
         let app = builder
             .in_memory()

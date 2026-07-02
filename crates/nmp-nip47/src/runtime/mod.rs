@@ -4,7 +4,7 @@
 //! behind a [`WalletRuntimeHandle`] (`Arc<Mutex<Option<WalletRuntime>>>`).
 //! Each wallet `ActionModule` value and the `WalletInterceptor` hold their own
 //! `Arc` clone of the handle, obtained at composition time via
-//! [`crate::register::register_wallet`] (ADR-0072 rung 5.2 — register-by-value,
+//! [`crate::register::register`] (ADR-0072 rung 5.2 — register-by-value,
 //! no process-global install).
 //!
 //! D0: `nmp-core` no longer depends on `nmp-nwc`. D6: every error path

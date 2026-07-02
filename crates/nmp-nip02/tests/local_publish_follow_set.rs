@@ -123,7 +123,8 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     // registration call, dropped before any other access.
     unsafe {
         nmp_substrate::install(&mut *app, nmp_substrate::SubstrateConfig::default());
-        nmp_nip02::register_actions(&mut *app);
+        nmp_nip02::register(&mut *app, nmp_nip02::Config::default())
+            .expect("nmp-nip02 registration must not collide");
     }
 
     // Register both observed projections BEFORE start. ADR-0069:

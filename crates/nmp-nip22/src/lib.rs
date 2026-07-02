@@ -18,6 +18,7 @@
 
 mod builder;
 mod decode;
+mod installer;
 mod projection;
 mod runtime;
 
@@ -25,8 +26,8 @@ pub use builder::{
     build_comment_event, CommentBuildError, CommentBuildInput, CommentParent, CommentRoot,
 };
 pub use decode::{try_from_kernel_event, CommentRecord};
+pub use installer::{register, Config, Handles};
 pub use nmp_kinds::KIND_NIP22_COMMENT;
 pub use projection::{
     build_thread, CommentThreadNode, CommentThreadProjection, CommentThreadSnapshot,
 };
-pub use runtime::register_runtime;

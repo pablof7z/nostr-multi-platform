@@ -13,9 +13,23 @@ mod external_id;
 mod wire;
 
 pub use action::{
-    highlight_projection_from_event, HighlightProjection, Nip84Descriptor, PublishHighlightAction,
+    highlight_projection_from_event, HighlightProjection, PublishHighlightAction,
     PublishHighlightCommand, PublishHighlightModule, KIND_HIGHLIGHT,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
+
+#[derive(Clone, Debug, Default)]
+pub struct Config;
+
+#[derive(Clone, Debug, Default)]
+pub struct Handles;
+
+pub fn register(
+    app: &mut impl nmp_core::substrate::ActionRegistrar,
+    _config: Config,
+) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    action::register_actions(app);
+    Ok(Handles)
+}

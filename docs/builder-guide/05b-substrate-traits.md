@@ -183,19 +183,21 @@ nmp-nip29/src/
 ├── group_id.rs      GroupId { host_relay_url, local_id } — protocol noun
 ├── interest.rs      helpers building LogicalInterests with relay_pin
 ├── kinds.rs         NIP-29 kind constants + dispatch helper
-├── register.rs      register_actions(app: &mut NmpApp) + snapshot projector
+├── installer.rs     register(app, Config) + protocol-owned seams
 └── lib.rs           D0 boundary statement + register() public surface
 ```
 
-Registration (`crates/nmp-nip29/src/register.rs`):
+Registration (`crates/nmp-nip29/src/installer.rs`):
 
 ```rust
-pub fn register_actions(app: &mut NmpApp) {
-    app.register_action(PublishGroupEventAction);
-    app.register_action(CreateGroupAction);
-    app.register_action(DiscoverGroupsAction);
-    app.register_action(JoinGroupAction);
-    // additional NIP-29 owner actions
+pub fn register(
+    app: &mut (impl ActionRegistrar + InputScopeRegistrar + SearchScopeRegistrar),
+    _config: Config,
+) -> Result<Handles, RegistrationError> {
+    action_registration::register_actions(app)?;
+    input_scope::register_input_scopes(app);
+    search::register_search_scopes(app);
+    Ok(Handles)
 }
 ```
 

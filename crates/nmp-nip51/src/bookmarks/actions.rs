@@ -145,7 +145,7 @@ impl ActionModule for RemoveBookmarkAction {
     }
 }
 
-pub fn register_bookmark_actions(
+pub(crate) fn register_bookmark_actions(
     app: &mut impl ActionRegistrar,
     projection: Arc<BookmarkListProjection>,
 ) {

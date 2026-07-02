@@ -65,31 +65,35 @@ pub const FOLLOWING_TIMELINE_PROJECTION_KEY: &str = "example.login_timeline.foll
 pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
-    nmp_nip50::register_search_scopes(app);
-    nmp_nip50::register_input_scopes(app);
-
-    nmp_nip02::register_follow_actions(app);
-    nmp_replies::register_actions(app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip18::Nip18Descriptor, app);
-    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);
-    nmp_nip29::register_input_scopes(app);
-
-    let _wot = nmp_wot::register_runtime(app);
-    let _mute = nmp_nip51::register_mute_runtime(app);
-    let _bookmarks = nmp_nip51::register_bookmark_runtime(app);
-    nmp_nip51::register_bookmark_set_runtime(app);
-    nmp_nip51::register_web_bookmark_runtime(app);
-    let _search_relays = nmp_nip51::register_search_relay_runtime_with_fallbacks(
+    let _nip50 = nmp_nip50::register(app, nmp_nip50::Config::default())
+        .expect("nmp-nip50 registration must not collide");
+    let _nip02 = nmp_nip02::register(app, nmp_nip02::Config::default())
+        .expect("nmp-nip02 registration must not collide");
+    let _replies = nmp_replies::register(app, nmp_replies::Config::default())
+        .expect("nmp-replies registration must not collide");
+    let _nip25 = nmp_nip25::register(app, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
+    let _nip18 = nmp_nip18::register(app, nmp_nip18::Config::default())
+        .expect("nmp-nip18 registration must not collide");
+    let _nip84 = nmp_nip84::register(app, nmp_nip84::Config::default())
+        .expect("nmp-nip84 registration must not collide");
+    let _nip29 = nmp_nip29::register(app, nmp_nip29::Config::default())
+        .expect("nmp-nip29 registration must not collide");
+    let _wot = nmp_wot::register(app, nmp_wot::Config::default())
+        .expect("nmp-wot registration must not collide");
+    let _nip51 = nmp_nip51::register(
         app,
-        nmp_nip50::SearchFallbackRelays::default(),
-    );
-    let _comments = nmp_nip22::register_runtime(app);
-
-    nmp_nip17::register_actions(app);
-    nmp_nip17::register_runtime(app);
-
-    nmp_nip23::register_longform_projection(app);
+        nmp_nip51::Config {
+            search_fallback_relays: nmp_nip50::SearchFallbackRelays::default(),
+        },
+    )
+    .expect("nmp-nip51 registration must not collide");
+    let _comments = nmp_nip22::register(app, nmp_nip22::Config::default())
+        .expect("nmp-nip22 registration must not collide");
+    let _nip17 = nmp_nip17::register(app, nmp_nip17::Config::default())
+        .expect("nmp-nip17 registration must not collide");
+    let _nip23 = nmp_nip23::register(app, nmp_nip23::Config::default())
+        .expect("nmp-nip23 registration must not collide");
     ActionRegistrar::register_action(app, private_status::PublishStatusModule)
         .expect("starter private status action namespace must be unique");
 }

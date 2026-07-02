@@ -21,7 +21,7 @@ use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 /// Returns the installed runtime so app crates can read trust scores from the
 /// exact graph maintained by the observer. Existing composition roots may
 /// ignore the handle when they only need the bootstrap side effects.
-pub fn register_runtime(
+pub(crate) fn register_runtime(
     app: &(impl HostCapabilities + ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
 ) -> Option<Arc<WotBootstrapRuntime>> {
     let runtime = Arc::new(WotBootstrapRuntime::new(

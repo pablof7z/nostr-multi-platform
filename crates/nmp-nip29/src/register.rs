@@ -63,7 +63,7 @@ use crate::action::{
 /// Returns `Err(`[`RegistrationError`]`)` on the FIRST namespace collision
 /// detected (#1724 criterion 1: structured error in both dev and release).
 /// A collision means two init calls for the same app — the caller's bug.
-pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
     app.register_action(PublishGroupEventAction)?;
     app.register_action(CreateGroupAction)?;
     app.register_action(DiscoverGroupsAction)?;

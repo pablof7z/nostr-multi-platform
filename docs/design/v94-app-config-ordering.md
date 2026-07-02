@@ -135,7 +135,7 @@ typed `Err`; the diagnostic makes the *ordering* mistake observable rather than
 only the *use* mistake).
 
 **Status (issue #619 — DONE):** the reusable wallet wiring lives in
-`nmp_nip47::register_wallet(&mut impl AppHost, storage_path)` (lifted out of the
+`nmp_nip47::register(&mut impl AppHost, Config::new(storage_path))` (lifted out of the
 app-private `nmp-app-chirp::wallet_runtime`), and `nmp-native-runtime` exposes
 it as the typed `NmpAppBuilder::<Unstarted>::with_wallet()` builder step. Because
 `start(self, RunConfig)` consumes the builder by move, a Rust caller cannot

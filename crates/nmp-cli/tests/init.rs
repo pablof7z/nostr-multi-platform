@@ -10,26 +10,20 @@ use std::process::{Command, Output, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-const STARTER_INSTALLER_SEQUENCE: [&str; 19] = [
+const STARTER_INSTALLER_SEQUENCE: [&str; 13] = [
     "nmp_substrate::install",
-    "nmp_nip50::register_search_scopes",
-    "nmp_nip50::register_input_scopes",
-    "nmp_nip02::register_follow_actions",
-    "nmp_replies::register_actions",
-    "nmp_nip25::Nip25Descriptor",
-    "nmp_nip18::Nip18Descriptor",
-    "nmp_nip84::Nip84Descriptor",
-    "nmp_nip29::register_input_scopes",
-    "nmp_wot::register_runtime",
-    "nmp_nip51::register_mute_runtime",
-    "nmp_nip51::register_bookmark_runtime",
-    "nmp_nip51::register_bookmark_set_runtime",
-    "nmp_nip51::register_web_bookmark_runtime",
-    "nmp_nip51::register_search_relay_runtime_with_fallbacks",
-    "nmp_nip17::register_actions",
-    "nmp_nip17::register_runtime",
-    "nmp_nip22::register_runtime",
-    "nmp_nip23::register_longform_projection",
+    "nmp_nip50::register",
+    "nmp_nip02::register",
+    "nmp_replies::register",
+    "nmp_nip25::register",
+    "nmp_nip18::register",
+    "nmp_nip84::register",
+    "nmp_nip29::register",
+    "nmp_wot::register",
+    "nmp_nip51::register",
+    "nmp_nip17::register",
+    "nmp_nip22::register",
+    "nmp_nip23::register",
 ];
 
 #[test]

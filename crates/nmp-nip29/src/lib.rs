@@ -37,22 +37,23 @@
 //! `ObservedProjectionSink` — see `nmp_core::substrate` module docs.
 
 pub mod action;
+#[path = "register.rs"]
+mod action_registration;
 pub mod cache;
 pub mod group_id;
 pub mod group_query;
 pub mod input_scope;
+mod installer;
 pub mod interest;
 pub mod kinds;
 pub mod projection;
-pub mod register;
 pub mod search;
 pub mod wire;
 
 pub use group_id::GroupId;
 pub use group_query::{GroupEventKinds, GroupEventsQuery};
-pub use input_scope::{
-    register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer, GROUP_INPUT_SCOPE_LABEL,
-};
+pub use input_scope::{GroupIdentPayload, GroupInputScopeRecognizer, GROUP_INPUT_SCOPE_LABEL};
+pub use installer::{register, Config, Handles};
 pub use kinds::{event_is_group_event, group_id_from_tags, KindClass};
 pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupEvent,
@@ -60,8 +61,7 @@ pub use projection::{
     GroupRosterProjection, GroupRosterSnapshot, JoinedGroup, JoinedGroupsProjection,
     JoinedGroupsSnapshot,
 };
-pub use register::register_actions;
-pub use search::{register_search_scopes, GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
+pub use search::{GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
 pub use wire::discovered_groups_fb::{
     decode_discovered_groups_snapshot, encode_discovered_groups_snapshot,
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,

@@ -8,13 +8,15 @@
 
 mod action;
 mod build;
+mod installer;
 pub mod ownership;
 mod read;
 mod target;
 mod wire;
 
-pub use action::{register_actions, ReplyAction, ReplyCommand, ReplyModule};
+pub use action::{ReplyAction, ReplyCommand, ReplyModule};
 pub use build::{Reply, ReplyBuildError, ReplyBuilder};
+pub use installer::{register, Config, Handles};
 pub use read::{ReplyProtocol, ReplyReadMode, ReplyReadPlan, ReplyReadPlanError};
 pub use target::{
     ReplyAddressTarget, ReplyEventTarget, ReplyExternalTarget, ReplyTarget, ReplyTargetError,

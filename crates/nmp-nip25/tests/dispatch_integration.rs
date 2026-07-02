@@ -29,10 +29,8 @@ fn start_bytes_rejects_wrong_schema_version_for_react() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(
-        &nmp_nip25::Nip25Descriptor,
-        &mut registry,
-    );
+    nmp_nip25::register(&mut registry, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
 
     let bad_version = build_bad_version_react_payload();
     let err = registry
@@ -60,10 +58,8 @@ fn start_bytes_rejects_wrong_schema_version_for_unreact() {
     use nmp_core::substrate::{ActionContext, ActionRejection};
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(
-        &nmp_nip25::Nip25Descriptor,
-        &mut registry,
-    );
+    nmp_nip25::register(&mut registry, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
 
     let bad_version = build_bad_version_unreact_payload();
     let err = registry
@@ -240,10 +236,8 @@ fn react_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::substrate::ActionContext;
 
     let mut registry = ActionRegistry::new();
-    nmp_core::substrate::ProtocolDescriptor::register_actions(
-        &nmp_nip25::Nip25Descriptor,
-        &mut registry,
-    );
+    nmp_nip25::register(&mut registry, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
 
     let event_id = "a".repeat(64);
     let bytes = build_react_dispatch_envelope("corr-react", &event_id, "+");

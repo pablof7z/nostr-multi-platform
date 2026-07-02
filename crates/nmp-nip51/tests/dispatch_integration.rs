@@ -15,16 +15,18 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::ActionRegistry;
-use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection, EventId, KernelEvent};
+use nmp_core::substrate::{
+    ActionContext, ActionPayload, ActionRegistrar, ActionRejection, EventId, KernelEvent,
+};
 use nmp_core::ObservedProjectionSink;
 use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET};
 use nmp_nip51::wire::bookmark_set_update_fb::generated::nmp::nip_51 as set_fb;
 use nmp_nip51::wire::web_bookmark_publish_fb::generated::nmp::nip_51 as web_fb;
 use nmp_nip51::{
-    register_bookmark_actions, register_bookmark_set_actions, register_web_bookmark_actions,
-    BookmarkItem, BookmarkListProjection, BookmarkSetKind, BookmarkSetUpdateInput,
-    BookmarkSetsProjection, BookmarkUpdateInput, PublishWebBookmarkInput, WebBookmarkDraft,
-    WebBookmarksProjection,
+    AddBookmarkAction, AddBookmarkSetItemAction, BookmarkItem, BookmarkListProjection,
+    BookmarkSetKind, BookmarkSetUpdateInput, BookmarkSetsProjection, BookmarkUpdateInput,
+    PublishWebBookmarkAction, PublishWebBookmarkInput, RemoveBookmarkAction,
+    RemoveBookmarkSetItemAction, WebBookmarkDraft, WebBookmarksProjection,
 };
 
 const ADD_NAMESPACE: &str = "nmp.nip51.add_bookmark";
@@ -45,7 +47,8 @@ fn registry_with_bookmark_actions() -> (ActionRegistry, Arc<BookmarkListProjecti
     let mut registry = ActionRegistry::new();
     let active = Arc::new(Mutex::new(Some(account())));
     let projection = Arc::new(BookmarkListProjection::new(active));
-    register_bookmark_actions(&mut registry, Arc::clone(&projection));
+    registry.register_default_action(AddBookmarkAction::new(Arc::clone(&projection)));
+    registry.register_default_action(RemoveBookmarkAction::new(Arc::clone(&projection)));
     (registry, projection)
 }
 
@@ -56,14 +59,15 @@ fn active_slot() -> Arc<Mutex<Option<String>>> {
 fn registry_with_bookmark_set_actions() -> (ActionRegistry, Arc<BookmarkSetsProjection>) {
     let mut registry = ActionRegistry::new();
     let projection = Arc::new(BookmarkSetsProjection::new(active_slot()));
-    register_bookmark_set_actions(&mut registry, Arc::clone(&projection));
+    registry.register_default_action(AddBookmarkSetItemAction::new(Arc::clone(&projection)));
+    registry.register_default_action(RemoveBookmarkSetItemAction::new(Arc::clone(&projection)));
     (registry, projection)
 }
 
 fn registry_with_web_bookmark_actions() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
     let projection = Arc::new(WebBookmarksProjection::new(active_slot()));
-    register_web_bookmark_actions(&mut registry, projection);
+    registry.register_default_action(PublishWebBookmarkAction::new(projection));
     registry
 }
 
@@ -416,7 +420,7 @@ fn start_bytes_rejects_wrong_schema_version_for_publish_web_bookmark() {
 }
 
 /// ADR-0071 / S9 (#1747) — registration is namespace-scoped: a namespace this
-/// crate never registers is rejected even after `register_bookmark_actions`.
+/// crate never registers is rejected even after the bookmark action modules are wired.
 #[test]
 fn unregistered_namespace_is_rejected() {
     let (registry, _projection) = registry_with_bookmark_actions();

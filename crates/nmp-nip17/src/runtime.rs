@@ -43,7 +43,7 @@ const DM_INBOX_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
 /// Keeping the two concerns on separate seams means the projection closure
 /// is guaranteed side-effect-free (D0) and the reconciler fires regardless
 /// of whether any host consumes the projection.
-pub fn register_runtime(
+pub(crate) fn register_runtime(
     app: &(impl HostCapabilities
           + IdentityChangeRegistrar
           + ConfiguredRelaysChangeRegistrar

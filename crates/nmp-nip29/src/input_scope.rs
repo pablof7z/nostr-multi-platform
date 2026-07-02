@@ -156,7 +156,7 @@ impl InputScopeRecognizer for GroupInputScopeRecognizer {
 /// a host calls this one-liner during composition to add the `nip29.groups`
 /// input recognizer. A duplicate scope id yields to the existing registration
 /// (first wins).
-pub fn register_input_scopes(host: &impl InputScopeRegistrar) {
+pub(crate) fn register_input_scopes(host: &impl InputScopeRegistrar) {
     host.register_input_scope(Arc::new(GroupInputScopeRecognizer::new()));
 }
 

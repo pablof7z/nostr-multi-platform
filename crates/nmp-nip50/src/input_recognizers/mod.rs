@@ -192,7 +192,7 @@ impl InputScopeRecognizer for LongFormInputRecognizer {
 /// long-form) against `host`. Narrow surface (D6): takes `&impl
 /// InputScopeRegistrar`, never the whole `AppHost`. Called from the
 /// composition root after [`crate::scopes::register_search_scopes`].
-pub fn register_input_scopes(host: &impl InputScopeRegistrar) {
+pub(crate) fn register_input_scopes(host: &impl InputScopeRegistrar) {
     host.register_input_scope(Arc::new(ProfilesInputRecognizer::new()));
     host.register_input_scope(Arc::new(NotesInputRecognizer::new()));
     host.register_input_scope(Arc::new(LongFormInputRecognizer::new()));

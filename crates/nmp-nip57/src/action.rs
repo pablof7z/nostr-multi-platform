@@ -125,11 +125,11 @@ pub struct ZapInput {
 /// but never composed a payment port). The auto-chain then records a clear
 /// "no wallet connected" action failure. A wallet-capable composition root
 /// replaces the `None` default with a `Some(port)` value via
-/// [`crate::register_zap_with_payment_port`] (the app-path override of the
+/// [`crate::Config::with_payment_port`] (the app-path override of the
 /// yielding default — ADR-0069).
 ///
 /// The port is `Option<…>` (not arity-split constructors) so
-/// `register_actions(app)` keeps a STABLE arity across the `native` feature —
+/// `register(app, Config::default())` keeps a STABLE arity across the `native` feature —
 /// cargo feature unification flips `native` on globally when any consumer
 /// enables it, and a feature-dependent arity would break the non-wallet call
 /// sites (`explicit composition`, tests).
@@ -143,7 +143,7 @@ impl ZapAction {
     /// Construct the zap module with NO payment port (the yielding default).
     /// The auto-chain records a "no wallet connected" failure until a
     /// wallet-capable root overrides it via
-    /// [`crate::register_zap_with_payment_port`].
+    /// [`crate::Config::with_payment_port`].
     #[must_use]
     pub fn new() -> Self {
         Self::default()

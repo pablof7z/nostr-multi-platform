@@ -3,7 +3,6 @@ use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, KernelEvent, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-    ProtocolDescriptor,
 };
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
@@ -127,21 +126,8 @@ impl ProtocolCommand for PublishHighlightCommand {
     }
 }
 
-/// Typed protocol descriptor for the NIP-84 highlight publish action.
-///
-/// Zero-cost unit struct exposing this crate's single action-module
-/// contribution (`nmp.nip84.publish_highlight`) through the
-/// [`ProtocolDescriptor`] trait so `explicit composition` can compose descriptors
-/// rather than call ad-hoc `register_actions` free functions.
-///
-/// Registered as a **yielding default**: an app that pre-registers its own
-/// highlight handler pre-empts this regardless of call order.
-pub struct Nip84Descriptor;
-
-impl ProtocolDescriptor for Nip84Descriptor {
-    fn register_actions(&self, app: &mut impl ActionRegistrar) {
-        app.register_default_action(PublishHighlightModule);
-    }
+pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
+    app.register_default_action(PublishHighlightModule);
 }
 
 fn validate_highlight(action: &PublishHighlightAction) -> Result<(), ActionRejection> {
