@@ -89,6 +89,14 @@ mod typed_projections_tests;
 mod typed_projections_wave_c_diagnostics_tests;
 #[cfg(test)]
 mod typed_projections_wave_c_tests;
+// #962 — the former `types.rs` god-file split into cohesive per-owner modules.
+// `types.rs` remains as a re-export facade so `types::…` paths are unchanged.
+mod claimed_event_dto; // `refs.event` claimed-event row payload.
+mod kernel_snapshot; // Per-tick host update envelope + metrics/timing sub-state.
+mod profile_card; // Raw kind:0 profile card.
+mod publish_outbox_dto; // Publish-outbox projection DTOs.
+mod read_cache; // Timeline read-cache entry (`StoredEvent`).
+mod relay_health; // Per-relay transport health + wire-sub state + their projections.
 mod types;
 mod update;
 mod wire_sub; // `WireSub` row (moved out of `types.rs` for the LOC cap).
