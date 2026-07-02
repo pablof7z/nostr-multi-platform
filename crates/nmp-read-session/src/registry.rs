@@ -136,6 +136,22 @@ impl ReadSessionRegistry {
         }
     }
 
+    /// Close the first live session with `projection_key`, running its teardown
+    /// through the same engine-owned path as handle-driven close.
+    ///
+    /// This keeps legacy key-addressed facades from carrying their own
+    /// per-concept close maps while the shared registry remains the sole owner
+    /// of the session lifecycle.
+    pub fn close_by_projection_key(&self, projection_key: &str) -> bool {
+        let id = match self.sessions.lock() {
+            Ok(sessions) => sessions.iter().find_map(|(id, session)| {
+                (session.projection_key == projection_key).then_some(*id)
+            }),
+            Err(_) => None,
+        };
+        id.is_some_and(|id| self.close(&id))
+    }
+
     /// Whether a session with `id` is currently live (test/diagnostic).
     #[must_use]
     pub fn is_open(&self, id: &ReadSessionId) -> bool {

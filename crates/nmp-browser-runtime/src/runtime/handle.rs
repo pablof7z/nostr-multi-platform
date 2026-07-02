@@ -55,7 +55,6 @@ pub struct BrowserRuntimeHandle {
 
     pub(super) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
-    pub(super) search_sessions: nmp_nip50::SearchSessionRegistry,
     pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
     pub(super) group_events_sessions: HashMap<String, BrowserGroupEventsSession>,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
@@ -219,7 +218,6 @@ impl BrowserRuntimeHandle {
             signer_state_slot,
             preferred_relay_source,
             observed_projection_registrar,
-            search_sessions: nmp_nip50::SearchSessionRegistry::default(),
             group_discovery_sessions: HashMap::new(),
             group_events_sessions: HashMap::new(),
             notifications_sessions: HashMap::new(),

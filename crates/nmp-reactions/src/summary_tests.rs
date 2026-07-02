@@ -201,6 +201,9 @@ impl ReadHost for FakeHost {
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
     }
+    fn close_read_session_by_projection_key(&self, projection_key: &str) -> bool {
+        self.registry.close_by_projection_key(projection_key)
+    }
     fn read_interest_controller(&self) -> Option<ReadInterestController> {
         let observers = Arc::clone(&self.observers);
         let opened_filters = Arc::clone(&self.opened_filters);

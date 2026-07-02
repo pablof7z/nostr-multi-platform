@@ -48,7 +48,7 @@ use nmp_ownership::FrameworkProjectionKey;
 use nmp_planner::InterestShape;
 use nmp_read_session::{
     close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
-    ReadOutputEncoder, ReadSpec,
+    ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -248,6 +248,7 @@ pub fn open_reposts(
         scope: REPOST_READ_SCOPE_GLOBAL,
         relay_pin: None,
         replay_limit: REPOST_REPLAY_LIMIT,
+        replay: ReadReplayPolicy::Structural,
     };
 
     let projection = Arc::new(RepostSummaryProjection::new(plan));
@@ -287,6 +288,7 @@ pub fn open_reposts(
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
             dependent_demands,
+            keep_open_without_live_demand: false,
         },
     );
     Ok(RepostsReadHandle(handle))

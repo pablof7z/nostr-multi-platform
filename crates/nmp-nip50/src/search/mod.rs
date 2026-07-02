@@ -7,16 +7,12 @@
 //! deduplicating result projection itself lives in the crate-root `projection`
 //! module (issue #1811 / cache FTS).
 //!
-//! ## Where `open_search` lives
+//! ## Where `open_search_read` lives
 //!
-//! The pure, host-agnostic primitives live here so the crate-registered scope
-//! registry (#1811) can plug a new [`crate::SearchScope`] in without touching
-//! the host. The host-driving entrypoint (`NmpApp::open_search` / `_close` /
-//! `_snapshot`) lives in each per-platform composition crate that owns the
-//! `NmpApp` actor handle — `nmp-native-runtime` for native apps (exposed
-//! further through the `nmp-uniffi` binding surface) and `nmp-browser-runtime`
-//! for the wasm host. Those crates depend on `nmp-nip50`; `nmp-nip50` never
-//! names them back (D0 acyclic).
+//! The public search doorway lives here in the concept crate. Runtime hosts
+//! implement `nmp-read-session::ReadHost` once, then call this crate-owned door
+//! with their relay-source and store capabilities. A host that does not import
+//! `nmp-nip50` has no search symbol.
 
 pub mod plan;
 pub mod relays;
@@ -26,4 +22,7 @@ pub use plan::{search_relay_plan, RelayPinnedInterest};
 pub use relays::{
     install_search_relay_source, resolve_search_relays, SearchFallbackRelays, SearchRelaySource,
 };
-pub use session::{SearchSessionBuild, SearchSessionRegistry, SearchTeardownAction};
+pub use session::{
+    close_search_read, close_search_read_by_key, open_search_read, search_consumer,
+    search_projection_key, OpenSearchRead, SearchReadHandle,
+};

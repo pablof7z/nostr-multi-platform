@@ -13,7 +13,7 @@ use nmp_planner::InterestShape;
 use super::*;
 use crate::host::{ReadDemand, ReadDependentDemand, ReadSpec};
 use crate::registry::{ReadSessionBuild, ReadSessionId, ReadSessionRegistry, TeardownAction};
-use crate::{ReadHost, ReadInterestController, ReadOutputEncoder};
+use crate::{ReadHost, ReadInterestController, ReadOutputEncoder, ReadReplayPolicy};
 
 #[derive(Default)]
 struct NoopSink;
@@ -93,6 +93,9 @@ impl ReadHost for FakeHost {
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.registry.close(id)
     }
+    fn close_read_session_by_projection_key(&self, projection_key: &str) -> bool {
+        self.registry.close_by_projection_key(projection_key)
+    }
     fn read_interest_controller(&self) -> Option<ReadInterestController> {
         let log = Arc::clone(&self.log);
         let observer_slot = Arc::clone(&self.observer);
@@ -129,6 +132,7 @@ fn demand(filter: &str) -> ReadDemand {
         scope: 0,
         relay_pin: None,
         replay_limit: 64,
+        replay: ReadReplayPolicy::Structural,
     }
 }
 
@@ -139,6 +143,7 @@ fn spec(key_value: &str, filters: &[&str]) -> ReadSpec {
         observer: Arc::new(NoopSink),
         output_encoder: Box::new(|| None),
         dependent_demands: Vec::new(),
+        keep_open_without_live_demand: false,
     }
 }
 
@@ -295,6 +300,7 @@ fn dependent_demand_opens_from_reducer_state_and_closes_with_the_read() {
             }),
             output_encoder: Box::new(|| None),
             dependent_demands: vec![provider],
+            keep_open_without_live_demand: false,
         },
     );
 
@@ -348,6 +354,7 @@ fn dependent_demand_reconciles_replay_reentry_during_derived_open() {
             }),
             output_encoder: Box::new(|| None),
             dependent_demands: vec![provider],
+            keep_open_without_live_demand: false,
         },
     );
 
@@ -396,4 +403,31 @@ fn dependent_demand_reconciles_replay_reentry_during_derived_open() {
         2,
         "only the primary demand remains for session close"
     );
+}
+
+#[test]
+fn seed_only_read_can_stay_live_until_closed_by_key() {
+    let host = FakeHost::new();
+    let handle = open_read(
+        &host,
+        ReadSpec {
+            projection_key: key("app.test.seed"),
+            demands: Vec::new(),
+            observer: Arc::new(NoopSink),
+            output_encoder: Box::new(|| None),
+            dependent_demands: Vec::new(),
+            keep_open_without_live_demand: true,
+        },
+    );
+
+    assert_ne!(handle.session_id, ReadSessionId(0));
+    assert_eq!(host.registry.live_count(), 1);
+    assert!(
+        host.close_read_session_by_projection_key("app.test.seed"),
+        "legacy key-addressed close uses the shared engine registry"
+    );
+    assert_eq!(host.registry.live_count(), 0);
+    let log = host.log();
+    assert!(log.iter().any(|e| e == "remove_output:app.test.seed"));
+    assert!(log.iter().any(|e| e == "mark_changed"));
 }

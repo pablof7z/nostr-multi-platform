@@ -45,6 +45,10 @@ impl ReadHost for NmpApp {
         self.observed_projection_handle().open(decl)
     }
 
+    fn open_live_only_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        self.observed_projection_handle().open_live_only(decl)
+    }
+
     fn teardown_close_interest(&self, id: ObservedProjectionId) -> TeardownAction {
         let handle = self.observed_projection_handle();
         Box::new(move || {
@@ -79,6 +83,12 @@ impl ReadHost for NmpApp {
 
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
         self.feed_sessions.as_read_sessions().close(id)
+    }
+
+    fn close_read_session_by_projection_key(&self, projection_key: &str) -> bool {
+        self.feed_sessions
+            .as_read_sessions()
+            .close_by_projection_key(projection_key)
     }
 
     fn read_interest_controller(&self) -> Option<ReadInterestController> {

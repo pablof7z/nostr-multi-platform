@@ -16,14 +16,19 @@ fn open_search(
     request: SearchRequest,
     key: &str,
 ) -> String {
+    let _ = open_search_handle(handle, request, key);
+    nmp_nip50::search_projection_key(key)
+}
+
+fn open_search_handle(
+    handle: &mut crate::BrowserRuntimeHandle,
+    request: SearchRequest,
+    key: &str,
+) -> BrowserSearchSessionHandle {
     handle.open_search_session(BrowserSearchSessionDescriptor {
         request,
         key: key.to_string(),
-    });
-    handle
-        .search_sessions
-        .projection_key(key)
-        .expect("search session was registered")
+    })
 }
 
 fn close_search(handle: &mut crate::BrowserRuntimeHandle, key: &str) {
@@ -132,22 +137,17 @@ fn browser_search_session_close_tears_down_projection_and_lifecycle() {
     .expect("valid search request");
 
     let key = open_search(&mut handle, request, "s1");
-    assert_eq!(handle.search_sessions.live_count(), 1);
-    assert_eq!(
-        handle.search_sessions.projection_key("s1").as_deref(),
-        Some(key.as_str())
-    );
-    assert_eq!(handle.search_sessions.relays("s1"), vec![RELAY.to_string()]);
+    assert_eq!(handle.feed_sessions.live_count(), 1);
 
     close_search(&mut handle, "s1");
 
-    assert_eq!(handle.search_sessions.live_count(), 0);
+    assert_eq!(handle.feed_sessions.live_count(), 0);
     assert!(
         !has_nonempty_search_payload(&mut handle, &key),
         "close_search must remove the typed N50S sidecar"
     );
     close_search(&mut handle, "s1");
-    assert_eq!(handle.search_sessions.live_count(), 0);
+    assert_eq!(handle.feed_sessions.live_count(), 0);
 }
 
 #[test]
@@ -168,16 +168,21 @@ fn browser_search_session_replace_preserves_new_sidecar() {
     )
     .expect("valid search request");
 
-    let key = open_search(&mut handle, first, "s1");
+    let first_handle = open_search_handle(&mut handle, first, "s1");
+    let key = nmp_nip50::search_projection_key("s1");
     assert!(has_nonempty_search_payload(&mut handle, &key));
 
-    let reopened = open_search(&mut handle, second, "s1");
-    assert_eq!(reopened, key);
-    assert_eq!(handle.search_sessions.live_count(), 1);
+    let _second_handle = open_search_handle(&mut handle, second, "s1");
+    assert_eq!(handle.feed_sessions.live_count(), 1);
+    handle.close_search_session(first_handle);
+    assert_eq!(handle.feed_sessions.live_count(), 1);
     assert!(
         has_nonempty_search_payload(&mut handle, &key),
-        "reopening the same search id must not let old teardown remove the new N50S sidecar"
+        "stale typed close must not remove the replacement N50S sidecar"
     );
+
+    close_search(&mut handle, "s1");
+    assert_eq!(handle.feed_sessions.live_count(), 0);
 }
 
 #[test]
@@ -193,7 +198,11 @@ fn browser_search_session_empty_relays_stays_cache_only_fail_closed() {
 
     open_search(&mut handle, request, "empty");
 
-    assert_eq!(handle.search_sessions.relays("empty"), Vec::<String>::new());
+    assert_eq!(
+        handle.feed_sessions.live_count(),
+        1,
+        "cache-only search stays closeable through the shared read registry"
+    );
     let opened = handle.pump();
     assert!(
         opened.outbound.is_empty(),

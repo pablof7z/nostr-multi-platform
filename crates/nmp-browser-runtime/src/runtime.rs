@@ -75,6 +75,7 @@ mod feed_lifecycle;
 pub use feed_lifecycle::BrowserFeeds;
 mod search;
 pub(crate) use search::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
+mod read_host;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;
