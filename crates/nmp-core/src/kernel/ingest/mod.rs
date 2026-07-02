@@ -33,8 +33,9 @@
 //!   Substrate `MailboxCache` / `DmInboxRelayLookup` transitions are likewise
 //!   detected kind-agnostically by bracketing the chokepoint with before/after
 //!   snapshots (the kernel only knows "this author's mailbox / contacts
-//!   changed", never "a kind:10002 / kind:3 arrived" —
-//!   `docs/architecture/crate-boundaries.md` §0).
+//!   changed", never "a kind:10002 / kind:3 arrived" — the same kind-agnostic
+//!   substrate discipline `docs/architecture/crate-boundaries.md` §3 requires
+//!   of `nmp-core`).
 //!
 //! Local publishes enter the chokepoint at `publish_engine.rs` with
 //! `local://publish` provenance ([`IngestSource::LocalPublish`]); cache-replay

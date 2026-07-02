@@ -7,9 +7,11 @@
 //! ## Design choice — reuse `relay_pin`, not a new routing field
 //!
 //! `InterestShape::relay_pin` (planner `case_e_relay_pinned`) already enforces
-//! the "exactly one relay, no NIP-65 fan-out" contract — see
-//! `docs/architecture/crate-boundaries.md` §3.1 and Rule 9 of the merge
-//! lattice. Rather than adding a parallel `scope_relays` field (fragmentation),
+//! the "exactly one relay, no NIP-65 fan-out" contract: a relay-pinned
+//! interest bypasses the router's automatic NIP-65 fan-out entirely, the
+//! same documented explicit-relay opt-out shape `docs/architecture/crate-boundaries.md`
+//! §5 describes for publish (`PublishTarget::Explicit`). Rather than adding a
+//! parallel `scope_relays` field (fragmentation),
 //! this module builds a `LogicalInterest` with `relay_pin = Some(url)` and
 //! dispatches scoped interest commands. No `actor/mod.rs` changes needed.
 //!

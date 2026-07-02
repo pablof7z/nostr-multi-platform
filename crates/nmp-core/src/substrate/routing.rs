@@ -1,7 +1,8 @@
 //! Routing substrate — `OutboxRouter` trait, `MailboxCache` trait, and the
 //! supporting value types they exchange.
 //!
-//! Defined by `docs/architecture/crate-boundaries.md` §3.2, §3.3. Step 1.c +
+//! Defined by `docs/architecture/crate-boundaries.md` §3 (trait seams) and
+//! implemented per §4 (router ownership). Step 1.c +
 //! 1.d of the 12-step migration. Pure additions: the kernel does not consume
 //! these types yet — the existing hardwired `kernel::outbox` keeps working.
 //! Step 2 creates `nmp-router` and ships the single generic `OutboxRouter`
@@ -122,7 +123,7 @@ pub enum AppRelayMode {
     Always,
 }
 
-/// The seven routing lanes (`docs/architecture/crate-boundaries.md` §3.1).
+/// The seven routing lanes (`docs/architecture/crate-boundaries.md` §5).
 ///
 /// Attached to every relay URL in a [`RoutedRelaySet`] so callers can tell
 /// *why* a relay made the cut. A URL may carry multiple sources when more
@@ -152,7 +153,7 @@ pub enum RoutingSource {
 // ─── BlockedRelaySet ─────────────────────────────────────────────────────────
 
 /// Kind:10006 blocked-relay set — applied as a subtractive post-pass over
-/// the routed set (`docs/architecture/crate-boundaries.md` §3.1).
+/// the routed set (`docs/architecture/crate-boundaries.md` §5).
 #[derive(Clone, Debug, Default)]
 pub struct BlockedRelaySet {
     blocked: BTreeSet<RelayUrl>,

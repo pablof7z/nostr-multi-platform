@@ -42,7 +42,7 @@ implementation is injected at composition time.
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wot` |
-| 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features |
+| 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features, including `nmp-substrate` |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned delivery crates |
 | Sidecars | Tooling, tests, diagnostics, conformance vehicles, and private proofs | `nmp-cli`, `nmp-codegen`, `nmp-component-registry`, `nmp-testing`, `nmp-browser-runtime-conformance`, `nmp-sqlite-wasm-conformance`, `nmp-example-login-timeline`, app shells |
 
@@ -51,6 +51,15 @@ their declared responsibility. Binding crates are siblings: one binding crate
 must not depend on another binding crate for business behavior. If a durable
 crate owner named here has not yet been extracted in code, the current owner is
 migration debt tracked in GitHub Issues, not an exception to this graph.
+
+`nmp-substrate` (Layer 5) composes the kernel substrate: it wires
+`nmp-router` (L2), `nmp-store` (L1), `nmp-ownership` (L0), `nmp-core` +
+`nmp-coverage-gate` (L3), and the L4 protocol crates `nmp-nip01`,
+`nmp-nip11`, `nmp-nip51`, `nmp-nip77` into one composed substrate handle. It
+may depend on any lower layer (0–4) to assemble router/mailbox/parser/
+publish-resolver/coverage wiring; platform runtimes (L6) and apps depend on
+it, never the reverse. Protocol crates (L4) must keep any edge to
+`nmp-substrate` dev-only — `nmp-nip02` already does this.
 
 `nmp-signer-iface` (Layer 0) owns the dependency-light signing substrate
 vocabulary so signer, protocol, and kernel crates can name it without creating

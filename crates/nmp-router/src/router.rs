@@ -2,7 +2,7 @@
 //! [`nmp_core::substrate::OutboxRouter`] impl
 //! (`docs/architecture/crate-boundaries.md` §4, "Router Ownership").
 //!
-//! Lanes implemented (spec §3.1):
+//! Lanes implemented (spec §5, "Routing Contract"):
 //!
 //! - **Lane 1 — NIP-65 mailbox.** `route_publish` consults
 //!   [`MailboxCache::write_relays`] for `evt.pubkey`; `route_subscription`

@@ -191,6 +191,12 @@ text. It classifies before it dispatches — references, relay URLs, and NIP-05
 identifiers are routed to their existing loaders; only free text reaches the
 NIP-50 search surface (§3.6 below).
 
+> **Not the same "intent" as ADR-0071.** This input-intent classification
+> (`nmp-intent`, raw text → ref/relay/nip05/search) is an unrelated concept
+> from the "publish intent" every write starts as under
+> [ADR-0071](../../decisions/0071-write-intents-and-route-provenance.md) —
+> the names collide, the mechanisms and lifecycles do not.
+
 #### Scope identity
 
 ```rust

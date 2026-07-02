@@ -1,5 +1,12 @@
 # ADR-0071: Publish intents, composable drafts, and route provenance
 
+> **Not the same "intent" as `nmp-intent`.** The "operation intent" this ADR
+> defines (record → draft → finalize → sign → publish → status, below) is the
+> publish/write pipeline. `nmp-intent`'s input-intent resolver (raw user text
+> → ref/relay/nip05/search classification,
+> [docs/design/intent-routing/types.md §3.5](../design/intent-routing/types.md))
+> is an unrelated concept that happens to share the word "intent".
+
 ## Decision
 
 Every production write starts as a Rust-owned operation intent before signing,
