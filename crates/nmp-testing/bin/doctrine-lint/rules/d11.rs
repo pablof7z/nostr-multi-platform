@@ -2,38 +2,40 @@
 //!
 //! PR-F deleted the bespoke event-producing `extern "C"` publish surface —
 //! `nmp_app_publish_signed_event`, `nmp_app_publish_signed_event_to`, and
-//! `nmp_app_publish_unsigned_event` are gone. Every user / app-authored
-//! publish-engine event now goes through the single
-//! `nmp_app_dispatch_action(app, "nmp.publish", ...)` door (Theme A — see
-//! `crates/nmp-core/src/substrate/action.rs` module docs). ADR-0071 extends
-//! this to a typed byte-transport doorway; D11 guards both.
+//! `nmp_app_publish_unsigned_event` are gone. ADR-0071 replaced that C-ABI
+//! shape with a typed byte-transport doorway: the sole native surface is now
+//! UniFFI, and the sole publish door is `NmpApp::dispatch_action` (the
+//! `#[uniffi::export] impl NmpApp` method in `crates/nmp-uniffi/src/lib.rs`,
+//! which forwards to `nmp_uniffi_support::dispatch_action_vec`). D11 guards
+//! that doorway.
 //!
-//! D11 prevents that doorway from being bypassed. Adding a new bespoke
-//! event-producing C symbol is a bypass: a new
-//! `#[no_mangle] extern "C" fn nmp_app_publish_*(...)` is a regression even
-//! before its body is inspected. A new `#[no_mangle] extern "C" fn
-//! nmp_app_<verb>(...)` whose body sends `ActorCommand::Publish(PublishCommand::SignedEvent {
-//! ... })` or `ActorCommand::PublishUnsignedEvent(...)` is also a bypass.
+//! D11 prevents the doorway from being bypassed. A bypass is a bespoke
+//! `#[uniffi::export]`-attributed method (or free function) whose body itself
+//! constructs a publish command — i.e. any `#[uniffi::export]` surface, other
+//! than `dispatch_action` itself, that sends
+//! `ActorCommand::Publish(PublishCommand::SignedEvent { ... })` or
+//! `ActorCommand::Publish(PublishCommand::UnsignedEvent { ... })` (or the
+//! split-construction bare-variant loophole) is a regression: every publish
+//! must funnel through the one typed byte-transport door, not a new
+//! special-purpose UniFFI method.
 //!
-//! Note: D11 is a *doorway-bypass* check, not a symbol-count freeze. New
-//! non-event-producing C symbols (lifecycle, capability sockets, observers)
-//! are governed by review + ADR convention, not this lint.
+//! A bare `#[no_mangle] extern "C" fn nmp_app_publish_*` symbol is also
+//! flagged unconditionally — this is a cheap tombstone guard against the
+//! deleted C-ABI publish doors being resurrected; the live surface is UniFFI,
+//! not C-ABI, so this shape should never reappear at all.
 //!
 //! ## What this catches
 //!
-//! A function signature whose symbol starts with `nmp_app_publish_` is flagged.
-//! Inside any other function whose signature is
-//! `[pub] extern "C" fn nmp_app_<verb>(...)` (the FFI prefix; D11 does not
-//! fire inside Rust-only helpers), a line that mentions
-//! `ActorCommand::PublishSignedEvent` or `ActorCommand::PublishUnsignedEvent`
-//! is flagged. The substring match is deliberately strict — it requires the
-//! fully-qualified path component (`ActorCommand::`) so an unrelated local
-//! type named `PublishSignedEvent` cannot trip it.
-//!
-//! Split-construction bypass (bare variant on its own line) is also caught:
-//! a bare `PublishCommand::SignedEvent` or `PublishCommand::UnsignedEvent`
-//! inside an FFI body is flagged even when `ActorCommand::Publish(` appears
-//! on a different line. This closes the two-line split-assignment loophole.
+//! A function signature whose symbol starts with `nmp_app_publish_` inside an
+//! `extern "C"` block is flagged unconditionally (the C-ABI tombstone).
+//! Inside the body of any `#[uniffi::export]`-attributed `impl` block or
+//! free function, a line that mentions
+//! `ActorCommand::Publish(PublishCommand::SignedEvent` or
+//! `ActorCommand::Publish(PublishCommand::UnsignedEvent` (or
+//! `ActorCommand::PublishUnsignedEvent`) is flagged. Split-construction
+//! bypass (a bare `PublishCommand::SignedEvent` / `PublishCommand::UnsignedEvent`
+//! assigned to a local before being wrapped) is also caught, closing the
+//! two-line split-assignment loophole.
 //!
 //! ## Allowed exemptions
 //!
@@ -41,18 +43,30 @@
 //! - Per-line `// doctrine-allow: D11 — reason` opt-out (the standard
 //!   doctrine escape hatch — same shape as D0/D6/D8/D9).
 //!
+//! ## Known imprecision: attribute detection is not comment-aware
+//!
+//! [`FnTracker`] looks for the literal substring `#[uniffi::export]` on any
+//! line, including inside a `//`/`///`/`//!` doc comment — the same
+//! precedent the deleted `extern "C" fn nmp_app_*` tracker set (it matched
+//! `extern "C"` + `nmp_app_` textually too). A module doc comment that
+//! *mentions* the attribute (several exist in `crates/nmp-uniffi/src/`,
+//! e.g. `//! ... adds a `#[uniffi::export] impl NmpApp` block.`) can park
+//! the pending flag early and promote it on the next real `impl`/`fn`
+//! opener even if that opener is not actually attributed. This only makes
+//! the rule *more* conservative (a wider "in scope" window), never less —
+//! for a doorway-bypass guard that is the safe direction to err in.
+//!
 //! ## Scope
 //!
-//! The driver runs D11 on every file the rest of the doctrine-lint visits
-//! (no separate path scoping). In practice every offending callsite must
-//! live in `crates/nmp-ffi/src/` (the FFI shell extracted from `nmp-core::ffi`;
-//! see `docs/architecture/crate-boundaries.md` §10a), since that is the only
-//! place the `nmp_app_*` prefix is `#[no_mangle] extern "C"`-exported.
+//! The driver runs D11 on every file the rest of doctrine-lint visits (no
+//! separate path scoping). In practice every offending callsite must live in
+//! `crates/nmp-uniffi/src/` — that is the only crate whose source carries
+//! `#[uniffi::export]`.
 
 pub const ID: &str = "D11";
 
-/// Banned `ActorCommand::*` patterns that must not appear inside an
-/// `extern "C" fn nmp_app_*` body.
+/// Banned `ActorCommand::*` patterns that must not appear inside a
+/// `#[uniffi::export]`-attributed body.
 ///
 /// Each entry is `(match_substr, display_name)`. `match_substr` is the
 /// literal substring searched in the source line; `display_name` is the
@@ -90,19 +104,18 @@ const BANNED_VARIANTS: &[(&str, &str)] = &[
     ),
 ];
 
-const WHITELISTED_SYMBOLS: &[&str] = &[];
-
 /// Per-line check.
 ///
-/// `in_nmp_app_extern_fn` says whether the cursor is currently inside the
-/// body of a non-whitelisted `extern "C" fn nmp_app_*`. The caller advances
-/// the per-file [`FnTracker`] before invoking `check` (same shape as the D8
-/// hot-path tracker). When the cursor is outside such a function, D11 is a
-/// no-op.
+/// `in_uniffi_export_scope` says whether the cursor is currently inside the
+/// body of a `#[uniffi::export]`-attributed `impl` block or free function.
+/// The caller advances the per-file [`FnTracker`] before invoking `check`
+/// (same shape as the D8 hot-path tracker). When the cursor is outside such
+/// a scope, the `BANNED_VARIANTS` half of D11 is a no-op — the bare C-ABI
+/// tombstone check still runs unconditionally.
 pub fn check(
     line: &str,
     is_comment: bool,
-    in_nmp_app_extern_fn: bool,
+    in_uniffi_export_scope: bool,
 ) -> Vec<(usize, String, String)> {
     if is_comment {
         return Vec::new();
@@ -112,15 +125,16 @@ pub fn check(
         hits.push((
             col,
             format!(
-                "`{symbol}` violates D11 — bespoke `nmp_app_publish_*` FFI doors \
-                 are deleted; route through `nmp_app_dispatch_action(\"nmp.publish\", ...)`"
+                "`{symbol}` violates D11 — bespoke `nmp_app_publish_*` C-ABI doors \
+                 are deleted; route through `NmpApp::dispatch_action` (the sole \
+                 UniFFI publish doorway)"
             ),
             "delete the publish-specific C symbol; expose publish through the \
              typed action namespace instead"
                 .to_string(),
         ));
     }
-    if !in_nmp_app_extern_fn {
+    if !in_uniffi_export_scope {
         return hits;
     }
     // Track matched byte ranges so that a shorter sub-pattern (e.g. the bare
@@ -139,13 +153,13 @@ pub fn check(
             hits.push((
                 rel + 1, // 1-indexed columns for clippy compatibility
                 format!(
-                    "`{}` inside an `extern \"C\" fn nmp_app_*` body violates D11 — \
-                     bespoke event-producing FFI was deleted in PR-F; route through \
-                     `nmp_app_dispatch_action(\"nmp.publish\", ...)` instead",
+                    "`{}` inside a `#[uniffi::export]` body violates D11 — bespoke \
+                     event-producing UniFFI methods bypass the one publish doorway; \
+                     route through `NmpApp::dispatch_action(\"nmp.publish\", ...)` instead",
                     display
                 ),
-                "remove the bespoke FFI symbol; let host callers dispatch through the \
-                 generic action seam (see `crates/nmp-core/src/substrate/action.rs` \
+                "remove the bespoke publish construction; let host callers dispatch \
+                 through the generic action seam (see `crates/nmp-core/src/substrate/action.rs` \
                  Theme A discriminator)"
                     .to_string(),
             ));
@@ -167,48 +181,37 @@ fn find_banned_publish_symbol(line: &str) -> Option<(usize, String)> {
     }
 }
 
-/// Per-file tracker — same shape as [`super::d8::HotPathTracker`], with
-/// extra state for wrapped (multi-line) FFI signatures.
+/// Per-file tracker — same shape as [`super::d8::HotPathTracker`], generalised
+/// to recognise the live `#[uniffi::export]` doorway shape instead of the
+/// deleted `extern "C" fn nmp_app_*` shape.
 ///
-/// Walks the brace structure of the file, records when an
-/// `extern "C" fn nmp_app_<verb>` opens, and pops the stack when the body
-/// closes. Two opener shapes are handled:
-///
-/// 1. Same-line signature + `{` (the common case):
-///    `pub extern "C" fn nmp_app_foo(app: *mut NmpApp) {`
-/// 2. Wrapped multi-line signature where `{` lives on a later line. We
-///    detect the `extern "C" fn nmp_app_<verb>(` opener and remember the
-///    verb in `pending_opener`. Once a subsequent line introduces the
-///    matching `{` (the brace delta of the line is ≥ 1, no other
-///    same-line `extern "C" fn` opener was seen), we push the stack
-///    frame.
-///
-/// The whitelist is consulted at push time; whitelisted frames flow
-/// through `in_nmp_app_extern_fn() == false` so their bodies are not
-/// scanned.
+/// Walks the brace structure of the file. When a line contains the literal
+/// `#[uniffi::export]` attribute, a pending flag is parked (surviving
+/// intervening doc-comment / other-attribute lines, since the attributed
+/// item is not always on the very next line). The next line that *opens* an
+/// `impl ... {` block or a `fn ...(...) {` — same-line brace only, mirroring
+/// every other doctrine-lint tracker's simplifying assumption — promotes the
+/// pending flag to a real stack frame; the frame (and everything nested
+/// inside it, since `#[uniffi::export]` on an `impl` covers every method in
+/// the block) stays "in scope" until the brace closes.
 #[derive(Default)]
 pub struct FnTracker {
     /// Brace depth across the file (all `{` minus all `}`).
     cur_depth: i32,
-    /// Stack: one entry per open `extern "C" fn nmp_app_<verb> { ... }`.
-    /// `(open_depth, is_whitelisted)`. When `cur_depth` drops back to
-    /// `open_depth`, pop. `is_whitelisted = true` means the body is exempt;
-    /// `in_nmp_app_extern_fn()` ignores those frames.
-    fn_stack: Vec<(i32, bool)>,
-    /// Wrapped-signature staging: when an `extern "C" fn nmp_app_<verb>(`
-    /// opener is detected without a same-line `{`, the parsed verb is
-    /// parked here. The next line whose net brace delta is ≥ 1 promotes
-    /// the pending verb to a real `fn_stack` frame. Cleared on promotion
-    /// or when a same-line opener with `{` is seen (the latter wins).
-    pending_opener: Option<String>,
+    /// Stack: one entry (its `open_depth`) per open `#[uniffi::export]`-
+    /// attributed scope. When `cur_depth` drops back to `open_depth`, pop.
+    fn_stack: Vec<i32>,
+    /// True once a `#[uniffi::export]` attribute line has been seen and no
+    /// matching opener has promoted it yet. Cleared on promotion.
+    pending_export: bool,
 }
 
 impl FnTracker {
-    /// True iff the *current* line is inside a non-whitelisted
-    /// `extern "C" fn nmp_app_*` body. Caller invokes [`Self::observe_line`]
-    /// after reading this value to advance the tracker.
-    pub fn in_nmp_app_extern_fn(&self) -> bool {
-        self.fn_stack.iter().any(|(_, whitelisted)| !*whitelisted)
+    /// True iff the *current* line is inside a `#[uniffi::export]`-attributed
+    /// scope. Caller invokes [`Self::observe_line`] after reading this value
+    /// to advance the tracker.
+    pub fn in_uniffi_export_scope(&self) -> bool {
+        !self.fn_stack.is_empty()
     }
 
     /// Advance the tracker by one line of file text.
@@ -222,42 +225,19 @@ impl FnTracker {
         }
         let (opens, closes) = count_braces_ignoring_strings(line);
 
-        // Same-line opener takes priority over a wrapped pending opener
-        // (the wrapped one would have been cleared by now if it had
-        // resolved cleanly; an unresolved one was a parse glitch and the
-        // same-line shape is authoritative).
-        let same_line_verb = find_nmp_app_extern_fn_opener_with_brace(line)
-            .and_then(|verb_start| parse_nmp_app_verb(&line[verb_start..]));
-        if let Some(verb) = same_line_verb {
-            let whitelisted = WHITELISTED_SYMBOLS.contains(&verb.as_str());
-            // Push BEFORE applying the brace delta so `open_depth` is the
-            // pre-open depth.
-            self.fn_stack.push((self.cur_depth, whitelisted));
-            self.pending_opener = None;
-        } else if let Some(verb) = find_wrapped_nmp_app_extern_fn_opener(line) {
-            // Wrapped opener — `extern "C" fn nmp_app_<verb>(` with no
-            // same-line `{`. Park the verb; the next net-positive brace
-            // delta promotes it.
-            self.pending_opener = Some(verb);
-        } else if let Some(verb) = self.pending_opener.take() {
-            // Continuation of a previously-parked wrapped opener. If this
-            // line introduces at least one open brace, promote.
-            let net = opens as i32 - closes as i32;
-            if net >= 1 {
-                let whitelisted = WHITELISTED_SYMBOLS.contains(&verb.as_str());
-                self.fn_stack.push((self.cur_depth, whitelisted));
-            } else {
-                // Still inside the parameter list — keep parking.
-                self.pending_opener = Some(verb);
-            }
+        if line.contains("#[uniffi::export]") || line.contains("#[uniffi::export(") {
+            self.pending_export = true;
+        } else if self.pending_export && opens_export_scope_with_brace(line) {
+            self.fn_stack.push(self.cur_depth);
+            self.pending_export = false;
         }
 
         // Apply the brace delta.
         self.cur_depth += opens as i32;
         self.cur_depth -= closes as i32;
 
-        // Pop any fns whose open_depth is ≥ cur_depth.
-        while let Some(&(open_depth, _)) = self.fn_stack.last() {
+        // Pop any frames whose open_depth is ≥ cur_depth.
+        while let Some(&open_depth) = self.fn_stack.last() {
             if self.cur_depth <= open_depth {
                 self.fn_stack.pop();
             } else {
@@ -267,70 +247,17 @@ impl FnTracker {
     }
 }
 
-/// Detect a wrapped-signature opener: `extern "C" fn nmp_app_<verb>(` with
-/// no same-line `{` (the `{` is on a later line). Returns the parsed verb
-/// (e.g. `"nmp_app_create_new_account"`) when matched.
-fn find_wrapped_nmp_app_extern_fn_opener(line: &str) -> Option<String> {
-    if !line.contains("extern \"C\"") || !line.contains("nmp_app_") {
-        return None;
-    }
-    if line.contains('{') {
-        // Same-line opener handled separately.
-        return None;
-    }
-    let extern_pos = line.find("extern \"C\"")?;
-    let after_extern = &line[extern_pos..];
-    let fn_rel = after_extern.find(" fn ")?;
-    let fn_abs = extern_pos + fn_rel + 1;
-    let after_fn = &line[fn_abs + 3..];
-    let trimmed = after_fn.trim_start();
-    if !trimmed.starts_with("nmp_app_") {
-        return None;
-    }
-    parse_nmp_app_verb(trimmed)
-}
-
-/// Returns the byte offset of `fn` in a line that opens an
-/// `extern "C" fn nmp_app_<verb>(...)` signature with a same-line `{`.
-///
-/// Accepts the standard FFI shape:
-///
-/// ```ignore
-/// #[no_mangle]
-/// pub extern "C" fn nmp_app_foo(app: *mut NmpApp, ...) {
-/// ```
-///
-/// The `#[no_mangle]` attribute lives on a separate line — we don't require
-/// it here. The visibility modifier (`pub`, `pub(crate)`) is also optional.
-/// The decisive markers are `extern "C" fn ` and the literal token
-/// `nmp_app_` that follows.
-///
-/// Returns `None` when the line does not open such a function or its `{` is
-/// on a later line.
-fn find_nmp_app_extern_fn_opener_with_brace(line: &str) -> Option<usize> {
-    // Cheap reject for the vast majority of lines.
-    if !line.contains("extern \"C\"") || !line.contains("nmp_app_") {
-        return None;
-    }
-    // Must also open the body on this line.
+/// True iff `line` opens an `impl ... {` block or a `fn ...(...) {` with the
+/// brace on this same line — the shapes a `#[uniffi::export]` attribute
+/// decorates. Deliberately same-line-only, matching the simplifying
+/// assumption every other doctrine-lint per-file tracker makes (wrapped
+/// multi-line signatures are rare for the UniFFI surface this rule targets).
+fn opens_export_scope_with_brace(line: &str) -> bool {
     if !line.contains('{') {
-        return None;
+        return false;
     }
-    // Locate the `fn nmp_app_` token (allowing whitespace between `fn` and
-    // the identifier). The simplest way: find `fn ` after `extern "C"`, then
-    // verify the identifier that follows starts with `nmp_app_`.
-    let extern_pos = line.find("extern \"C\"")?;
-    let after_extern = &line[extern_pos..];
-    let fn_rel = after_extern.find(" fn ")?;
-    let fn_abs = extern_pos + fn_rel + 1; // skip the leading space
-    let after_fn = &line[fn_abs + 3..]; // skip "fn "
-    let trimmed = after_fn.trim_start();
-    if trimmed.starts_with("nmp_app_") {
-        let trim_len = after_fn.len() - trimmed.len();
-        Some(fn_abs + 3 + trim_len)
-    } else {
-        None
-    }
+    let trimmed = line.trim_start();
+    trimmed.starts_with("impl ") || trimmed.starts_with("fn ") || line.contains(" fn ")
 }
 
 /// Given a slice starting at the verb identifier (e.g. `nmp_app_foo(...)`),

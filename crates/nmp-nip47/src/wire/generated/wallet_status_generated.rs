@@ -123,16 +123,15 @@ pub mod nmp {
         impl<'a> WalletStatus<'a> {
             pub const VT_STATUS: ::flatbuffers::VOffsetT = 4;
             pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
-            pub const VT_WALLET_NPUB: ::flatbuffers::VOffsetT = 8;
-            pub const VT_HAS_BALANCE_MSATS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_BALANCE_MSATS: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HAS_BALANCE_SATS: ::flatbuffers::VOffsetT = 14;
-            pub const VT_BALANCE_SATS: ::flatbuffers::VOffsetT = 16;
-            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 20;
-            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 22;
-            pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 24;
-            pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 26;
-            pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 28;
+            pub const VT_HAS_BALANCE_MSATS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_BALANCE_MSATS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_BALANCE_SATS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_BALANCE_SATS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 18;
+            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 20;
+            pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 22;
+            pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 24;
+            pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -153,9 +152,6 @@ pub mod nmp {
                 builder.add_balance_msats(args.balance_msats);
                 if let Some(x) = args.wallet_pubkey_hex {
                     builder.add_wallet_pubkey_hex(x);
-                }
-                if let Some(x) = args.wallet_npub {
-                    builder.add_wallet_npub(x);
                 }
                 if let Some(x) = args.relay_url {
                     builder.add_relay_url(x);
@@ -190,18 +186,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         WalletStatus::VT_RELAY_URL,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn wallet_npub(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        WalletStatus::VT_WALLET_NPUB,
                         None,
                     )
                 }
@@ -328,11 +312,6 @@ pub mod nmp {
                         Self::VT_RELAY_URL,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "wallet_npub",
-                        Self::VT_WALLET_NPUB,
-                        false,
-                    )?
                     .visit_field::<bool>("has_balance_msats", Self::VT_HAS_BALANCE_MSATS, false)?
                     .visit_field::<u64>("balance_msats", Self::VT_BALANCE_MSATS, false)?
                     .visit_field::<bool>("has_balance_sats", Self::VT_HAS_BALANCE_SATS, false)?
@@ -361,7 +340,6 @@ pub mod nmp {
         pub struct WalletStatusArgs<'a> {
             pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub wallet_npub: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub has_balance_msats: bool,
             pub balance_msats: u64,
             pub has_balance_sats: bool,
@@ -378,7 +356,6 @@ pub mod nmp {
                 WalletStatusArgs {
                     status: None,
                     relay_url: None,
-                    wallet_npub: None,
                     has_balance_msats: false,
                     balance_msats: 0,
                     has_balance_sats: false,
@@ -409,13 +386,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     WalletStatus::VT_RELAY_URL,
                     relay_url,
-                );
-            }
-            #[inline]
-            pub fn add_wallet_npub(&mut self, wallet_npub: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    WalletStatus::VT_WALLET_NPUB,
-                    wallet_npub,
                 );
             }
             #[inline]
@@ -502,7 +472,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("WalletStatus");
                 ds.field("status", &self.status());
                 ds.field("relay_url", &self.relay_url());
-                ds.field("wallet_npub", &self.wallet_npub());
                 ds.field("has_balance_msats", &self.has_balance_msats());
                 ds.field("balance_msats", &self.balance_msats());
                 ds.field("has_balance_sats", &self.has_balance_sats());

@@ -111,7 +111,6 @@ pub(super) struct PendingPayment {
 /// Actor-local NWC connection state. Cleared on `wallet_disconnect`.
 pub(super) struct WalletConnection {
     pub(super) wallet_pubkey_hex: String,
-    pub(super) wallet_npub: String,
     pub(super) relay_url: String,
     pub(super) client_secret_hex: Zeroizing<String>,
     #[allow(dead_code)] // Retained for future per-event author filtering.

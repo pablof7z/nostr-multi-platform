@@ -15,7 +15,6 @@ use crate::status::new_wallet_status_slot;
 fn make_connection_ready() -> WalletConnection {
     WalletConnection {
         wallet_pubkey_hex: "aaaa".repeat(16),
-        wallet_npub: "npub1test".to_string(),
         relay_url: "wss://test.relay".to_string(),
         client_secret_hex: Zeroizing::new("bb".repeat(32)),
         client_pubkey_hex: "cccc".repeat(16),

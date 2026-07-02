@@ -38,7 +38,11 @@
 //!
 //! ## Exemptions
 //!
-//! - Presentation shells: `apps/chirp/chirp-desktop`, `chirp-tui`, `nmp-cli`.
+//! - Presentation shells: `nmp-cli` (the CLI is the correct place for display
+//!   formatting). `apps/chirp` was extracted to its own repository (see
+//!   `tests_d16_workspace.rs::apps_chirp_directory_does_not_exist`) — it no
+//!   longer exists in this monorepo, so its former special-case here was
+//!   dead code and was removed (#2761 / #2769 item 9).
 //! - `#[cfg(test)]` module bodies (`in_test_cfg`).
 //! - Test-only files (`d6::file_is_test_only` in the driver).
 //! - Generated files (`**/generated/**`).
@@ -110,13 +114,11 @@ pub fn file_in_scope(path: &Path) -> bool {
     if s.contains("/generated/") {
         return false;
     }
-    // Allowlisted presentation shells — they are the CORRECT place for display
-    // formatting.
-    if s.contains("apps/chirp/chirp-desktop")
-        || s.contains("apps/chirp/chirp-tui")
-        || s.contains("/crates/nmp-cli/")
-        || s.ends_with("/nmp-cli")
-    {
+    // Allowlisted presentation shell — the CORRECT place for display
+    // formatting. `apps/chirp` was extracted to its own repository and no
+    // longer exists in this monorepo; its former exemption clauses here were
+    // removed (#2761 / #2769 item 9).
+    if s.contains("/crates/nmp-cli/") || s.ends_with("/nmp-cli") {
         return false;
     }
 
@@ -472,10 +474,6 @@ mod tests {
 
     #[test]
     fn presentation_shells_out_of_scope() {
-        assert!(!file_in_scope(Path::new(
-            "apps/chirp/chirp-desktop/src/main.rs"
-        )));
-        assert!(!file_in_scope(Path::new("apps/chirp/chirp-tui/src/lib.rs")));
         assert!(!file_in_scope(Path::new("crates/nmp-cli/src/main.rs")));
     }
 

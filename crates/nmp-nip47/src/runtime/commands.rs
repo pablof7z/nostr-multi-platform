@@ -24,7 +24,7 @@ use super::disconnect::wallet_disconnect_inner;
 use super::heartbeat::sync_wallet_status;
 use super::payments::reconcile_unresolved_payments;
 use super::request_builder::{build_request, build_request_with_meta, PayMeta};
-use super::runtime_utils::{encode_frame, pubkey_to_npub};
+use super::runtime_utils::encode_frame;
 
 // ── Command handlers (the public surface the ProtocolCommands call into) ─────
 
@@ -88,16 +88,11 @@ pub(crate) fn wallet_connect(
         }
     };
 
-    let wallet_npub = pubkey_to_npub(&nwc_uri.wallet_pubkey_hex).unwrap_or_else(|_| {
-        nwc_uri.wallet_pubkey_hex[..8.min(nwc_uri.wallet_pubkey_hex.len())].to_string()
-    });
-
     let sub_id = format!("nwc-{}", &nwc_uri.wallet_pubkey_hex[..8]);
     let relay = nwc_uri.primary_relay_url().to_string();
 
     let conn = WalletConnection {
         wallet_pubkey_hex: nwc_uri.wallet_pubkey_hex.clone(),
-        wallet_npub: wallet_npub.clone(),
         relay_url: relay.clone(),
         client_secret_hex: zeroize::Zeroizing::new(nwc_uri.client_secret_hex.as_str().to_string()),
         client_pubkey_hex: client_pubkey_hex.clone(),

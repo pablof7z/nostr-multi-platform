@@ -80,7 +80,6 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
     // All string offsets must be created before the table is started.
     let status_str = fbb.create_string(&status.status);
     let relay_url = fbb.create_string(&status.relay_url);
-    let wallet_npub = fbb.create_string(&status.wallet_npub);
     let wallet_pubkey_hex = fbb.create_string(&status.wallet_pubkey_hex);
 
     let root = fb::WalletStatus::create(
@@ -88,13 +87,12 @@ pub fn encode_wallet_status(status: &WalletStatus) -> Vec<u8> {
         &fb::WalletStatusArgs {
             status: Some(status_str),
             relay_url: Some(relay_url),
-            wallet_npub: Some(wallet_npub),
             has_balance_msats: status.balance_msats.is_some(),
             balance_msats: status.balance_msats.unwrap_or_default(),
             has_balance_sats: status.balance_sats.is_some(),
             balance_sats: status.balance_sats.unwrap_or_default(),
             // `wallet_npub_short` vtable slot is deprecated (#1678, D7);
-            // not written — shells abbreviate `wallet_npub` themselves.
+            // not written — shells derive `npub` from `wallet_pubkey_hex`.
             is_ready: status.is_ready,
             is_connected: status.is_connected,
             has_connection_state: status.connection_state.is_some(),
@@ -125,11 +123,11 @@ pub fn decode_wallet_status(bytes: &[u8]) -> Result<WalletStatus, String> {
     Ok(WalletStatus {
         status: str_field(root.status(), "WalletStatus.status")?,
         relay_url: str_field(root.relay_url(), "WalletStatus.relay_url")?,
-        wallet_npub: str_field(root.wallet_npub(), "WalletStatus.wallet_npub")?,
         balance_msats: optional_u64(root.has_balance_msats(), root.balance_msats()),
         balance_sats: optional_u64(root.has_balance_sats(), root.balance_sats()),
         // `wallet_npub_short` removed (#1678, D7); deprecated vtable slot is
-        // not decoded — shells abbreviate `wallet_npub` themselves.
+        // not decoded. `wallet_npub` itself (#2762, D27) was deleted from
+        // the wire too — shells derive `npub` from `wallet_pubkey_hex`.
         wallet_pubkey_hex: str_field(root.wallet_pubkey_hex(), "WalletStatus.wallet_pubkey_hex")?,
         is_ready: root.is_ready(),
         is_connected: root.is_connected(),
