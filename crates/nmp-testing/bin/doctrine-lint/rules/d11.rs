@@ -181,9 +181,9 @@ fn find_banned_publish_symbol(line: &str) -> Option<(usize, String)> {
     }
 }
 
-/// Per-file tracker — same shape as [`super::d8::HotPathTracker`], generalised
-/// to recognise the live `#[uniffi::export]` doorway shape instead of the
-/// deleted `extern "C" fn nmp_app_*` shape.
+/// Per-file tracker — same shape as the analogous D8 hot-path tracker used to
+/// have before the `extern "C"` surface was deleted, generalised to recognise
+/// the live `#[uniffi::export]` doorway shape instead.
 ///
 /// Walks the brace structure of the file. When a line contains the literal
 /// `#[uniffi::export]` attribute, a pending flag is parked (surviving

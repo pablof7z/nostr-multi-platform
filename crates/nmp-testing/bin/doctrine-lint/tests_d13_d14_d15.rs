@@ -23,7 +23,7 @@ fn d14_positive_fixture_fires() {
     let tmp_str = tmp.to_string_lossy().into_owned();
     // D14 is path-scoped to `crates/nmp-core/src/` — the smoke fixture
     // staged under `target/` falls outside that scope, so
-    // `--d14-extra-scope` opts it in (mirrors `--d8-extra-scope` /
+    // `--d14-extra-scope` opts it in (mirrors `--d6-extra-scope` /
     // `--d9-extra-scope`).
     let (code, stdout, stderr) = run_lint(&[
         "--path",

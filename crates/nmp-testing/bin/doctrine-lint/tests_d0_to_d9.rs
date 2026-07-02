@@ -159,8 +159,8 @@ fn d7_negative_fixture_clean() {
 
 #[test]
 fn d8_sleep_positive_fixture_fires() {
-    // The no-polling check is NOT path-scoped, so no --d8-extra-scope is
-    // needed — pointing --path at the fixture dir is enough.
+    // The no-polling check is NOT path-scoped, so no `--d<N>-extra-scope`
+    // flag is needed — pointing --path at the fixture dir is enough.
     let (code, stdout, stderr) = run_lint(&["--path", &fixture_path("d8_sleep")]);
     assert_eq!(
         code, 1,
@@ -235,7 +235,8 @@ fn d9_positive_fixture_fires() {
     let tmp_str = tmp.to_string_lossy().into_owned();
     // D9 is path-scoped to kernel time-policy paths — the smoke fixture staged
     // under `target/` falls outside that scope, so `--d9-extra-scope` opts it in
-    // (mirrors `--d8-extra-scope`).
+    // (mirrors `--d6-extra-scope` / `--d14-extra-scope` for the other
+    // path-scoped rules).
     let (code, stdout, stderr) = run_lint(&[
         "--path",
         &tmp_str,
