@@ -165,6 +165,24 @@ fn pool_is_clone() {
     assert_clone::<Pool>();
 }
 
+/// `Pool::shutdown` must join the worker→pool translator thread rather
+/// than leaving it detached: after `shutdown()` returns, the `PoolInner`
+/// no longer holds a `JoinHandle` for it, and `shutdown()` itself must
+/// return promptly (not hang — the join happens outside the `PoolInner`
+/// lock, since `translator_loop` takes that lock per event).
+#[test]
+fn shutdown_joins_translator_thread_and_does_not_hang() {
+    let (events_tx, _events_rx) = mpsc::channel();
+    let pool = Pool::new(PoolConfig::default(), events_tx);
+    let _h = pool.ensure_open(&String::from("wss://127.0.0.1:1/sentinel"));
+    pool.shutdown();
+    let guard = pool.inner.lock().expect("inner lock must not be poisoned");
+    assert!(
+        guard.translator.is_none(),
+        "shutdown() must take the translator JoinHandle, leaving None behind"
+    );
+}
+
 /// The `default_role` from `PoolConfig` is propagated to workers.
 #[test]
 fn ensure_open_with_explicit_role_overrides_default() {

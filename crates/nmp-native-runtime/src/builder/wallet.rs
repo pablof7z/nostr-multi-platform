@@ -39,8 +39,14 @@ impl NmpAppBuilder<Unstarted> {
     /// The returned per-app handle is threaded into the NIP-57 zap auto-chain
     /// through `nmp_nip57::Config::with_payment_port`, so a zap pays through
     /// THIS app's wallet.
-    #[must_use]
-    pub fn with_wallet(mut self) -> Self {
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err(RegistrationError)` if either the NIP-47 wallet actions or
+    /// the NIP-57 zap action collide with an already-registered action on this
+    /// builder — mirrors the fallible idiom every other registration step on
+    /// this builder uses (see `ActionRegistrar::register_action`).
+    pub fn with_wallet(mut self) -> Result<Self, nmp_core::substrate::RegistrationError> {
         // Read the host-configured storage path off the un-started app so the
         // wallet runtime can install its durable payment store. SAFETY:
         // `self.app` is non-null (builder invariant) and not yet started, so a
@@ -50,8 +56,7 @@ impl NmpAppBuilder<Unstarted> {
         // builder implements `AppHost` (the composition supertrait over them), so
         // it satisfies those bounds and wires every registration against its app.
         // It returns the per-app `WalletRuntimeHandle` (ADR-0072 rung 5.2).
-        let wallet_handles = nmp_nip47::register(&mut self, nmp_nip47::Config::new(storage_path))
-            .expect("nmp-nip47 registration must not collide");
+        let wallet_handles = nmp_nip47::register(&mut self, nmp_nip47::Config::new(storage_path))?;
         // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
         // the app-path override of the port-less zap default `explicit owner composition`
         // installs (ADR-0069), so a zap pays through this builder's wallet. The
@@ -62,8 +67,7 @@ impl NmpAppBuilder<Unstarted> {
             nmp_nip57::Config::with_payment_port(nmp_nip47::wallet_payment_port(
                 wallet_handles.wallet,
             )),
-        )
-        .expect("nmp-nip57 wallet registration must not collide");
-        self
+        )?;
+        Ok(self)
     }
 }

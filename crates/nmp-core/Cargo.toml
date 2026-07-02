@@ -71,10 +71,11 @@ test-support = ["nmp-store/test-support", "dep:nmp-nip65-types"]
 # requires OS file I/O).
 lmdb-backend = ["nmp-store/lmdb-backend", "native"]
 # The `android-ffi` feature used to gate the FFI re-export surface that
-# nmp-android-ffi consumed. The whole `ffi::` module moved to the standalone
-# `nmp-ffi` crate (see `docs/architecture/crate-boundaries.md` §10a); the JNI
-# shim now depends on `nmp-ffi` directly, so this feature is a thin alias for
-# `native` retained for downstream compatibility (the workspace still
+# nmp-android-ffi consumed. The C-ABI `ffi::` module and the standalone
+# `nmp-ffi` crate it once lived in are both deleted (clean-break UniFFI
+# migration, EPIC-NS-001 #2340); the native FFI surface now lives behind
+# `nmp-uniffi` / `nmp-native-runtime`. This feature is kept as a thin alias
+# for `native` retained for downstream compatibility (the workspace still
 # has callers passing `--features android-ffi` to mean "give me the
 # native FFI graph").
 android-ffi = ["native"]

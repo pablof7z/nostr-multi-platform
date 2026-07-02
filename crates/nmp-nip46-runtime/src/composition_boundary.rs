@@ -1,5 +1,9 @@
 //! Composition-boundary helpers for `nmp-native-runtime`'s `signer_broker.rs`.
 //!
+//! Despite the module's former filename (`ffi_support.rs`), it contains no
+//! FFI / C-ABI code at all — it is a plain in-crate composition seam between
+//! two Rust crates, renamed to `composition_boundary` to say so truthfully.
+//!
 //! These functions wrap `RelayRole` / `ActorLaneTransport` details that
 //! `nmp-native-runtime` must not name directly (keeping it free of an
 //! `nmp-network` dependency on the `signer-broker` feature path).  Production

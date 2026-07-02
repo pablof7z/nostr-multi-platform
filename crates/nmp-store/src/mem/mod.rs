@@ -72,9 +72,6 @@ use super::StoreError;
 /// Maximum provenance entries kept per event.
 pub(super) const MAX_PROVENANCE_ENTRIES: usize = 32;
 
-/// Tombstones older than this many seconds are purged by `gc_step`.
-pub(super) const TOMBSTONE_MAX_AGE_SECS: u64 = 90 * 24 * 3600; // 90 days
-
 // ─── Shared storage type ─────────────────────────────────────────────────────
 
 /// Shared storage map for a single domain namespace.
