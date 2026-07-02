@@ -210,8 +210,6 @@ pub enum FeedOrder {
     /// Wrapper/protocol compilers can map this contract to source position
     /// without changing the app-facing order name.
     NewestByFeedPosition,
-    /// Oldest-first by feed position.
-    OldestByFeedPosition,
     /// Ordered per an app-registered order perspective (opaque id).
     Custom(CustomOrderId),
 }

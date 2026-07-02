@@ -77,9 +77,9 @@ fn register_is_register_once_immutable_no_overwrite() {
 fn definitions_carry_phase_specific_contracts() {
     let source = CustomSourceDef::new(tag_scope("source"));
     let admission = CustomAdmissionDef::new(tag_scope("gate"));
-    let order = CustomOrderDef::new(FeedOrder::OldestByFeedPosition);
+    let order = CustomOrderDef::new(FeedOrder::NewestByFeedPosition);
 
     assert_eq!(source.source, tag_scope("source"));
     assert_eq!(admission.gate, tag_scope("gate"));
-    assert_eq!(order.order, FeedOrder::OldestByFeedPosition);
+    assert_eq!(order.order, FeedOrder::NewestByFeedPosition);
 }

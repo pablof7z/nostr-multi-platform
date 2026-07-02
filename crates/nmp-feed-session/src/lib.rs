@@ -184,13 +184,12 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
     }
 
     // RANKING (#1740 step 4). The session engine sorts roots newest-first
-    // (`NewestByFeedPosition`) only. `OldestByFeedPosition` is not wired. A
-    // `FeedOrder::Custom(id)` resolves to a REGISTERED custom order —
-    // which must itself be engine-honorable (`NewestByFeedPosition`) or the open
-    // fails closed. Anything the engine cannot honor would silently mis-order, so
-    // reject before registering anything (D6). An UNREGISTERED id also fails
-    // closed (no leak). `custom::resolve_order` returns the engine-honored
-    // order or a typed error.
+    // (`NewestByFeedPosition`). A `FeedOrder::Custom(id)` resolves to a
+    // REGISTERED custom order, which must itself be engine-honorable
+    // (`NewestByFeedPosition`) or the open fails closed. Anything the engine
+    // cannot honor would silently mis-order, so reject before registering
+    // anything (D6). An UNREGISTERED id also fails closed (no leak).
+    // `custom::resolve_order` returns the engine-honored order or a typed error.
     custom::resolve_order(app, &params.order)?;
 
     // ── Resolve the ACQUISITION scope (step 3 compiler; custom source id →
