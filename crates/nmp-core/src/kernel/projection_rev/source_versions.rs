@@ -21,6 +21,20 @@
 //! Every bump site is a write chokepoint called from the actor thread as a
 //! direct consequence of a state mutation — never in a timer, never in a
 //! polling loop. Bumps are O(1) `u64::saturating_add(1)`.
+//!
+//! ## Memory bound for the per-KEY ref-row rev maps (issue #2766)
+//!
+//! `profile_row_revs` / `event_row_revs` are bounded to O(currently-claimed
+//! keys), NOT O(history): [`Self::clear_profile_row`] / [`Self::clear_event_row`]
+//! remove a key's entry in the same call that tears it down, so a released key
+//! never lingers in the map. Fixing issue #2766 (monotonic-through-release)
+//! did NOT change this — it changed WHERE a re-claimed key's next rev number
+//! comes from (a never-rewinding per-namespace sequence, `ref_profile_rows_ver`
+//! / `ref_event_rows_ver`, instead of a from-zero per-key counter), not
+//! WHETHER released keys are retained. No new GC/compaction is required: the
+//! allocator scalars are two extra `u64`s (already present pre-fix as the
+//! whole-projection manifest stamps) and the per-key maps still scale with the
+//! number of live claims, exactly as before.
 
 use std::collections::HashMap;
 
@@ -136,23 +150,26 @@ pub(crate) struct SourceVersions {
     /// of truth ADR-0070 D6a needs (only the changed pubkey's row crosses FFI).
     /// Bumped at three sites: resolve (`resolve_profile_ref`), release
     /// (`release_profile_ref`), and the kind:0 ingest chokepoint
-    /// (`project_accepted_event`, gated on a live claim). Monotonic; reset only
-    /// on `Kernel` rebuild.
+    /// (`project_accepted_event`, gated on a live claim).
     ///
-    /// ## Bounded-cleanup lifecycle (BLOCKING 2 fix)
+    /// ## Monotonic-through-release (issue #2766 fix) + bounded-cleanup lifecycle
     ///
-    /// An entry is created ONLY when a row is actually mutated: every call site
-    /// gates the bump on a real claim / real refcount change / live-claimed
-    /// ingest, so a spurious release of a never-claimed key never inserts a row
-    /// (see the gated `bump_*_row` callers). When a row is fully released its
-    /// last-release teardown calls [`Self::clear_profile_row`], which bumps the
-    /// rev to its final post-clear value (so the `Cleared` row a downstream
-    /// emitter produces carries the monotonic value) and then **immediately
-    /// removes the entry in the same call** — there is no retained-rev / pending
-    /// state, so the map is always bounded to currently-claimed keys (D8). An
-    /// explicit `Cleared` resets the host cache entry (ADR-0070 §D1), so a later
-    /// re-resolve starts a fresh row lifetime at rev 1 — monotonicity only has to
-    /// hold while a row is live between `Changed` and `Cleared`.
+    /// A per-key rev is allocated from the per-namespace [`Self::ref_profile_rows_ver`]
+    /// sequence (see [`Self::bump_profile_row`]), which never rewinds. An entry is
+    /// created ONLY when a row is actually mutated: every call site gates the bump
+    /// on a real claim / real refcount change / live-claimed ingest, so a spurious
+    /// release of a never-claimed key never inserts a row (see the gated
+    /// `bump_*_row` callers). When a row is fully released its last-release
+    /// teardown calls [`Self::clear_profile_row`], which allocates one final rev
+    /// from the sequence (so the `Cleared` row a downstream emitter produces
+    /// carries a value newer than any prior live rev) and then **immediately
+    /// removes the entry in the same call** — the map stays bounded to
+    /// currently-claimed keys (memory scales with active claims, not history; see
+    /// module-level doc for the bound), while a LATER re-claim of the same key
+    /// still draws from the same never-rewinding sequence, so its first rev is
+    /// strictly greater than any rev ever emitted for that key in an earlier live
+    /// span — monotonic THROUGH release, matching the `RefRowRevSource` trait
+    /// contract (`crate::refs::tracker`) and the `MapRowRevSource` test fixture.
     pub(crate) profile_row_revs: HashMap<String, u64>,
     /// Per-KEY revision for `refs.event` rows (keyed by `primary_id`: hex64 id or
     /// `kind:pubkey:d` coord). Event twin of [`Self::profile_row_revs`]; bumped at
@@ -162,12 +179,20 @@ pub(crate) struct SourceVersions {
     pub(crate) event_row_revs: HashMap<String, u64>,
 
     // ── ADR-0070 (#1671 integration glue): whole-projection ref-row stamps ─────
-    /// Monotonic whole-projection stamp for `refs.profile`. Co-bumped inside
-    /// every per-KEY profile-row mutation chokepoint ([`Self::bump_profile_row`]
-    /// / [`Self::clear_profile_row`]) so the derived `refs.profile` projection rev
-    /// advances whenever ANY profile row mutates. Monotonic across release: unlike
-    /// summing `profile_row_revs` (which a clear shrinks by removing the entry),
-    /// this scalar only ever increases, so the manifest rev never regresses.
+    /// Monotonic whole-projection stamp for `refs.profile`, and DUAL-PURPOSE
+    /// (issue #2766) the per-key rev allocator: [`Self::bump_profile_row`] /
+    /// [`Self::clear_profile_row`] draw a key's new rev directly from this
+    /// never-rewinding sequence instead of a from-zero per-key counter, so a
+    /// released-then-reclaimed key's rev is always strictly greater than any rev
+    /// it was ever assigned in an earlier live span. This co-bump also makes the
+    /// derived `refs.profile` projection rev advance whenever ANY profile row
+    /// mutates. Monotonic across release: unlike summing `profile_row_revs`
+    /// (which a clear shrinks by removing the entry), this scalar only ever
+    /// increases, so the manifest rev never regresses. NOTE for future
+    /// maintainers: this field now serves two roles (manifest-projection source
+    /// AND per-key allocator) — both only require "monotonic on mutation", so the
+    /// sharing is safe, but do not "simplify" one role without checking the
+    /// other.
     pub(crate) ref_profile_rows_ver: u64,
     /// Event twin of [`Self::ref_profile_rows_ver`] for `refs.event`.
     pub(crate) ref_event_rows_ver: u64,
@@ -274,39 +299,44 @@ impl SourceVersions {
     /// ingest) so the map stays bounded to claimed keys — a spurious or no-op bump
     /// for an unchanged key would create / advance a row with nothing on the wire
     /// to carry it (BLOCKING 2, BLOCKING 3).
+    ///
+    /// Issue #2766: the key's new rev is allocated from the never-rewinding
+    /// [`Self::ref_profile_rows_ver`] sequence rather than a from-zero per-key
+    /// counter, so a released-then-reclaimed key never collides with a rev it was
+    /// assigned in an earlier live span (monotonic THROUGH release).
     pub(crate) fn bump_profile_row(&mut self, key: &str) {
-        let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
-        *rev = rev.saturating_add(1);
-        // ADR-0070 integration glue: co-bump the whole-projection stamp so the
-        // derived `refs.profile` manifest rev advances on any row mutation
-        // (intrinsic — no separate call site to forget).
         self.ref_profile_rows_ver = self.ref_profile_rows_ver.saturating_add(1);
+        self.profile_row_revs
+            .insert(key.to_string(), self.ref_profile_rows_ver);
     }
 
     /// ADR-0070 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
-    /// Same gating contract as [`Self::bump_profile_row`].
+    /// Same gating contract and issue #2766 allocation scheme as
+    /// [`Self::bump_profile_row`].
     pub(crate) fn bump_event_row(&mut self, key: &str) {
-        let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
-        *rev = rev.saturating_add(1);
-        // ADR-0070 integration glue: co-bump the whole-projection stamp.
         self.ref_event_rows_ver = self.ref_event_rows_ver.saturating_add(1);
+        self.event_row_revs
+            .insert(key.to_string(), self.ref_event_rows_ver);
     }
 
     /// ADR-0070 (#1671 Lane B) — final-`Cleared` teardown of one ref row's per-key
     /// rev (BLOCKING 2). Called from the last-release / terminal-miss teardown
-    /// AFTER the consumer state is gone. It bumps the rev to its final post-clear
-    /// value (the value an ADR-0070 `Cleared` row carries) and **immediately
-    /// removes the entry in the same call** — there is no retained-rev or pending
-    /// state, so the map never accumulates released keys (D8: memory scales with
-    /// active views, not history). Returns the final rev so a row-delta emitter
-    /// can stamp the `Cleared` frame; on this branch (no Lane A emitter yet) the
-    /// caller discards it.
+    /// AFTER the consumer state is gone. It allocates one final rev from the
+    /// [`Self::ref_profile_rows_ver`] sequence (the value an ADR-0070 `Cleared`
+    /// row carries) and **immediately removes the entry in the same call** —
+    /// there is no retained-rev or pending state, so the map never accumulates
+    /// released keys (D8: memory scales with active claims, not history — see the
+    /// module-level doc for the bound). Returns the final rev so a row-delta
+    /// emitter can stamp the `Cleared` frame; on this branch (no Lane A emitter
+    /// yet) the caller discards it.
     ///
     /// Ordering (documented per BLOCKING 2): `bump → (emit Cleared with final
     /// rev) → remove`, all in the same tick. With no in-branch emitter the middle
     /// step is elided and the rev is dropped immediately after the bump. An
-    /// explicit `Cleared` resets the host cache entry (ADR-0070 §D1), so a later
-    /// re-resolve legitimately starts a fresh row at rev 1.
+    /// explicit `Cleared` resets the host cache entry (ADR-0070 §D1); a LATER
+    /// re-resolve of the same key (issue #2766) allocates its first rev from the
+    /// same never-rewinding sequence, so it is strictly greater than this final
+    /// release rev — monotonic THROUGH release, not a fresh rev-1 row.
     ///
     /// No-op (returns 0) when the key has no rev entry — a never-claimed key never
     /// reached the `Cleared` state, so a spurious release does not create a row.
