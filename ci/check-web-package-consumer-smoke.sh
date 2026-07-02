@@ -12,12 +12,12 @@ trap cleanup EXIT
 
 runtime_version="$(node -p "require(process.argv[1]).version" "$ROOT/web/packages/runtime-web/package.json")"
 components_version="$(node -p "require(process.argv[1]).version" "$ROOT/web/packages/components-web/package.json")"
-runtime_tarball="$PACK_DIR/nmp-runtime-web-${runtime_version}.tgz"
-components_tarball="$PACK_DIR/nmp-components-web-${components_version}.tgz"
+runtime_tarball="$PACK_DIR/nmpis-runtime-web-${runtime_version}.tgz"
+components_tarball="$PACK_DIR/nmpis-components-web-${components_version}.tgz"
 
 npm --prefix "$ROOT/web" ci
-npm --prefix "$ROOT/web" pack --workspace @nmp/runtime-web --pack-destination "$PACK_DIR"
-npm --prefix "$ROOT/web" pack --workspace @nmp/components-web --pack-destination "$PACK_DIR"
+npm --prefix "$ROOT/web" pack --workspace @nmpis/runtime-web --pack-destination "$PACK_DIR"
+npm --prefix "$ROOT/web" pack --workspace @nmpis/components-web --pack-destination "$PACK_DIR"
 
 if [[ ! -f "$runtime_tarball" ]]; then
   echo "missing runtime-web tarball: $runtime_tarball" >&2
@@ -111,7 +111,7 @@ import {
   protocolVersion,
   type WorkerEvent,
   type WorkerRequest,
-} from "@nmp/runtime-web";
+} from "@nmpis/runtime-web";
 import {
   NmpComponentHostProvider,
   NostrAvatar,
@@ -119,10 +119,10 @@ import {
   type NostrProfileHost,
   type ProfileWire,
   type ResolvedEventEmbeds,
-} from "@nmp/components-web";
-import { NostrProfileName } from "@nmp/components-web/user-name";
+} from "@nmpis/components-web";
+import { NostrProfileName } from "@nmpis/components-web/user-name";
 
-const workerUrl = new URL("@nmp/runtime-web/worker", import.meta.url);
+const workerUrl = new URL("@nmpis/runtime-web/worker", import.meta.url);
 const maybeWorker = typeof Worker === "undefined" ? undefined : new Worker(workerUrl, { type: "module" });
 
 const profile: ProfileWire = {

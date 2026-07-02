@@ -18,6 +18,6 @@ REPO_ROOT="$(cd "$WEB_GALLERY_DIR/../.." && pwd)"
 # ---------------------------------------------------------------------------
 echo "[build] Building NMP Gallery web..."
 npm --prefix "$REPO_ROOT/web" install
-npm --prefix "$REPO_ROOT/web" run build -w @nmp/gallery-web
+npm --prefix "$REPO_ROOT/web" run build -w @nmpis/gallery-web
 
 echo "[build] ✓ Gallery build complete (wasm from #2038)"
