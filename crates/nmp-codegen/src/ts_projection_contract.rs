@@ -122,7 +122,8 @@ mod tests {
 
     #[test]
     fn is_marked_generated() {
-        assert!(render_ts_projection_contract().contains("THIS FILE IS GENERATED. DO NOT EDIT BY HAND."));
+        assert!(render_ts_projection_contract()
+            .contains("THIS FILE IS GENERATED. DO NOT EDIT BY HAND."));
     }
 
     #[test]

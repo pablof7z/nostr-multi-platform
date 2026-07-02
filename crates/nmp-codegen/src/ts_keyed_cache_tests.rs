@@ -96,7 +96,9 @@ fn decodes_the_row_delta_batch_payload_fail_closed() {
     assert!(out.contains("RefRowDeltaBatchFb.bufferHasIdentifier(bb)"));
     assert!(out.contains("RefRowDeltaBatchFb.getRootAsRefRowDeltaBatch(bb)"));
     assert!(out.contains("if (key === null) return undefined;"));
-    assert!(out.contains("if (!batch) {\n      this.needsResyncFlag = true;\n      return EMPTY_OUTCOME();\n    }"));
+    assert!(out.contains(
+        "if (!batch) {\n      this.needsResyncFlag = true;\n      return EMPTY_OUTCOME();\n    }"
+    ));
 }
 
 #[test]
@@ -120,7 +122,9 @@ fn merge_gates_on_the_registered_projection_key_set() {
 #[test]
 fn decode_before_commit_routes_by_projection_key() {
     let out = rendered();
-    assert!(out.contains("private rowDecoder(projectionKey: string, payload: Uint8Array): boolean {"));
+    assert!(
+        out.contains("private rowDecoder(projectionKey: string, payload: Uint8Array): boolean {")
+    );
     assert!(out.contains("switch (projectionKey) {"));
     assert!(out.contains("return payload.length > 0;"));
 }

@@ -5,6 +5,7 @@ mod cli_action_builders;
 mod cli_action_contract;
 mod cli_builtin;
 mod cli_feed_helpers;
+mod cli_read_side;
 
 fn main() {
     match run() {
@@ -42,11 +43,11 @@ fn run() -> Result<(), String> {
         // cache for keyed projections (`refs.profile` / `refs.event`). Writes
         // `KeyedRefCache.generated.swift` or `KeyedRefCache.kt` (per
         // `--platform`) from `KEYED_PROJECTIONS`; decodes `RefRowDeltaBatch`.
-        "keyed-ref-cache" => cli::run_gen_keyed_ref_cache(args, &h),
+        "keyed-ref-cache" => cli_read_side::run_gen_keyed_ref_cache(args, &h),
         // #2722 — generated read-side TypeScript `PROJECTION_CONTRACT` table
         // for `@nmp/runtime-web`, from the same neutral manifest the Swift
         // typed decoders consume via `projection_contract::contract_for`.
-        "projection-contract" => cli::run_gen_projection_contract(args, &h),
+        "projection-contract" => cli_read_side::run_gen_projection_contract(args, &h),
         // ADR-0064 §3 (#1783) / #2411 — generated typed action-builders.
         // Writes native/web builders from `ACTION_BUILDERS` or from an app-local
         // static `--registry` contract; emits the host-facing typed write
