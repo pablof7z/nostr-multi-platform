@@ -296,8 +296,6 @@ fn fallback_follow_set(app: &NmpApp) -> Arc<ActiveFollowSet> {
     )
 }
 
-pub use nmp_feed_session::compile_feed_params;
-
 #[cfg(test)]
 #[path = "op_feed_session/tests.rs"]
 mod tests;

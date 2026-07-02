@@ -17,8 +17,9 @@
 //! The C-ABI never had `open_feed`/`close_feed` symbols — those were retired
 //! before M14 (confirmed by `feed_public_surface_retired.rs`). For UniFFI this
 //! slice adds first-class feed-session management: `open_feed_json` accepts a
-//! JSON-encoded `FeedParams` and uses `nmp_native_runtime::compile_feed_params`
-//! as the native feed compiler. `close_feed_session` accepts the `session_id` u64 returned by
+//! JSON-encoded `FeedParams` and delegates to `NmpApp::open_feed`, which applies
+//! the canonical native feed compiler below the facade boundary.
+//! `close_feed_session` accepts the `session_id` u64 returned by
 //! `open_feed_json`. The viewport command `load_older_feed` mirrors the lone
 //! surviving C-ABI feed symbol.
 //!

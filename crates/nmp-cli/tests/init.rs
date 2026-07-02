@@ -101,7 +101,8 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     assert!(
         !lib.contains("open_interest")
             && !lib.contains("ObservedProjection")
-            && !lib.contains("register_defaults"),
+            && !lib.contains("register_defaults")
+            && !lib.contains("compile_feed_params"),
         "scaffolded app API must not expose raw read internals:\n{lib}"
     );
     let legacy_embed_projection_key = ["claimed_event", "embeds"].join("_");

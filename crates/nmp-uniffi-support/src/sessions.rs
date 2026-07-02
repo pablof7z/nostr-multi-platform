@@ -2,10 +2,9 @@
 //!
 //! These are the stateless bridge mechanics behind a facade's
 //! `open_feed`/`close_feed` surface. They wrap the native-runtime composition
-//! seam (`NmpApp::open_feed` / `close_feed`) with the composition-root default
-//! compiler (`compile_feed_params`) and the canonical primary-kind validator
-//! (`decode_and_validate_feed_params`), so an app-owned facade does not copy
-//! that open/validate/compile/teardown policy.
+//! seam (`NmpApp::open_feed` / `close_feed`) and the canonical primary-kind
+//! validator (`decode_and_validate_feed_params`), so an app-owned facade does not
+//! copy that open/validate/session-teardown policy or choose a compiler.
 //!
 //! # Safe ownership (no raw runtime pointer)
 //!
@@ -17,8 +16,7 @@
 //! note in `lib.rs`.
 
 use nmp_native_runtime::{
-    compile_feed_params, decode_and_validate_feed_params, FeedHandle, FeedSessionId, NmpApp,
-    ProjectionKey,
+    decode_and_validate_feed_params, FeedHandle, FeedSessionId, NmpApp, ProjectionKey,
 };
 
 /// Outcome of opening (or reopening) a feed session.
@@ -41,26 +39,26 @@ pub enum FeedSessionError {
     /// `params_json` is not valid JSON, or the `FeedParams` primary kinds fail
     /// validation (wrapper/delete/empty primary kind).
     InvalidParams,
-    /// The compiler failed to register the session (unsupported scope or
+    /// The runtime failed to register the session (unsupported scope or
     /// poisoned registry).
     OpenFailed,
 }
 
-/// Decode + validate + compile + register a feed session from JSON params.
+/// Decode + validate + open/register a feed session from JSON params.
 ///
-/// Uses `compile_feed_params` — the owner-local feed compiler used by native-runtime
-/// tests — so the open path is identical for the reusable facade and any app-owned facade.
-/// Fail-closed (D6): all failures are typed [`FeedSessionError`]; never panics.
+/// Uses `NmpApp::open_feed`, so the canonical compiler stays below the app facade
+/// boundary. Fail-closed (D6): all failures are typed [`FeedSessionError`]; never
+/// panics.
 ///
 /// # Errors
 ///
 /// * [`FeedSessionError::InvalidParams`] — invalid JSON or invalid primary kinds.
-/// * [`FeedSessionError::OpenFailed`] — the compiler could not register the session.
+/// * [`FeedSessionError::OpenFailed`] — the runtime could not register the session.
 pub fn open_feed_session(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, FeedSessionError> {
     let (params, _acquisition_kinds) = decode_and_validate_feed_params(params_json)
         .map_err(|_| FeedSessionError::InvalidParams)?;
 
-    app.open_feed(&params, &compile_feed_params)
+    app.open_feed(&params)
         .map(|handle| OpenedFeed {
             projection_key: handle.projection_key.into_string(),
             session_id: handle.session_id.0,
@@ -107,7 +105,7 @@ pub fn close_feed_session(app: &NmpApp, session_id: u64) -> bool {
 /// pinned to the prior account and cannot re-seed reactively.
 ///
 /// Fail-closed (D6): on open failure nothing is left registered (the old
-/// session is already closed and the new compile failed closed before
+/// session is already closed and the new open failed closed before
 /// registering), and the error is returned so the caller knows the reopen did
 /// not produce a live session.
 ///

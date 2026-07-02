@@ -30,7 +30,7 @@ fn replacement_updates_open_feed_via_source_effects() {
 
     let key = "test.relay.list-members.replace";
     let _handle = app_ref
-        .open_feed(&list_members_params(key, list_id), &compiler)
+        .open_feed(&list_members_params(key, list_id))
         .expect("ListMembers source opens");
 
     relay.wait_req("Alice kind:30000 list source", |filter| {
@@ -83,7 +83,7 @@ fn account_switch_replays_open_feed_via_source_effects() {
 
     let key = "test.relay.list-members.account-switch";
     let _handle = app_ref
-        .open_feed(&list_members_params(key, list_id), &compiler)
+        .open_feed(&list_members_params(key, list_id))
         .expect("ListMembers source opens");
 
     relay.wait_req("Alice kind:30000 list source", |filter| {

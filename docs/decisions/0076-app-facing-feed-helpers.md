@@ -165,8 +165,8 @@ pagination by handle.
 
 | Current lower-level name | Public target | Reason |
 | --- | --- | --- |
-| `NmpApp::open_feed(params, compiler)` | `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
-| `open_feed_with_compiler` / explicit compiler seams | Internal, test, or advanced composition only | Compiler selection is executor wiring. |
+| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)` now; later `app.feeds().open(feed_key, spec)` | Normal app code must not choose a compiler. |
+| explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
 | `PubkeySetExpr` | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | `render` | `shape` | NMP projects row/window shape; hosts render. |
 | `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
@@ -200,7 +200,7 @@ policy, expand source sets, or own feed teardown.
 | Alternative | Why rejected |
 | --- | --- |
 | Keep raw `open_interest` as the feed API | Violates ADR-0042 and ADR-0070; acquisition is not a product read lifecycle. |
-| Keep `open_feed(params, compiler)` as the public app API | Leaks compiler/executor wiring and blocks one obvious doorway. |
+| Keep compiler-taking open paths as the normal app API | Leaks compiler/executor wiring and blocks one obvious doorway. |
 | Make `FeedSourceExpr` an arbitrary trait or native closure | Crosses FFI badly, breaks the closed data model, and lets policy leak into shells. |
 | Make `nmp-feed` own protocol interpretation | Violates ADR-0035; protocol crates own NIP facts and item schemas. |
 | Put profiles, embeds, counts, or target hydration in feed declarations | Reintroduces the secondary-data boundary violation ADR-0035 rejected. |

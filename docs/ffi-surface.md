@@ -78,7 +78,7 @@ close the remaining app-owned-facade gaps:
 
 | Facade need | Reuse, never copy | Notes |
 |---|---|---|
-| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + compile with the composition-root `compile_feed_params`; idempotent close (D6). `nmp-uniffi`'s own `open_feed_json`/`close_feed_session` delegate to these. |
+| Open/close a feed (projection) session | `open_feed_session`, `close_feed_session` | Decode + validate + open through `NmpApp::open_feed`; idempotent close (D6). `nmp-uniffi`'s own `open_feed_json`/`close_feed_session` delegate to these. |
 | Rebuild a session after a perspective change | `reopen_feed_session` | Idempotent close of the prior id + open from the retained declaration. For account-pinned sessions only — `ActiveUserFollows` feeds re-seed in place (see below). |
 | React to an active-account change | `register_account_change_sink`, `unregister_account_change_sink`, `account_change_observer_from_sink` | Arc-sink + panic-contained wrapper over `nmp-native-runtime::NmpApp::register_identity_change_observer`. The sink receives only the new identity; it never captures the runtime. |
 

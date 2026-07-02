@@ -130,7 +130,7 @@ fn open_feed_active_follows_returns_handle_with_key_and_session_id() {
         let feed = StubFeed::new();
         let params = following_params();
         let handle = app
-            .open_feed(&params, &following_compiler(feed.clone()))
+            .open_feed_with_compiler(&params, &following_compiler(feed.clone()))
             .expect("active-follows feed opens");
 
         assert_eq!(
@@ -159,7 +159,7 @@ fn close_feed_tears_down_controller_projection_and_observer_no_leak() {
         let feed = StubFeed::new();
         let params = following_params();
         let handle = app
-            .open_feed(&params, &following_compiler(feed.clone()))
+            .open_feed_with_compiler(&params, &following_compiler(feed.clone()))
             .expect("opens");
 
         // Before close: controller reachable, session live, and the feed `Arc`
@@ -208,7 +208,7 @@ fn close_feed_is_idempotent_double_close_is_a_noop() {
         let app = app.as_ref();
         let feed = StubFeed::new();
         let handle = app
-            .open_feed(&following_params(), &following_compiler(feed))
+            .open_feed_with_compiler(&following_params(), &following_compiler(feed))
             .expect("opens");
 
         assert!(app.close_feed(&handle), "first close tears down");
@@ -234,7 +234,7 @@ fn unsupported_scope_fails_closed_with_typed_error_and_registers_nothing() {
         };
 
         let err = app
-            .open_feed(&params, &following_compiler(feed))
+            .open_feed_with_compiler(&params, &following_compiler(feed))
             .expect_err("unsupported scope must fail closed");
         assert!(
             matches!(err, FeedOpenError::ScopeNotSupportedYet { .. }),
@@ -269,12 +269,37 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
         let mut params = following_params();
         params.primary_kinds = vec![1, 6]; // kind 6 is a repost wrapper → reject
 
-        let err = app.open_feed(&params, &compiler).expect_err("rejected");
+        let err = app
+            .open_feed_with_compiler(&params, &compiler)
+            .expect_err("rejected");
         assert!(
             matches!(err, FeedOpenError::InvalidParams(_)),
             "typed invalid-params error, got {err:?}"
         );
         assert_eq!(ran.load(Ordering::SeqCst), 0, "compiler never ran");
+        assert_eq!(app.live_feed_session_count(), 0);
+    }
+}
+
+#[test]
+fn open_feed_uses_canonical_compiler_without_caller_compiler() {
+    let app = test_app();
+    {
+        let app = app.as_ref();
+        let params = following_params();
+        let handle = app
+            .open_feed(&params)
+            .expect("canonical compiler opens active-follows feed");
+
+        assert_eq!(
+            handle.projection_key,
+            ProjectionKey::app_owned("test.feed.following").unwrap(),
+            "handle carries the caller-owned projection key"
+        );
+        assert!(app.feed_session_is_open(&handle));
+        assert_eq!(app.live_feed_session_count(), 1);
+
+        assert!(app.close_feed(&handle));
         assert_eq!(app.live_feed_session_count(), 0);
     }
 }

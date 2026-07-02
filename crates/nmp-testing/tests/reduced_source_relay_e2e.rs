@@ -112,7 +112,7 @@ fn active_follows_relay_replaces_source_and_closes_stale_author_sub() {
 
     let key = "test.relay.active-follows.replace";
     let _handle = app_ref
-        .open_feed(&active_follows_params(key), &compiler)
+        .open_feed(&active_follows_params(key))
         .expect("active follows opens");
 
     relay.wait_req("active account kind:3 source", |filter| {
@@ -154,7 +154,7 @@ fn active_follows_cache_first_open_still_replays_live_relay_reqs() {
 
     let key = "test.relay.active-follows.cache-first";
     let _handle = app_ref
-        .open_feed(&active_follows_params(key), &compiler)
+        .open_feed(&active_follows_params(key))
         .expect("active follows opens from cache");
     assert_eq!(
         flat_feed_ids(app_ref, key),
@@ -204,7 +204,7 @@ fn flat_active_follows_cache_first_open_uses_source_effects() {
 
     let key = "test.relay.flat-active-follows.cache-first";
     let _handle = app_ref
-        .open_feed(&flat_active_follows_params(key), &compiler)
+        .open_feed(&flat_active_follows_params(key))
         .expect("flat active follows opens from cache");
     assert_eq!(
         flat_feed_ids(app_ref, key),
@@ -249,7 +249,7 @@ fn list_members_nip65_arrival_emits_target_author_req() {
 
     let key = "test.relay.list-members.nip65-reroute";
     let _handle = app_ref
-        .open_feed(&mute_source_params(key), &compiler)
+        .open_feed(&mute_source_params(key))
         .expect("active mute source opens");
 
     relay.wait_req("active mute-list source", |filter| {
@@ -304,7 +304,7 @@ fn active_follows_account_switch_withdraws_old_relay_source() {
 
     let key = "test.relay.active-follows.account-switch";
     let _handle = app_ref
-        .open_feed(&active_follows_params(key), &compiler)
+        .open_feed(&active_follows_params(key))
         .expect("active follows opens");
 
     relay.wait_req("Alice active-account kind:3 source", |filter| {
@@ -377,7 +377,7 @@ fn active_follows_switch_active_reroutes_existing_feed_without_reopen() {
 
     let key = "test.relay.active-follows.switch-active";
     let _handle = app_ref
-        .open_feed(&active_follows_params(key), &compiler)
+        .open_feed(&active_follows_params(key))
         .expect("active follows opens once");
 
     relay.wait_req("account1 active-account kind:3 source", |filter| {
@@ -450,7 +450,7 @@ fn active_mute_list_relay_uses_same_reduced_source_lifecycle() {
 
     let key = "test.relay.active-mute.replace";
     let _handle = app_ref
-        .open_feed(&mute_source_params(key), &compiler)
+        .open_feed(&mute_source_params(key))
         .expect("active mute source opens");
 
     relay.wait_req("active mute-list source", |filter| {

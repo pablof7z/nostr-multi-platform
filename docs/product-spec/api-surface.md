@@ -96,8 +96,8 @@ returning a `FeedHandle`. The helper compiles through the standard NMP feed
 compiler and hides raw interests, observer registration, source-effect hooks,
 projection registrars, pull controllers, and teardown recipes from app/native
 callers. `FeedParams` remains the serializable descriptor behind that helper,
-but lower-level `open_feed(params, compiler)` seams are internal/test/advanced
-composition surfaces, not the taught product API.
+but lower-level crate-internal compiler seams are internal/test/composition
+surfaces, not the taught product API.
 
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item
