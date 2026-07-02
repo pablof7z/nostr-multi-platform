@@ -159,7 +159,7 @@ That document is the narrative companion to this ADR spine.
 | 0073 | Current | Redesign spine: ADR reset and ratchets. |
 | 0074 | Current | `nmp-nip09` exclusive owner of NIP-09 kind:5 deletion artifacts (#2511), widened to `a`-tag grammar and `AddressCoordinate` (#2589). |
 | 0075 | Current | Trellis may be a private reconciliation substrate below typed sessions; NMP owns public APIs and Nostr/resource semantics (#2627). |
-| 0076 | Proposed | App-facing feed APIs are typed read-session helpers over ADR-0070; `FeedParams` remains the descriptor, but helper APIs hide compiler/executor wiring (#1626). |
+| 0076 | Current | App-facing feed APIs are typed read-session helpers over ADR-0070; `FeedParams` remains the descriptor, but helper APIs hide compiler/executor wiring (#1626). |
 
 ## Follow-Up Rule
 

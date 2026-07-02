@@ -81,7 +81,11 @@ fn init_scaffold_is_a_compiling_composition_shell() {
     assert!(
         lib.contains("starter_projection_keys")
             && lib.contains("starter_builtin_projection_keys")
-            && lib.contains("starter_home_feed_params")
+            && lib.contains("starter_home_feed_key")
+            && lib.contains("starter_home_feed_spec")
+            && lib.contains("nmp_native_runtime::feed::events()")
+            && lib.contains("nmp_native_runtime::source::active_user().follows()")
+            && lib.contains(".open_spec(starter_home_feed_key(), starter_home_feed_spec())")
             && lib.contains("HomeTimelineSession")
             && lib.contains("open_home_timeline_session")
             && lib.contains("close_home_timeline_session")

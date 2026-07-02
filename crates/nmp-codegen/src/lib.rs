@@ -168,6 +168,15 @@ pub use action_builders::{
     AppActionBuilderRegistryCheckOutcome, AppActionBuilderSchema, LoadedAppActionBuilderRegistry,
     Platform as ActionBuilderPlatform,
 };
+/// #1626 — generated app-facing native feed helpers over the canonical
+/// `FeedParams` JSON doorway. These emit Swift/Kotlin convenience helpers only;
+/// Rust/NMP still owns feed declaration, compilation, reactivity, and session
+/// lifecycle.
+pub mod feed_helpers;
+pub use feed_helpers::{
+    check_feed_helpers, generate_feed_helpers, render_feed_helpers, FeedHelpersCheckOutcome,
+    Platform as FeedHelperPlatform,
+};
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

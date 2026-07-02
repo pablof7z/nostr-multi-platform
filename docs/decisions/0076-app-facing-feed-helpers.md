@@ -2,9 +2,10 @@
 
 ## Status
 
-Proposed. This records the public feed API target for #1626. It should move to
-Accepted once native, browser, generated helpers, and builder docs teach the
-helper shape instead of lower-level compiler wiring.
+Current. This records the public feed API invariant for #1626: product feeds are
+typed read-session helpers over `FeedParams`, not raw interest/compiler wiring.
+Issue #1626 remains open for broader product adoption and helper coverage, but
+the app-facing direction is now the current architecture.
 
 ## Context
 
@@ -23,9 +24,11 @@ native/browser `feeds().open/load_older/close` facades, native/browser
 `open_spec(feed_key, feed_spec)` helpers, UniFFI support helpers that call the
 default compiler, app-owned dynamic projection keys, separate `FeedParams.key` /
 `FeedParams.item_projection` fields, and the `FeedSpec` builder over
-`FeedParams`. Issue #1626 remains open because generated helper surfaces,
-explicit pointer-target hydration naming, and remaining product helper cleanup
-are still open API cleanup.
+`FeedParams`, explicit pointer-target-hydration naming, generated Swift/Kotlin
+helper surfaces over the existing UniFFI `openFeedJson` doorway, and starter
+docs/code that teach `FeedKey::app(...)`, `feed::events()`,
+`source::active_user().follows()`, and `app.feeds().open_spec(...)`. Issue
+#1626 remains open for broader product adoption and web/package helper coverage.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -47,6 +50,13 @@ The long-term generated-helper spelling may expose this as
 `open(feed_key, feed_spec)` on surfaces that can support that shape. The current
 Rust facade uses `open_spec` alongside `open(&FeedParams)` so the canonical
 serializable descriptor remains directly available.
+
+Generated Swift/Kotlin feed helpers are a native-binding convenience over the
+same descriptor. The first generated helper family builds an active-user-follows
+feed descriptor with typed `RootIndexed`/`Flat` shape selection and calls UniFFI
+`openFeedJson`; it does not choose a compiler, register observers, own source
+reduction, or add a second runtime path. Web/package helper coverage remains
+future #1626 work until `runtime-web` exposes an equivalent feed session door.
 
 The helper uses the standard NMP feed compiler. App, native, browser, TUI, and
 generated helper code do not pass a `FeedCompiler`, observer registrar,
@@ -168,7 +178,7 @@ pagination by handle.
 
 | Current lower-level name | Public target | Reason |
 | --- | --- | --- |
-| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)`, `app.feeds().open(params)`, and `app.feeds().open_spec(feed_key, spec)` now; generated helpers may later expose `open(feed_key, spec)` | Normal app code must not choose a compiler. |
+| crate-internal `open_feed_with_compiler(params, compiler)` | `NmpApp::open_feed(params)`, `app.feeds().open(params)`, `app.feeds().open_spec(feed_key, spec)`, and generated host helpers over `openFeedJson` | Normal app code must not choose a compiler. |
 | explicit compiler seams | Internal test/composition only | Compiler selection is executor wiring. |
 | former `PubkeySetExpr` alias | `FeedSourceExpr`, `FeedSource`, or `SourceExpr` | Sources now include relays, tags, referrers, pointer targets, and hosted groups. |
 | former `render` field | `shape` | NMP projects row/window shape; hosts render. |

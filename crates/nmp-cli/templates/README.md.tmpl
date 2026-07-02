@@ -17,7 +17,7 @@ The generated app demonstrates the boring v1 path:
 | Surface | Starter shape |
 |------|------|
 | Runtime | `examples/shell.rs` uses `nmp_native_runtime::NmpAppBuilder`, calls `{{crate_ident}}::register(&mut builder)` once, declares projection consumption, declares relay policy, then starts. Swift/Kotlin apps should wrap the same native runtime through UniFFI bindings. |
-| Timeline/read | `starter_home_feed_params()` declares this app's typed home-timeline read surface; platform shells open/render that Rust/NMP projection instead of owning subscription or cache policy. |
+| Timeline/read | `starter_home_feed_key()` + `starter_home_feed_spec()` declare this app's typed home-timeline read surface with `feed::events()` from `source::active_user().follows()`; `open_home_timeline_session()` opens it through `app.feeds().open_spec(...)` so platform shells render Rust/NMP projection output instead of owning subscription or cache policy. |
 | Profile/content | Component hosts read `refs.profile`, authoritative `refs.event`, and derived `refs.event.envelopes`. Do not use pre-v1 whole-map projections. |
 | Component host | Install one app-root provider such as SwiftUI `NmpComponentHost` or Compose `NmpComponentHostProvider`; leaf components render and manage visible claim/release only. |
 | Compose/publish | Platform shells build bytes with typed generated builders such as `GeneratedActionBuilders.publishReply` / `publishProfile`, then dispatch those bytes. Signer choice is a typed selector, explicit relay pins require route provenance, and shells do not spell action namespaces, arbitrary event kinds, or JSON payloads by hand. |

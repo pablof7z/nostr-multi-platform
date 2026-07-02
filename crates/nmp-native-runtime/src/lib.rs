@@ -23,8 +23,9 @@ mod debug_info;
 mod declared_projections;
 #[cfg(feature = "external-signer")]
 mod external_signer;
-mod feed;
 mod feed_facade;
+#[path = "feed.rs"]
+mod feed_params;
 mod feed_session;
 mod feed_session_host;
 mod group_feed;
@@ -61,14 +62,14 @@ pub use builder::{
     NmpAppBuilder, ProjectionsDeclared, RelaysDeclared, RunConfig, StorageSet, Unstarted,
 };
 pub use debug_info::{empty_debug_info_json, DOMAIN_COMPOSITION, DOMAIN_MERGED, DOMAIN_ROUTING};
-pub use feed::{
-    decode_and_validate_feed_params, validate_feed_params, CustomAdmissionDef, CustomAdmissionId,
-    CustomOrderDef, CustomOrderId, CustomSourceDef, CustomSourceId, FeedAdmission, FeedHandle,
-    FeedItemProjection, FeedKey, FeedOrder, FeedParams, FeedParamsDecodeError, FeedScope,
-    FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy,
-    ProjectionKey,
-};
 pub use feed_facade::{FeedSessions, FeedSpecOpenError};
+pub use feed_params::{
+    decode_and_validate_feed_params, feed, source, validate_feed_params, CustomAdmissionDef,
+    CustomAdmissionId, CustomOrderDef, CustomOrderId, CustomSourceDef, CustomSourceId,
+    FeedAdmission, FeedHandle, FeedItemProjection, FeedKey, FeedOrder, FeedParams,
+    FeedParamsDecodeError, FeedScope, FeedSessionId, FeedShape, FeedSourceExpr, FeedSpec,
+    FeedSpecError, FeedWindowPolicy, ProjectionKey,
+};
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use group_feed::{
     Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,

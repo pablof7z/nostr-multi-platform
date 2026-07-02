@@ -245,6 +245,26 @@ descriptor bridging is still the local binding shape. Do not expose compiler
 selection, observer registration, raw interest JSON, pull-controller wiring, or
 teardown recipes through a product facade.
 
+Use `nmp gen feed-helpers --platform swift|kotlin --out <path>` when a native
+binding wants checked generated helper code over that JSON bridge. The generated
+helpers build canonical `FeedParams` JSON for active-user-follows feeds with
+typed `RootIndexed`/`Flat` shape selection and call UniFFI `openFeedJson`; they
+do not create a second runtime path. Rust app crates should prefer the typed
+shape directly:
+
+```rust
+let handle = app.feeds().open_spec(
+    FeedKey::app("app.example.home")?,
+    feed::events()
+        .primary_kinds([1])
+        .from(source::active_user().follows())
+        .shape(FeedShape::RootIndexed)
+        .order(FeedOrder::NewestByFeedPosition)
+        .window(FeedWindowPolicy::bounded(80))
+        .project(FeedItemProjection::feed_rows()),
+)?;
+```
+
 ### Account-change and account-scoped sessions (#2516)
 
 Two layers, pick the lighter one. Account-**reactive** feeds
