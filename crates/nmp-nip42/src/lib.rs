@@ -29,8 +29,10 @@
 //!   [`nmp_core::subs::auth_gate::AuthGate`], not here.
 //! - **D6** — `Result<…, Nip42Error>` is the internal flow control type;
 //!   the caller surfaces the error as a `RelayAuthState::Failed` diagnostic
-//!   (failure reasons surface through the current FFI/update bridge; see `docs/ffi-surface.md`
-//!   §7.2 — not added by this crate).
+//!   (failure reasons surface through the current FFI/update bridge — see the
+//!   "FlatBuffers Through UniFFI" section of `docs/ffi-surface.md`, which
+//!   owns the `NMPU` update-frame path this diagnostic rides on; not added by
+//!   this crate).
 //! - ADR-0007 §1 — `RelayAuthState` enum matches the diagnostics contract
 //!   exactly (`NotRequired | ChallengeReceived | Authenticating |
 //!   Authenticated | Failed`).

@@ -146,8 +146,8 @@ impl Kernel {
         // knowing about protocol nouns; those subscriptions are now pushed
         // by host-side runtime controllers as generic
         // `LogicalInterest`s — see the NIP-crate-specific interest helpers
-        // (e.g. `nmp_nip57`) and the host-shell controllers (e.g.
-        // `apps/chirp/crates/nmp-app-chirp/src/zap_receipts_runtime.rs`). The
+        // (e.g. `nmp_nip57`) and the host-shell controllers (e.g. the
+        // external Chirp repo's `nmp-app-chirp/src/zap_receipts_runtime.rs`). The
         // planner's cold-start fallback at
         // `planner/compiler/partition/mod.rs` keeps such interests flowing
         // during the brief window before the active account's kind:10002

@@ -1,7 +1,6 @@
-//! Action-lane UniFFI methods — M14-C4.
+//! Action-lane UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/action.rs` for the `ack_action_stage` and
-//! `register_action_result_observer` symbols.
+//! `ack_action_stage` and `register_action_result_observer`.
 //!
 //! ## Quiescence note for `register_action_result_observer`
 //!

@@ -1,0 +1,6 @@
+{
+  "id": "898a4-df88b",
+  "ts": "2026-06-29T11:09:18Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "3. **Composition root — explicit (ADR-0069):** ✅ `register_defaults()` is dead as a production path everywhere (starter, gallery, browser); CI ratchet enforces it.\n [...] - **register_defaults() is dead as a production path (ADR-0069).** Replaced everywhere by explicit builder composition. Ratchet in CI. [...] | **Composition root** — explicit | 0069 | ✅ Done everywhere (starter/gallery/browser); CI ratchet locks it. |\n| **Write** — publish provenance | 0071 | 🔶 ~80%. Pre-sign gate + route classification landed. WRITE-003 in PR (#2392, CI pending), WRITE-004 (#2371) blocked on it, WRITE-005 (#2372) open. |"
+}

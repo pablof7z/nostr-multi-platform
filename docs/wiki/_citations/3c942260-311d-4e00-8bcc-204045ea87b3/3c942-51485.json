@@ -1,0 +1,6 @@
+{
+  "id": "3c942-51485",
+  "ts": "2026-06-29T11:10:44Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "And critically: **you don't need consolidation to get \"what not how.\"** That's a per-issue body-style choice. A normal issue written as *problem + constraints + open questions* (no prescriptive plan) already gives you exactly that — it's the [[feedback_codex_design_not_prescribe]] pattern. The stale ones are stale because they were written as finished plans, not because they're separate issues."
+}

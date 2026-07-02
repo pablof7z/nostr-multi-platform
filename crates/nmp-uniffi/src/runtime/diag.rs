@@ -1,16 +1,14 @@
-//! Intent dispatch and diagnostic info UniFFI methods — M14-C6.
+//! Intent dispatch and diagnostic info UniFFI methods.
 //!
-//! Owns the intent-dispatch and debug-info UniFFI methods after the migrated
-//! C-ABI symbols were deleted.
+//! Owns the `intent_dispatch` and `debug_info` methods.
 //!
 //! ## Design notes
 //!
-//! Both methods return JSON strings, matching the shape of the C-ABI
-//! counterparts.
+//! Both methods return JSON strings.
 //!
-//! * `intent_dispatch` accepts a serialized `InputIntentRequest` JSON
-//!   (same schema as the C-ABI) and returns a dispatch-outcome JSON
-//!   (`{"ok":true,"dispatched":…}` or `{"ok":true,"rejection":…}`).
+//! * `intent_dispatch` accepts a serialized `InputIntentRequest` JSON and
+//!   returns a dispatch-outcome JSON (`{"ok":true,"dispatched":…}` or
+//!   `{"ok":true,"rejection":…}`).
 //! * `debug_info` accepts a domain integer (0=routing, 1=composition,
 //!   2=merged, other=`{}`) and returns the diagnostic JSON payload.
 //!
@@ -23,7 +21,7 @@ use serde_json::json;
 
 use crate::NmpApp;
 
-// ── Serialization helpers (mirrors nmp-ffi/src/intent_ffi/dispatch.rs) ───────
+// ── Serialization helpers ────────────────────────────────────────────────────
 //
 // `InputIntentCandidate` / `InputIntentRejection` derive `serde::Serialize`
 // upstream; we wrap them with `serde_json::to_value` + the `json!` macro so

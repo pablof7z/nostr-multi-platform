@@ -1,0 +1,6 @@
+{
+  "id": "3c942-3e07a",
+  "ts": "2026-06-29T11:09:48Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **0069 — Explicit feature composition.** Kills `register_defaults()` as production app architecture. A production app's Rust composition root must *explicitly* install substrate, reusable Nostr protocol features, app-owned product features, shell capability contracts, then start. `nmp-defaults` may survive only as a reusable installer library — **never** owning seed follows, bootstrap relay brands, signer permission defaults, or onboarding/product policy. \"A request from one downstream app is evidence, not permission\" to add app-named helpers to NMP crates."
+}

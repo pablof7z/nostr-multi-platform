@@ -97,8 +97,7 @@ impl UpdateSink for BlockingSink {
 
 // ── Clamp parity ──────────────────────────────────────────────────────────────
 
-/// `visible_limit = 0` must map to `DEFAULT_VISIBLE_LIMIT` (100), matching
-/// `nmp_app_start`'s clamping behaviour in `nmp-ffi`.
+/// `visible_limit = 0` must map to `DEFAULT_VISIBLE_LIMIT` (100).
 #[test]
 fn clamp_visible_zero_yields_default() {
     assert_eq!(clamp_visible(0), DEFAULT_VISIBLE_LIMIT);
@@ -113,8 +112,7 @@ fn clamp_visible_clamps_to_range() {
     assert_eq!(clamp_visible(200), 200);
 }
 
-/// `emit_hz = 0` must map to `DEFAULT_EMIT_HZ` (6 Hz), matching
-/// `nmp_app_configure`'s clamping behaviour in `nmp-ffi`.
+/// `emit_hz = 0` must map to `DEFAULT_EMIT_HZ` (6 Hz).
 #[test]
 fn clamp_emit_hz_zero_yields_default() {
     assert_eq!(clamp_emit_hz(0), DEFAULT_EMIT_HZ);

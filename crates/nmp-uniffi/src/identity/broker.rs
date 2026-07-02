@@ -1,11 +1,8 @@
-//! NIP-46 signer-broker UniFFI methods — M14-C2.
+//! NIP-46 signer-broker UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/signer_broker.rs` for the three broker symbols:
-//! `nmp_signer_broker_init`, `nmp_app_cancel_bunker_handshake`,
-//! `nmp_app_nostrconnect_uri`.
-//!
-//! Each method calls the SAME underlying `nmp_native_runtime::NmpApp` method
-//! the C-ABI wrapper calls. No logic is duplicated.
+//! `init_signer_broker`, `cancel_bunker_handshake`, and `nostrconnect_uri`.
+//! Each method calls the underlying `nmp_native_runtime::NmpApp` method
+//! directly; no logic is duplicated.
 //!
 //! ## Feature gate
 //!

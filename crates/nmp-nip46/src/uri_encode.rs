@@ -1,7 +1,8 @@
-//! RFC 3986 query-value percent-encoder, shared by the app adapter
-//! (`nmp-ffi`) and `broker/nostrconnect.rs` (relay URL in the generated
-//! `nostrconnect://` URI). Pulled out of the two call sites so a future
-//! change to the unreserved-set policy has a single source of truth.
+//! RFC 3986 query-value percent-encoder, shared by the native-runtime bunker
+//! adapter (`nmp-native-runtime::signer_broker`) and `nostrconnect.rs` (relay
+//! URL in the generated `nostrconnect://` URI). Pulled out of the two call
+//! sites so a future change to the unreserved-set policy has a single source
+//! of truth.
 //!
 //! Keeping a hand-rolled six-line helper avoids pulling `percent-encoding`
 //! into the broker's dependency closure (D8 — minimal deps in protocol

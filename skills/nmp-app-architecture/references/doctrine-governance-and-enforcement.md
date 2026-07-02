@@ -21,8 +21,10 @@ Doctrine is enforced at two levels that do not substitute for each other:
 ## What Doctrine-Lint Enforces (Rust + native)
 
 `cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-core` plus the smoke test. The
-binary enforces **A6, D0, D6–D27, action_namespace, no_raw_tap, product_raw_read** (D22 is a
-reserved/unassigned slot). The "D0–D10" framing is obsolete; the live set runs to D27.
+binary enforces **A6, D0, D6–D15, D17–D27, action_namespace, no_raw_tap, product_raw_read**
+(D16 was deleted when Chirp was extracted to its own repo — its scope was `apps/chirp/`
+exclusively and that path no longer exists in this monorepo; D22 is a reserved/unassigned
+slot). The "D0–D10" framing is obsolete; the live set runs to D27.
 
 | Rule | Summary | Scope |
 |---|---|---|
@@ -31,7 +33,6 @@ reserved/unassigned slot). The "D0–D10" framing is obsolete; the live set runs
 | D13 | DM-path raw-key isolation | nmp-core |
 | D14 | Typed snapshot projection slots (no bare `Mutex<Vec>`) | nmp-core |
 | D15 | Host closures wrapped in `catch_unwind` | nmp-core |
-| D16 | App projection keys use `nmp.` prefix | apps/* |
 | D17 | Social-timeline kinds not hardcoded in substrate | nmp-core |
 | D18 | Native shell doctrine (Swift/Kotlin/Java) | all native |
 | D19 | Display formatting banned from kernel projection producers | nmp-core |

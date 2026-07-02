@@ -1,0 +1,6 @@
+{
+  "id": "3c942-57599",
+  "ts": "2026-06-29T11:25:26Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- Every slice I read is self-contained the right way: Problem → Evidence (with **real file paths on master**) → Target state → Scope → **Out-of-scope** → Acceptance criteria → Verification commands. This is exactly the shape an agent can pick up cold and execute without re-discovery."
+}

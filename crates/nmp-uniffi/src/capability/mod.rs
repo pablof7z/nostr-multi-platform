@@ -1,28 +1,28 @@
-//! Capability, action-lane, and publish-control UniFFI surface — M14-C4.
+//! Capability, action-lane, and publish-control UniFFI surface.
 //!
-//! Migrates the C-ABI symbols from `nmp-ffi/src/{capability,action,publish}.rs`
-//! to typed `#[uniffi::export] impl NmpApp` methods. This is **additive** — the
-//! C-ABI symbols are NOT deleted here (transitional until M14-D).
+//! `nmp-uniffi` is the sole native binding surface for capability round-trips,
+//! the action lane, and publish control (M14 complete; the legacy `nmp-ffi`
+//! C-ABI crate has been deleted). Each sub-module adds a
+//! `#[uniffi::export] impl NmpApp` block exposing typed methods.
 //!
 //! ## Module layout
 //!
-//! | Module       | UniFFI methods                                          | C-ABI counterpart              |
-//! |--------------|---------------------------------------------------------|--------------------------------|
-//! | `capability` | `set_capability_callback`, `dispatch_capability`        | `nmp-ffi/src/capability.rs`    |
-//! | `action`     | `ack_action_stage`, `register_action_result_observer`   | `nmp-ffi/src/action.rs`        |
-//! | `publish`    | `retry_publish`, `cancel_action`                        | `nmp-ffi/src/publish.rs`       |
-//! | `lifecycle`  | `lifecycle_*`, `set_lifecycle_callback`, `is_alive`     | `nmp-ffi/src/lifecycle.rs`     |
+//! | Module       | UniFFI methods                                          |
+//! |--------------|---------------------------------------------------------|
+//! | `capability` | `set_capability_callback`, `dispatch_capability`        |
+//! | `action`     | `ack_action_stage`, `register_action_result_observer`   |
+//! | `publish`    | `retry_publish`, `cancel_action`                        |
+//! | `lifecycle`  | `lifecycle_*`, `set_lifecycle_callback`, `is_alive`     |
 //!
 //! ## Callback interfaces
 //!
 //! ### `CapabilitySink` (request–response round-trip)
 //!
 //! The kernel issues a `CapabilityRequest` JSON, calls `on_capability_request`,
-//! and expects a `CapabilityEnvelope` JSON back. Maps to the C-ABI's
-//! `CapabilityCallback fn ptr` path but uses `CapabilityCallbackGate`'s
-//! Rust-native handler slot (`set_native_handler`) so the same `in_flight` +
-//! `Condvar` quiescence gate that protects the C path also protects the UniFFI
-//! path. After `set_capability_callback` returns the previous sink is neither
+//! and expects a `CapabilityEnvelope` JSON back. `CapabilityCallbackGate`'s
+//! Rust-native handler slot (`set_native_handler`) backs this with the same
+//! `in_flight` + `Condvar` quiescence gate used across every kernel callback
+//! seam. After `set_capability_callback` returns the previous sink is neither
 //! registered nor mid-invocation.
 //!
 //! ### `ActionResultObserver` (push signal)
@@ -35,8 +35,8 @@
 //! ## Design notes
 //!
 //! * Each sub-module adds a `#[uniffi::export] impl NmpApp` block.
-//! * Every method calls `self.inner.<method>()` — the same underlying
-//!   `nmp_native_runtime::NmpApp` method the C-ABI wrapper calls.
+//! * Every method calls `self.inner.<method>()` on the underlying
+//!   `nmp_native_runtime::NmpApp` — no logic is duplicated here.
 //! * `CapabilitySink::on_capability_request` receives a pre-copied `String`
 //!   (no Rust lock held across the foreign call) and returns a `String`.
 

@@ -13,10 +13,10 @@
 //!
 //! The design doc (`docs/perf/op-centric-feed-architecture.md` §3-A) sketches
 //! `register_op_feed(app: &NmpApp, …)`. That is pseudocode: `NmpApp` lives in
-//! `nmp-ffi`, which this crate does not depend on. The substrate-clean
+//! `nmp-native-runtime`, which this crate does not depend on. The substrate-clean
 //! realization is to construct the engine here and hand the caller back the
 //! `Arc<OpFeedEngine>`. The composition root (rung 6,
-//! `explicit composition`, which *does* depend on `nmp-ffi`) performs the
+//! `explicit composition`, which *does* depend on `nmp-native-runtime`) performs the
 //! `NmpApp`-level registration:
 //!
 //! ```ignore

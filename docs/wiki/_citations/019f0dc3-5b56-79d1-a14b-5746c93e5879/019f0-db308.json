@@ -1,0 +1,6 @@
+{
+  "id": "019f0-db308",
+  "ts": "2026-06-29T12:11:40Z",
+  "session": "019f0dc3-5b56-79d1-a14b-5746c93e5879",
+  "text": "User: yes, the important part is that event construction is composable: we can use a template event builder (like \"react to event x with `+`\" or \"construct a reply to event y\" [ which happens to use nip-22 automatically because its replying to a non kind:1 event ], and the publish action might trigger some more envelope mutations (like an h tag for nip29) or explicitly optout the event publishing from outbox planning (like in the case of nip-17 dms or nip-29 events that each crate has a different rule of which relays need to be published to)) [...] **1. Event Construction**\nThis is protocol/product logic.\n\nExamples:\n\n```text\nreply to event X\nreact to event X\ncreate article\ncreate group message\ncreate relay list\ncreate follow list\n```\n\nThis stage decides the event kind, tags, content shape, NIP rules, reply markers, group tags, etc. For NIP-29, the NIP-29 feature owns adding the `h` tag and determining group context. For NIP-10 replies, the reply builder owns the reply/root tags. For reactions, the reaction builder owns kind `7` shape.\n\nOutput is conceptually an unsigned event draft."
+}

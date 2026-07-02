@@ -1,97 +1,43 @@
-//! Smoke tests for D16 (snapshot-projection key prefix in `apps/chirp/`),
-//! the `--workspace-d8` workspace-wide no-polling scan, and the authoritative
+//! Smoke tests for the `apps/chirp` retired-app tombstone gate, the
+//! `--workspace-d8` workspace-wide no-polling scan, and the authoritative
 //! end-to-end clean-workspace assertions.
 //!
 //! Split out of `tests.rs` (file-size cap). Shared helpers imported from
 //! parent module via `super`.
 
-use super::{fixture_path, run_lint, workspace_root};
+use super::{run_lint, workspace_root};
 use std::path::PathBuf;
 
-// ─── D16 (snapshot-projection key prefix — apps/chirp/) ─────────────────────
+// ─── apps/chirp retired-app tombstone gate ──────────────────────────────────
+//
+// D16 (bare `nip17.`/`nip29.` snapshot-projection-key prefix check) was
+// scoped ONLY to `apps/chirp/crates/nmp-app-chirp/src` — the rule's own
+// `file_in_scope` predicate matched nothing else. Chirp has since been
+// extracted to its own repository (see the "External NMP consumer apps"
+// memory note); `apps/chirp/` no longer exists anywhere in this monorepo, so
+// the D16 rule could never fire on a real path again and was deleted outright
+// (`rules/d16.rs` and all its wiring) rather than left as permanently-vacuous
+// machinery.
+//
+// What replaces it: a real regression gate, modeled on the `nmp-wasm`
+// retired-crate gate in `wasm_abi_gates.rs` — `apps/chirp` must never be
+// reintroduced into this monorepo now that it lives externally.
 
+/// The `apps/chirp` tree was extracted to its own repository. It must never
+/// be reintroduced into this monorepo — if it is, this test fails loudly
+/// instead of silently no-op'ing the way the old D16 smoke test did.
 #[test]
-fn d16_positive_fixture_fires() {
-    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
-    let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d16_pos");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
-    let pos_src = workspace.join(fixture_path("d16/pos.rs"));
-    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
-
-    let tmp_str = tmp.to_string_lossy().into_owned();
-    // D16 is path-scoped to `apps/chirp/` — the staged fixture under
-    // `target/` falls outside that scope, so `--d16-extra-scope` opts it in.
-    let (code, stdout, stderr) = run_lint(&[
-        "--path",
-        &tmp_str,
-        "--d16-extra-scope",
-        "doctrine_lint_d16_pos",
-    ]);
-    assert_eq!(
-        code, 1,
-        "d16 positive must exit 1; stdout:\n{}\nstderr:\n{}",
-        stdout, stderr
-    );
+fn apps_chirp_directory_does_not_exist() {
+    let root = workspace_root();
+    let chirp_dir = root.join("apps").join("chirp");
     assert!(
-        stdout.contains("error[D16]"),
-        "d16 positive must emit ≥1 D16 finding; stdout:\n{}",
-        stdout
+        !chirp_dir.exists(),
+        "apps/chirp must not exist — Chirp was extracted to its own repository \
+         and is consumed externally, pinned by git rev (see the \"External NMP \
+         consumer apps\" doctrine note). Re-adding apps/chirp/ to this monorepo \
+         is a regression; found: {}",
+        chirp_dir.display()
     );
-    // Both banned bare-prefix literals in the fixture must surface so a
-    // regression that silently swallows one cannot pass this test.
-    for token in ["nip29.group_events", "nip17.dm_inbox"] {
-        assert!(
-            stdout.contains(token),
-            "d16 positive must name `{}`; stdout:\n{}",
-            token,
-            stdout
-        );
-    }
-}
-
-#[test]
-fn d16_negative_fixture_clean() {
-    let workspace = workspace_root();
-    let tmp = workspace.join("target").join("doctrine_lint_d16_neg");
-    let _ = std::fs::remove_dir_all(&tmp);
-    std::fs::create_dir_all(&tmp).expect("create temp dir");
-    let neg_src = workspace.join(fixture_path("d16/neg.rs"));
-    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
-
-    let tmp_str = tmp.to_string_lossy().into_owned();
-    let (code, stdout, stderr) = run_lint(&[
-        "--path",
-        &tmp_str,
-        "--d16-extra-scope",
-        "doctrine_lint_d16_neg",
-    ]);
-    assert_eq!(
-        code, 0,
-        "d16 negative must exit 0; stdout:\n{}\nstderr:\n{}",
-        stdout, stderr
-    );
-    assert!(
-        !stdout.contains("error[D16]"),
-        "d16 negative must produce zero D16 findings; stdout:\n{}",
-        stdout
-    );
-}
-
-/// The live `apps/chirp/` tree MUST be D16-clean after the rename.
-/// This test confirms no bare `nip17.` / `nip29.` projection keys remain.
-#[test]
-fn chirp_app_crate_is_d16_clean() {
-    let (code, stdout, stderr) = run_lint(&["--path", "apps/chirp/crates/nmp-app-chirp/src"]);
-    assert!(
-        !stdout.contains("error[D16]"),
-        "apps/chirp/crates/nmp-app-chirp/src must be D16 clean after rename; \
-         stdout:\n{}\nstderr:\n{}",
-        stdout,
-        stderr
-    );
-    let _ = (code, stderr); // exit code may be non-zero if other rules fire; D16 is the load-bearing check
 }
 
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────

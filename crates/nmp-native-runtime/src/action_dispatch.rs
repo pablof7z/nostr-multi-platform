@@ -1,15 +1,16 @@
 //! FFI-free dispatch core for the byte-action doorway.
 //!
-//! Moved here from `nmp-ffi::action::bytes` so both the C-ABI (`nmp-ffi`) and
-//! the UniFFI surface (`nmp-uniffi`) can call a single typed dispatch function
-//! without either crate parsing the other's JSON output.
+//! This is the single typed dispatch function the UniFFI surface
+//! (`nmp-uniffi` / `nmp-uniffi-support`) calls into; there is no separate
+//! C-ABI crate anymore (`nmp-ffi` was deleted — `nmp-uniffi` is the sole
+//! native binding surface).
 //!
 //! The only externally-visible item is [`dispatch_action_bytes_typed`] which
-//! returns a [`DispatchOutcome`] record. The C-ABI serialises that record to
-//! the existing `{"correlation_id":…}` / `{"error":…}` JSON shape; UniFFI
-//! exposes it as a typed `DispatchOutcome` record — neither changes behaviour.
+//! returns a [`DispatchOutcome`] record. `nmp-uniffi-support` converts that
+//! record into its own UniFFI-exported `DispatchOutcome` type
+//! (`correlation_id` / `error` fields) without changing behaviour.
 //!
-//! # Preserved invariants (carry-forward from nmp-ffi::action::bytes)
+//! # Preserved invariants (carry-forward from the retired nmp-ffi::action::bytes)
 //!
 //! * D6 fail-closed: every error surfaces as a populated `DispatchOutcome`,
 //!   never a panic or an uninhabited struct.
@@ -34,10 +35,10 @@ use crate::NmpApp;
 /// `ActionRejection::InvalidCoded` rejections — it carries the stable
 /// machine-readable token alongside the human-readable `error` text.
 ///
-/// This is the source-of-truth return type shared by the C-ABI (serialised to
-/// JSON by `nmp-ffi`) and the UniFFI surface (returned as a typed record).
-/// See `coded_rejection_tests.rs:122` for the load-bearing test that guards
-/// the `code` field.
+/// This is the source-of-truth return type; the UniFFI surface
+/// (`nmp-uniffi-support`) maps it into its own UniFFI-exported record type
+/// with the same fields. See `coded_rejection_tests.rs:122` for the
+/// load-bearing test that guards the `code` field.
 pub struct DispatchOutcome {
     pub correlation_id: Option<String>,
     pub error: Option<String>,
@@ -118,7 +119,8 @@ pub fn dispatch_action_bytes_typed(app: &NmpApp, bytes: &[u8]) -> DispatchOutcom
         Err(err) => return DispatchOutcome::error(err.to_string()),
     };
 
-    // Non-authoritative validation timestamp (same semantics as nmp-ffi).
+    // Non-authoritative validation timestamp (same semantics as the retired
+    // nmp-ffi implementation this was carried forward from).
     let dispatch_now_ms = {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()
@@ -168,7 +170,7 @@ fn rejection_to_outcome(rejection: ActionRejection) -> DispatchOutcome {
     }
 }
 
-/// Typed equivalent of `nmp-ffi::action::finish_dispatch`.
+/// Typed equivalent of the retired `nmp-ffi::action::finish_dispatch`.
 ///
 /// Post-`start()` outcome handling. Preserves the one-terminal-per-dispatch
 /// invariant (#1676 BUG-A/B/C): when `failure.enqueued` is set the executor

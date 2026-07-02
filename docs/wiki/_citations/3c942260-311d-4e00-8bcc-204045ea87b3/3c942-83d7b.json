@@ -1,0 +1,6 @@
+{
+  "id": "3c942-83d7b",
+  "ts": "2026-06-29T12:48:20Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "Pinning Gallery to a git rev in another repo converts a **HEAD-tracking CI gate into a lagging external check**. A framework change that breaks a component's snapshot decode or its JNI lane won't be caught until someone *manually bumps the pin* in the other repo and re-runs it. That is precisely this project's #1 recurring tax — drift, half-migration, dangling pointers (the `nmp-native-runtime` extraction was *just* flagged as incomplete/dual-ownership; \"master moves FAST, extractions leave the old path behind\"). You'd be institutionalizing that failure for the one surface whose entire job is to catch it."
+}

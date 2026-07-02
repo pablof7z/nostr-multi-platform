@@ -1,14 +1,15 @@
 //! Higher-order NIP-50 search runtime orchestration + reusable `NmpApp` Rust API.
 //!
-//! `nmp-native-runtime` is the composition root that owns the `NmpApp` actor
-//! handle, so the host-driving search entrypoint lives here (the same
-//! composition role `NmpApp::open_feed` plays for declared feeds, but reusable
-//! by every `NmpApp` host; C ABI callers reach it through the thin `nmp-ffi`
-//! wrapper). The orchestration
+//! `nmp-native-runtime` is the native platform runtime adapter that owns the
+//! `NmpApp` actor handle, so the host-driving search entrypoint lives here (the
+//! same composition role `NmpApp::open_feed` plays for declared feeds, but
+//! reusable by every `NmpApp` host; native hosts reach it through the
+//! `nmp-uniffi` binding surface — there is no separate `nmp-ffi` C-ABI crate).
+//! The orchestration
 //! primitives — relay resolution, the per-relay relay-pinned interest plan, the
 //! deduplicating result projection, and the typed `N50S` snapshot codec — are
-//! owned by `nmp-nip50` (D0: `nmp-nip50` never names the native runtime or
-//! `nmp-ffi`).
+//! owned by `nmp-nip50` (D0: `nmp-nip50` never names the native runtime or any
+//! binding crate).
 //!
 //! ## What one open does ([`NmpApp::open_search`])
 //!

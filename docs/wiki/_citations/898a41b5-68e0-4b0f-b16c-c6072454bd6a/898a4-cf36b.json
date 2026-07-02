@@ -1,0 +1,6 @@
+{
+  "id": "898a4-cf36b",
+  "ts": "2026-06-29T11:10:45Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "Assistant: Good question — \"door\" is just the metaphor for **the app-facing API surface**. The refactor splits the public surface into two doors:\n\n- **Read door** = how an app *consumes* data → typed read sessions (\"given the store, what should the UI see?\").\n- **Write door** = how an app *produces and emits* Nostr events → everything an app does that creates a new event on the network.\n\nSo \"write what?\" — **Nostr events.** Every user action that isn't just reading is a write: post a note, reply, react/like, repost, follow/unfollow, edit profile (kind:0), send a DM, join/post in a group, delete an event, mute someone. All of those are \"writes\" the app makes through this door."
+}

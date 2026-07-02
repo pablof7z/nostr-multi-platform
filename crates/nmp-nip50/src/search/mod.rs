@@ -12,9 +12,11 @@
 //! The pure, host-agnostic primitives live here so the crate-registered scope
 //! registry (#1811) can plug a new [`crate::SearchScope`] in without touching
 //! the host. The host-driving entrypoint (`NmpApp::open_search` / `_close` /
-//! `_snapshot` and the C-ABI symbols) lives in `nmp-ffi`, the composition root
-//! that owns the `NmpApp` actor handle. `nmp-ffi` depends on `nmp-nip50`;
-//! `nmp-nip50` never names `nmp-ffi` (D0 acyclic).
+//! `_snapshot`) lives in each per-platform composition crate that owns the
+//! `NmpApp` actor handle — `nmp-native-runtime` for native apps (exposed
+//! further through the `nmp-uniffi` binding surface) and `nmp-browser-runtime`
+//! for the wasm host. Those crates depend on `nmp-nip50`; `nmp-nip50` never
+//! names them back (D0 acyclic).
 
 pub mod plan;
 pub mod relays;

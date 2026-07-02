@@ -12,7 +12,7 @@ use nmp_nostr_id::{format_nostr_uri, NostrUri};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::event::builder::EventBuilder;
 use nostr::key::Keys;
-use nostr::secp256k1::{Message, Secp256k1};
+use nostr::secp256k1::{Keypair, Message, Secp256k1};
 use nostr::types::Timestamp;
 use nostr::{Kind, Tag};
 
@@ -92,8 +92,8 @@ impl Identity {
         // Sign the id digest with NO auxiliary randomness → deterministic sig.
         let secp = Secp256k1::new();
         let message = Message::from_digest(id.to_bytes());
-        let keypair = self.keys.key_pair(&secp);
-        let sig = secp.sign_schnorr_no_aux_rand(&message, keypair);
+        let keypair = Keypair::from_secret_key(&secp, self.keys.secret_key());
+        let sig = secp.sign_schnorr_no_aux_rand(&message, &keypair);
 
         let event = unsigned
             .add_signature(sig)

@@ -484,7 +484,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "refs.event.envelopes",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-ffi embed_sidecar",
+        producer: "nmp-native-runtime embed_sidecar",
         owner_claim: "projection.refs.event.envelopes",
         schema_id: "refs.event.envelopes",
         file_identifier: "NEMB",

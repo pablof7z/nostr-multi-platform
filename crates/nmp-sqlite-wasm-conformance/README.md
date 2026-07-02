@@ -8,7 +8,7 @@ Dedicated-Worker OPFS conformance vehicle for `nmp-sqlite-wasm` (issue #1007, PR
 ("opfs-sahpool"). The synchronous file primitive it is built on,
 `createSyncAccessHandle()`, **only exists inside a dedicated Web Worker** — it is
 absent on the page main thread. The repository's existing wasm tests
-(`crates/nmp-browser-runtime/tests/`, `wasm_bindgen_test_configure!(run_in_browser)`) run on
+(`crates/nmp-browser-runtime/src/wasm/*_tests.rs`) run on
 the **main thread**, so they structurally cannot exercise this backend. This
 crate is the missing vehicle: a `wasm-bindgen --target web` cdylib whose single
 entry point is invoked from inside a dedicated Worker and driven by a headless
@@ -17,23 +17,37 @@ actually executes.
 
 ## What it proves today
 
-Built against PR-2's shim (on master); does **not** depend on PR-3. Each
-assertion is an independent recorded step:
+As of #1007 PR-5 the harness drives the store's full typed surface end to end,
+inside the dedicated Worker. Each assertion is an independent recorded step:
 
 1. `open_store` — sqlite module init + opfs-sahpool VFS install + database open.
-2. `create_table` / `insert_event` / `read_back_event` — a raw SQL round-trip
-   (DDL, a bound INSERT over text/int64/blob params, a SELECT with typed column
-   reads asserted against the inserted values).
-3. `reopen_persisted` — close the store, reopen the same OPFS database, and
-   confirm the row survived: real OPFS durability, the backend's whole point.
+2. `schema_ready` — `open()` auto-migrated the full events schema (fresh db has
+   a queryable, empty `events` table; no hand-rolled DDL).
+3. `insert_event` — a structurally-valid kind:1 event through the typed
+   `OpfsSqliteStore::insert`, asserting an `Inserted` outcome.
+4. `read_back_event` — typed `OpfsSqliteStore::get_by_id` point read with
+   field-level value assertions.
+5. `reopen_persisted` — close the store, reopen the same OPFS database, and
+   confirm the event is still readable: real OPFS durability, the backend's
+   whole point.
+6. `insert_scan_corpus` — nine events across three authors and two kinds.
+7. `scan_by_author_kind` — single-author newest-first ordering.
+8. `scan_by_authors_kind_global_order` — **global** `(created_at desc)` merge
+   across authors (interleaved, not grouped by author).
+9. `scan_by_tags_index_served` — AND-across-`#e`/`#p`, OR-within-`#e`-values
+   tag intersection, proving the `event_tags` index-served LMDB parity.
+10. `query_visit_budget` — the streaming visitor honours the per-call budget
+    (budget 2 visits exactly the two newest rows).
+11. `relay_kind_privacy_gate` — relay-kind coverage/count hides private
+    NIP-04/17/59 kinds even though SQLite derives the projection from
+    provenance rows.
 
 ## How it grows as the engine lands
 
-The harness shape (Worker entry, host page, headless runner, CI) is fixed. As
-PR-3/4/5 add inherent methods to the store (`insert`, point reads, filter scans,
-gc), the raw `exec`/`prepare` steps in `src/lib.rs::run` are replaced — assertion
-for assertion — by calls to those typed methods, and new steps slot in without
-touching the plumbing. Only the body of `run` tracks the engine surface.
+The harness shape (Worker entry, host page, headless runner, CI) is fixed. Each
+assertion is an independent recorded `Step` in `src/lib.rs::run`. As the engine
+gains new typed surface, new steps slot in without touching the Worker/host/CI
+plumbing — only the body of `run` tracks the engine surface.
 
 ## Layout
 

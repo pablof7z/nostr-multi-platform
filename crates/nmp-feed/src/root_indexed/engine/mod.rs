@@ -236,12 +236,6 @@ where
         );
     }
 
-    /// Compatibility alias for older call sites whose only perspective change
-    /// was identity switch/logout.
-    pub fn reset_for_identity_change(&self) {
-        self.reset_for_perspective_change();
-    }
-
     /// Remove one surfaced root and any attribution state keyed to it.
     ///
     /// The caller decides *why* the root is no longer admissible: delete,

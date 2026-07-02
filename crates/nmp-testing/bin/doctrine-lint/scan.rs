@@ -18,9 +18,9 @@ use crate::rules::{
 };
 use crate::scope::{
     action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
-    d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
-    d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
-    d27_file_in_scope, d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
+    d14_file_in_scope, d15_file_in_scope, d17_file_in_scope, d19_file_in_scope, d20_file_in_scope,
+    d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope, d27_file_in_scope,
+    d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
 };
 use crate::{allow, walker};
 
@@ -76,7 +76,6 @@ pub(super) struct FileContext {
     d13_part_b_in_scope: bool,
     d14_in_scope: bool,
     d15_in_scope: bool,
-    d16_in_scope: bool,
     d17_in_scope: bool,
     d19_in_scope: bool,
     d20_in_scope: bool,
@@ -119,7 +118,6 @@ impl FileContext {
             d13_part_b_in_scope: d13::file_in_part_b_scope(path),
             d14_in_scope: d14_file_in_scope(path, &cfg.d14_extra_scopes),
             d15_in_scope: d15_file_in_scope(path, &cfg.d15_extra_scopes),
-            d16_in_scope: d16_file_in_scope(path, &cfg.d16_extra_scopes),
             d17_in_scope: d17_file_in_scope(path, &cfg.d17_extra_scopes),
             d19_in_scope: d19_file_in_scope(path, &cfg.d19_extra_scopes),
             d20_in_scope: d20_file_in_scope(path, &cfg.d20_extra_scopes),

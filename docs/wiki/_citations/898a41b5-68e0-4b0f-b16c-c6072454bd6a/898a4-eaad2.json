@@ -1,0 +1,6 @@
+{
+  "id": "898a4-eaad2",
+  "ts": "2026-06-29T11:10:08Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **ADR spine reset complete.** ADRs 0069–0073 are the live redesign spine. Prior ADR directory treated as museum (Current/Amended/Folded/Retired ledger). Stale ADRs folded or retired via PR #2324. [...] ### The one big thing in flight: the \"clean-break\" redesign (EPIC-NS-001, #2340, p0)\nEverything active traces to one north-star epic. It's a coordinated three-door reform governed by ADR spine **0069–0073**, applied to native + browser + starter targets in lockstep, with doctrine-lint/doc ratchets locking each slice shut behind it (\"ship the right thing, then lock the door\"):\n"
+}

@@ -11,7 +11,9 @@
 //!
 //! Why a closure list and not a typed teardown record: the concrete things to
 //! release (an `unregister_feed(key)`, an observed-projection close, a
-//! dependent-interest clear) live above this crate in `nmp-ffi` / `explicit composition`.
+//! dependent-interest clear) live above this crate, wired by explicit per-app
+//! composition on top of `nmp-native-runtime` / `nmp-uniffi` (the sole native
+//! binding surface — there is no shared `nmp-ffi` composition-root crate).
 //! Recording them as opaque `FnOnce` actions keeps the session
 //! registry from importing those layers (it sits at the bottom of the DAG) and
 //! keeps a single source of truth for feed state: the registry owns no feed

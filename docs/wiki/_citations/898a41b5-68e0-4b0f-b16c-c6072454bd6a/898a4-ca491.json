@@ -1,0 +1,6 @@
+{
+  "id": "898a4-ca491",
+  "ts": "2026-06-29T11:09:41Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **#2363** NS decision/prep: extract nmp-gallery as external consumer repo — **DECIDED NO-GO; Gallery stays in-tree** (conformance harness, not product; see key decisions). [...] - **Gallery stays in-tree.** `nmp-gallery` is a cross-platform regression/conformance harness; its value is being HEAD-current. Extraction to an external pinned repo was explicitly rejected. Rule: *products live outside (Chirp); conformance harnesses live in-tree (Gallery).* [...] - **Gallery stays in-tree** — it's a conformance harness, not a product (extraction explicitly rejected). Rule: products live outside, harnesses live in-tree. [...] - **#2295** Extract Chirp to standalone repo — **DONE** (PR #2303); standalone at `github.com/pablof7z/chirp`; re-extraction required (#2311) after accidental re-ingest by #2309. [...] - **Chirp is fully extracted.** Standalone repo at `github.com/pablof7z/chirp`. NMP-side app code deleted. Any Chirp app fixes go to that repo. [...] - **Chirp fully extracted** to `github.com/pablof7z/chirp`; in-tree app code deleted (re-extraction tail #2311 after an accidental re-ingest)."
+}

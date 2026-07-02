@@ -16,16 +16,17 @@
 //!
 //! ## PR-B2: broker deleted
 //!
-//! `nmp_signer_broker_init` in `nmp-ffi` calls `register_nip46` and the
-//! broker transport (`nmp-signer-broker`) is deleted.  The actor-lane runtime
-//! is now the sole NIP-46 transport.
+//! `NmpApp::init_signer_broker` (in `nmp-native-runtime`) calls
+//! `register_nip46` and the broker transport (`nmp-signer-broker`) is
+//! deleted.  The actor-lane runtime is now the sole NIP-46 transport.
 //!
 //! ## Layer cleanliness
 //!
 //! This function depends only on the narrow substrate registrar traits it
 //! uses (`RelayTextInterceptorRegistrar + RelayConnectedHookRegistrar`), not
-//! on `NmpApp` or any FFI type.  It names no C-ABI symbol; the FFI adapter
-//! in `nmp-ffi` calls it with `app.actor_sender()` as the `command_sender`.
+//! on `NmpApp` or any FFI type.  It names no C-ABI symbol; the native-runtime
+//! adapter in `nmp-native-runtime` calls it with `app.actor_sender()` as the
+//! `command_sender`.
 
 use std::sync::Arc;
 
@@ -52,12 +53,12 @@ use crate::runtime::{new_nip46_runtime_handle, Nip46RuntimeHandle};
 ///   `RelayConnectedHookRegistrar` (e.g. `NmpApp` in production, a test
 ///   double in tests).  Both traits use `&self` interior-mutability (e.g.
 ///   `NmpApp`'s lock-based registrar impls), so this takes `&impl` rather than
-///   `&mut impl` — forming `&mut *app` from a raw `*mut NmpApp` pointer in
-///   `nmp-ffi` would violate aliasing rules.
+///   `&mut impl` — `NmpApp` is shared behind an `Arc`/UniFFI object handle in
+///   `nmp-native-runtime`, so `&mut` access would violate aliasing rules.
 /// - `command_sender`: a clone of the actor's waking-inbox sender (obtained
-///   from `app.actor_sender()` in the FFI adapter).  The interceptor uses
-///   it to post actor commands (add_signer, bunker_handshake_progress, …)
-///   without holding the kernel mutex.
+///   from `app.actor_sender()` in the `nmp-native-runtime` adapter).  The
+///   interceptor uses it to post actor commands (add_signer,
+///   bunker_handshake_progress, …) without holding the kernel mutex.
 pub fn register_nip46(
     app: &(impl RelayTextInterceptorRegistrar + RelayConnectedHookRegistrar),
     command_sender: CommandSender,

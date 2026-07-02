@@ -279,7 +279,7 @@ impl SubscriptionLifecycle {
         //
         // Probe target = `indexer_relays ∪ app_relays`. The probe is additive
         // to app relays for the same reason the Case A kind:0/discovery lane is
-        // (`case_a_authors.rs:145-156`; `docs/wiki/profile-resolution.md`;
+        // (`case_a_authors.rs:145-156`;
         // `docs/design/subscription-compilation/outbox.md:153-158`): kind:10002
         // is a plain replaceable event that any general relay serves, and the
         // dedicated-indexer set can be empty (operator opted out) or AUTH-walled.

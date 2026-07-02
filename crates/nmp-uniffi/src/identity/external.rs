@@ -1,11 +1,8 @@
-//! NIP-55 external-signer UniFFI methods — M14-C2.
+//! NIP-55 external-signer UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/external_signer.rs` for the three external-signer
-//! symbols: `nmp_external_signer_init`, `nmp_app_signin_nip55`,
-//! `nmp_app_deliver_external_signer_response`.
-//!
-//! Each method calls the SAME underlying `nmp_native_runtime::NmpApp` method
-//! the C-ABI wrapper calls. No logic is duplicated.
+//! `init_external_signer`, `signin_nip55`, and
+//! `deliver_external_signer_response`. Each method calls the underlying
+//! `nmp_native_runtime::NmpApp` method directly; no logic is duplicated.
 //!
 //! ## Feature gate
 //!

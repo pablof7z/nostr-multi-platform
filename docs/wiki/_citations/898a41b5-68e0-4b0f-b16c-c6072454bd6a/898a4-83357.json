@@ -1,0 +1,6 @@
+{
+  "id": "898a4-83357",
+  "ts": "2026-06-29T11:10:19Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **Read door — NOT 100%.** I was wrong here. `#2399 MILESTONE-NS-READ-002: complete typed read-session cutover for **product** reads` and `#2418` (search notification pointer read doors) are open, and `#2427` is an open PR normalizing search read doors. The *first* typed sessions + home feed landed; the **product-read cutover across all surfaces hasn't**. [...] 1. **Product-read cutover** (#2399, #2418) — apps read product data; that path isn't fully typed yet.\n2. **DX clean-room proof** (#2256) — still blocked."
+}

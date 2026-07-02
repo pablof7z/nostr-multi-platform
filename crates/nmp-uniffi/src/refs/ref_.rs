@@ -1,7 +1,6 @@
-//! General (origin-blind) reference resolution — M14-C3.
+//! General (origin-blind) reference resolution.
 //!
-//! Mirrors `nmp_app_resolve_ref`, `nmp_app_resolve_ref_with_metadata`, and
-//! `nmp_app_release_ref` from `nmp-ffi/src/resolve_ref.rs`.
+//! `resolve_ref`, `resolve_ref_with_metadata`, and `release_ref`.
 //!
 //! See `refs/mod.rs` for the reactive-lifecycle design note.
 

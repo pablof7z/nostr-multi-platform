@@ -1,0 +1,6 @@
+{
+  "id": "898a4-84131",
+  "ts": "2026-06-29T11:10:19Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "1. **Read door — typed sessions (ADR-0070):** ✅ substantially done. `open_interest`, `ObservedProjection`, `ReducedSource` are now crate-private; raw feed/interest C ABI deleted; home feed is an ordinary typed session. Milestones NS-M1 and NS-M3 closed clean. [...] - **register_defaults() is dead as a production path (ADR-0069).** Replaced everywhere by explicit builder composition. Ratchet in CI.\n\n- **Typed read sessions (ADR-0070) are the sole app-facing read API.** `open_interest`, `ObservedProjection`, `ReducedSource` — all made crate-private or removed from app docs. Old C ABI feed symbols deleted.\n [...] | **Read** — typed sessions | 0070 | ✅ Done. `open_interest`/`ObservedProjection`/`ReducedSource` crate-private; raw feed/interest C ABI deleted. |"
+}

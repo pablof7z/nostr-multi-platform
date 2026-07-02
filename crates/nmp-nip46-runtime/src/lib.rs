@@ -10,9 +10,11 @@
 //! ## PR-B2: broker deleted, actor-lane is the sole NIP-46 transport
 //!
 //! `nmp-signer-broker` is deleted in PR-B2 (#2119). `register_nip46` is wired
-//! into `nmp-ffi`'s `nmp_signer_broker_init` initializer, and the
-//! `ffi_support` module provides FFI-composition helpers that keep `nmp-ffi`
-//! free of `RelayRole` / `ActorLaneTransport` naming.
+//! into `nmp-native-runtime`'s `NmpApp::init_signer_broker` (the config-phase
+//! entry point on the native composition-root app struct), and the
+//! `ffi_support` module provides composition-boundary helpers that keep
+//! `nmp-native-runtime`'s `signer_broker` module free of `RelayRole` /
+//! `ActorLaneTransport` naming.
 //!
 //! ## Architectural overview
 //!
@@ -60,9 +62,10 @@
 #![allow(clippy::module_name_repetitions)]
 
 pub mod connected_hook;
-/// FFI-composition helpers — wrap `RelayRole` / `ActorLaneTransport` so that
-/// `nmp-ffi` (which must NOT name `nmp-network` on the `signer-broker` feature
-/// path) can still deliver init effects, cancel sessions, and restore from payload.
+/// Composition-boundary helpers — wrap `RelayRole` / `ActorLaneTransport` so
+/// that `nmp-native-runtime` (which must NOT name `nmp-network` on the
+/// `signer-broker` feature path) can still deliver init effects, cancel
+/// sessions, and restore from payload.
 pub mod ffi_support;
 pub mod interceptor;
 pub mod register;

@@ -91,13 +91,6 @@ pub(super) fn allowed_native_nmp_symbols() -> BTreeSet<String> {
     .collect()
 }
 
-pub(super) fn nmp_ffi_rs_files() -> (PathBuf, Vec<PathBuf>) {
-    let root = workspace_root();
-    let mut files = Vec::new();
-    collect_rs_files(&root.join("crates/nmp-ffi/src"), &mut files);
-    (root, files)
-}
-
 pub(super) fn crate_native_rs_files() -> (PathBuf, Vec<PathBuf>) {
     let root = workspace_root();
     let mut files = Vec::new();
@@ -112,20 +105,6 @@ pub(super) fn crate_native_rs_files() -> (PathBuf, Vec<PathBuf>) {
     }
     files.sort();
     (root, files)
-}
-
-pub(super) fn is_production_source(path: &Path) -> bool {
-    is_nmp_ffi_export_source(path)
-        && !path.components().any(|component| {
-            component
-                .as_os_str()
-                .to_str()
-                .is_some_and(|value| value == "tests")
-        })
-        && !path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|name| name == "testing.rs" || name == "testing_sync.rs")
 }
 
 pub(super) fn is_nmp_ffi_export_source(path: &Path) -> bool {

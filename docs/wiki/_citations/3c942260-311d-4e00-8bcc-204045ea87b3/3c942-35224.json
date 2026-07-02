@@ -1,0 +1,6 @@
+{
+  "id": "3c942-35224",
+  "ts": "2026-06-29T11:47:40Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **0070 — Typed read sessions.** The app-visible read model is one typed session descriptor+handle owning the *complete* lifecycle (acquisition → route policy → bounded replay → live sink → admission → typed output → wake sources → teardown). `open_interest` is demoted to acquisition-only substrate; `ObservedProjection` and `ReducedSource` become **private machinery**, not app vocabulary. Empty dynamic source sets **fail closed** — never silently become wildcard relay demand. Shells stop hand-authoring filters/projections."
+}

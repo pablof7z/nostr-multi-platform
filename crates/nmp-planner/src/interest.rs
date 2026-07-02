@@ -20,13 +20,9 @@ pub type Pubkey = String;
 /// Hex-encoded 64-char event id.
 pub type EventId = String;
 
-/// A `wss://` URL for a relay.
-///
-/// Transparent `String` alias (grep-able, swappable). The same alias lives in
-/// `nmp_core::relay::RelayUrl` and `nmp_store::RelayUrl`; the three are
-/// definitionally identical (`pub type RelayUrl = String`) so a value
-/// produced in one crate flows into the others without conversion.
-pub type RelayUrl = String;
+/// A `wss://` URL for a relay, re-exported from `nmp-relay-url` (Layer 0),
+/// the single workspace authority for this alias (#2648).
+pub use nmp_relay_url::RelayUrl;
 
 /// Unix timestamp in seconds.
 pub type UnixSeconds = u64;

@@ -4,8 +4,9 @@
 //! `NmpApp` — so they prove the *registry* contract: it records a teardown
 //! recipe, runs it exactly once on close (in reverse order), is idempotent on
 //! double close, and frees the map entry (proving teardown releases rather than
-//! flipping a flag). The wired-over-real-mechanics proofs live in `explicit composition`
-//! / `nmp-ffi`.
+//! flipping a flag). The wired-over-real-mechanics proofs live in
+//! `nmp-native-runtime` (`NmpApp::open_feed` / `close_feed`), composed for each
+//! app; there is no separate `nmp-ffi` crate.
 
 use std::sync::{
     atomic::{AtomicUsize, Ordering},

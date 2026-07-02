@@ -1,27 +1,27 @@
-//! Identity, account, relay, and signer UniFFI surface — M14-C2.
+//! Identity, account, relay, and signer UniFFI surface.
 //!
-//! Migrates the C-ABI symbols from `nmp-ffi/src/{identity,signer_broker,external_signer}.rs`
-//! to typed `#[uniffi::export] impl NmpApp` methods. This is **additive** — the C-ABI
-//! symbols are NOT deleted here.
+//! `nmp-uniffi` is the sole native binding surface for identity, account,
+//! relay, and signer operations (M14 complete; the legacy `nmp-ffi` C-ABI
+//! crate has been deleted). Each sub-module adds a
+//! `#[uniffi::export] impl NmpApp` block exposing typed methods.
 //!
 //! ## Module layout
 //!
-//! | Module       | UniFFI methods                                           | C-ABI counterpart          |
-//! |--------------|----------------------------------------------------------|----------------------------|
-//! | `account`    | `signin_nsec`, `register_agent_nsec`, `create_new_account`, `switch_active`, `remove_account`, `signin_bunker` | `nmp-ffi/src/identity.rs`  |
-//! | `relay`      | `add_relay`, `remove_relay`                              | `nmp-ffi/src/identity.rs`  |
-//! | `broker`     | `init_signer_broker`, `cancel_bunker_handshake`, `nostrconnect_uri` | `nmp-ffi/src/signer_broker.rs` |
-//! | `external`   | `init_external_signer`, `signin_nip55`, `deliver_external_signer_response` | `nmp-ffi/src/external_signer.rs` |
+//! | Module       | UniFFI methods                                           |
+//! |--------------|----------------------------------------------------------|
+//! | `account`    | `signin_nsec`, `register_agent_nsec`, `create_new_account`, `switch_active`, `remove_account`, `signin_bunker` |
+//! | `relay`      | `add_relay`, `remove_relay`                              |
+//! | `broker`     | `init_signer_broker`, `cancel_bunker_handshake`, `nostrconnect_uri` |
+//! | `external`   | `init_external_signer`, `signin_nip55`, `deliver_external_signer_response` |
 //!
 //! ## Design notes
 //!
 //! * Each module adds a `#[uniffi::export] impl NmpApp` block. UniFFI collects
 //!   all blocks for the same object across modules.
-//! * Every method calls `self.inner.<method>(...)` — the same underlying
-//!   `nmp_native_runtime::NmpApp` method the C-ABI wrapper calls. No logic is
-//!   duplicated.
+//! * Every method calls `self.inner.<method>(...)` on the underlying
+//!   `nmp_native_runtime::NmpApp` — no logic is duplicated here.
 //! * `RelayConfigEntry` is a typed record for the relay pairs used in
-//!   `create_new_account` instead of the C-ABI's JSON-decoded `Vec<(String, String)>`.
+//!   `create_new_account` (rather than a JSON-decoded `Vec<(String, String)>`).
 //! * `broker` and `external` are behind their respective feature flags, which
 //!   are both included in the `native` default feature so generated bindings
 //!   always cover the full identity surface.

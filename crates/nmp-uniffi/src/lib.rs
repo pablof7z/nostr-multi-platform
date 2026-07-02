@@ -59,9 +59,8 @@ pub use sessions::FeedSessionHandle;
 /// Exactly one of `correlation_id` (accepted) or `error` (rejected/failed)
 /// will be `Some`. `code` is `Some` only for coded rejections — it carries
 /// the stable machine-readable token (issue #1734) alongside the
-/// human-readable `error`. This field is load-bearing:
-/// `nmp-ffi`'s `coded_rejection_tests.rs:122` guards the same invariant on
-/// the C-ABI side.
+/// human-readable `error`. This field is load-bearing: this crate's
+/// `dispatch_wrapper_passes_through_code_field` test guards the invariant.
 #[derive(uniffi::Record, Debug, Clone)]
 pub struct DispatchOutcome {
     pub correlation_id: Option<String>,

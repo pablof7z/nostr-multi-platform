@@ -128,13 +128,6 @@ tempfile = "3"
 # pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.
 libc = "0.2"
 
-# Issue #1522 -- LMDB query_visit baseline measurement before PR #1516.
-# Requires lmdb-backend: cargo run -p nmp-testing --features lmdb-backend --bin cache-baseline
-[[bin]]
-name = "cache-baseline"
-path = "bin/cache_baseline.rs"
-required-features = ["lmdb-backend"]
-
 [[bin]]
 name = "reactivity-bench"
 path = "bin/reactivity-bench/main.rs"

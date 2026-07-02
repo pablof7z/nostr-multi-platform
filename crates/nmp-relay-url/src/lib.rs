@@ -17,6 +17,17 @@
 //! the protocol crates (L4) all delegate here. There is exactly one
 //! implementation of the rules and it lives in [`canonicalize`].
 
+/// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
+/// form.
+///
+/// Transparent `String` alias (grep-able, swappable) — **the** single
+/// workspace-owned definition backing the `relay_url.canonicalization` claim
+/// in `ownership.rs`. `nmp-store`, `nmp-network`, `nmp-planner`, `nmp-core`,
+/// and `nmp-nip29` all re-export this alias (`pub use nmp_relay_url::RelayUrl;`)
+/// rather than redefining it (#2648), so a value produced in one crate flows
+/// into the others without conversion.
+pub type RelayUrl = String;
+
 /// Canonicalize a relay URL into its single canonical form, or `None` when the
 /// URL is not a canonicalizable `ws`/`wss` relay URL (**fail-closed** — the
 /// caller MUST NOT dial / persist / route to a relay it cannot canonicalize).

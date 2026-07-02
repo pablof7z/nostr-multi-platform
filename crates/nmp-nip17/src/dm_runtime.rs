@@ -13,7 +13,8 @@
 //!   set changes (so other clients can find the user as a DM recipient).
 //!
 //! This module is host-agnostic protocol orchestration — no I/O, no clocks,
-//! no key access, no FFI. The host shell (e.g. `apps/chirp`) owns the
+//! no key access, no FFI. The host shell (a native app built on the
+//! `nmp-uniffi` binding surface, or any other composition root) owns the
 //! [`ActorCommand`](nmp_core::actor::ActorCommand) translation, the snapshot
 //! projection wiring, and the lock that owns `DmRuntimeState` across ticks.
 //! This crate just decides *what should happen* given the inputs.

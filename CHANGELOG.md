@@ -1116,9 +1116,7 @@ surface is available.
 
 ## nmp-v0.1.0 — 2026-05-29
 
-First coordinated release-train baseline. See
-[`docs/wiki/release-process.md`](docs/wiki/release-process.md#nmp-v010--first-release-2026-05-29)
-for the full list of what was included.
+First coordinated release-train baseline.
 
 Key items: OP-centric feed (V-80), D5 snapshot bounding (V-46), silent-failure
 hardening (V-61/62/63/64/67/69/70/72), D0 substrate purity Stage 1 (V-68),

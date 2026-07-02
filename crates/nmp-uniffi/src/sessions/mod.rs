@@ -1,16 +1,17 @@
-//! Session-lifecycle UniFFI surface — M14-C5 (#2125).
+//! Session-lifecycle UniFFI surface (#2125).
 //!
-//! Migrates the feed-viewport-command, URI-routing, and NIP-50 search C-ABI
-//! symbols to typed `#[uniffi::export] impl NmpApp` methods. This is ADDITIVE —
-//! the C-ABI symbols are NOT deleted here (transitional until M14-D).
+//! `nmp-uniffi` is the sole native binding surface for feed-viewport commands,
+//! URI routing, and NIP-50 search sessions (M14 complete; the legacy
+//! `nmp-ffi` C-ABI crate has been deleted). Each sub-module adds a
+//! `#[uniffi::export] impl NmpApp` block exposing typed methods.
 //!
 //! ## Module layout
 //!
-//! | Module   | UniFFI methods                                                 | C-ABI counterpart                             |
-//! |----------|----------------------------------------------------------------|-----------------------------------------------|
-//! | `feed`   | `load_older_feed`, `open_feed_json`, `close_feed_session`      | `nmp-ffi/src/feed.rs` (viewport only)         |
-//! | `uri`    | `open_uri`                                                     | `nmp-ffi/src/timeline.rs`                     |
-//! | `search` | `search_open`, `search_close`, `search_snapshot`               | `nmp-ffi/src/search.rs`                       |
+//! | Module   | UniFFI methods                                                 |
+//! |----------|------------------------------------------------------------------|
+//! | `feed`   | `load_older_feed`, `open_feed_json`, `close_feed_session`      |
+//! | `uri`    | `open_uri`                                                     |
+//! | `search` | `search_open`, `search_close`, `search_snapshot`               |
 //!
 //! ## Feed session design note
 //!

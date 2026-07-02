@@ -20,10 +20,11 @@
 //!
 //! # Why this exists
 //!
-//! Before this crate, the `Follow` / `Unfollow` `ActionModule`s lived in
-//! `apps/chirp/crates/nmp-app-chirp/src/ffi/actions.rs` as app-local verbs. That
-//! placement made the wiring app-local even though follow-list edits are
-//! generic Nostr protocol primitives.
+//! Before this crate, the `Follow` / `Unfollow` `ActionModule`s lived directly
+//! in the Chirp app's FFI action layer as app-local verbs (Chirp has since
+//! been extracted to its own repository and is no longer part of this
+//! monorepo). That placement made the wiring app-local even though
+//! follow-list edits are generic Nostr protocol primitives.
 //!
 //! This crate lifts follow/unfollow into a reusable substrate crate. Public
 //! NIP-25 reactions now live in `nmp-nip25`; this crate re-exports the old
@@ -186,7 +187,9 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 ///
 /// # Why this fixes the Follow button
 ///
-/// The prior `nmp_app_chirp_register_follow_list` registered a
+/// The prior `nmp_app_chirp_register_follow_list` C-ABI entry point (part of
+/// the Chirp app's bespoke FFI layer, since deleted along with the `nmp-ffi`
+/// C-ABI crate) registered a
 /// `ObservedProjectionSink` that kept a LOCAL `HashMap` of follows. This missed
 /// the startup cache-serve (runs before the lazy observer exists) so
 /// already-followed accounts appeared as "Follow" on cold start. This function
@@ -213,11 +216,12 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// The `"nmp.follow_list"` snapshot key and the `"nmp.nip02.follow_list"`
 /// schema id are preserved — no Swift decoder changes are needed.
 ///
-/// # Called from Chirp FFI
+/// # Host binding surface
 ///
-/// `nmp_app_chirp_register_follow_list` calls this function instead of
-/// constructing a `FollowListProjection` directly. The `active_pubkey` C
-/// string parameter is no longer used to seed a local slot; the projection
+/// Host apps — via the `nmp-uniffi` native binding surface, or any other
+/// composition root implementing the required traits — call this function
+/// instead of constructing a `FollowListProjection` directly. No caller-side
+/// active-pubkey argument is needed to seed a local slot; the projection
 /// reads the kernel's canonical active-account slot via `app.active_pubkey()`.
 pub fn register_follow_state_runtime(
     app: &(impl HostCapabilities + IdentityChangeRegistrar + SnapshotProjectionRegistrar),

@@ -1,0 +1,6 @@
+{
+  "id": "898a4-afd9e",
+  "ts": "2026-06-29T11:10:45Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **Dispatch ≠ success** — handing an event to the publish pipeline is not the same as it landing. Rust owns a **local publish intent / status fact** (pending → signed → stored → planned → sent → failed/exhausted), so the app gets honest, offline-first write state instead of optimistic fire-and-forget.\n [...] **4. A local publish intent is created immediately — before anything touches the network.**\nThe first thing the kernel does is mint a **status fact** owned by Rust: `pending`. This is the offline-first root — the write exists and is durable *before* a signer or relay is involved. This is why \"dispatch ≠ success\": the app gets a real status object, not a fire-and-forget. [...] \n**8. Status streams back out the read door — reactively, no polling.**\nAs relay `OK`/`AUTH`/error responses arrive, the kernel advances the status fact to terminal states (`sent`, `failed`, `exhausted`) and pushes those out as `ViewBatch` snapshots. The shell *observes* the write's status the same way it observes any read — via pushed snapshots, never by polling. So the UI shows \"sending… / published / failed\" off real Rust-owned state."
+}

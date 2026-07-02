@@ -1,0 +1,6 @@
+{
+  "id": "3c942-89f70",
+  "ts": "2026-06-29T11:25:02Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "A standing **follow-up rule**: a PR touching a folded/amended ADR's implementation area must keep old public-surface counts flat-or-decreasing, or update the owning ADR in place — no new correction docs that leave stale guidance behind. Each architecture slice carries a deletion ledger (old doors deleted/privatized, new concepts, net permanent concepts), and ratchets prevent old-pattern counts from rising. [...] - **Sequencing is actually correct.** My first worry was that the READ slices are all demotions/deletions presupposing a replacement — but #2335 (build the first typed read session) and #2354 (migrate a browser read recipe) are both **closed as of today**. So the build→migrate→delete order is honored; deletions follow landed replacements (NS-M3's \"after replacement paths exist\"). #2364 even keeps a test proving a typed session still opens. That's the right way to do a clean break."
+}

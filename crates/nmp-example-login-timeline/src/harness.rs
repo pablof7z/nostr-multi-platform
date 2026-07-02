@@ -8,7 +8,7 @@
 //! projection — reacting to the kernel's update ticks, never polling.
 //!
 //! The seeding seam is the test-only synthetic-injection path
-//! [`nmp_ffi::nmp_app_inject_signed_event_json`] — a REAL Schnorr-signed event
+//! [`NmpApp::inject_signed_event_json_for_test`] — a REAL Schnorr-signed event
 //! routed through the REAL kernel ingest gate (verify → store → observer
 //! fan-out → OP-feed engine → projection). It is the sanctioned, `cfg`-gated
 //! escape hatch (docs/escape-hatches.md); a production shell ships without it

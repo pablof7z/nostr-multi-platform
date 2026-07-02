@@ -1,0 +1,6 @@
+{
+  "id": "898a4-f7531",
+  "ts": "2026-06-29T11:10:08Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **Profile-claim loop stash (#2298) is active pre-v1 work,** not post-v1 deferral. Safe to pick up in a scoped session, avoiding starter/DX files. [...] - **#2298** — Profile-claim loop stash reconciliation. Owner explicitly kept as active pre-v1 correctness lane; needs an agent to verify if the preserved fix is still needed or already impossible. [...] - **#2298** profile-claim loop stash — owner kept this as *active pre-v1* correctness work, not deferred."
+}

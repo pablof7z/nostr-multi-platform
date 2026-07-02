@@ -2,9 +2,21 @@
 //!
 //! These smoke gates lock the #2205 split:
 //! - `nmp-native-runtime` owns native runtime/session composition.
-//! - `nmp-ffi` is C ABI glue over that runtime, not a composition root.
 //! - lower layers do not take default production dependencies on platform
 //!   runtime or ABI crates.
+//!
+//! ## `nmp-ffi` retirement (M14)
+//!
+//! `nmp-ffi` — the C-ABI glue crate this split originally separated from
+//! `nmp-native-runtime` — was deleted by the M14 migration; UniFFI is now the
+//! sole native FFI surface. The smoke test that used to scan
+//! `crates/nmp-ffi/src` for forbidden runtime-composition tokens
+//! (`nmp_ffi_does_not_register_runtime_composition`) silently no-op'd once
+//! that directory stopped existing (`std::fs::read_dir` on a missing path
+//! returns `Err`, and the walker treated that as "zero files, zero
+//! violations"). Rather than leave that vacuous pass in place, the gates
+//! below — modeled on the `nmp-wasm` retired-crate gate in
+//! `wasm_abi_gates.rs` — assert the deletion is permanent instead.
 
 #[path = "native_runtime_boundary_support.rs"]
 mod support;
@@ -12,7 +24,7 @@ mod support;
 use support::{
     allowed_native_nmp_symbols, cargo_metadata, composition_findings, crate_native_rs_files,
     exported_native_nmp_symbol, forbidden_platform_dep_findings, is_nmp_ffi_export_source,
-    is_production_source, lower_layer_crates, nmp_ffi_rs_files, relative_to, rust_live_lines,
+    lower_layer_crates, relative_to, rust_live_lines,
 };
 
 #[test]
@@ -28,32 +40,105 @@ fn lower_layer_crates_do_not_depend_on_platform_runtime_crates() {
     );
 }
 
+// ─── nmp-ffi retired-crate gate (M14) ────────────────────────────────────────
+
 #[test]
-fn nmp_ffi_does_not_register_runtime_composition() {
-    let (root, files) = nmp_ffi_rs_files();
+fn nmp_ffi_crate_is_not_in_cargo_metadata() {
+    let metadata = cargo_metadata();
+    let has_nmp_ffi = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages must be an array")
+        .iter()
+        .any(|pkg| pkg["name"] == "nmp-ffi");
+
+    assert!(
+        !has_nmp_ffi,
+        "nmp-ffi is a RETIRED crate (deleted in the M14 migration). It must not \
+         appear in cargo metadata. Native platform API belongs in \
+         nmp-native-runtime or nmp-uniffi."
+    );
+}
+
+#[test]
+fn nmp_ffi_directory_does_not_exist() {
+    let root = crate::workspace_root();
+    let ffi_dir = root.join("crates").join("nmp-ffi");
+    assert!(
+        !ffi_dir.exists(),
+        "crates/nmp-ffi must not exist — it is a retired crate (deleted in the \
+         M14 migration). Native platform API belongs in nmp-native-runtime or \
+         nmp-uniffi."
+    );
+}
+
+/// Scans every `Cargo.toml` under the workspace for evidence that `nmp-ffi`
+/// has been re-introduced as a live crate. Mirrors
+/// `wasm_abi_gates::nmp_wasm_is_not_reintroduced_as_live_crate_in_source`
+/// exactly, substituting `nmp-ffi` for `nmp-wasm`.
+#[test]
+fn nmp_ffi_is_not_reintroduced_as_live_crate_in_source() {
+    let root = crate::workspace_root();
+    let toml_roots = [root.join("Cargo.toml"), root.join("release")];
+    let banned_phrases = [r#"name = "nmp-ffi""#, r#"path = "crates/nmp-ffi""#];
+
     let mut violations = Vec::new();
 
-    for path in files {
-        if !is_production_source(&path) {
-            continue;
-        }
-        let body = std::fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
-        for (idx, live) in rust_live_lines(&body).into_iter().enumerate() {
-            for token in composition_findings(&live) {
-                violations.push(format!(
-                    "{}:{} forbidden runtime composition token `{token}`",
-                    relative_to(&root, &path).display(),
-                    idx + 1
-                ));
+    fn scan_toml_dir(dir: &std::path::Path, banned: &[&str], violations: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().map_or(false, |n| n == "target") {
+                    continue;
+                }
+                scan_toml_dir(&path, banned, violations);
+            } else if path.extension().map_or(false, |e| e == "toml") {
+                let Ok(text) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                for (n, line) in text.lines().enumerate() {
+                    let trimmed = line.trim_start();
+                    if trimmed.starts_with('#') {
+                        continue;
+                    }
+                    for phrase in banned {
+                        if line.contains(phrase) {
+                            violations.push(format!(
+                                "{}:{}: {}",
+                                path.display(),
+                                n + 1,
+                                line.trim()
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
 
+    {
+        let text =
+            std::fs::read_to_string(&toml_roots[0]).expect("root Cargo.toml must be readable");
+        for (n, line) in text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with('#') {
+                continue;
+            }
+            if line.contains("crates/nmp-ffi") {
+                violations.push(format!("Cargo.toml:{}: {}", n + 1, line.trim()));
+            }
+        }
+    }
+
+    scan_toml_dir(&toml_roots[1], &banned_phrases, &mut violations);
+
     assert!(
         violations.is_empty(),
-        "nmp-ffi must stay C ABI glue over nmp-native-runtime. Runtime/session \
-         composition belongs in nmp-native-runtime or app Rust crates:\n{}",
+        "nmp-ffi has been reintroduced as a live crate in TOML source. It is a \
+         RETIRED crate (deleted in the M14 migration); native platform API \
+         belongs in nmp-native-runtime or nmp-uniffi. Violations:\n{}",
         violations.join("\n")
     );
 }

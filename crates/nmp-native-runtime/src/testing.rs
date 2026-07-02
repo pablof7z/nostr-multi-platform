@@ -1,8 +1,9 @@
 //! Native Rust test-support helpers.
 //!
 //! These are not C ABI symbols. They let Rust integration tests drive the
-//! native runtime directly while `nmp-ffi` keeps the `nmp_app_*` test-support
-//! wrappers for C/JNI consumers.
+//! native runtime directly; UniFFI-side tests reach the same methods through
+//! the generated `nmp-uniffi` bindings (there is no separate `nmp-ffi` C/JNI
+//! test-support wrapper crate).
 
 #![cfg(any(test, feature = "test-support"))]
 

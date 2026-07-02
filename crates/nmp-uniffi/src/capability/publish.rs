@@ -1,7 +1,6 @@
-//! Publish-control UniFFI methods — M14-C4.
+//! Publish-control UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/publish.rs` for the `retry_publish` and
-//! `cancel_action` symbols. Both are publish-lifecycle control-plane
+//! `retry_publish` and `cancel_action` are publish-lifecycle control-plane
 //! operations — neither produces events nor goes through `dispatch_action`.
 //!
 //! D8: both methods are non-blocking channel sends to the actor.

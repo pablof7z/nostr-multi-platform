@@ -67,7 +67,6 @@ impl PreparedEvent {
 pub(super) fn prepare_event(event: RelayEvent) -> Option<PreparedEvent> {
     Some(match event {
         RelayEvent::Connected {
-            role: _,
             relay_url,
             generation,
         } => PreparedEvent::Connected {
@@ -75,7 +74,6 @@ pub(super) fn prepare_event(event: RelayEvent) -> Option<PreparedEvent> {
             generation,
         },
         RelayEvent::Failed {
-            role: _,
             relay_url,
             generation,
             error,
@@ -89,7 +87,6 @@ pub(super) fn prepare_event(event: RelayEvent) -> Option<PreparedEvent> {
             }
         }
         RelayEvent::Closed {
-            role: _,
             relay_url,
             generation,
         } => PreparedEvent::Closed {
@@ -97,7 +94,6 @@ pub(super) fn prepare_event(event: RelayEvent) -> Option<PreparedEvent> {
             generation,
         },
         RelayEvent::Message {
-            role: _,
             relay_url,
             generation,
             message,

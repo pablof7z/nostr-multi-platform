@@ -1,0 +1,6 @@
+{
+  "id": "898a4-826fb",
+  "ts": "2026-06-29T11:10:27Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "2. **M14 sequencing risk.** The benchmark (#2391/#2388) is exactly the \"gate on ONE micro-bench\" the owner demanded before committing to UniFFI — plan-conformant and good that it's being built. But **#2389 (scaffold UniFFI lifecycle) is open as p1 alongside it** — building the scaffold before the benchmark result lands would jump the gate. M14 is *post-v1* anyway; it shouldn't compete with finishing the write door + DX proof for v1.\n [...] 1. **M14 sequencing — still the one to watch.** #2391 (the UniFFI-vs-C benchmark, #2388) is open and is exactly the \"gate on ONE micro-bench\" you insisted on — plan-conformant. But **#2389 (scaffold UniFFI lifecycle) is open as p1 alongside it.** If an agent starts the scaffold before #2391's benchmark reports, that jumps the gate you set. M14 is post-v1 anyway — it shouldn't compete with the write-door + DX-proof critical path. Recommend holding #2389 until #2388/#2391 lands a number."
+}

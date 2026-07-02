@@ -10,6 +10,9 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind tr
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# `nmp-relay-url` is a Layer-0 (dependency-free) crate that owns the `RelayUrl`
+# alias (#2648) — re-export it rather than redefining a competing copy.
+nmp-relay-url = { path = "../nmp-relay-url" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is already
@@ -32,9 +35,10 @@ serde_json = { workspace = true }
 # bad-version trip tests (ADR-0064 / S9 #1747). `test-support` enables store
 # harness helpers.
 # The NIP-29 read-view integration tests that drove an `NmpApp` (the typed
-# sidecar + group-chat round-trip proofs) moved to `crates/nmp-ffi/tests` in the
+# sidecar + group-chat round-trip proofs) moved out of this crate in the
 # #2088 fix — the hydrating open/close composition is an `NmpApp` method that
-# lives in `nmp-ffi`, so the tests live next to it. `nmp-nip29` no longer names
-# `nmp-ffi` (and the dev-dep edge is dropped, keeping the dep graph clean).
+# lives in `nmp-native-runtime` (the composition-root crate), so the tests
+# live next to it. `nmp-nip29` no longer names `nmp-native-runtime` (and the
+# dev-dep edge is dropped, keeping the dep graph clean).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 nmp-store = { path = "../nmp-store", features = ["test-support"] }

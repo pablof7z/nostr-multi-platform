@@ -1,0 +1,6 @@
+{
+  "id": "898a4-bfe17",
+  "ts": "2026-06-29T11:10:08Z",
+  "session": "898a41b5-68e0-4b0f-b16c-c6072454bd6a",
+  "text": "- **#2318** Formal scope decisions: NIP-57/zaps and NIP-47/NWC post-v1; NIP-96 never — decided and documented.\n- **#2317** Narrow nmp-relations classifier and remove post-v1 zap semantics — done. [...] - **NIP-57/zaps and NIP-47/NWC are formally post-v1; NIP-96 is never.** Zap semantics removed from nmp-relations classifier. [...] - **NIP-57/zaps + NIP-47/NWC are post-v1; NIP-96 never.** Zap semantics removed from the relations classifier."
+}

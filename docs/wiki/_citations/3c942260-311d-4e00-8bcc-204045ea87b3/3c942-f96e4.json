@@ -1,0 +1,6 @@
+{
+  "id": "3c942-f96e4",
+  "ts": "2026-06-29T11:25:26Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **One epic** (#2340 `EPIC-NS-001`, p0) → **milestone ladder** NS-M0→M3 → **11 agent-ready slices** with a strict naming convention (`SLICE-NS-{READ,WRITE,M5}-NNN`)."
+}

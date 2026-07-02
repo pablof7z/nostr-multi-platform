@@ -1,0 +1,6 @@
+{
+  "id": "3c942-78b3e",
+  "ts": "2026-06-29T11:24:47Z",
+  "session": "3c942260-311d-4e00-8bcc-204045ea87b3",
+  "text": "- **0069 — Explicit feature composition.** Kills `register_defaults()` as production app architecture. A production app's Rust composition root must *explicitly* install substrate, reusable Nostr protocol features, app-owned product features, shell capability contracts, then start. `nmp-defaults` may survive only as a reusable installer library — **never** owning seed follows, bootstrap relay brands, signer permission defaults, or onboarding/product policy. \"A request from one downstream app is evidence, not permission\" to add app-named helpers to NMP crates. [...] - **0072 — Runtime/capability/shell boundary.** Tightens RMP's \"Rust owns durable behavior.\" Anything a *second platform* would have to reimplement to stay correct (relay choice, signer choice, tag mutation, publish retry, queue truth, nav meaning) belongs in Rust. Browser durable storage (Worker/OPFS) must init before product start — **silent in-memory fallback cannot count as success**. Widgets/AppIntents/CarPlay/Live Activities must not own parallel queues or publish models."
+}

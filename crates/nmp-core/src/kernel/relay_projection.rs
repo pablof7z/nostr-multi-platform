@@ -114,9 +114,9 @@ impl RelayUrls {
 /// consistent snapshot without crossing the kernel boundary.
 ///
 /// Same private-field discipline as [`RelayUrls`] — readers must go
-/// through `as_slice()` (`pub` so out-of-crate callers like
-/// `apps/chirp/crates/nmp-app-chirp/src/dm_runtime.rs` can use it), writers through
-/// `replace()`. The inner `Vec<AppRelay>` is never reachable via `.0`.
+/// through `as_slice()` (`pub` so out-of-crate callers like the external
+/// Chirp repo's `nmp-app-chirp/src/dm_runtime.rs` can use it), writers
+/// through `replace()`. The inner `Vec<AppRelay>` is never reachable via `.0`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct AppRelayList(Vec<AppRelay>);

@@ -39,8 +39,7 @@ pub enum NwcConnectionState {
 /// NIP-47 wallet connection status — projected to the snapshot under
 /// `projections["wallet"]`.
 ///
-/// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032 /
-/// docs/wiki/guides/shell-formatting-boundary.md): every field here is a raw
+/// RAW-DATA DOCTRINE (aim.md §2 / ADR-0032): every field here is a raw
 /// semantic token. No pre-rendered English label, tone string, or
 /// display-formatted number lives in this projection — the shells render the
 /// status label, semantic tone (colour/icon), and thousands-separated balance

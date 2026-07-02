@@ -1,8 +1,7 @@
-//! Account / identity UniFFI methods — M14-C2.
+//! Account / identity UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/identity.rs` for the sign-in, account-management,
-//! and bunker-sign-in symbols. Each method calls the SAME underlying
-//! `nmp_native_runtime::NmpApp` method the C-ABI wrapper calls.
+//! Sign-in, account-management, and bunker-sign-in methods. Each method
+//! calls the underlying `nmp_native_runtime::NmpApp` method directly.
 //!
 //! ## D13 key-handling contract
 //!

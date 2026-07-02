@@ -77,11 +77,6 @@ pub enum ExternalSignerMethod {
     Nip44Encrypt,
     /// NIP-44 v2 decrypt a ciphertext from a counterparty pubkey.
     Nip44Decrypt,
-    /// NIP-04 encrypt (legacy; included for completeness, not wired as a
-    /// kernel consumer today).
-    Nip04Encrypt,
-    /// NIP-04 decrypt (legacy; same caveat as `Nip04Encrypt`).
-    Nip04Decrypt,
 }
 
 impl ExternalSignerMethod {
@@ -96,8 +91,6 @@ impl ExternalSignerMethod {
             Self::SignEvent => Some("sign_event:"),
             Self::Nip44Encrypt => Some("nip44_encrypt"),
             Self::Nip44Decrypt => Some("nip44_decrypt"),
-            Self::Nip04Encrypt => Some("nip04_encrypt"),
-            Self::Nip04Decrypt => Some("nip04_decrypt"),
         }
     }
 }
@@ -168,8 +161,8 @@ pub struct ExternalSignerRequest {
     pub method: ExternalSignerMethod,
     /// NIP-55 payload:
     /// - `sign_event`: unsigned event JSON string.
-    /// - `nip44_encrypt` / `nip04_encrypt`: plaintext.
-    /// - `nip44_decrypt` / `nip04_decrypt`: ciphertext/payload.
+    /// - `nip44_encrypt`: plaintext.
+    /// - `nip44_decrypt`: ciphertext/payload.
     /// - `get_public_key`: empty string (the signer supplies the pubkey).
     pub payload: String,
     /// Current user pubkey (hex). `None` only for the initial

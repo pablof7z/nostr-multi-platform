@@ -1,9 +1,8 @@
-//! Lifecycle UniFFI methods — C6.
+//! Lifecycle UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/lifecycle.rs` without the C function-pointer trampoline.
-//! The callback setter uses `LifecycleObserverGate`'s Rust-native observer path,
-//! so C and UniFFI lifecycle observers share the same `in_flight` + `Condvar`
-//! drain contract.
+//! The callback setter uses `LifecycleObserverGate`'s Rust-native observer
+//! path, which enforces the same `in_flight` + `Condvar` drain contract used
+//! across every kernel callback seam.
 
 use crate::{LifecycleSink, NmpApp};
 

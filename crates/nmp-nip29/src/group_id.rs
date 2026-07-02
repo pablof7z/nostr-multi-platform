@@ -14,9 +14,9 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Re-export of the kernel's `RelayUrl` alias to keep the crate's surface
-/// self-describing while avoiding a circular dep on `nmp-core` types.
-pub type RelayUrl = String;
+/// Re-export of the `nmp-relay-url`-owned `RelayUrl` alias (#2648) to keep the
+/// crate's surface self-describing while avoiding a dep on `nmp-core` types.
+pub use nmp_relay_url::RelayUrl;
 
 /// NIP-29 group identity: the host relay URL plus the in-relay local id.
 ///
@@ -95,7 +95,7 @@ impl GroupId {
 ///
 /// Shared by the discovery view (Global scope, host-relay-pinned) and the
 /// joined-groups view (ActiveAccount scope). NmpApp-free and noun-free of the
-/// FFI host: the composition root (`nmp-ffi`) passes the result to
+/// FFI host: the composition root (`nmp-native-runtime`) passes the result to
 /// `NmpApp::open_observed_interest_pinned`, attaching the client-side relay
 /// pin as a separate argument (the pin is never serialized onto the wire).
 ///

@@ -1,9 +1,8 @@
-//! Capability-callback UniFFI methods — M14-C4.
+//! Capability-callback UniFFI methods.
 //!
-//! Mirrors `nmp-ffi/src/capability.rs` for the `set_capability_callback` and
-//! `dispatch_capability` symbols. Both methods call the SAME underlying
-//! `nmp_native_runtime::NmpApp` / `CapabilityCallbackGate` primitives the
-//! C-ABI wrapper calls.
+//! `set_capability_callback` and `dispatch_capability`. Both methods call
+//! the underlying `nmp_native_runtime::NmpApp` / `CapabilityCallbackGate`
+//! primitives directly.
 //!
 //! ## Quiescence
 //!

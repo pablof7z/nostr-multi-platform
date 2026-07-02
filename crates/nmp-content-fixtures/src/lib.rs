@@ -19,10 +19,15 @@
 //!
 //! ## Output
 //!
-//! [`build_bundle`] returns a [`dto::Bundle`]; the `build-bundle` binary
-//! serializes it to `ios/NmpGallery/Resources/content-gallery-bundle.json`
-//! so STAGE 3 ships it as an app resource (no build-order dependency on a
-//! `target/`-relative artifact).
+//! [`build_bundle`] returns a [`dto::Bundle`]. The original iOS-facing
+//! `build-bundle` binary (which serialized it to
+//! `ios/NmpGallery/Resources/content-gallery-bundle.json`) was deleted once
+//! the NmpGallery iOS showcase moved to hand-authored `ContentTreeWire`
+//! fixtures (see `apps/nmp-gallery/ios/NmpGallery/Gallery/ContentComponentPages.swift`)
+//! and no longer consumes a generated bundle. [`build_bundle`] itself is
+//! retained as the spec-as-code fixture generator exercised directly by
+//! `tests/bundle.rs`, and the sibling `build-android-gallery-bundle` binary
+//! still emits the analogous bundle for the Android gallery module.
 //!
 //! Every event is signed in-process with deterministic test keys via BIP340
 //! schnorr **without auxiliary randomness** (so signatures are byte-stable
@@ -37,9 +42,6 @@ pub mod wire_fixtures;
 
 use dto::Bundle;
 use identities::Identities;
-
-/// Path (relative to the workspace root) of the emitted bundle resource.
-pub const BUNDLE_PATH: &str = "ios/NmpGallery/Resources/content-gallery-bundle.json";
 
 /// Bundle schema version.
 pub const BUNDLE_VERSION: u32 = 1;
