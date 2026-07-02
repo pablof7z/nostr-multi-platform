@@ -10,7 +10,14 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
 
     let init = nmp(
         tmp.path(),
-        &["init", "demoapp", "--path", root.to_str().unwrap()],
+        &[
+            "init",
+            "demoapp",
+            "--path",
+            root.to_str().unwrap(),
+            "--nmp-version",
+            "0.1.0",
+        ],
     );
     assert!(
         init.status.success(),
@@ -23,6 +30,15 @@ fn upgrade_switches_manifest_to_versioned_nmp_release() {
         upgrade.status.success(),
         "upgrade failed: {}",
         String::from_utf8_lossy(&upgrade.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&upgrade.stdout);
+    assert!(
+        stdout.contains("https://github.com/pablof7z/nostr-multi-platform/blob/nmp-v0.2.0/docs/migration-notes/nmp-v0.2.0.md"),
+        "upgrade must point consumers at the target release migration note:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("range nmp-v0.1.0..nmp-v0.2.0"),
+        "upgrade must name the release-note range being crossed:\n{stdout}"
     );
 
     let manifest = fs::read_to_string(root.join("nmp.toml")).unwrap();

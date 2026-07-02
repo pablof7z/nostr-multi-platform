@@ -1,5 +1,5 @@
 use crate::manifest_edit;
-use nmp_codegen::AppManifest;
+use nmp_codegen::{AppManifest, NmpDependency};
 use std::path::PathBuf;
 
 pub fn run(args: &[String]) -> Result<(), String> {
@@ -33,11 +33,13 @@ pub fn run(args: &[String]) -> Result<(), String> {
     validate_version(&version)?;
     let body = manifest_edit::read(&manifest)?;
     let parsed = AppManifest::parse(&body)?;
+    let note_hint = migration_note_hint(&parsed.nmp, &version);
     let next = manifest_edit::replace_nmp_section(&body, &version);
     manifest_edit::write(&manifest, &next)?;
     rewrite_app_module_dependencies(&manifest, &parsed, &version)?;
 
     println!("upgraded {} to NMP {version}", manifest.display());
+    println!("{note_hint}");
     Ok(())
 }
 
@@ -89,6 +91,27 @@ const NMP_GIT_REMOTE: &str = "https://github.com/pablof7z/nostr-multi-platform";
 /// `v<version>`. Matches the shape `nmp init --nmp-version` emits.
 fn git_tag_dependency(krate: &str, version: &str) -> String {
     format!("{{ git = \"{NMP_GIT_REMOTE}\", tag = \"v{version}\", package = \"{krate}\" }}")
+}
+
+fn migration_note_url(version: &str) -> String {
+    let release_tag = format!("nmp-v{version}");
+    format!("{NMP_GIT_REMOTE}/blob/{release_tag}/docs/migration-notes/{release_tag}.md")
+}
+
+fn migration_notes_index_url(version: &str) -> String {
+    let release_tag = format!("nmp-v{version}");
+    format!("{NMP_GIT_REMOTE}/tree/{release_tag}/docs/migration-notes")
+}
+
+fn migration_note_hint(current: &NmpDependency, target: &str) -> String {
+    let target_note = migration_note_url(target);
+    match current {
+        NmpDependency::Version { version } if version != target => format!(
+            "migration notes: range nmp-v{version}..nmp-v{target}; read {} and target note {target_note}",
+            migration_notes_index_url(target)
+        ),
+        _ => format!("migration note: {target_note}"),
+    }
 }
 
 fn validate_version(version: &str) -> Result<(), String> {
