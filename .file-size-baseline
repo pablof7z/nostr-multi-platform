@@ -44,5 +44,4 @@ crates/nmp-router/src/router/tests_v75.rs	509
 crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
 crates/nmp-store/src/lmdb/tests_gc.rs	747
 crates/nmp-testing/tests/e2e_full_pipeline.rs	848
-crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
