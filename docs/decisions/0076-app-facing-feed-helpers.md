@@ -20,10 +20,10 @@ private session machinery.
 The feed implementation now has useful lower-level pieces: `FeedParams`,
 `FeedSourceExpr`, `FeedHandle`, feed-session compilation,
 native/browser `feeds().open/load_older/close` facades, UniFFI support helpers
-that call the default compiler, and app-owned dynamic projection keys. Issue
-#1626 remains open because ergonomic feed builders, generated helper surfaces,
-and some names such as `projection` and `CustomPerspectiveId` still hide
-important ownership distinctions.
+that call the default compiler, app-owned dynamic projection keys, and separate
+`FeedParams.key` / `FeedParams.item_projection` fields. Issue #1626 remains
+open because ergonomic feed builders, generated helper surfaces, and names such
+as `CustomPerspectiveId` still hide important ownership distinctions.
 
 This ADR does not create a second public read architecture. It specializes
 ADR-0070 for feed-shaped helpers.
@@ -171,7 +171,7 @@ pagination by handle.
 | former `FeedRender::OpCentric` | `FeedShape::RootIndexed` or `ThreadedRootIndex` | The public API should not encode one social-product worldview. |
 | `FeedOrder::NewestByFeedPosition` without a target-event alternative | Add explicit target-created-at order if needed | Repost/source position and target event time are different contracts. |
 | `FeedWindowPolicy` with only `initial_limit` | Expanded `FeedWindowPolicy` | The contract must have room for page size, budgets, reset/regrow, and exhausted state. |
-| `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
+| former `projection` as the only output field | `key` plus `item_projection` | Output identity and row schema are different concepts. |
 | `CustomPerspectiveId` reused for source/admission/order | phase-specific ids or a policy id with declared capabilities | Source, admission, and order are different contracts. |
 | `PointerTargets` as casual feed source | explicit target-hydration source or meta-timeline helper | Target hydration must never look like ordinary feed acquisition. |
 

@@ -111,7 +111,7 @@ pub fn close_feed_session(app: &NmpApp, opened: &OpenedFeed) -> bool {
 /// **active account** changes. It closes `old_opened` (idempotent — a stale,
 /// already-closed, or mismatched handle is harmless) and opens a FRESH session
 /// from `params_json`, returning the new [`OpenedFeed`] (a new `session_id`; the
-/// `projection_key` is the same when the declaration's projection is unchanged).
+/// `projection_key` is the same when the declaration's key is unchanged).
 ///
 /// # When NOT to reopen
 ///
@@ -149,7 +149,8 @@ mod tests {
         "admission": "All",
         "order": "NewestByFeedPosition",
         "window": {"initial_limit": 50},
-        "projection": "app.feed.support.test"
+        "key": "app.feed.support.test",
+        "item_projection": "FeedRows"
     }"#;
 
     #[test]
@@ -171,7 +172,8 @@ mod tests {
             "admission": "All",
             "order": "NewestByFeedPosition",
             "window": {"initial_limit": 50},
-            "projection": "app.feed.support.invalid"
+            "key": "app.feed.support.invalid",
+            "item_projection": "FeedRows"
         }"#;
         assert_eq!(
             open_feed_session(&app, json),

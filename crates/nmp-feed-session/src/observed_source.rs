@@ -14,7 +14,9 @@ use crate::trellis_adapter::FeedSessionTrellisAdapter;
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild, FeedShape, ProjectionKey};
+use nmp_feed::{
+    FeedAdmission, FeedItemProjection, FeedParams, FeedSessionBuild, FeedShape, ProjectionKey,
+};
 
 /// Options for wiring a Rust app projection to a compiled feed source.
 pub struct ObservedFeedSourceOptions {
@@ -28,16 +30,20 @@ pub struct ObservedFeedSourceOptions {
 
 /// Compile a [`FeedParams`] source into observed delivery for an app projection.
 ///
-/// The params' primary kinds, acquisition source, admission policy, and
-/// projection key are honored. Render/order/window remain meaningful for the
-/// generic feed sidecar path; this source-only path uses `replay_limit` for
-/// replay bounds and leaves row/schema meaning to the app-owned projection.
+/// The params' primary kinds, acquisition source, admission policy, and output
+/// key are honored. Render/order/window remain meaningful for the generic feed
+/// sidecar path; this source-only path uses `replay_limit` for replay bounds
+/// and leaves row/schema meaning to the app-owned projection.
 pub fn compile_observed_feed_source<H: FeedSessionHost>(
     app: &H,
     params: &FeedParams,
     acquisition_kinds: &std::collections::BTreeSet<u32>,
     options: ObservedFeedSourceOptions,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
+    match &params.item_projection {
+        FeedItemProjection::FeedRows => {}
+    }
+
     let mut resolved = crate::custom::resolve_acquisition(app, &params.source, acquisition_kinds)?;
 
     if let FeedAdmission::Custom(id) = &params.admission {
@@ -46,7 +52,7 @@ pub fn compile_observed_feed_source<H: FeedSessionHost>(
 
     build_observed_source_session(
         app,
-        params.projection.as_str(),
+        params.key.as_str(),
         params.shape.clone(),
         resolved,
         options,

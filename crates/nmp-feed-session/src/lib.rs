@@ -11,7 +11,7 @@
 //! COMPILED admission predicate ([`nmp_feed::AdmitExpr`] / a live framework
 //! projection — never an app closure) plus internal acquisition interests, and
 //! `session_engine::build_scope_session` registers a session engine under the
-//! caller's unique projection key. Set algebra (`Union`/`Intersection`/
+//! caller's unique output key. Set algebra (`Union`/`Intersection`/
 //! `Difference`) composes child compilations in `set_algebra`.
 //!
 //! Step 4 adds `CustomPerspectiveId` RESOLUTION over the same compiler: an app
@@ -31,7 +31,7 @@ use nmp_core::substrate::{
 use nmp_core::{CommandSender, TypedProjectionData};
 use nmp_feed::{
     CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedAuthorRefs, FeedController,
-    FeedParams, FeedSessionBuild, FeedWindowSource, PullFn, TeardownAction,
+    FeedItemProjection, FeedParams, FeedSessionBuild, FeedWindowSource, PullFn, TeardownAction,
 };
 
 mod active_shape;
@@ -178,6 +178,10 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
     acquisition_kinds: &BTreeSet<u32>,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<session_engine::ScopeSessionBuild, FeedOpenError> {
+    match &params.item_projection {
+        FeedItemProjection::FeedRows => {}
+    }
+
     // RANKING (#1740 step 4). The session engine sorts roots newest-first
     // (`NewestByFeedPosition`) only. `OldestByFeedPosition` is not wired. A
     // `FeedOrder::Custom(id)` resolves to a REGISTERED perspective's order —
@@ -203,7 +207,7 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
 
     session_engine::build_scope_session_with_artifacts(
         app,
-        params.projection.as_str(),
+        params.key.as_str(),
         &params.shape,
         resolved,
         suppression,

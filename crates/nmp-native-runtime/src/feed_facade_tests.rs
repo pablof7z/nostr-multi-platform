@@ -11,7 +11,8 @@ fn active_follows_params(key: &str) -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy { initial_limit: 80 },
-        projection: ProjectionKey::app_owned(key).unwrap(),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: nmp_feed::FeedItemProjection::FeedRows,
     }
 }
 
@@ -25,7 +26,7 @@ fn feeds_facade_opens_and_closes_through_canonical_lifecycle() {
         .open(&params)
         .expect("canonical feed compiler opens active follows");
 
-    assert_eq!(handle.projection_key, params.projection);
+    assert_eq!(handle.projection_key, params.key);
     assert!(app.feed_session_is_open(&handle));
     assert_eq!(app.live_feed_session_count(), 1);
 

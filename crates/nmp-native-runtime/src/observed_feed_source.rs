@@ -15,7 +15,7 @@ impl NmpApp {
     /// reactive source-effect hooks, and `FeedHandle` teardown registry as
     /// [`Self::open_feed`]. The app crate owns row/schema projection meaning;
     /// native shells only consume the typed snapshot the app crate registers
-    /// under `params.projection`.
+    /// under `params.key`.
     pub fn open_observed_feed_source(
         &self,
         params: &FeedParams,
@@ -64,7 +64,8 @@ mod tests {
             admission: FeedAdmission::All,
             order: FeedOrder::NewestByFeedPosition,
             window: FeedWindowPolicy { initial_limit: 20 },
-            projection: ProjectionKey::app_owned("test.observed.rust").unwrap(),
+            key: ProjectionKey::app_owned("test.observed.rust").unwrap(),
+            item_projection: nmp_feed::FeedItemProjection::FeedRows,
         }
     }
 
@@ -85,7 +86,7 @@ mod tests {
             "observed source registered at least one sink"
         );
 
-        app.register_typed_snapshot_projection(params.projection.dynamic_token(), || {
+        app.register_typed_snapshot_projection(params.key.dynamic_token(), || {
             Some(TypedProjectionData {
                 key: "test.observed.rust".to_string(),
                 schema_id: "test.observed.rust".to_string(),

@@ -188,6 +188,12 @@ fn feed_params_round_trips_through_serde() {
     let json = serde_json::to_string(&params).expect("serialize");
     let back: FeedParams = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(params, back);
+    assert!(json.contains("\"key\""));
+    assert!(json.contains("\"item_projection\""));
+    assert!(
+        !json.contains("\"projection\""),
+        "FeedParams must not serialize the retired conflated projection field"
+    );
 }
 
 #[test]
@@ -210,6 +216,7 @@ fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
         window: FeedWindowPolicy::default(),
-        projection: ProjectionKey::app_owned("test.feed.following").unwrap(),
+        key: ProjectionKey::app_owned("test.feed.following").unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
     }
 }

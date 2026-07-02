@@ -1,11 +1,11 @@
 //! Typed feed-session declaration model (#1740 step 1).
 //!
 //! This module defines the **declaration** an app submits to open a feed:
-//! [`FeedParams`] with explicit, separately-typed phases — acquisition source,
-//! admission policy, ordering policy, window, and item projection — plus the
-//! app's primary content kinds. It also defines the closed [`FeedSourceExpr`]
-//! algebra ([`FeedScope`]) used to name acquisition sources, and the
-//! [`FeedHandle`] returned when a session is opened.
+//! [`FeedParams`] with explicit, separately-typed phases — output key,
+//! acquisition source, admission policy, ordering policy, window, and item
+//! projection — plus the app's primary content kinds. It also defines the
+//! closed [`FeedSourceExpr`] algebra ([`FeedScope`]) used to name acquisition
+//! sources, and the [`FeedHandle`] returned when a session is opened.
 //!
 //! Doctrine map:
 //! - D0: the model names no app noun and no protocol token — variants are
@@ -145,7 +145,7 @@ pub enum FeedSourceExpr {
 pub type FeedScope = FeedSourceExpr;
 
 // ---------------------------------------------------------------------------
-// Shape, admission, order, window, projection phases.
+// Shape, admission, order, window, key, and item-projection phases.
 // ---------------------------------------------------------------------------
 
 /// (a) SHAPE — how the session projects acquired, admitted rows.
@@ -226,10 +226,10 @@ impl FeedWindowPolicy {
     }
 }
 
-/// (e) ITEM PROJECTION — the app-owned dynamic projection key that renders
-/// admitted rows into cards.
+/// (e) OUTPUT KEY — the app-owned dynamic projection key this feed session
+/// emits snapshots under.
 ///
-/// Dynamic feed keys are intentionally app/product-owned. Framework-owned
+/// Dynamic feed output keys are intentionally app/product-owned. Framework-owned
 /// `nmp.*` projection keys must use declared projection tokens instead of this
 /// dynamic lane.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -280,6 +280,18 @@ impl From<ProjectionKey> for String {
     }
 }
 
+/// (f) ITEM PROJECTION — the row/schema contract carried inside the feed
+/// snapshot emitted under [`FeedParams::key`].
+///
+/// The current generic feed session emits NMP's typed feed-window rows. Keeping
+/// this as an explicit declaration prevents the feed's output identity from
+/// being mistaken for the row projection contract.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum FeedItemProjection {
+    /// NMP's generic feed-window row payload.
+    FeedRows,
+}
+
 // ---------------------------------------------------------------------------
 // FeedParams — the full typed declaration.
 // ---------------------------------------------------------------------------
@@ -310,8 +322,10 @@ pub struct FeedParams {
     pub order: FeedOrder,
     /// (e) WINDOW.
     pub window: FeedWindowPolicy,
-    /// (f) ITEM PROJECTION.
-    pub projection: ProjectionKey,
+    /// (f) OUTPUT KEY.
+    pub key: ProjectionKey,
+    /// (g) ITEM PROJECTION.
+    pub item_projection: FeedItemProjection,
 }
 
 /// Opaque feed-session identifier minted by the kernel when a session opens.

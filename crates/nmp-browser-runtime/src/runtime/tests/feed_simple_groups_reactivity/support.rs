@@ -43,7 +43,8 @@ pub(super) fn open_simple_group_feed(
         window: nmp_feed::FeedWindowPolicy {
             initial_limit: nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
         },
-        projection: nmp_feed::ProjectionKey::app_owned(feed_key).unwrap(),
+        key: nmp_feed::ProjectionKey::app_owned(feed_key).unwrap(),
+        item_projection: nmp_feed::FeedItemProjection::FeedRows,
     };
     handle
         .open_feed(params)

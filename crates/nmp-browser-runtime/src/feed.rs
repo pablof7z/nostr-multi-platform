@@ -69,7 +69,7 @@ pub(crate) fn open_browser_feed_session(
 ) -> Option<OpenedBrowserFeedSession> {
     let acquisition_kinds =
         nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied()).ok()?;
-    let projection = params.projection.clone();
+    let projection = params.key.clone();
     let build = nmp_feed_session::compile_feed_params(&access, &params, &acquisition_kinds).ok()?;
     let session_id = sessions.open(build);
     if session_id.0 == 0 {
