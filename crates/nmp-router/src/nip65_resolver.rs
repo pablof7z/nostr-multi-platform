@@ -290,7 +290,7 @@ impl Nip65OutboxResolver {
 }
 
 #[cfg(test)]
-#[path = "nip65_resolver/tests.rs"]
+#[path = "nip65_resolver/tests/mod.rs"]
 mod tests;
 
 #[cfg(test)]
