@@ -26,10 +26,10 @@
 //! 1. [`register`] — install explicit named substrate/protocol features. This
 //!    mirrors the `nmp init` scaffold's ADR-0069 production composition path.
 //! 2. [`register_following_timeline`] — open the FOLLOWING timeline. One call
-//!    to [`nmp_native_runtime::open_active_follows_op_feed`] wires the OP-centric
-//!    following feed: ingest fan-out, the live follow-set
-//!    predicate, the seq-ordered pull pager, and this app's typed projection.
-//!    The shell never names a relay, a filter, or a subscription.
+//!    through `app.feeds().open_spec(...)` submits this app's intent-level
+//!    declaration: primary kind:1 rows from the active account's live follow
+//!    set, projected as a root-indexed feed under this app-owned key. The shell
+//!    never names a relay, a filter, or a subscription.
 //! 3. [`render_home_rows`] — read the Rust-owned typed projection and turn it
 //!    into renderable rows. Pure presentation: decode the FlatBuffers sidecar,
 //!    copy raw protocol fields, format a short pubkey. No policy, no caching,
@@ -41,7 +41,10 @@
 //! platform-agnostic.
 
 use nmp_core::substrate::{ActionRegistrar, AppHost};
-use nmp_feed::ProjectionKey;
+use nmp_feed::{
+    feed, source, FeedHandle, FeedItemProjection, FeedKey, FeedOrder, FeedShape, FeedSpec,
+    FeedWindowPolicy,
+};
 use nmp_native_runtime::NmpApp;
 use nmp_note_feed::op_feed::decode_op_feed_snapshot;
 
@@ -93,25 +96,41 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
 
 /// Step 2 — open the FOLLOWING timeline.
 ///
-/// One framework call wires the OP-centric following feed under this example's
-/// app-owned projection key: the
-/// engine is registered as a declared observed projection (ingest) AND as the
-/// feed controller + typed projection (output). The follow-set predicate is read
-/// LIVE from the active account's contact list, so once the user signs in and
-/// their kind:3 is known, the timeline shows exactly their follows' notes — the
+/// One framework call submits the typed feed declaration under this example's
+/// app-owned feed key. NMP compiles that declaration into live active-account
+/// follow acquisition, root-indexed feed projection, paging, and teardown. The
 /// shell does not select relays, build filters, open subscriptions, or
 /// invalidate caches for any of it.
 ///
-/// `viewer_pubkey_hex` is the signed-in account's hex pubkey (used by the engine
-/// for self-attribution); the live follow set is read from the kernel's
-/// active-account slot regardless, so this is advisory.
-pub fn register_following_timeline(app: &NmpApp, viewer_pubkey_hex: impl Into<String>) {
-    let _session = nmp_native_runtime::open_active_follows_op_feed(
-        app,
-        viewer_pubkey_hex.into(),
-        FOLLOWING_PRIMARY_FEED_KINDS.to_vec(),
-        ProjectionKey::app_owned(FOLLOWING_TIMELINE_PROJECTION_KEY).unwrap(),
-    );
+/// The returned handle is the only lifecycle token for paging/close. The
+/// example harness stores it and closes by handle, matching the app-facing feed
+/// API a native shell would use.
+pub fn register_following_timeline(
+    app: &NmpApp,
+) -> Result<FeedHandle, nmp_native_runtime::FeedSpecOpenError> {
+    app.feeds()
+        .open_spec(following_timeline_key(), following_timeline_spec())
+}
+
+/// App-owned feed output key for the worked example.
+#[must_use]
+pub fn following_timeline_key() -> FeedKey {
+    FeedKey::app(FOLLOWING_TIMELINE_PROJECTION_KEY)
+        .expect("example following timeline key must be app-owned")
+}
+
+/// Intent-level declaration for the worked example's following timeline.
+#[must_use]
+pub fn following_timeline_spec() -> FeedSpec {
+    feed::events()
+        .primary_kinds(FOLLOWING_PRIMARY_FEED_KINDS)
+        .from(source::active_user().follows())
+        .shape(FeedShape::RootIndexed)
+        .order(FeedOrder::NewestByFeedPosition)
+        .window(FeedWindowPolicy::bounded(
+            nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
+        ))
+        .project(FeedItemProjection::feed_rows())
 }
 
 /// One renderable row of the following timeline.
