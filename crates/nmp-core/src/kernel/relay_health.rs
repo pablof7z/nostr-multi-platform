@@ -11,13 +11,7 @@ use std::collections::VecDeque;
 use super::wire_sub::WireSub;
 use super::{CanonicalRelayUrl, HashMap, HashSet, Instant, Serialize};
 
-// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the
-// feature-gated `crate::codegen_schema` re-export can name the type (Rust's
-// `pub(super)` is parent-module-only and cannot be re-exported beyond it
-// even with `pub(crate) use`). Crate-private encapsulation is preserved —
-// nothing outside `nmp-core` can see the type. See `crate::codegen_schema`.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct RelayStatus {
     pub(super) role: String,
     pub(super) relay_url: String,
@@ -44,7 +38,6 @@ pub(crate) struct RelayStatus {
     /// / `RelayTransportStatus.notices`.
     /// Excluded from serde: carries through typed-projection path only.
     #[serde(skip)]
-    #[cfg_attr(feature = "codegen-schema", schemars(skip))]
     pub(super) notices: Vec<NoticeEntry>,
     pub(super) bytes_rx: u64,
     pub(super) bytes_tx: u64,
@@ -63,23 +56,12 @@ pub(crate) struct RelayStatus {
     /// the relay serves no document). The carried-through `RelayInfoDoc` is
     /// substrate-generic transport metadata (D0).
     ///
-    /// Excluded from the V6 Stage-1 Swift `KernelTypes.generated.swift` mirror
-    /// (`#[schemars(skip)]`): that emitter renders flat-record types only, and a
-    /// nested `Option<RelayInfoDoc>` is Stage-2/3 scope (see
-    /// `crates/nmp-codegen/src/swift.rs` + `docs/architecture-audit/
-    /// docs/retired/codegen-v6.md`). iOS reads `info` through the `relay_diagnostics`
-    /// projection — both the authoritative serde-JSON subtree and the `KRDG`
-    /// typed FlatBuffers sidecar (`InfoRow`) — not through this flat mirror, so
-    /// skipping it from the schema costs the shell nothing. `serde` still
-    /// serialises the field; only the JSON *schema* omits it.
-    #[cfg_attr(feature = "codegen-schema", schemars(skip))]
+    /// Surfaced through `relay_diagnostics` as both the serde-JSON subtree and
+    /// the `KRDG` typed FlatBuffers sidecar (`InfoRow`).
     pub(super) info: Option<crate::substrate::RelayInfoDoc>,
 }
 
-// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
-// `crate::codegen_schema` re-export. See `RelayStatus` above.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct WireSubscriptionStatus {
     pub(super) wire_id: String,
     pub(super) relay_url: String,
@@ -93,10 +75,7 @@ pub(crate) struct WireSubscriptionStatus {
     pub(super) close_reason: Option<String>,
 }
 
-// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
-// `crate::codegen_schema` re-export. See `RelayStatus` above.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct LogicalInterestStatus {
     pub(super) key: String,
     pub(super) state: String,
@@ -114,7 +93,6 @@ pub(crate) struct LogicalInterestStatus {
 /// started-at anchor. The ring is capped at [`MAX_NOTICE_LOG`] entries
 /// (oldest-dropped) to bound memory.
 #[derive(Clone, Debug, Serialize)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(super) struct NoticeEntry {
     /// Wall-clock Unix epoch milliseconds when this NOTICE arrived.
     pub(super) at_ms: u64,

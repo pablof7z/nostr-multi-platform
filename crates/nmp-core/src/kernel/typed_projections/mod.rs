@@ -281,9 +281,7 @@ impl super::Kernel {
         });
 
         // `relay_role_options` — encoded from the SAME `relay_role_options()`
-        // vector the JSON path serialises. Mapped inline because the element
-        // type (`crate::actor::RelayRoleOption`) is only nameable under the
-        // codegen-schema feature; the iterator binds it by inference here.
+        // vector the JSON path serialises.
         let relay_role_options = RelayRoleOptionsModel {
             options: crate::actor::relay_role_options()
                 .iter()

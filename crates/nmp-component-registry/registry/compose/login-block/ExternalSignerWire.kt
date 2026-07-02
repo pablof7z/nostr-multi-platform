@@ -118,10 +118,8 @@ data class NostrSignerInfo(
     val installHint: String = "Install $displayName for one-tap sign-in",
 )
 
-// `KNOWN_NOSTR_SIGNERS` is GENERATED from the Rust catalog
-// (nmp_core::signer_catalog) into the sibling file `KnownSigners.generated.kt`
-// in this same package — `detectInstalledSigners` below references it directly.
-// Edit the catalog + re-run `nmp gen signer-catalog`, never this file (#1493 P9).
+// `KNOWN_NOSTR_SIGNERS` lives in the sibling `KnownSigners.kt` file in this
+// same package; `detectInstalledSigners` below references it directly.
 
 // ── Package-manager-based detection ──────────────────────────────────────────
 

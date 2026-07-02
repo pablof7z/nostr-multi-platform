@@ -71,11 +71,9 @@ class VendorDriftGateTest {
     private val vendoredFiles = listOf(
         "ExternalSignerCapabilityBridge.kt",
         "ExternalSignerWire.kt",
-        // Generated from the Rust catalog (#1493 P9) by `nmp gen signer-catalog`,
-        // split out of ExternalSignerWire.kt. Like its sibling it is vendored
-        // byte-identical-except-package across all copies — the codegen produces
-        // identical content with only the `package` line differing per target.
-        "KnownSigners.generated.kt",
+        // Kept as a source-owned sibling so signer descriptors can drift-gate
+        // with the rest of the vendored login-block unit.
+        "KnownSigners.kt",
         "AmberIntentCodec.kt",
         "NostrLoginBlock.kt",
     )

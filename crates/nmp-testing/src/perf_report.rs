@@ -1,5 +1,4 @@
-//! Unified perf-output schema for all three harness tools: ffi-stress, firehose-bench,
-//! and sanity-gate.
+//! Unified perf-output schema for benchmark and sanity-gate tools.
 //!
 //! Each tool builds a [`PerfReport`] (potentially with many [`PerfScenario`]s) and calls
 //! [`write`] to emit `perf-report.{json,md}` to a caller-supplied directory. The on-disk
@@ -7,8 +6,8 @@
 //!
 //! # Design rationale
 //!
-//! All three harnesses previously had separate, structurally similar JSON/Markdown
-//! emitters (`GateRow`/`Gate`/`GateResult`, `SanityReport`/`ScenarioMetrics`/`FirehoseReport`).
+//! Historical harnesses previously had separate, structurally similar JSON/Markdown
+//! emitters (`GateRow`/`Gate`/`GateResult`, `SanityReport`/`ScenarioMetrics`).
 //! Consolidating them here:
 //! - gives one authoritative JSON schema for the CI perf artefacts
 //! - ensures the Markdown renderer is tested and maintained in one place
@@ -207,7 +206,7 @@ impl PerfScenario {
 #[derive(Debug, Serialize)]
 pub struct PerfReport {
     pub schema_version: u32,
-    /// Which tool produced this report (`"ffi-stress"`, `"firehose-bench"`, `"sanity-gate"`).
+    /// Which tool produced this report (for example `"ffi-transport-bench"`).
     pub tool: String,
     /// Run identifier (e.g. `"m10.5"`, a timestamp, or a relay URL slug).
     pub run_id: String,

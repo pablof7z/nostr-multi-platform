@@ -9,8 +9,9 @@ nmp init [<path>]                    Scaffold a thin NMP app.
 nmp add ios | android | desktop      Add a native platform shell.
 nmp add web                          Add a browser-runtime web shell.
 nmp add module <crate>               Add an app/protocol module dependency.
-nmp gen swift                        Regenerate Swift host bindings.
 nmp gen typed-decoders               Regenerate typed decoder bindings.
+nmp gen projection-cache             Regenerate Swift projection-cache helpers.
+nmp gen keyed-ref-cache              Regenerate Swift keyed-ref cache helpers.
 nmp gen bindings [target]            Regenerate supported platform bindings.
 nmp gen projection <name>            Scaffold an app-core projection seam.
 nmp gen feed <name>                  Scaffold source/reducer wiring.

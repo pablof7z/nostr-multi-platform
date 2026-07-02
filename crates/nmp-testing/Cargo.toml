@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "NMP testing harnesses, doctrine lint gates, mock relays, stress tests, and release validation utilities."
+description = "NMP testing harnesses, doctrine lint gates, mock relays, and release validation utilities."
 
 [features]
 # Enable LMDB-backed store tests. Passes through to nmp-core's lmdb-backend feature.
@@ -28,13 +28,10 @@ nmp-planner = { path = "../nmp-planner" }
 nmp-store = { path = "../nmp-store" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"] }
-nmp-nip77 = { path = "../nmp-nip77" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-ratatui = { version = "0.30", features = ["crossterm"] }
-crossterm = "0.29"
 rustls = { workspace = true, default-features = false, features = ["ring"] }
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 # ffi-transport-bench: links the REAL uniffi_core runtime crate to exercise
@@ -128,10 +125,6 @@ tempfile = "3"
 # pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.
 libc = "0.2"
 
-[[bin]]
-name = "reactivity-bench"
-path = "bin/reactivity-bench/main.rs"
-
 # SLICE-NS-M14-002 (#2388) — FFI transport A/B microbench comparing the C-lane
 # (extern "C" ptr/len + shell copy) against the UniFFI lane (real RustBuffer
 # lowering via uniffi_core + foreign-trait vtable dispatch + lower-bound
@@ -141,21 +134,6 @@ path = "bin/reactivity-bench/main.rs"
 [[bin]]
 name = "ffi-transport-bench"
 path = "bin/ffi-transport-bench/main.rs"
-
-[[bin]]
-name = "firehose-bench"
-path = "bin/firehose-bench/main.rs"
-
-[[bin]]
-name = "nip77-real-relay-tui"
-path = "bin/nip77-real-relay-tui/main.rs"
-
-# M10.5 native transport hardening harness — S1..S5 (phase 1)
-# Exercises the native runtime/update transport paths that used to sit behind
-# nmp_app_* C symbols.
-[[bin]]
-name = "ffi-stress"
-path = "bin/ffi-stress/main.rs"
 
 # Doctrine-lint — D0+D6+D7+D8 grep gates (Tier 1 item #8 from
 # docs/perf/parallel-work-brainstorm-2026-05-18.md). Grep-based static

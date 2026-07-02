@@ -1,7 +1,7 @@
 # Framework Magic §C8 — Subscription Planner Hygiene
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/product-spec/subsystems.md` §7.2 (subscription planner behaviors); `docs/design/subscription-compilation/compiler.md` (compilation pipeline); `docs/design/reactivity/scheduling-and-data-model.md` (buffer / batch policy); `docs/design/firehose-bench.md` (the modeled-perf companion benchmark for the ≤60Hz budget).
+> Read first: `docs/product-spec/subsystems.md` §7.2 (subscription planner behaviors); `docs/design/subscription-compilation/compiler.md` (compilation pipeline); `docs/design/reactivity/scheduling-and-data-model.md` (buffer / batch policy).
 
 ## C8. Subscriptions auto-dedup, auto-coalesce, auto-close, and auto-buffer
 
@@ -25,7 +25,7 @@
 3. **Auto-close on EOSE for one-shot:** open `ProfileClaim { pubkey: D }` (which `docs/design/subscription-compilation/intro.md` §2.2 line 112 specifies as `lifecycle: OneShot, limit: 1`); the mock relay sends the kind:0 then EOSE; assert the planner CLOSEs the wire REQ within one tick of EOSE; assert no further REQs touch that relay for that filter.
 4. **Buffered batching under firehose:** the mock relay sends 600 events for one filter in 1 second (10× the budget); assert the platform reconciler observes ≤60 `ViewBatch` emissions in the window; assert no events are dropped from the underlying store (only the *render emission rate* is capped, not the ingestion); assert the actor queue depth stays below `subsystems.md` §7.16 budget (steady-state < 16).
 
-**Milestone owner:** **[PENDING M2]** for sub-paths 1–3 (the compiler + lifecycle); **partial overlap with reactivity-bench** for sub-path 4 (the buffer cadence is exercised by `docs/perf/reactivity-bench/` already; the contract test asserts the same property through the public view path). Test checked in as `#[ignore = "pending M2 compiler"]` initially.
+**Milestone owner:** **[PENDING M2]** for sub-paths 1–3 (the compiler + lifecycle); the framework-magic contract owns sub-path 4 through the public view path. Test checked in as `#[ignore = "pending M2 compiler"]` initially.
 
 ## Why this is one bullet, not four
 
@@ -36,8 +36,7 @@ The reason this is C8 and not bundled with C6/C7 is that C6/C7 govern *which rel
 ## Cross-references to the existing test surface
 
 - `docs/design/subscription-compilation/tests.md` §9.2 assertion 2 already asserts the per-relay author partition + sub-shape merge (the coalesce property at the planner layer). The framework-magic version of sub-path 2 reuses that mailbox cache setup but reads the wire output through the platform shadow's audit log instead of through the planner harness.
-- `docs/design/firehose-bench.md` is the modeled-perf companion: it asserts ≤60Hz holds under sustained load. The framework-magic sub-path 4 asserts the *correctness* of the cap (no event loss); the bench asserts the *budget* under realistic load.
-- `docs/design/reactivity/validation-harness.md` covers reactive-primitive validation (Swift `@Observable`, Kotlin `Flow`, etc.). C8's sub-path 4 cross-validates that the platform-side emissions match the actor-side `ViewBatch` count.
+- The framework-magic sub-path 4 asserts the *correctness* of the cap (no event loss and ≤60 public emissions in the asserted window). Native transport cost is covered separately by `ffi-transport-bench`.
 
 ## What this chapter does not cover
 

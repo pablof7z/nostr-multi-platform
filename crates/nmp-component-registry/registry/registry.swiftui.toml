@@ -201,8 +201,8 @@ source = "swiftui/login-block/NostrLoginBlock.swift"
 target = "Components/Auth/NostrLoginBlock.swift"
 role = "source"
 [[components.files]]
-source = "swiftui/login-block/KnownSigners.generated.swift"
-target = "Components/Auth/KnownSigners.generated.swift"
+source = "swiftui/login-block/KnownSigners.swift"
+target = "Components/Auth/KnownSigners.swift"
 role = "source"
 
 [[components]]

@@ -82,7 +82,7 @@ pub(super) fn format_next_count_label(count: usize) -> String {
 /// State lives in a thread-local (not on `Kernel`) so the production `Kernel`
 /// struct carries zero instrumentation fields. The actor runs `make_update` on
 /// a single dedicated thread, so the thread-local is effectively per-kernel for
-/// the ffi-stress harness's single-kernel scenarios.
+/// test-support measurement.
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod churn {
     use crate::update_envelope::TypedProjectionData;
@@ -92,8 +92,7 @@ pub(crate) mod churn {
     use std::sync::atomic::AtomicU64;
 
     /// Process-global cumulative count of typed projections serialized across
-    /// every `make_update` tick since process start. Read by the ffi-stress
-    /// harness before/after a measurement window. Never resets.
+    /// every `make_update` tick since process start. Never resets.
     pub static PROCESS_PROJECTIONS_SERIALIZED: AtomicU64 = AtomicU64::new(0);
     /// Process-global cumulative count of typed projections whose payload
     /// content changed vs the previous tick. Never resets.

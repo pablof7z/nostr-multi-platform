@@ -5,7 +5,7 @@
 
 ## Context
 
-An earlier reactivity design proposed registering each view under independent axis buckets — `by_kind`, `by_author`, `by_e_tag`, etc. — and unioning matches on insert. The reactivity-bench harness (run 001, 2026-05-17) showed this produces severe false wakes:
+An earlier reactivity design proposed registering each view under independent axis buckets — `by_kind`, `by_author`, `by_e_tag`, etc. — and unioning matches on insert. The retired 2026-05-17 synthetic harness showed this produces severe false wakes:
 
 - 98% false-wakeup rate in quiet_idle.
 - 49% false-wakeup rate in following_timeline_scroll.
@@ -43,4 +43,6 @@ On insert, the event generates its tuple signature (every `(kind, axis-value)` p
 
 ## Validation
 
-Re-run reactivity-bench after implementation; require `false_wakeup_rate ≤ 0.10` and `candidates_per_delta ≤ 1.25` on all scenarios.
+Any current D8 instrumentation or focused regression test that exercises this
+path must require `false_wakeup_rate <= 0.10` and
+`candidates_per_delta <= 1.25` for its covered scenarios.

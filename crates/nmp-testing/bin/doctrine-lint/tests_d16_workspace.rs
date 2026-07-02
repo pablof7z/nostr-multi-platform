@@ -230,14 +230,14 @@ fn workspace_d8_exempts_cfg_test_sleeps() {
 #[test]
 fn workspace_d8_scans_nmp_testing_harness() {
     // nmp-testing bin/ (harnesses) are now under the D8 no-polling lint. An
-    // un-annotated sleep in a fake `crates/nmp-testing/bin/ffi-stress/` file
+    // un-annotated sleep in a fake `crates/nmp-testing/bin/ffi-transport-bench/` file
     // must be flagged; the same sleep with a doctrine-allow annotation must not.
     let root = build_fake_workspace(
         "doctrine_lint_ws_d8_scan_testing",
         &[
             // Unannotated sleep in the harness bin — must be flagged.
             (
-                "nmp-testing/bin/ffi-stress",
+                "nmp-testing/bin/ffi-transport-bench",
                 "scenario.rs",
                 "use std::thread;\nuse std::time::Duration;\n\
                  pub fn settle() {\n    thread::sleep(Duration::from_millis(5));\n}\n",
@@ -261,7 +261,7 @@ fn workspace_d8_scans_nmp_testing_harness() {
     let root_ok = build_fake_workspace(
         "doctrine_lint_ws_d8_scan_testing_annotated",
         &[(
-            "nmp-testing/bin/ffi-stress",
+            "nmp-testing/bin/ffi-transport-bench",
             "scenario.rs",
             "use std::thread;\nuse std::time::Duration;\n\
              pub fn settle() {\n    thread::sleep(Duration::from_millis(5)); // doctrine-allow: D8 — soak window\n}\n",

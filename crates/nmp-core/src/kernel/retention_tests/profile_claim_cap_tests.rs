@@ -137,10 +137,8 @@ fn claim_recovers_after_release_post_drop() {
 /// T114b — allocation-bounded harness using the global allocator. Pumps
 /// 16× MAX_CLAIMS_PER_PUBKEY claims (16k unique consumer_ids) onto one
 /// pubkey and asserts that the bound is observed via the public counter +
-/// the set size. This is a deterministic functional check; the
-/// counting-allocator NET-heap retention proof lives in
-/// `crates/nmp-testing/bin/ffi-stress/s2_dispatch_flood.rs` (the binary
-/// owns `#[global_allocator]` so the lib-test can't reuse that path).
+/// the set size. This is a deterministic functional check for the bounded
+/// retention invariant.
 #[test]
 fn claim_flood_does_not_grow_unbounded() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

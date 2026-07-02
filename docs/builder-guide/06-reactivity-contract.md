@@ -1,7 +1,7 @@
 # 06 — Reactivity contract (D8)
 
 > **Status: SHIPS** · audience: agents · design = `docs/design/reactivity/*`,
-> ADR-0001..0004; validation = `reactivity-bench` run 002.
+> ADR-0001..0004.
 
 D8 is the contract that keeps view payloads in sync with the event store at
 firehose scale **without** O(views × inserts) work, false wakeups, or
@@ -119,30 +119,21 @@ observer and the snapshot projection. If a product needs a different
 presentation, compose over the typed snapshot in Rust rather than adding
 app-side NIP-10 parsing.
 
-## reactivity-bench validation (run 002, report 1779051783)
+## Validation
 
-Run 002 passed all ADR-0001..0004 gates. Harness:
-`crates/nmp-testing/bin/reactivity-bench/main.rs` (counting `GlobalAlloc`,
-gate exit code 2 on failure). Excerpt from
-`docs/perf/reactivity-bench/1779051783-run-002.md` (overall: **passed**):
+The old synthetic D8 benchmark binary and its historical run reports were
+removed once they stopped representing live product paths. Current validation is
+split by ownership:
 
-| Scenario | Lookup p99 | Recompute p99 | Max delta/view/s | False-wake | Allocs | Pass |
-|---|---:|---:|---:|---:|---:|---|
-| quiet_idle | 500 ns | 417 ns | 0.02 | 0.00 | n/a | ✓ |
-| following_timeline_scroll | 584 ns | 5,167 ns | 40.70 | 0.00 | 0 | ✓ |
-| hashtag_firehose | 125 ns | 208 ns | 58.90 | 0.00 | 0 | ✓ |
-| profile_fanout | 4,541 ns | 193,500 ns | 46.38 | 0.00 | 0 | ✓ |
-| thread_blowup | 375 ns | 292 ns | 55.64 | 0.00 | 0 | ✓ |
-| account_switch | 1,542 ns | 1,333 ns | 1.00 | 0.00 | n/a | ✓ |
-| working_set_100_views | 667 ns | 2,083 ns | 2.58 | 0.00 | 0 | ✓ |
+- doctrine lint catches polling and hot-path allocation anti-patterns;
+- focused Rust tests cover the actor, store, planner, and projection behavior
+  touched by a change;
+- framework-magic tests cover product-observable contracts such as capped
+  batched delivery, subscription teardown, and account-switch rebinding;
+- transport-specific cost is measured by `ffi-transport-bench`.
 
-Readings: every scenario stays ≤ 60 deltas/view/s (ADR-0002) and **0 false
-wakes** (ADR-0001). `0` allocs post-warmup on every steady-state scenario
-(ADR-0004; `n/a` where no per-event path runs). `profile_fanout` shows the
-fan-out cost the design anticipated — one kind:0 touched 5,000 timeline views,
-coalesced 168,978 → 115,308 raw deltas, still under per-view budget. Memory in
-`working_set_100_views` (1M cached / 10k hot / 100 views) ≈ 19.8 MB,
-well under the 100 MB ADR-0003 gate. (`run-002.md:7-50`.)
+When a change alters D8 mechanics, add or update the owning test/instrumentation
+with the same budgets above instead of restoring the retired synthetic harness.
 
 ## How reactive modules plug in
 

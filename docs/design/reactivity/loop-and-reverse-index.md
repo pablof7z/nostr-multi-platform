@@ -6,7 +6,7 @@
 
 > **Audience:** Framework contributors (not app developers). App developers see only the public surface in `product-spec.md` §6.4, §6.6, §7.6.
 
-> **Status:** rev 1 — incorporating findings from reactivity-bench run 001 (2026-05-17). See `docs/perf/reactivity-bench/2026-05-17-run-001.md` for the measurement report. Decisions: ADR-0001 (composite keys), ADR-0002 (per-view delta budget), ADR-0003 (working-set memory), ADR-0004 (allocation measurement).
+> **Status:** rev 1 — composite-key reverse indexing, per-view delta budget, working-set memory, and allocation discipline are owned by ADR-0001..0004.
 
 > **Prerequisites:** `product-spec.md` §6.2 (host state), §6.4 (typed update frames), §6.6 (subscriptions/views), §7.2 (planner), §7.6 (views), Appendix A1 (FFI architecture).
 
@@ -133,7 +133,11 @@ pub struct Dependencies {
 
 The registry computes the most-specific composite registration internally; the view doesn't enumerate cartesian products itself.
 
-**Why composite-first:** reactivity-bench run 001 measured 98% false-wakeup rate in quiet_idle and 49% in following_timeline_scroll under the v0 design (which unioned independent axis buckets). Conjunctive composite keys eliminate the false wakes. The cost is registration-size growth (kinds × authors cartesian product), bounded by working-set memory budget.
+**Why composite-first:** the v0 union-of-axes design woke unrelated views
+because independent buckets could not express the conjunction a view actually
+declared. Conjunctive composite keys eliminate those false wakes. The cost is
+registration-size growth (kinds × authors cartesian product), bounded by the
+working-set memory budget.
 
 ### 3.3 Lookup on insert
 
@@ -165,7 +169,7 @@ fn lookup(&self, event: &Event) -> HashSet<ViewId> {
 }
 ```
 
-Cost: O(K + P) composite lookups plus O(|broad indexes used|) plus O(|catch_all|). For an event with K e-tags and P p-tags in a well-shaped app, that's a handful of HashMap probes. Reactivity-bench run 001 measured p99 lookup at 84 ns to 1,083 ns — far below the 100 µs gate.
+Cost: O(K + P) composite lookups plus O(|broad indexes used|) plus O(|catch_all|). For an event with K e-tags and P p-tags in a well-shaped app, that's a handful of HashMap probes; the current D8 lookup/recompute budget remains 100 µs p99.
 
 ### 3.4 The catch-all slow path
 

@@ -50,14 +50,6 @@ jobs:
               cargo test -p nmp-testing --test real_relay_outbox
               -- --ignored --nocapture --test-threads=1
 
-          - scenario: nip77-negentropy
-            capability: NIP-77 negentropy
-            timeout: 15
-            relays: wss://nip29.f7z.io
-            command: >-
-              cargo run -p nmp-testing --bin nip77-real-relay-tui
-              -- --once --neg-only --relay wss://nip29.f7z.io
-
           - scenario: nip42-auth
             capability: NIP-42 auth
             timeout: 20

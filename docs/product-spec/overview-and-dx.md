@@ -22,7 +22,8 @@ The framework treats common Nostr-correctness failures — stale replaceable eve
 NMP is a Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`),
 reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip65`,
 etc.), app-owned extension modules, reusable substrate composition
-(`nmp-substrate`), host-binding codegen (`gen swift` / `gen typed-decoders`), a
+(`nmp-substrate`), focused host-helper codegen (`gen typed-decoders`,
+projection caches, keyed-ref caches, feed/action helpers), a
 scaffolding CLI (`nmp init`), a registry of app-owned reactive native UI
 components, reference native platform shells, and a browser Worker runtime
 (`nmp-browser-runtime`) with web component-host support. Production app roots
@@ -218,7 +219,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | Crate | Role | FFI? |
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
-| `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
+| `nmp-codegen` | Focused host-helper emitters and drift gates for typed decoders, projection caches, keyed-ref caches, feed/action helpers, and registry builtins | Binary + library |
 | `nmp-substrate` | Reusable substrate floor: shared router/mailbox/profile/contacts cache-parser construction for delivery roots that cannot hand-copy substrate wiring. Protocol features are composed explicitly by app/runtime roots. | Pure Rust |
 | `nmp-uniffi` | Public native binding surface over `nmp-native-runtime` for generated Swift/Kotlin app crates | UniFFI |
 | `nmp-browser-runtime` | Browser Worker/runtime adapter and sole wasm-bindgen ABI glue; owns Worker protocol types (ADR-0067; `nmp-wasm` deleted #2202) | wasm-bindgen |

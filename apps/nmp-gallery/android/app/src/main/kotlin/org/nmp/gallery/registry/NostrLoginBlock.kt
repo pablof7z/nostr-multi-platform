@@ -16,8 +16,8 @@ package org.nmp.gallery.registry
 //       </intent>
 //   </queries>
 //
-// Extend KNOWN_NOSTR_SIGNERS in ExternalSignerCapabilityBridge.kt if you
-// add support for future signer apps.
+// Extend KNOWN_NOSTR_SIGNERS in KnownSigners.kt if you add support for future
+// signer apps.
 
 import android.content.pm.PackageManager
 import androidx.compose.foundation.BorderStroke

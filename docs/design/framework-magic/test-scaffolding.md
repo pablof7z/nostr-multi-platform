@@ -11,7 +11,7 @@ crates/nmp-testing/tests/framework_magic_contract.rs
 
 The existing convention is **milestone-prefixed** (`m2_subscription_compilation_audit.rs`, `m3_lmdb_invariants.rs`, etc.). This file is intentionally **cross-cutting** — it is the *only* test file in `crates/nmp-testing/tests/` that is not milestone-prefixed. The convention break is deliberate:
 
-- The contract spans M2 + M3 + M4 + M6 + M8 + reactivity-bench; no single milestone owns it.
+- The contract spans M2 + M3 + M4 + M6 + M8; no single milestone owns it.
 - Renaming the file under a single milestone (e.g., `m_cross_framework_magic.rs`) would suggest one milestone is responsible for the whole contract; the opposite is true — every milestone owner adds to it.
 - The file is the *index test* — the meta-test (§4 below) reads `docs/design/framework-magic.md`'s row table and asserts every row has a `#[test] fn` with the expected name. A renaming under a milestone prefix would obscure this role.
 

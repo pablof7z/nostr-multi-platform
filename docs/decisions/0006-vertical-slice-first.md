@@ -6,9 +6,10 @@
 
 ## Context
 
-The firehose-bench harness runs in three modes (replay, capture, live). Replay and capture currently model the runtime; live correctly reports `blocked` because the real adapters do not exist. Reactivity-bench run 002 validated the reactive model against ADRs 0001–0005 in a self-consistent fashion.
-
-This is the right state to be in: the budget contract is concrete, the algorithmic core is validated, and we have honest visibility into what is and isn't proven. The next milestone is converting the model into running code without exploding scope.
+The pre-v1 model started with synthetic firehose/reactivity harnesses. Those
+tools were useful to force concrete budgets, but they did not prove the runtime
+path. The right next milestone was converting the model into running code
+without exploding scope.
 
 The classic failure mode at this stage is **horizontal expansion** — building "the EventStore" comprehensively, then "the planner" comprehensively, then "the views" comprehensively, then finally stitching them together at the end, only to discover that the FFI surface or the relay adapter or the storage backend doesn't actually compose the way the model assumed.
 
@@ -81,7 +82,8 @@ A working desktop app where:
 4. Closing the window CLOSEs the relay subscription after the 30s grace.
 5. The same component instance mounted N times in the UI shares one underlying relay REQ (per the wrapper's refcount).
 6. A replaced kind:0 (newer `created_at`) supersedes the old one in the cache without UI flicker.
-7. `firehose-bench live` mode can run the same flow against a real relay and report measured (not modeled) numbers for cold_start and a tiny version of profile_thrashing.
+7. A real-relay/manual runtime check can run the same flow and report measured
+   (not modeled) numbers for cold_start and a tiny version of profile_thrashing.
 
 When this is real, the architecture has graduated from "modeled budget contract" to "runtime path." Everything else in Phase 1 is now layered on top of working code, not invented from spec.
 
@@ -108,7 +110,10 @@ Each of these graduates to a real measurement when its phase lands.
 ## Consequences
 
 - **Phase 1 produces a runnable desktop demo at its first checkpoint**, not just passing unit tests. Anyone can `cargo run` and see an avatar appear from a real relay.
-- **The firehose-bench live mode becomes unblocked** for the slice's narrow scope (cold_start with a single Profile view, profile_thrashing with mount/unmount churn). Other scenarios stay blocked until their dependencies (LMDB, multi-relay, NSE, etc.) land.
+- **Runtime measurement becomes possible** for the slice's narrow scope
+  (cold_start with a single Profile view, profile_thrashing with mount/unmount
+  churn). Other scenarios stay blocked until their dependencies (LMDB,
+  multi-relay, NSE, etc.) land.
 - **Subsequent expansion has a working substrate to build on.** Adding LMDB is a `Box<dyn EventStore>` swap. Adding multi-relay is a planner change. Adding negentropy is a planner change. Adding iOS is a UniFFI wrap of the existing actor. None require redesigning the architecture.
 - **Bugs surface where they actually live.** A model can hide them; running code can't.
 
@@ -120,6 +125,8 @@ Each of these graduates to a real measurement when its phase lands.
 
 ## Validation
 
-- Firehose-bench live mode runs cold_start and a slice version of profile_thrashing against a real relay.
+- Real-relay/manual runtime measurement covers cold_start and a slice version of
+  profile_thrashing against a real relay.
 - A 5-minute manual demo: launch the desktop app, see the avatar appear, kill the relay connection and watch the reconnect, mount/unmount the avatar 100 times rapidly, check no leaks.
-- Reactivity-bench continues to pass standard gates against the slice's actor — confirms the synthetic measurements still hold with the real code path replacing the model.
+- Focused D8 validation against the slice's actor confirms the budget still
+  holds with the real code path replacing the model.

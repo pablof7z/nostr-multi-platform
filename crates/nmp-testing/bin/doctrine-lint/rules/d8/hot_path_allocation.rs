@@ -29,7 +29,6 @@
 //! ## Scope (file allow-list)
 //!
 //! - `crates/nmp-core/src/kernel/ingest/` — every `.rs` file
-//! - `crates/nmp-testing/bin/reactivity-bench/` — the bench itself
 //!
 //! ## Banned allocations (inside a marked hot-path function)
 //!
@@ -50,10 +49,7 @@ use std::path::Path;
 /// hot-path-allocation check's scope. Files outside this allow-list are
 /// never scanned by [`check_in_scope`], regardless of `// hot path`
 /// markers.
-const SCOPED_PATH_FRAGMENTS: &[&str] = &[
-    "crates/nmp-core/src/kernel/ingest/",
-    "crates/nmp-testing/bin/reactivity-bench/",
-];
+const SCOPED_PATH_FRAGMENTS: &[&str] = &["crates/nmp-core/src/kernel/ingest/"];
 
 const BANNED_ALLOCATIONS: &[(&str, &str)] = &[
     (
@@ -308,10 +304,6 @@ fn cold_path() {\n\
         let no_extra: Vec<String> = Vec::new();
         assert!(file_in_scope(
             &PathBuf::from("/abs/path/crates/nmp-core/src/kernel/ingest/timeline.rs"),
-            &no_extra,
-        ));
-        assert!(file_in_scope(
-            &PathBuf::from("/abs/path/crates/nmp-testing/bin/reactivity-bench/main.rs"),
             &no_extra,
         ));
         assert!(!file_in_scope(

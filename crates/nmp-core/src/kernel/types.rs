@@ -18,8 +18,6 @@ pub(super) use super::read_cache::StoredEvent;
 
 pub(super) use super::profile_card::ProfileCard;
 
-// `pub(crate)` so the feature-gated `crate::codegen_schema` re-exports can name
-// these projection types (see the `…ForCodegen` aliases in `kernel/mod.rs`).
 pub(super) use super::relay_health::{
     Counters, NoticeEntry, RelayHealth, WireSubscriptionState, MAX_NOTICE_LOG,
 };

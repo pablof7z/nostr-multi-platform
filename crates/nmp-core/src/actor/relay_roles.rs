@@ -1,7 +1,6 @@
 //! Relay role parsing for `AppRelay.role`.
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct RelayRoleOption {
     pub(crate) value: String,
     pub(crate) is_default: bool,

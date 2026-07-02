@@ -3,30 +3,13 @@
 // *generator* that also read this manifest; the manifest model itself survives
 // because the dependency-policy command still needs it.)
 mod manifest;
-// Shared `--check` diff-line reporting for the Swift codegen gates — keeps
-// `check_swift` / `check_typed_decoders` reporting consistent and ensures a
+// Shared `--check` diff-line reporting for generated-file gates. Ensures a
 // length-only mismatch never masquerades as a missing file.
 mod diff_report;
-// V6 Stage 1 — Swift `Decodable` emitter pilot. Consumes the JSON document
-// schema-owner dump binaries write, emits one Swift file
-// with one struct per pilot type. See
-// `docs/retired/codegen-v6.md` §6b.
-//
-// NOTE (ADR-0046 — "composition is a library, not a generator"): the former
-// Rust-shell module-scaffolding generator (`generate` / `ffi_gen` /
-// `workspace`) and its `apps/fixture` test consumer were deleted. A generated
-// FfiApp never composed a real Nostr app; it was the create-react-app-eject
-// anti-pattern. Composition lives in explicit app/runtime roots, so
-// `nmp-codegen` emits ONLY the consumer-side Swift artifacts (KernelTypes +
-// typed projection decoders) that gate live CI.
-pub mod swift;
-// V6 Stage 2 — dotted-projection-key registry for `SnapshotProjections` +
-// `CodingKeys`. Hand-transcribed from the existing Swift declaration in
-// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
-// appends `SnapshotProjections` to the generated file using this slice.
-// Lives in `nmp-codegen` (D0-exempt) so the registry can name dotted host
-// keys like `"nmp.nip29.group_events"` without tripping doctrine-lint on
-// `nmp-core`. See module doc for the full rationale.
+// Projection registry for typed decoders, projection caches, keyed-ref caches,
+// and kernel drift gates. Lives in `nmp-codegen` (D0-exempt) so the registry
+// can name dotted projection keys without leaking app/protocol nouns into
+// `nmp-core`.
 pub mod swift_projections_registry;
 // #1723 (epic #1719) — the neutral projection contract manifest. The single
 // platform-independent source for each projection's key / tier / schema_id /
@@ -89,11 +72,6 @@ pub mod producer_consts;
 // can't drift from those producers until the full producer-const migration
 // reaches the NIP crates (a separate slice — see the module doc).
 pub mod projection_version_gate;
-// #1493 P9 — generate the native known-signer detection lists (Kotlin
-// `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog JSON
-// (`nmp_core::signer_catalog` via `dump_signer_catalog`). Parses the catalog
-// into a LOCAL typed struct so `nmp-codegen` keeps its no-`nmp-core` posture.
-pub mod signer_catalog;
 // ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference caches for
 // keyed projections (`refs.profile` / `refs.event`). Sourced from
 // `KEYED_PROJECTIONS`; decode `nmp.refs.RefRowDeltaBatch` and merge row deltas
@@ -156,11 +134,6 @@ pub use rust_builtin_keys::{
     generate_builtin_keys, generate_presence_keys, render_builtin_deps, render_builtin_keys,
     render_presence_keys, BuiltinKeysCheckOutcome,
 };
-pub use signer_catalog::{
-    check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,
-    render_swift_known_signers, SignerApp, SignerCatalogCheckOutcome,
-};
-pub use swift::{check_swift, generate_swift, SwiftCheckOutcome, SwiftEmitError};
 pub use swift_keyed_cache::{
     check_keyed_ref_cache, generate_keyed_ref_cache, render_keyed_ref_cache,
     KeyedRefCacheCheckOutcome,

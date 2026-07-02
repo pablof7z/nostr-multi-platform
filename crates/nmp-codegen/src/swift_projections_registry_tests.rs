@@ -25,7 +25,7 @@ fn registry_size_is_locked() {
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
         25,
-        "registry size changed — regenerate KernelTypes.generated.swift and update this test"
+        "registry size changed — update generated decoder/cache outputs and this test"
     );
 }
 

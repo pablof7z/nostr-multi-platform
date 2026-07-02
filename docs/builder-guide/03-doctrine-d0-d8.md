@@ -36,7 +36,7 @@ not the binding strength of the rule.
 | **D5** | Snapshots bounded by what's open. FFI carries the projection through open views, never the event store. | Crossing the event store over FFI; `AppState` growing beyond open-view projections; payloads that don't evict on view close. | `AppState = small screen data + map of `ViewId → ViewPayload` for open views only; closing a view evicts its payload. | Architectural (payload struct shape; no single named test — covered by snapshot-shape assertions in view tests). |
 | **D6** | Errors never cross FFI as exceptions. Failures surface as `toast` state + `busy` flags. | `Result<T,E>` / exceptions across FFI; `do { try }` / `try {} catch` around framework calls; per-op error-type proliferation; silent failure. | `doctrine-lint` D6 grep gate; `publish::engine::engine_error_to_failure` maps `PublishEngineError` → `RecentFailure` (`publish/mod.rs:18-24`). | `doctrine-lint` D6 gate in CI; publish-engine unit tests in `crates/nmp-core/src/publish/`. |
 | **D7** | Capabilities report; never decide policy. Bridges run platform APIs and report raw events. | Native deciding retry / recoverability / which relay / which cipher; capability holding state beyond OS handles; non-idempotent start. | `doctrine-lint` D7 grep gate; `RelayDispatcher` returns descriptive `RelayAck`; `classify_ack` (`publish/state.rs`) is the only ack→policy mapper (`publish/mod.rs:25-28`). | `doctrine-lint` D7 gate in CI; `c7_publish_routes_outbox_and_private_fails_closed` (fail-closed policy is Rust's). |
-| **D8** | Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded · **no polling at any layer**. | Per-event hot-path allocations after warmup; wakeups ∝ event volume; memory ∝ history depth; emitting when nothing changed; `sleep`+poll loops anywhere in the stack (Rust channels, iOS timers, test helpers). | Composite reverse index in the actor; idle-tick emit gated on `kernel.changed_since_emit()` (`doctrine.md:89`). ADRs 0001–0004. | `crates/nmp-testing/bin/reactivity-bench/` (run 002 passed all gates); idle-tick D8 regression guard. |
+| **D8** | Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded · **no polling at any layer**. | Per-event hot-path allocations after warmup; wakeups ∝ event volume; memory ∝ history depth; emitting when nothing changed; `sleep`+poll loops anywhere in the stack (Rust channels, iOS timers, test helpers). | Composite reverse index in the actor; idle-tick emit gated on `kernel.changed_since_emit()` (`doctrine.md:89`). ADRs 0001–0004. | Doctrine lint for no-polling/hot-path anti-patterns; focused actor/store/projection tests for changed D8 paths; `ffi-transport-bench` for native byte-lane cost. |
 | **D9** | The kernel owns time. Signing, replaceable resolution, and NIP-40 expiration are kernel decisions read through the injected `Clock`. | Trusting a relay's word on "newer"/"expired"; reducers reading wall-clock directly (breaks replay). | Injected `Clock` trait — `SystemClock` / `FixedClock` — in `crates/nmp-core/src/kernel/clock.rs`. | `crates/nmp-testing/tests/store_insert_path.rs` (replaceable supersession by `created_at`); `FixedClock`-driven reducer tests; deterministic `kernel/replay.rs`. |
 | **D10** | Provenance — private events never escape to public relays; received events are not laundered between relays. | Republishing a privately-delivered event to a public relay; a kind:1059 gift-wrap leaking onto a non-DM relay or a recipient-unknown fallback; cross-relay forwarding as a side effect of caching. | Per-event `ProvenanceEntry` (32-entry LRU) in both store backends (`store/lmdb/provenance.rs`, `store/mem/mod.rs`); kind:1059 gift-wrap routed to explicit DM-relay targets (`nmp-marmot/src/interest.rs`, `projection/publish.rs`); private publish fails closed on unknown inbox (D3 planner). | `crates/nmp-testing/tests/store_provenance_merge.rs`; `c7_publish_routes_outbox_and_private_fails_closed` (`framework_magic_contract/c7_c11.rs`); `m2_p_tag_inbox_routing.rs` (`p_tag_unknown_inbox_fails_closed_no_indexer_fallback`). |
 
@@ -116,7 +116,7 @@ D7  No native code deciding retry / recoverability / relay / cipher / state?
 
 D8  No per-event allocation on the hot path after warmup?
     Idle ticks with no change do NOT emit (changed_since_emit gate intact)?
-    reactivity-bench still green?
+    Touched reactive paths have a focused test or instrumentation gate?
 
 D9  Every new time read goes through the injected Clock, not SystemTime::now()
     on a reducer/replay path? Any new created_at consumer (replaceable,
@@ -128,7 +128,8 @@ D10 Does any new path forward a received event to a relay other than the one
     Private publish on unknown inbox fails closed (no public fallback)?
 
 GATE: `cargo run -p nmp-testing --bin doctrine-lint` passes (D0/D6/D7 grep
-gates); `cargo test --workspace` green; reactivity-bench --fail-on-gate green.
+gates); touched crates/tests are green; framework-magic and transport gates run
+when their owned surfaces changed.
 ```
 
 ## Anti-patterns (never do these)

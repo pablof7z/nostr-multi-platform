@@ -5,7 +5,11 @@
 
 ## Context
 
-An earlier gate read "≤ 100 MB at 100k events / 100 views." The reactivity-bench harness (run 001) reported 130.8 MB at 1M events, failing the gate. But this is misleading: holding 1M events resident in memory is the anti-pattern the spec already calls out for the durable storage backend (LMDB / SQLite / IndexedDB / nostrdb).
+An earlier gate read "≤ 100 MB at 100k events / 100 views." The retired
+2026-05-17 synthetic harness reported 130.8 MB at 1M events, failing the gate.
+But this is misleading: holding 1M events resident in memory is the anti-pattern
+the spec already calls out for the durable storage backend (LMDB / SQLite /
+IndexedDB / nostrdb).
 
 The actor should keep a **bounded working set** of hot events in memory; cold events live on disk. The reverse index can cover both — it keys on attributes, not event bodies.
 
@@ -42,4 +46,6 @@ Projection caches (`author_display`, `reaction_summary`, etc.) are LRU-bounded b
 
 ## Validation
 
-Re-run reactivity-bench with bounded working set; require ≤ 100 MB at 100 views / 10k hot events / 1M cached events on disk.
+Current validation for touched working-set paths must require <= 100 MB at
+100 views / 10k hot events / 1M cached events on disk, or explain why the
+covered scenario has a stricter owner-specific budget.
