@@ -9,4 +9,6 @@ source_refs:
 
 # nmp-defaults
 
-A reusable installer library only — never owning seed follows, bootstrap relay brands, signer permission defaults, or onboarding/product policy; register_defaults() is killed as production app architecture.
+Deleted composition bundle. Production and scaffold app roots compose explicit
+substrate, protocol, app feature, capability, output, and policy owners
+directly; `register_defaults()` is not current architecture.

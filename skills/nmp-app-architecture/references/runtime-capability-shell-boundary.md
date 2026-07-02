@@ -1,7 +1,7 @@
 # Runtime, Capability, and Shell Boundary
 
-> Doctrine home: ADR-0072, with ADR-0072, ADR-0072, ADR-0072, ADR-0072, and the runtime
-> ownership split of ADR-0072/0068. For the binding-surface story (UniFFI vs wasm-bindgen,
+> Doctrine home: ADR-0072. The runtime ownership split is folded into ADR-0072.
+> For the binding-surface story (UniFFI vs wasm-bindgen,
 > facades), see `ffi-and-native-surface.md`.
 
 ## The Three-Tier Runtime Stack

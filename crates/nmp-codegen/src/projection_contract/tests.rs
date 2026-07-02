@@ -106,9 +106,9 @@ fn swift_registry_keys_resolve_to_contract() {
 /// - `nmp.nip29.joined_groups` / `nmp.nip29.group_roster` /
 ///   `nmp.nip25.reactions` / `nmp.nip51.mute_list` / `nmp.nip51.bookmarks`
 ///   / `nmp.nip23.articles` / `nmp.wot.bootstrap` / `nmp.notifications`
-///   — Tier-1 projections registered (by `nmp-nip29` / `nmp-nip25` /
-///   `nmp-nip51` / `nmp-nip23` / `nmp-wot` / `nmp-browser-runtime`) for the web
-///   + other hosts but with no iOS Swift `SnapshotProjections` consumer field.
+///   — runtime-owned outputs registered by `nmp-nip29` / `nmp-nip25` /
+///   `nmp-nip51` / `nmp-nip23` / `nmp-wot` / `nmp-browser-runtime` for the web
+///   and other hosts but with no iOS Swift `SnapshotProjections` consumer field.
 ///   They are real contract entries but are not yet wired into the Swift
 ///   presentation registry; add a `SNAPSHOT_PROJECTIONS` row and drop them from
 ///   this list when the iOS shell starts consuming them.

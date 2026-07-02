@@ -194,9 +194,9 @@ pub fn register(
     app: &mut (impl ActionRegistrar + InputScopeRegistrar + SearchScopeRegistrar),
     _config: Config,
 ) -> Result<Handles, RegistrationError> {
-    action_registration::register_actions(app)?;
-    input_scope::register_input_scopes(app);
-    search::register_search_scopes(app);
+    actions::install(app)?;
+    input_scopes::install(app);
+    search_scopes::install(app);
     Ok(Handles)
 }
 ```

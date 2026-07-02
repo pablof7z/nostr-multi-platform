@@ -2,14 +2,14 @@
 title: Explicit Composition Root and register_defaults Elimination
 slug: composition-root
 topic: composition-root
-summary: Per ADR-0069, the composition root requires `register_defaults()` to be dead as a production path everywhere â in the starter, gallery, and browser
+summary: Per ADR-0069, production apps compose explicit substrate, protocol, app feature, capability, output, and policy owners. `register_defaults()` and `nmp-defaults` are deleted production and scaffold architecture.
 tags:
   - capture
 volatility: warm
 confidence: medium
 created: 2026-06-29
-updated: 2026-06-29
-verified: 2026-06-29
+updated: 2026-07-02
+verified: 2026-07-02
 compiled-from: conversation
 sources:
   - session:898a41b5-68e0-4b0f-b16c-c6072454bd6a
@@ -21,43 +21,55 @@ sources:
 
 ## Production Path Enforcement
 
-Per ADR-0069, the composition root requires `register_defaults()` to be dead as a production path everywhere — in the starter, gallery, and browser. This is enforced by a CI ratchet that prevents any new live call site from being introduced.
+Per ADR-0069, production apps compose named owners directly. A composition root
+installs substrate, reusable Nostr protocol features, app-owned product
+features, shell capability contracts, typed outputs, and outbound identity
+metadata explicitly before the app starts.
 
-The 'composition root' is the explicit build-time wiring where each app target (starter, gallery, browser production) composes its dependencies using builder methods instead of `register_defaults()`. A production app's Rust composition root must explicitly install substrate, reusable Nostr protocol features, app-owned product features, shell capability contracts, then start — `register_defaults()` is not production app architecture.
+`register_defaults()` and `nmp-defaults` are deleted production and scaffold
+architecture. Do not replace them with a hidden preset, compatibility bundle,
+or renamed default package. A reviewer must be able to read the app root and
+see which owners and policy knobs are installed.
 
-`nmp-defaults` may survive only as a reusable installer library, never owning seed follows, bootstrap relay brands, signer permission defaults, or onboarding/product policy.
+Anything a second platform would have to reimplement to stay correct - relay
+choice, signer choice, tag mutation, publish retry, queue truth, or navigation
+meaning - belongs in Rust.
 
-Anything a second platform would have to reimplement to stay correct — relay choice, signer choice, tag mutation, publish retry, queue truth, nav meaning — belongs in Rust.
-
-Doc and vocabulary ratchets are pro-migration: they exist to stop old `register_defaults` and raw-projection vocabulary from creeping back into docs.
-
-<!-- citations: [^898a4-df88b] [^3c942-9b54c] [^3c942-3e07a] [^3c942-78b3e] [^898a4-2f6af] -->
-## Explicit Composition Root and register_defaults Elimination
-
-## Production Path Enforcement
-
-Per ADR-0069, the composition root requires `register_defaults()` to be dead as a production path everywhere — in the starter, gallery, and browser. This is enforced by a CI ratchet that prevents any new live call site from being introduced.
-
-A production app's Rust composition root must explicitly install substrate, reusable Nostr protocol features, app-owned product features, shell capability contracts, then start — `register_defaults()` is not production app architecture.
-
-`nmp-defaults` may survive only as a reusable installer library, never owning seed follows, bootstrap relay brands, signer permission defaults, or onboarding/product policy.
-
-Anything a second platform would have to reimplement to stay correct — relay choice, signer choice, tag mutation, publish retry, queue truth, nav meaning — belongs in Rust.
+Doc and vocabulary ratchets prevent old hidden-composition and raw-read
+concepts from returning to current docs or templates.
 
 ## Feature as the Composition Unit
 
-An NMP app is constructed by installing explicit, named feature bundles rather than calling a magic `register_defaults()` function. A Feature is the main composition unit: it bundles typed views/read models, typed commands/writes, subscription demand, ingest parsers, capability needs, and projection encoders. The composition root wires these features together explicitly.
+An NMP app is constructed by installing explicit, named owners. A reusable
+protocol crate owns generic Nostr mechanics. An app crate owns product nouns,
+ranking, onboarding, relay brands, and other proprietary policy. The
+composition root wires these owners together explicitly.
+
+A feature owner may provide typed read-session helpers, write intents or draft
+builders, action handlers, parsers, capability contracts, and typed output
+encoders. It is installed by name; it is not a hidden bundle of product policy.
 
 ## What App Developers Should Know
 
-App developers should know which feature bundles their app installs, which LiveQuery/read session a screen opens, which typed projection the screen renders, which typed commands publish events, when to close query handles, and when a query is default outbox-routed vs explicitly relay-pinned.
+App developers should know which owners their app installs, which typed read
+session or feed helper a screen opens, which typed output the screen renders,
+which typed write intent publishes events, when handles close, and when routing
+is default outbox versus an audited opt-out.
 
-App developers should not need to know about SnapshotRegistry, projection tiers, muted observers, replay shapes, relay fanout details, NIP-65 mailbox routing internals, open_interest plumbing, FlatBuffer sidecar mechanics, or cache/store replay mechanics.
+App developers should not need to wire snapshot registries, raw acquisition
+interests, observed-projection sinks, reducer names, source effects, relay fanout
+details, mailbox-routing internals, FlatBuffer transport details, or cache/store
+replay mechanics for production screens.
 
 ## Kernel Decomposition
 
-The Kernel should not remain a god object owning store, relay state, projection registries, action ledger, publish engine, observers, auth, accounts, provenance, cache serves, pull cursors, lifecycle, and side registries as one enormous mental object. SnapshotRegistry should be split into real owners: projection registry, projection delivery contract, tick observers, and feed-author helpers, keeping the same facade with simpler internals.
+Kernel internals may remain complex only behind typed app-facing surfaces.
+Internal owners should stay cohesive: store, relay state, action ledger, publish
+engine, auth, accounts, provenance, cache serving, pull cursors, lifecycle, and
+output delivery should not leak as app composition concepts.
 
 ## Internal Complexity Budget
 
-Internal complexity is justified only if it protects a real invariant: replay-before-live, privacy, route provenance, bounded FFI, no polling, signer safety, teardown, or cross-platform consistency. <!-- [^019f0-22da8] -->
+Internal complexity is justified only when it protects a current invariant:
+replay-before-live, privacy, route provenance, bounded FFI, no polling, signer
+safety, teardown, or cross-platform consistency.
