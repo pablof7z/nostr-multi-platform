@@ -62,12 +62,17 @@ fn reducer_counts_and_groups_reactions_by_token() {
     // Duplicate delivery must not double count.
     projection.on_kernel_event(&reaction(REACTION_A, AUTHOR_A, "+"));
 
-    let aggregate = projection.aggregate_for(TARGET).unwrap();
-    assert_eq!(aggregate.total, 2);
-    assert_eq!(
-        aggregate.reactors,
-        vec![AUTHOR_A.to_string(), AUTHOR_B.to_string()]
-    );
+    let snapshot = reaction_summary_for(&projection, TARGET);
+    assert_eq!(snapshot.total, 2);
+    assert_eq!(snapshot.groups.len(), 2);
+    // Each group carries its own distinct reactor pubkeys — the identity-free
+    // membership fact the shell compares its active pubkey against.
+    let plus = snapshot.groups.iter().find(|g| g.token == "+").unwrap();
+    assert_eq!(plus.count, 1);
+    assert_eq!(plus.reactor_pubkeys, vec![AUTHOR_A.to_string()]);
+    let fire = snapshot.groups.iter().find(|g| g.token == "🔥").unwrap();
+    assert_eq!(fire.count, 1);
+    assert_eq!(fire.reactor_pubkeys, vec![AUTHOR_B.to_string()]);
 }
 
 #[test]
@@ -75,17 +80,22 @@ fn a_kind_5_delete_from_the_reactor_retracts_the_reaction() {
     let projection = ReactionAggregateProjection::new(None);
     projection.on_kernel_event(&reaction(REACTION_A, AUTHOR_A, "+"));
     projection.on_kernel_event(&reaction(REACTION_B, AUTHOR_B, "+"));
-    assert_eq!(projection.aggregate_for(TARGET).unwrap().total, 2);
+    assert_eq!(reaction_summary_for(&projection, TARGET).total, 2);
 
     // A delete from someone OTHER than the reactor must not retract it.
     projection.on_kernel_event(&delete("del-wrong", AUTHOR_B, REACTION_A));
-    assert_eq!(projection.aggregate_for(TARGET).unwrap().total, 2);
+    assert_eq!(reaction_summary_for(&projection, TARGET).total, 2);
 
-    // A delete from the original reactor retracts exactly that reaction.
+    // A delete from the original reactor retracts exactly that reaction —
+    // count AND the group's reactor membership both drop.
     projection.on_kernel_event(&delete("del-right", AUTHOR_A, REACTION_A));
-    let aggregate = projection.aggregate_for(TARGET).unwrap();
-    assert_eq!(aggregate.total, 1);
-    assert_eq!(aggregate.reactors, vec![AUTHOR_B.to_string()]);
+    let snapshot = reaction_summary_for(&projection, TARGET);
+    assert_eq!(snapshot.total, 1);
+    assert_eq!(snapshot.groups.len(), 1);
+    assert_eq!(
+        snapshot.groups[0].reactor_pubkeys,
+        vec![AUTHOR_B.to_string()]
+    );
 }
 
 #[test]
@@ -96,8 +106,8 @@ fn typed_output_round_trips() {
         groups: vec![ReactionGroupSummary {
             token: "+".to_string(),
             count: 2,
+            reactor_pubkeys: vec![AUTHOR_A.to_string(), AUTHOR_B.to_string()],
         }],
-        reactor_pubkeys: vec![AUTHOR_A.to_string(), AUTHOR_B.to_string()],
     };
     let bytes = encode_reaction_summary_snapshot(&snapshot);
     let decoded = root_as_reaction_summary_snapshot(&bytes).unwrap();
@@ -108,7 +118,7 @@ fn typed_output_round_trips() {
     assert_eq!(groups.len(), 1);
     assert_eq!(groups.get(0).token(), Some("+"));
     assert_eq!(groups.get(0).count(), 2);
-    let reactors: Vec<&str> = decoded.reactor_pubkeys().unwrap().iter().collect();
+    let reactors: Vec<&str> = groups.get(0).reactor_pubkeys().unwrap().iter().collect();
     assert_eq!(reactors, vec![AUTHOR_A, AUTHOR_B]);
 }
 
@@ -196,11 +206,16 @@ fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
         "typed output installed under the handle's key"
     );
 
-    // Live delivery folds into the typed output the shell will render.
+    // Live delivery folds into the typed output the shell will render — and
+    // the group's raw reactor pubkeys are what a shell compares its own
+    // active-account pubkey against (identity-free viewer derivation).
     host.feed(&reaction(REACTION_A, AUTHOR_A, "+"));
     let data = host.run_encoder().expect("output emits");
     let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
     assert_eq!(decoded.total(), 1);
+    let groups = decoded.groups().unwrap();
+    let reactors: Vec<&str> = groups.get(0).reactor_pubkeys().unwrap().iter().collect();
+    assert!(reactors.contains(&AUTHOR_A), "shell membership check works");
 
     // A retraction folds too — the same reducer instance is fed on close as
     // it was on delivery, so no parallel deletion model is needed here.

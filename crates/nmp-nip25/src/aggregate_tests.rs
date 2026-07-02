@@ -276,3 +276,41 @@ fn set_viewer_pubkey_recomputes_mine() {
     proj.set_viewer_pubkey(None);
     assert!(proj.aggregate_for(TARGET_A).unwrap().mine.is_empty());
 }
+
+#[test]
+fn reactors_by_token_groups_distinct_pubkeys_per_token() {
+    let proj = ReactionAggregateProjection::new(None);
+    proj.on_kernel_event(&reaction(&"1".repeat(64), BOB, TARGET_A, "+", None));
+    proj.on_kernel_event(&reaction(&"2".repeat(64), ALICE, TARGET_A, "+", None));
+    proj.on_kernel_event(&reaction(&"3".repeat(64), CAROL, TARGET_A, "🔥", None));
+    // A second target must not leak into TARGET_A's grouping.
+    proj.on_kernel_event(&reaction(&"4".repeat(64), CAROL, TARGET_B, "+", None));
+
+    let by_token = proj.reactors_by_token_for(TARGET_A);
+    assert_eq!(by_token.len(), 2);
+    // Distinct pubkeys, ascending within each token.
+    assert_eq!(by_token["+"], vec![ALICE.to_string(), BOB.to_string()]);
+    assert_eq!(by_token["🔥"], vec![CAROL.to_string()]);
+    assert!(proj.reactors_by_token_for(TARGET_B)["+"] == vec![CAROL.to_string()]);
+}
+
+#[test]
+fn reactors_by_token_drops_a_retracted_reactor() {
+    let proj = ReactionAggregateProjection::new(None);
+    proj.on_kernel_event(&reaction(&"1".repeat(64), ALICE, TARGET_A, "+", None));
+    proj.on_kernel_event(&reaction(&"2".repeat(64), BOB, TARGET_A, "+", None));
+
+    // Alice retracts her own reaction (NIP-09 kind:5 naming the kind:7 id).
+    proj.on_kernel_event(&KernelEvent {
+        id: "d".repeat(64),
+        author: ALICE.to_string(),
+        kind: KIND_REACTION_DELETE,
+        created_at: 2,
+        tags: vec![vec!["e".to_string(), "1".repeat(64)]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+
+    let by_token = proj.reactors_by_token_for(TARGET_A);
+    assert_eq!(by_token["+"], vec![BOB.to_string()]);
+}

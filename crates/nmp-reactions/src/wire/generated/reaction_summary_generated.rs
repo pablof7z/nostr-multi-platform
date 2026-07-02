@@ -28,6 +28,7 @@ pub mod nmp {
         impl<'a> ReactionGroupSummary<'a> {
             pub const VT_TOKEN: ::flatbuffers::VOffsetT = 4;
             pub const VT_COUNT: ::flatbuffers::VOffsetT = 6;
+            pub const VT_REACTOR_PUBKEYS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -45,6 +46,9 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<ReactionGroupSummary<'bldr>> {
                 let mut builder = ReactionGroupSummaryBuilder::new(_fbb);
                 builder.add_count(args.count);
+                if let Some(x) = args.reactor_pubkeys {
+                    builder.add_reactor_pubkeys(x);
+                }
                 if let Some(x) = args.token {
                     builder.add_token(x);
                 }
@@ -74,6 +78,20 @@ pub mod nmp {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn reactor_pubkeys(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ReactionGroupSummary::VT_REACTOR_PUBKEYS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for ReactionGroupSummary<'_> {
@@ -89,6 +107,9 @@ pub mod nmp {
                         false,
                     )?
                     .visit_field::<u64>("count", Self::VT_COUNT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("reactor_pubkeys", Self::VT_REACTOR_PUBKEYS, false)?
                     .finish();
                 Ok(())
             }
@@ -96,6 +117,11 @@ pub mod nmp {
         pub struct ReactionGroupSummaryArgs<'a> {
             pub token: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub count: u64,
+            pub reactor_pubkeys: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
         }
         impl<'a> Default for ReactionGroupSummaryArgs<'a> {
             #[inline]
@@ -103,6 +129,7 @@ pub mod nmp {
                 ReactionGroupSummaryArgs {
                     token: None,
                     count: 0,
+                    reactor_pubkeys: None,
                 }
             }
         }
@@ -123,6 +150,18 @@ pub mod nmp {
             pub fn add_count(&mut self, count: u64) {
                 self.fbb_
                     .push_slot::<u64>(ReactionGroupSummary::VT_COUNT, count, 0);
+            }
+            #[inline]
+            pub fn add_reactor_pubkeys(
+                &mut self,
+                reactor_pubkeys: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ReactionGroupSummary::VT_REACTOR_PUBKEYS,
+                    reactor_pubkeys,
+                );
             }
             #[inline]
             pub fn new(
@@ -146,6 +185,7 @@ pub mod nmp {
                 let mut ds = f.debug_struct("ReactionGroupSummary");
                 ds.field("token", &self.token());
                 ds.field("count", &self.count());
+                ds.field("reactor_pubkeys", &self.reactor_pubkeys());
                 ds.finish()
             }
         }
@@ -171,7 +211,6 @@ pub mod nmp {
             pub const VT_TARGET_ID: ::flatbuffers::VOffsetT = 6;
             pub const VT_TOTAL: ::flatbuffers::VOffsetT = 8;
             pub const VT_GROUPS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_REACTOR_PUBKEYS: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -189,9 +228,6 @@ pub mod nmp {
             ) -> ::flatbuffers::WIPOffset<ReactionSummarySnapshot<'bldr>> {
                 let mut builder = ReactionSummarySnapshotBuilder::new(_fbb);
                 builder.add_total(args.total);
-                if let Some(x) = args.reactor_pubkeys {
-                    builder.add_reactor_pubkeys(x);
-                }
                 if let Some(x) = args.groups {
                     builder.add_groups(x);
                 }
@@ -254,22 +290,6 @@ pub mod nmp {
                     >>(ReactionSummarySnapshot::VT_GROUPS, None)
                 }
             }
-            #[inline]
-            pub fn reactor_pubkeys(
-                &self,
-            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
-            {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
-                    >>(
-                        ReactionSummarySnapshot::VT_REACTOR_PUBKEYS, None
-                    )
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for ReactionSummarySnapshot<'_> {
@@ -292,9 +312,6 @@ pub mod nmp {
                             ::flatbuffers::ForwardsUOffset<ReactionGroupSummary>,
                         >,
                     >>("groups", Self::VT_GROUPS, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
-                    >>("reactor_pubkeys", Self::VT_REACTOR_PUBKEYS, false)?
                     .finish();
                 Ok(())
             }
@@ -311,11 +328,6 @@ pub mod nmp {
                     >,
                 >,
             >,
-            pub reactor_pubkeys: Option<
-                ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
-                >,
-            >,
         }
         impl<'a> Default for ReactionSummarySnapshotArgs<'a> {
             #[inline]
@@ -325,7 +337,6 @@ pub mod nmp {
                     target_id: None,
                     total: 0,
                     groups: None,
-                    reactor_pubkeys: None,
                 }
             }
         }
@@ -371,18 +382,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_reactor_pubkeys(
-                &mut self,
-                reactor_pubkeys: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
-                >,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ReactionSummarySnapshot::VT_REACTOR_PUBKEYS,
-                    reactor_pubkeys,
-                );
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> ReactionSummarySnapshotBuilder<'a, 'b, A> {
@@ -406,7 +405,6 @@ pub mod nmp {
                 ds.field("target_id", &self.target_id());
                 ds.field("total", &self.total());
                 ds.field("groups", &self.groups());
-                ds.field("reactor_pubkeys", &self.reactor_pubkeys());
                 ds.finish()
             }
         }

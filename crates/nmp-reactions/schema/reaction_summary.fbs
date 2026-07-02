@@ -5,20 +5,30 @@ namespace nmp.reactions;
 //
 // The reaction owner folds the kind:7 NIP-25 reactions (and their kind:5
 // NIP-09 retractions) it is handed for ONE target event and exposes, for that
-// target, the total surviving-reaction count, the per-content-token breakdown
-// ("+"/"-"/emoji/custom-emoji shortcode), and the distinct reactor pubkeys.
-// `nmp-reactions` composes this over `nmp_nip25::ReactionAggregateProjection`
-// (the same kind:7/kind:5 fold the NIP-29-group-scoped reaction read already
-// uses); the shell renders this typed output and never parses tags, counts
-// events, or reimplements retraction.
+// target, the total surviving-reaction count and the per-content-token
+// breakdown ("+"/"-"/emoji/custom-emoji shortcode) with each group's distinct
+// reactor pubkeys. `nmp-reactions` composes this over
+// `nmp_nip25::ReactionAggregateProjection` (the same kind:7/kind:5 fold the
+// NIP-29-group-scoped reaction read already uses); the shell renders this
+// typed output and never parses tags, counts events, or reimplements
+// retraction.
 //
 // Raw data only (aim.md Section 2): `target_id`, `token`, and
 // `reactor_pubkeys` are raw identifiers/content; no `display::` forwarder
-// runs on the encode path. There is no "did the active user react" boolean —
-// the raw `reactor_pubkeys` list is exposed so a caller that already knows its
-// own active account pubkey (e.g. from `active_account`) can test membership
-// itself with a plain raw-string comparison; this crate does not resolve
-// account identity (`open_reactions` takes no viewer parameter).
+// runs on the encode path. There is no viewer-relative field ("did the active
+// user react") — this read is identity-free: the shell derives that fact by
+// comparing its own already-available active-account pubkey against a group's
+// raw `reactor_pubkeys`, so `open_reactions` takes no viewer parameter and
+// never resolves account identity. (The NIP-29 group reaction lane's snapshot
+// carries a viewer-scoped `mine` list instead; this schema deliberately
+// diverges to the identity-free shape.)
+//
+// Boundedness (D8): counts are exact; each group's `reactor_pubkeys` lists
+// every DISTINCT surviving reactor, bounded by the reducer's ingest map
+// (`MAX_PROJECTION_MESSAGES` surviving kind:7 entries for the one target this
+// read serves) — the same bound the group-reaction and repost summaries
+// carry. No lossy per-group sampling: a sampled list would false-negative the
+// shell's own-pubkey membership check.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19):
@@ -27,8 +37,9 @@ namespace nmp.reactions;
 
 // One reaction-content group's tally within a target's summary.
 table ReactionGroupSummary {
-  token:string;  // raw reaction content ("+" for empty/like; emoji; NIP-30 shortcode)
-  count:uint64;  // surviving reactions carrying this token for the target
+  token:string;              // raw reaction content ("+" for empty/like; emoji; NIP-30 shortcode)
+  count:uint64;              // surviving reactions carrying this token for the target
+  reactor_pubkeys:[string];  // distinct reactor pubkeys (raw hex), ascending
 }
 
 table ReactionSummarySnapshot {
@@ -40,8 +51,6 @@ table ReactionSummarySnapshot {
   total:uint64;
   // Per-content-token breakdown, count desc then token asc.
   groups:[ReactionGroupSummary];
-  // Distinct reactor pubkeys (raw hex), ascending.
-  reactor_pubkeys:[string];
 }
 
 file_identifier "NRCS";
