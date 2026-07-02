@@ -38,7 +38,7 @@ crates/nmp-network/src/relay_worker/tests.rs	741
 crates/nmp-nip60/src/nip60_wallet.rs	714
 crates/nmp-nostr-lmdb/src/lib_tests.rs	867
 crates/nmp-planner/src/compiler/tests.rs	567
-crates/nmp-planner/src/interest.rs	583
+crates/nmp-planner/src/interest.rs	581
 crates/nmp-router/src/nip65_resolver/tests.rs	535
 crates/nmp-router/src/router/tests_v75.rs	509
 crates/nmp-signers/src/signers/nip46/handle/tests.rs	622
