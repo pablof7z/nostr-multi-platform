@@ -4,7 +4,7 @@
 use super::*;
 
 struct TestMailboxParser {
-    cache: Arc<dyn crate::substrate::MailboxCache>,
+    cache: Arc<crate::substrate::TestInMemoryMailboxCache>,
     hits: Arc<std::sync::atomic::AtomicUsize>,
     seen_ids: Arc<Mutex<Vec<String>>>,
 }
@@ -28,9 +28,9 @@ impl crate::substrate::IngestParser for TestMailboxParser {
         let has_read = has_relay_marker_tag(&raw.tags, "wss://signup-read.test", "read");
         let has_write = has_relay_marker_tag(&raw.tags, "wss://signup-write.test", "write");
         if !has_read && !has_write {
-            self.cache.remove(&raw.pubkey);
+            self.cache.fixture_remove(&raw.pubkey);
         } else {
-            self.cache.upsert(
+            self.cache.fixture_upsert(
                 raw.pubkey.clone(),
                 crate::substrate::ParsedRelayList {
                     read: has_read
@@ -199,7 +199,7 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     kernel.register_ingest_parser(
         crate::kinds::KIND_RELAY_LIST,
         Arc::new(TestMailboxParser {
-            cache: kernel.mailbox_cache_arc(),
+            cache: kernel.test_mailbox_cache_arc(),
             hits: Arc::clone(&parser_hits),
             seen_ids: Arc::clone(&parser_seen_ids),
         }),

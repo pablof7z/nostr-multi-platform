@@ -8,6 +8,12 @@ struct TestMailboxCache {
     inner: Mutex<BTreeMap<Pubkey, ParsedRelayList>>,
 }
 
+impl TestMailboxCache {
+    fn fixture_upsert(&self, author: Pubkey, list: ParsedRelayList) {
+        self.inner.lock().unwrap().insert(author, list);
+    }
+}
+
 impl MailboxCache for TestMailboxCache {
     fn read_relays(&self, author: &Pubkey) -> Option<Vec<RelayUrl>> {
         self.inner
@@ -33,12 +39,6 @@ impl MailboxCache for TestMailboxCache {
             .iter()
             .map(|(k, v)| (k.clone(), v.clone()))
             .collect()
-    }
-    fn remove(&self, author: &Pubkey) {
-        self.inner.lock().unwrap().remove(author);
-    }
-    fn upsert(&self, author: Pubkey, list: ParsedRelayList) {
-        self.inner.lock().unwrap().insert(author, list);
     }
 }
 
@@ -103,7 +103,7 @@ fn mailbox_cache_known_default_uses_read_or_write_presence() {
     let cache = TestMailboxCache::default();
     let pk: Pubkey = "alice".into();
     assert!(!cache.known(&pk));
-    cache.upsert(
+    cache.fixture_upsert(
         pk.clone(),
         ParsedRelayList {
             read: vec!["wss://r.example".into()],

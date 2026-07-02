@@ -34,6 +34,10 @@ pub mod swift_projections_registry;
 // presence policy. The kernel built-in key set, the revision dependency table,
 // and the registries' neutral columns are derived FROM this. See module doc.
 pub mod projection_contract;
+// #2617 — neutral read-model ownership contract manifest. Projection contracts
+// own exported snapshot surfaces; this owns durable internal materializations
+// such as mailbox/profile/DM-relay caches and their D4 writer/read API facts.
+pub mod read_model_contract;
 // #1939 (epic #1921) — the neutral typed action contract manifest. The single
 // source for default typed action namespace / producer / payload schema /
 // schema-version / FlatBuffers file identifier / default tier / generated
@@ -132,6 +136,10 @@ pub use projection_tier::projection_tier;
 pub use projection_version_gate::{
     check_all_producer_versions, parse_const_u32, repo_root as projection_repo_root,
     ProducerVersionCheckOutcome, ProducerVersionSource, PRODUCER_VERSION_SOURCES,
+};
+pub use read_model_contract::{
+    lookup as read_model_contract_lookup, ReadModelContract, ReadModelMutationMethod,
+    READ_MODEL_CONTRACT,
 };
 pub use rust_builtin_keys::{
     check_builtin_deps, check_builtin_keys, check_presence_keys, generate_builtin_deps,

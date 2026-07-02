@@ -25,6 +25,7 @@ type ExternalEventSinkPolicyFactory =
 #[derive(Default)]
 struct CapturingHost {
     external_event_sink_policy_factory: Mutex<Option<Arc<ExternalEventSinkPolicyFactory>>>,
+    mailbox_cache_reader: Mutex<Option<Arc<dyn MailboxCache>>>,
 }
 
 impl ActionRegistrar for CapturingHost {
@@ -65,7 +66,12 @@ impl IngestParserRegistrar for CapturingHost {
 impl KernelReaderRegistrar for CapturingHost {
     fn set_profile_lookup(&self, _lookup: Arc<dyn ProfileLookup>) {}
 
-    fn set_mailbox_cache_reader(&self, _cache: Arc<dyn MailboxCache>) {}
+    fn set_mailbox_cache_reader(&self, cache: Arc<dyn MailboxCache>) {
+        *self
+            .mailbox_cache_reader
+            .lock()
+            .expect("mailbox cache reader slot") = Some(cache);
+    }
 }
 
 impl BlockedRelayLookupRegistrar for CapturingHost {
@@ -210,4 +216,22 @@ fn install_returns_live_indexer_republish_handle() {
         "returned substrate handle re-enables the installed policy"
     );
     assert_eq!(handles.indexer_republish.forwarded_count(), 2);
+}
+
+#[test]
+fn install_returns_same_mailbox_cache_reader_it_installs() {
+    let mut host = CapturingHost::default();
+
+    let handles = install(&mut host, SubstrateConfig::default());
+    let installed = host
+        .mailbox_cache_reader
+        .lock()
+        .expect("mailbox cache reader slot")
+        .clone()
+        .expect("install registers mailbox cache reader");
+
+    assert!(
+        Arc::ptr_eq(&handles.mailbox_cache, &installed),
+        "install must return the same read-only mailbox cache handle it installs"
+    );
 }

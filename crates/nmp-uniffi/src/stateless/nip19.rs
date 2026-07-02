@@ -130,8 +130,6 @@ mod tests {
             fn snapshot_all(&self) -> Vec<(String, ParsedRelayList)> {
                 Vec::new()
             }
-            fn remove(&self, _: &String) {}
-            fn upsert(&self, _: String, _: ParsedRelayList) {}
         }
 
         let cache = StubCache {
@@ -182,8 +180,6 @@ mod tests {
             fn snapshot_all(&self) -> Vec<(String, ParsedRelayList)> {
                 Vec::new()
             }
-            fn remove(&self, _: &String) {}
-            fn upsert(&self, _: String, _: ParsedRelayList) {}
         }
 
         let app = crate::NmpApp::new();
@@ -200,18 +196,15 @@ mod tests {
     }
 
     #[test]
-    fn substrate_handle_is_the_encoder_read_cache() {
-        use nmp_core::substrate::ParsedRelayList;
+    fn mailbox_cache_reader_handle_is_the_encoder_read_cache() {
+        use nmp_core::substrate::{MailboxCache, ParsedRelayList, TestInMemoryMailboxCache};
+        use std::sync::Arc as StdArc;
 
         let mut app = crate::NmpApp::new();
         let app_mut = Arc::get_mut(&mut app).expect("fresh test app has one Arc owner");
-        let handles = nmp_substrate::install(
-            &mut app_mut.inner,
-            nmp_substrate::SubstrateConfig::default(),
-        );
-        let cache = handles.mailbox_cache;
+        let cache = StdArc::new(TestInMemoryMailboxCache::new());
 
-        cache.upsert(
+        cache.fixture_upsert(
             PUBKEY.to_string(),
             ParsedRelayList {
                 read: Vec::new(),
@@ -219,18 +212,21 @@ mod tests {
                 both: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
             },
         );
+        app_mut
+            .inner
+            .set_mailbox_cache_reader(StdArc::clone(&cache) as StdArc<dyn MailboxCache>);
 
         let result = encode_profile(Arc::clone(&app), PUBKEY.to_string());
         assert!(
             result.starts_with("nprofile1"),
-            "returned substrate handle must be the cache encode_profile reads; got {result}"
+            "installed mailbox-cache reader must be the cache encode_profile reads; got {result}"
         );
         let decoded = decode_nprofile(&result).expect("valid nprofile round-trips");
         assert_eq!(decoded.pubkey, PUBKEY);
         assert_eq!(
             decoded.relays,
             vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
-            "nprofile carries exactly the relays written through the returned handle"
+            "nprofile carries exactly the relays seeded through the explicit fixture handle"
         );
     }
 }

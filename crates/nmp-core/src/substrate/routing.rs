@@ -356,8 +356,9 @@ impl ParsedRelayList {
 /// `nmp-nip17` and is consulted directly by the DM send action, never by
 /// the router.
 ///
-/// The trait method `upsert` takes `&self` — implementations use interior
-/// mutability (the kind:10002 ingest parser is the single writer).
+/// This trait is read-only by design. The kind:10002 ingest parser owns the
+/// concrete writer side; consumers that hold `Arc<dyn MailboxCache>` cannot
+/// mutate parsed mailbox facts.
 pub trait MailboxCache: Send + Sync {
     fn read_relays(&self, author: &Pubkey) -> Option<Vec<RelayUrl>>;
     fn write_relays(&self, author: &Pubkey) -> Option<Vec<RelayUrl>>;
@@ -380,15 +381,6 @@ pub trait MailboxCache: Send + Sync {
     /// Order is implementation-defined. Callers that need a deterministic
     /// order must sort.
     fn snapshot_all(&self) -> Vec<(Pubkey, ParsedRelayList)>;
-
-    /// Remove the entry for `author`. Called by the kind:10002 ingest
-    /// path when an author publishes an empty kind:10002 (the canonical
-    /// "I cleared my NIP-65 metadata" signal).
-    fn remove(&self, author: &Pubkey);
-
-    /// Single writer — only called by `nmp-router`'s kind:10002 ingest path.
-    /// The trait makes the contract structural rather than convention.
-    fn upsert(&self, author: Pubkey, list: ParsedRelayList);
 }
 
 #[cfg(test)]

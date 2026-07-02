@@ -143,7 +143,7 @@ fn publish_lane2_stacks_with_lane1_for_same_url() {
     // A relay appearing in BOTH NIP-65 write set AND the e-tag hint slot
     // must carry both RoutingSource lanes in its inner set.
     let cache = Arc::new(InMemoryMailboxCache::new());
-    cache.upsert(
+    cache.fixture_upsert(
         pubkey(),
         ParsedRelayList {
             write: vec!["wss://shared.example".into()],

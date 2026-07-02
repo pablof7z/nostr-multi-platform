@@ -2,11 +2,14 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Component, Path};
 
+use crate::read_model_contract::READ_MODEL_CONTRACT;
+
 use super::{OwnershipAuditIssue, OwnershipDescriptor};
 
 const RAW_FRAMEWORK_PROJECTION: &str = "NMP-SURFACE-RAW-PROJECTION";
 const APP_DYNAMIC_FRAMEWORK_PREFIX: &str = "NMP-SURFACE-DYNAMIC-FRAMEWORK-PREFIX";
 const UNCLAIMED_DECLARED_SURFACE: &str = "NMP-SURFACE-UNCLAIMED-DECLARATION";
+const DIRECT_READ_MODEL_WRITE: &str = "NMP-READ-MODEL-DIRECT-WRITE";
 
 pub(super) fn audit_source_surfaces(
     workspace_root: &Path,
@@ -118,6 +121,52 @@ fn scan_file(
                 ));
             }
         }
+
+        audit_read_model_write_line(workspace_root, path, idx + 1, line, issues);
+    }
+}
+
+fn audit_read_model_write_line(
+    workspace_root: &Path,
+    path: &Path,
+    line: usize,
+    source_line: &str,
+    issues: &mut Vec<OwnershipAuditIssue>,
+) {
+    let rel = display_path(workspace_root, path);
+    if is_fixture_path(&rel) {
+        return;
+    }
+    for contract in READ_MODEL_CONTRACT {
+        let owner_root = format!("crates/{}/", contract.owner_crate);
+        if !rel.starts_with(&owner_root) {
+            continue;
+        }
+        for method in contract.mutation_methods {
+            if !source_line.contains(method.token) {
+                continue;
+            }
+            if method
+                .allowed_writer_paths
+                .iter()
+                .any(|allowed| rel == *allowed)
+                || method
+                    .fixture_path_fragments
+                    .iter()
+                    .any(|fragment| rel.contains(fragment))
+            {
+                continue;
+            }
+            issues.push(OwnershipAuditIssue {
+                code: DIRECT_READ_MODEL_WRITE.to_string(),
+                message: format!(
+                    "{rel}:{line}: read-model {} mutation `{}` is only allowed in {}",
+                    contract.id,
+                    method.token,
+                    method.allowed_writer_paths.join(", ")
+                ),
+            });
+        }
     }
 }
 
@@ -228,7 +277,16 @@ fn should_skip_path(workspace_root: &Path, path: &Path) -> bool {
     text.starts_with("crates/nmp-codegen/")
         || text.starts_with("crates/nmp-testing/bin/doctrine-lint/")
         || text.contains("/tests/")
+        || text.ends_with("/tests.rs")
         || text.ends_with("_tests.rs")
+}
+
+fn is_fixture_path(rel: &str) -> bool {
+    rel.contains("/tests/")
+        || rel.ends_with("/tests.rs")
+        || rel.ends_with("_tests.rs")
+        || rel.contains("test_support")
+        || rel.contains("fixture")
 }
 
 fn has_component(path: &Path, needle: &str) -> bool {
@@ -326,6 +384,52 @@ const KEY: DeclaredProjectionKey =
         let issues = audit_source_surfaces(&root, &descriptors);
 
         assert!(issues.is_empty(), "unexpected audit issues: {issues:?}");
+    }
+
+    #[test]
+    fn crate_ownership_audit_rejects_read_model_direct_write_outside_writer() {
+        let root = fixture_root("read_model_write");
+        write_source(
+            &root,
+            "crates/nmp-nip01/src/rogue.rs",
+            r#"
+pub fn rogue(cache: &ProfileCache, pubkey: String, view: ProfileView) {
+    cache.upsert_view(pubkey, view);
+}
+"#,
+        );
+
+        let issues = audit_source_surfaces(&root, &[]);
+
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == DIRECT_READ_MODEL_WRITE),
+            "expected direct read-model write issue, got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn crate_ownership_audit_allows_read_model_declared_writer_path() {
+        let root = fixture_root("read_model_writer");
+        write_source(
+            &root,
+            "crates/nmp-nip01/src/kind0_parser.rs",
+            r#"
+pub fn parse(cache: &ProfileCache, pubkey: String, view: ProfileView) {
+    cache.upsert_view(pubkey, view);
+}
+"#,
+        );
+
+        let issues = audit_source_surfaces(&root, &[]);
+
+        assert!(
+            issues
+                .iter()
+                .all(|issue| issue.code != DIRECT_READ_MODEL_WRITE),
+            "declared writer path should be allowed, got {issues:?}"
+        );
     }
 
     fn fixture_root(name: &str) -> PathBuf {

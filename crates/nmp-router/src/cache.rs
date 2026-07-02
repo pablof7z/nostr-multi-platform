@@ -33,6 +33,14 @@ use std::sync::RwLock;
 
 use nmp_core::substrate::{MailboxCache, ParsedRelayList, RoutingPubkey, RoutingRelayUrl};
 
+#[derive(Clone, Copy)]
+pub(crate) struct MailboxCacheWritePermit {
+    _sealed: (),
+}
+
+pub(crate) const KIND10002_WRITER: MailboxCacheWritePermit =
+    MailboxCacheWritePermit { _sealed: () };
+
 #[derive(Default)]
 pub struct InMemoryMailboxCache {
     inner: RwLock<HashMap<RoutingPubkey, ParsedRelayList>>,
@@ -54,6 +62,39 @@ impl InMemoryMailboxCache {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    /// Apply the canonical accepted kind:10002 parser output.
+    pub(crate) fn apply_kind10002_update(
+        &self,
+        _permit: MailboxCacheWritePermit,
+        author: RoutingPubkey,
+        list: ParsedRelayList,
+    ) {
+        if let Ok(mut g) = self.inner.write() {
+            g.insert(author, list);
+        }
+    }
+
+    /// Remove an author's parsed kind:10002 mailbox entry.
+    pub(crate) fn remove_kind10002_entry(
+        &self,
+        _permit: MailboxCacheWritePermit,
+        author: &RoutingPubkey,
+    ) {
+        if let Ok(mut g) = self.inner.write() {
+            g.remove(author);
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_upsert(&self, author: RoutingPubkey, list: ParsedRelayList) {
+        self.apply_kind10002_update(KIND10002_WRITER, author, list);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn fixture_remove(&self, author: &RoutingPubkey) {
+        self.remove_kind10002_entry(KIND10002_WRITER, author);
     }
 }
 
@@ -82,18 +123,6 @@ impl MailboxCache for InMemoryMailboxCache {
             .map(|g| g.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
             .unwrap_or_default()
     }
-
-    fn remove(&self, author: &RoutingPubkey) {
-        if let Ok(mut g) = self.inner.write() {
-            g.remove(author);
-        }
-    }
-
-    fn upsert(&self, author: RoutingPubkey, list: ParsedRelayList) {
-        if let Ok(mut g) = self.inner.write() {
-            g.insert(author, list);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -106,7 +135,7 @@ mod tests {
         let alice: RoutingPubkey = "alice".into();
 
         assert_eq!(cache.read_relays(&alice), None);
-        cache.upsert(
+        cache.fixture_upsert(
             alice.clone(),
             ParsedRelayList {
                 read: vec!["wss://r.example".into()],
@@ -129,14 +158,14 @@ mod tests {
         let cache = InMemoryMailboxCache::new();
         let alice: RoutingPubkey = "alice".into();
 
-        cache.upsert(
+        cache.fixture_upsert(
             alice.clone(),
             ParsedRelayList {
                 write: vec!["wss://old.example".into()],
                 ..ParsedRelayList::default()
             },
         );
-        cache.upsert(
+        cache.fixture_upsert(
             alice.clone(),
             ParsedRelayList {
                 write: vec!["wss://new.example".into()],
@@ -156,7 +185,7 @@ mod tests {
         let alice: RoutingPubkey = "alice".into();
 
         assert!(!cache.known(&alice));
-        cache.upsert(
+        cache.fixture_upsert(
             alice.clone(),
             ParsedRelayList {
                 read: vec!["wss://r.example".into()],
@@ -170,9 +199,9 @@ mod tests {
     fn len_tracks_unique_authors() {
         let cache = InMemoryMailboxCache::new();
         assert_eq!(cache.len(), 0);
-        cache.upsert("alice".into(), ParsedRelayList::default());
-        cache.upsert("bob".into(), ParsedRelayList::default());
-        cache.upsert("alice".into(), ParsedRelayList::default()); // replace
+        cache.fixture_upsert("alice".into(), ParsedRelayList::default());
+        cache.fixture_upsert("bob".into(), ParsedRelayList::default());
+        cache.fixture_upsert("alice".into(), ParsedRelayList::default()); // replace
         assert_eq!(cache.len(), 2);
     }
 
@@ -189,7 +218,7 @@ mod tests {
         use std::thread;
 
         let cache = Arc::new(InMemoryMailboxCache::new());
-        cache.upsert(
+        cache.fixture_upsert(
             "alice".into(),
             ParsedRelayList {
                 write: vec!["wss://w.example".into()],
@@ -216,14 +245,14 @@ mod tests {
         assert!(cache.is_empty());
 
         // Write APIs silently no-op (no panic, mutation lost — by policy).
-        cache.upsert(
+        cache.fixture_upsert(
             "bob".into(),
             ParsedRelayList {
                 write: vec!["wss://b.example".into()],
                 ..ParsedRelayList::default()
             },
         );
-        cache.remove(&"alice".to_string());
+        cache.fixture_remove(&"alice".to_string());
         // Post-write reads still degrade — the lock stays poisoned.
         assert_eq!(cache.write_relays(&"bob".to_string()), None);
     }

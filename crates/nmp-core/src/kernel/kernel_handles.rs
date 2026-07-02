@@ -61,6 +61,29 @@ impl Kernel {
         Arc::clone(&self.mailbox_cache)
     }
 
+    /// Test fixture handle for parsed kind:10002 writes.
+    #[cfg(any(test, feature = "test-support"))]
+    #[allow(dead_code)]
+    pub(crate) fn test_mailbox_cache_arc(&self) -> Arc<TestInMemoryMailboxCache> {
+        Arc::clone(&self.test_mailbox_cache)
+    }
+
+    /// Test fixture seed path for parsed kind:10002 facts.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn fixture_upsert_mailbox(
+        &self,
+        author: String,
+        list: crate::substrate::ParsedRelayList,
+    ) {
+        self.test_mailbox_cache.fixture_upsert(author, list);
+    }
+
+    /// Test fixture clear path for parsed kind:10002 facts.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn fixture_remove_mailbox(&self, author: &str) {
+        self.test_mailbox_cache.fixture_remove(&author.to_string());
+    }
+
     /// Record a store-open failure reason (degraded-mode diagnostic) AFTER kernel
     /// construction.
     ///

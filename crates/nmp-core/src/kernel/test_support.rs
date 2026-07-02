@@ -201,9 +201,9 @@ impl Kernel {
         let parsed = nmp_nip65_types::parse_relay_list_tags(&tags);
         let mailbox_before = self.mailbox_cache().snapshot(&author_pubkey.to_string());
         if parsed.is_empty() {
-            self.mailbox_cache().remove(&author_pubkey.to_string());
+            self.fixture_remove_mailbox(author_pubkey);
         } else {
-            self.mailbox_cache().upsert(
+            self.fixture_upsert_mailbox(
                 author_pubkey.to_string(),
                 crate::substrate::ParsedRelayList {
                     read: parsed.read,

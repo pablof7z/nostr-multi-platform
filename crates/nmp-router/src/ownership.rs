@@ -17,6 +17,21 @@ nmp_ownership::declare_crate_ownership! {
             ],
         },
         {
+            claim_type: "read_model",
+            id: "read_model.nmp.router.mailbox_cache",
+            exclusive: true,
+            scope: {
+                kind: "read_model",
+                value: "nmp.router.mailbox_cache",
+                context: "",
+            },
+            owns: [
+                "NIP-65 mailbox cache materialization",
+                "kind:10002 parser write authority",
+                "read-only mailbox cache API consumed by router/planner/kernel",
+            ],
+        },
+        {
             claim_type: "namespace",
             id: "action.nmp.nip65.publish_relay_list",
             exclusive: true,

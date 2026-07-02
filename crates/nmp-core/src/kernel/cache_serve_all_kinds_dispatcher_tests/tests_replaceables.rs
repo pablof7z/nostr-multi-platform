@@ -26,7 +26,7 @@ fn cache_served_replaceables_fire_transitions_kind_agnostically() {
     // Register a kind:10002 parser writing a real mailbox cache, mirroring
     // production composition. Use the same in-memory mailbox cache the kernel
     // reads.
-    let mailbox = kernel.mailbox_cache_arc();
+    let mailbox = kernel.test_mailbox_cache_arc();
     let mailbox_parser: Arc<dyn IngestParser> = Arc::new(TestKind10002Parser { cache: mailbox });
     if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
         d.register_kind(10_002, mailbox_parser);
@@ -58,7 +58,7 @@ fn cache_served_replaceables_fire_transitions_kind_agnostically() {
     kernel
         .profile_lookup()
         .evict_to(&std::collections::HashSet::new(), 0);
-    kernel.mailbox_cache().remove(&author);
+    kernel.fixture_remove_mailbox(&author);
     assert!(
         !kernel.profile_lookup().contains(&author),
         "profile cleared pre-replay"

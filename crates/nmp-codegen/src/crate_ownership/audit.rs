@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::read_model_contract::READ_MODEL_CONTRACT;
+
 use super::{OwnershipAuditIssue, OwnershipDescriptor};
 
 pub(super) fn audit_descriptors(descriptors: &[OwnershipDescriptor]) -> Vec<OwnershipAuditIssue> {
@@ -63,6 +65,47 @@ pub(super) fn audit_descriptors(descriptors: &[OwnershipDescriptor]) -> Vec<Owne
                     "exclusive ownership scope {} is claimed by {}",
                     scope.replace('\t', " "),
                     owners.join(", ")
+                ),
+            });
+        }
+    }
+    issues.extend(audit_read_model_contracts(descriptors));
+    issues
+}
+
+fn audit_read_model_contracts(descriptors: &[OwnershipDescriptor]) -> Vec<OwnershipAuditIssue> {
+    let claim_ids = descriptors
+        .iter()
+        .flat_map(|descriptor| descriptor.claims.iter().map(|claim| claim.id.as_str()))
+        .collect::<BTreeSet<_>>();
+    let crate_names = descriptors
+        .iter()
+        .map(|descriptor| descriptor.crate_name.as_str())
+        .collect::<BTreeSet<_>>();
+    let mut ids = BTreeSet::new();
+    let mut issues = Vec::new();
+    for contract in READ_MODEL_CONTRACT {
+        if !ids.insert(contract.id) {
+            issues.push(OwnershipAuditIssue {
+                code: "NMP-READ-MODEL-DUPLICATE-ID".to_string(),
+                message: format!("duplicate read-model contract id {}", contract.id),
+            });
+        }
+        if !claim_ids.contains(contract.owner_claim) {
+            issues.push(OwnershipAuditIssue {
+                code: "NMP-READ-MODEL-OWNER-CLAIM".to_string(),
+                message: format!(
+                    "read-model {} cites missing owner claim `{}`",
+                    contract.id, contract.owner_claim
+                ),
+            });
+        }
+        if !crate_names.contains(contract.owner_crate) {
+            issues.push(OwnershipAuditIssue {
+                code: "NMP-READ-MODEL-OWNER-CRATE".to_string(),
+                message: format!(
+                    "read-model {} cites missing owner crate `{}`",
+                    contract.id, contract.owner_crate
                 ),
             });
         }
@@ -135,6 +178,40 @@ mod tests {
                 .iter()
                 .all(|issue| issue.code != "NMP-OWNERSHIP-NIP-ACTION-OWNER"),
             "nmp.nip65 has no separate protocol owner; got {issues:?}"
+        );
+    }
+
+    #[test]
+    fn audit_rejects_read_model_contract_owner_claim_without_descriptor_claim() {
+        let descriptors = vec![
+            descriptor("nmp.router", "nmp-router", Vec::new()),
+            descriptor(
+                "nmp.nip01",
+                "nmp-nip01",
+                vec![claim(
+                    "artifact",
+                    "nostr.kind.0.profile_metadata",
+                    "kind",
+                    "0",
+                )],
+            ),
+            descriptor(
+                "nmp.nip17",
+                "nmp-nip17",
+                vec![claim(
+                    "artifact",
+                    "nostr.kind.10050.dm_relay_list",
+                    "kind",
+                    "10050",
+                )],
+            ),
+        ];
+        let issues = audit_read_model_contracts(&descriptors);
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "NMP-READ-MODEL-OWNER-CLAIM"),
+            "expected missing read-model owner claim issue, got {issues:?}"
         );
     }
 

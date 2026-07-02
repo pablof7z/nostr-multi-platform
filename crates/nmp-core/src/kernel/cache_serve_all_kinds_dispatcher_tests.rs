@@ -216,7 +216,7 @@ pub(super) fn open_kind10002_interest(kernel: &mut Kernel, seed: u64, author_hex
 /// so cache-serve tests can prove the registered parser ran; NIP-65 parsing
 /// itself is owned by `nmp-router`.
 pub(super) struct TestKind10002Parser {
-    pub(super) cache: Arc<dyn crate::substrate::MailboxCache>,
+    pub(super) cache: Arc<crate::substrate::TestInMemoryMailboxCache>,
 }
 
 impl crate::substrate::IngestParser for TestKind10002Parser {
@@ -226,9 +226,9 @@ impl crate::substrate::IngestParser for TestKind10002Parser {
             return;
         }
         if raw.tags.is_empty() {
-            self.cache.remove(&raw.pubkey);
+            self.cache.fixture_remove(&raw.pubkey);
         } else {
-            self.cache.upsert(
+            self.cache.fixture_upsert(
                 raw.pubkey.clone(),
                 crate::substrate::ParsedRelayList {
                     read: Vec::new(),
