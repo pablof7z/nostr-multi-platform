@@ -162,3 +162,34 @@ desktop rendering dependency chain no longer pulls `ttf-parser`.
 `winit` releases. When a compatible stack removes `ttf-parser`, update the
 workspace lockfile, verify `cargo deny check advisories` passes without this
 ignore, and delete the ignore entry from `deny.toml`.
+
+---
+
+## Post-baseline advisory: RUSTSEC-2026-0194
+
+- **Advisory**: RUSTSEC-2026-0194
+- **Crate**: `quick-xml` v0.39.4
+- **Affected dependency chain**: `wayland-scanner 0.31.10` through the
+  Linux Wayland/iced desktop stack used by `apps/nmp-gallery/desktop`
+- **Detected**: 2026-07-02
+- **Staged removal issue**: #2711
+- **Removal deadline**: before the v1 release train closes, or 2026-09-30
+  at the latest if v1 is still open
+
+The advisory is a high-severity CPU-exhaustion vulnerability in untrusted XML
+attribute duplicate checks. NMP does not call `quick-xml` directly; it is pulled
+through `wayland-scanner`, a proc-macro/build-time dependency for the Linux
+Wayland desktop UI stack. As of 2026-07-02, crates.io latest
+`wayland-scanner` is 0.31.10 and requires `quick-xml ^0.39`, so
+`cargo update -p quick-xml --precise 0.41.0` cannot resolve.
+
+**Current mitigation**: `RUSTSEC-2026-0194` is ignored in both
+`.github/workflows/supply-chain.yml` and `deny.toml [advisories].ignore`.
+This is a staged exception, not a permanent waiver.
+
+**Resolution path**: Track upstream `wayland-scanner`, `wayland-client`,
+`smithay-client-toolkit`, `winit`, and `iced` releases. When a compatible stack
+allows `quick-xml >= 0.41.0`, update the workspace lockfile, verify
+`cargo audit --ignore RUSTSEC-2026-0124` and `cargo deny check --all-features`
+pass without this ignore, remove the workflow/config exceptions, and close
+#2711.
