@@ -56,7 +56,7 @@ Last updated: 2026-07-02
 
 | Slug | Title | Summary | Tags | Volatility | Verified | Topic |
 |------|-------|---------|------|------------|----------|-------|
-| [composition-root](guides/composition-root.md) | Explicit Composition Root and register_defaults Elimination | Per ADR-0069, the composition root requires `register_defaults()` to be dead as a production path everywhere â in the starter, gallery, and browser | capture | warm | 2026-06-29 | composition-root |
+| [composition-root](guides/composition-root.md) | Explicit Composition Root and register_defaults Elimination | Per ADR-0069, production apps compose explicit substrate, protocol, app feature, capability, output, and policy owners. `register_defaults()` and `nmp-defaults` are deleted production and scaffold architecture. | capture | warm | 2026-07-02 | composition-root |
 
 ## crate-ownership (1 guide)
 
@@ -155,7 +155,7 @@ Last updated: 2026-07-02
 |------|------|--------|------------|
 | [action-builders](nouns/action-builders.md) | ACTION_BUILDERS | extracted | A hardcoded public const array of hand-coded ActionBuilder struct entries — the schema source-of-truth for the action-builder codegen pipeline. Contains only NMP's built-in NIPs with no mechanism for external/app-provided entries. |
 | [actionmodule](nouns/actionmodule.md) | ActionModule | extracted | the per-NIP adapter that owns write action execution; implements the ActionModule trait with execute() entry point; receives generic signer capability and routes by provenance |
-| [adr-directory](nouns/adr-directory.md) | ADR directory | extracted | Current architecture decision surface; obsolete decision files are deleted after surviving rules move to their current owners |
+| [adr-directory](nouns/adr-directory.md) | ADR directory | extracted | The current architecture decision surface. It contains only ADRs that still own |
 | [adrs](nouns/adrs.md) | ADRs | extracted | The decision spine — they are not the fast developer architecture guide. The ADR file itself is authoritative for its own status; the index is only a navigation aid. |
 | [app-owned-kinds](nouns/app-owned-kinds.md) | App-owned kinds | extracted | event kinds (with custom schemas/numbers) defined and owned within an app's own codebase, distinct from NMP's built-in NIPs; executed via ActionModule registration at composition root |
 | [architecture-decision-record-adr](nouns/architecture-decision-record-adr.md) | Architecture Decision Record (ADR) | extracted | a document that preserves durable decision context; must be edited in place to describe the current design rather than preserving outdated guidance |
@@ -169,7 +169,7 @@ Last updated: 2026-07-02
 | [composition-root](nouns/composition-root.md) | composition root | extracted | The only place where a production app chooses product policy; explicitly installs substrate, reusable Nostr protocol features, app-owned product features, shell capability contracts, then starts the runtime |
 | [deletion-ledger](nouns/deletion-ledger.md) | deletion ledger | extracted | Per-architecture-slice accounting of old doors deleted/privatized, new concepts, and net permanent concepts — tracks the concept/surface collapse that LOC numbers understates |
 | [dispatch-success](nouns/dispatch-success.md) | Dispatch ≠ success | extracted | the doctrine that dispatching an event to publish pipeline is orthogonal from confirming receipt on relays; Rust owns tracked status intent that survives offline |
-| [dispatchenvelope](nouns/dispatchenvelope.md) | DispatchEnvelope | extracted | FlatBuffers encoding for a typed action, pushed through dispatch_action — the single FFI command lane (ADR-0071), identical in shape across native and browser |
+| [dispatchenvelope](nouns/dispatchenvelope.md) | DispatchEnvelope | extracted | FlatBuffers encoding for a typed action, pushed through dispatch_action — the single FFI command lane (legacy decision 0064), identical in shape across native and browser |
 | [dispatchoutcome](nouns/dispatchoutcome.md) | DispatchOutcome | extracted | Typed result of action dispatch carrying correlation_id, error, and code field; replaces raw JSON for typed command execution |
 | [doc-vocabulary-ratchets](nouns/doc-vocabulary-ratchets.md) | doc/vocabulary ratchets | extracted | CI lint gates that stop old register_defaults/raw-projection vocabulary from creeping back into docs and code. They are pro-migration — the opposite of friction-for-nothing — enforcing the clean-break by failing CI if old vocabulary re-enters. |
 | [door-read-door-write-door](nouns/door-read-door-write-door.md) | door (read door / write door) | extracted | Metaphor for the app-facing API surface. Read door = how an app consumes data (typed read sessions). Write door = how an app produces and emits Nostr events (construct → sign → publish pipeline). |
@@ -185,7 +185,7 @@ Last updated: 2026-07-02
 | [m14-collapse-native-public-binding-surface-to-uniffi](nouns/m14-collapse-native-public-binding-surface-to-uniffi.md) | M14 – Collapse native public binding surface to UniFFI | extracted | post-v1 epic to consolidate native (iOS/Android) public FFI to one UniFFI surface; eliminate legacy C/JNI public lanes; 56 symbols migrate, zero internal-ABI exceptions |
 | [nmp-cli-component-install-registry](nouns/nmp-cli-component-install-registry.md) | nmp-cli component-install registry | extracted | Per-platform install manifests in `crates/nmp-cli/registry/*.toml` that define what components the `nmp add` scaffolding tool can install for each platform (swiftui, compose, tui, desktop, web) |
 | [nmp-core-rule-rust-owns-durable-behavior](nouns/nmp-core-rule-rust-owns-durable-behavior.md) | NMP core rule (Rust owns durable behavior) | extracted | NMP inherits RMP's core rule: Rust owns durable behavior and each platform renders native UI. Anything a second platform would have to reimplement to stay correct (relay choice, signer choice, tag mutation, publish retry, queue truth, nav meaning) belongs in Rust. |
-| [nmp-defaults](nouns/nmp-defaults.md) | nmp-defaults | extracted | Deleted composition bundle. Production and scaffold app roots compose explicit owners directly; `register_defaults()` is not current architecture. |
+| [nmp-defaults](nouns/nmp-defaults.md) | nmp-defaults | extracted | Deleted composition bundle. Production and scaffold app roots compose explicit |
 | [nmp-ffi-nmp-native-runtime-crate-roles](nouns/nmp-ffi-nmp-native-runtime-crate-roles.md) | nmp-ffi / nmp-native-runtime (crate roles) | extracted | nmp-ffi is C-ABI glue; nmp-native-runtime owns lifecycle. Under the UniFFI collapse, nmp-native-runtime also owns the FFI-free dispatch core that both C-ABI and UniFFI consume. |
 | [nmp-gallery](nouns/nmp-gallery.md) | nmp-gallery | extracted | A conformance/regression harness — a storybook that proves every NMP component decodes and renders on every platform at HEAD, with value in breadth + currency, not shippability |
 | [nmp-uniffi](nouns/nmp-uniffi.md) | nmp-uniffi | extracted | A new in-tree crate providing UniFFI 0.29 proc-macro bindings wrapping nmp-native-runtime. Exposes NmpApp (Arc-wrapped: start/configure/stop/reset/shutdown/dispatch_action/set_update_sink), UpdateSink callback interface, and DispatchOutcome record. |
@@ -218,3 +218,4 @@ Last updated: 2026-07-02
 | [uniffi-nmp-native-strategy](nouns/uniffi-nmp-native-strategy.md) | UniFFI (NMP native strategy) | extracted | One unified UniFFI surface for all native platforms (iOS/Android/desktop); browser stays wasm-bindgen; FlatBuffers remains the typed payload passed THROUGH UniFFI bindings |
 | [updatesink](nouns/updatesink.md) | UpdateSink | extracted | A UniFFI callback trait that receives typed update frames with proven quiescence semantics, verified to handle shutdown during in-flight callbacks without deadlock or use-after-free |
 | [write-door](nouns/write-door.md) | Write door | extracted | the app-facing API for producing/emitting Nostr events; structured as orthogonal construct → sign → publish phases with explicit provenance classification; dispatch ≠ success |
+
