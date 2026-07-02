@@ -6,7 +6,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use super::tests::{drain_until, LocalServer, ServerObserved};
+use super::tests::support::{drain_until, LocalServer, ServerObserved};
 use super::{spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
