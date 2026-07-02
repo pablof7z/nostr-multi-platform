@@ -55,8 +55,8 @@ let handle = app.feeds().open_spec(
   `refs.event.envelopes` render envelopes. Do not read
   `claimed_event_embeds` or parse whole-map event projections in the shell.
 - App feed output keys are app-owned projection keys such as
-  `FeedKey::app("app.example.home")`. Do not use framework-owned feed strings
-  such as `nmp.feed.home`.
+  `FeedKey::app("app.example.home")`. Do not use framework-owned singleton
+  feed strings.
 - Treat projection schema ids and versions as generated contracts. If a pinned
   consumer mirrors typed rows, regenerate or update the mirror from the release
   instead of relying on stale field names.
