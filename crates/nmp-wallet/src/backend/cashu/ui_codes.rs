@@ -39,6 +39,12 @@ pub const MINT_TOKENS_FAILED: &str = "wallet_cashu_mint_tokens_failed";
 /// unreachable in normal operation; surfaced rather than silently dropped).
 pub const JOURNAL_ERROR: &str = "wallet_cashu_journal_error";
 
+/// #2910/#2923 — a `CompleteDepositCashu` attempt for this `quote_id` is
+/// already chaining toward a signature (see `PendingDeposit::chain_started_at`'s
+/// doc comment); retryable once that attempt finishes or its lease expires,
+/// never a hard failure.
+pub const DEPOSIT_IN_PROGRESS: &str = "wallet_cashu_deposit_in_progress";
+
 // ─── #2917 (epic #2864 W8/W9/W13) — nutzap loop ────────────────────────────
 
 /// `PublishNutzapInfo` has no relay set to publish kind:10019 to (neither the

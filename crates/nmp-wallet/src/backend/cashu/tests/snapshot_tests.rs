@@ -34,6 +34,8 @@ fn snapshot_never_leaks_a_quote_id_proof_or_secret() {
                 mint: "https://testnut.cashu.space".to_string(),
                 amount_sats: 21,
                 minted_proofs: None,
+                signed_token: None,
+                chain_started_at: None,
             },
         );
         state.ledger.apply(crate::journal::WalletFact::TokenAdded {

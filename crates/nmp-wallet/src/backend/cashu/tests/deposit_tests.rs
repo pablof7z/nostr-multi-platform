@@ -279,6 +279,17 @@ fn complete_deposit_reports_not_yet_paid_without_failing_the_operation() {
                 crate::journal::WalletOperationState::MintSettled,
             )
             .unwrap();
+        state.pending_deposits.insert(
+            "quote-notpaid".to_string(),
+            state::PendingDeposit {
+                operation_id: operation_id.clone(),
+                mint: MINT.to_string(),
+                amount_sats: 21,
+                minted_proofs: None,
+                signed_token: None,
+                chain_started_at: None,
+            },
+        );
     }
     let mock_url = spawn_mock_mint(vec![(
         200,
@@ -363,6 +374,14 @@ fn dispatch_token_event_applies_token_added_and_settles_the_operation() {
                 mint: MINT.to_string(),
                 amount_sats: 30,
                 minted_proofs: None,
+                signed_token: None,
+                // `dispatch_token_event`'s `on_signed` fences on this
+                // matching the `created_at` it's called with below (see
+                // `clear_chain_lease`'s doc comment) — simulates this call
+                // happening as the legitimate, still-current attempt for
+                // this quote (the normal case; the fencing-rejection case is
+                // covered separately by the concurrency tests).
+                chain_started_at: Some(1_700_000_000),
             },
         );
     }
@@ -443,9 +462,17 @@ fn dispatch_token_event_applies_token_added_and_settles_the_operation() {
         30_000,
         "amount_msat = sats*1000"
     );
+    // #2910/#2923 money-safety fix: the entry is RETAINED (never removed),
+    // caching the signed event so a retry after a publish failure can
+    // republish it instead of hitting `UNKNOWN_QUOTE` with the real proofs
+    // stranded — see `PendingDeposit::signed_token`'s doc comment.
+    let pending = state
+        .pending_deposits
+        .get("quote-xyz")
+        .expect("the completed quote stays retained for republish-on-retry");
     assert!(
-        !state.pending_deposits.contains_key("quote-xyz"),
-        "the completed quote is no longer pending"
+        pending.signed_token.is_some(),
+        "the signed event must be cached once signing succeeds"
     );
     assert_eq!(
         state.journal.get(&operation_id).unwrap().state,

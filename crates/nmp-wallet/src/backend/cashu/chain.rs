@@ -45,10 +45,13 @@ pub(super) fn launch_self_encrypted_publish(
     relays: Vec<String>,
     // D7 — the kernel owns the wall clock; the caller resolves this from
     // `ctx.now_secs()` while it still holds `ctx` (this chain only holds an
-    // owned `CommandSender` from here on). kind:17375/7375 are both in the
-    // NIP-01 replaceable range (10000-19999), so a wrong/sentinel timestamp
-    // here would corrupt "latest wins" relay semantics for every event this
-    // backend ever publishes — never hardcode `0`.
+    // owned `CommandSender` from here on). kind:17375 (this chain's
+    // `create_wallet.rs` caller) IS in the NIP-01 replaceable range
+    // (10000-19999), so a wrong/sentinel timestamp there would corrupt
+    // "latest wins" relay semantics; kind:7375 (this file's `deposit.rs`
+    // caller) is a regular, non-replaceable event (below the 10000 floor),
+    // but still needs a real wall-clock stamp for ordinary event ordering —
+    // never hardcode `0` for either caller.
     created_at: u64,
     correlation_id: Option<String>,
     on_signed: impl FnOnce(&CommandSender, &SignedEvent) + Send + 'static,
@@ -155,28 +158,7 @@ fn sign_and_publish(
             }
         };
         on_signed(&tx_for_publish, &signed);
-        let raw = nmp_store::RawEvent {
-            id: signed.id.clone(),
-            pubkey: signed.unsigned.pubkey.clone(),
-            created_at: signed.unsigned.created_at,
-            kind: signed.unsigned.kind,
-            tags: signed.unsigned.tags.clone(),
-            content: signed.unsigned.content.clone(),
-            sig: signed.sig.clone(),
-        };
-        let _ = tx_for_publish.send(ActorCommand::Publish(PublishCommand::SignedEvent {
-            raw,
-            // A pre-signed publish must route through an explicit relay set
-            // (the kernel rejects `Auto` for `SignedEvent` — presigned
-            // publish is not the normal app write path). `ImportedOrPresigned`
-            // is the closest-fit route class: this command pre-signs through
-            // the port rather than letting the publish pipeline sign.
-            target: PublishTarget::Explicit {
-                relays,
-                route_class: PublishRouteClass::ImportedOrPresigned,
-            },
-            correlation_id,
-        }));
+        enqueue_signed_publish(&tx_for_publish, &signed, relays, correlation_id);
     });
     if worker_tx.send(cmd).is_err() {
         report_chain_failure(
@@ -185,6 +167,42 @@ fn sign_and_publish(
             "actor inbox closed before sign".to_string(),
         );
     }
+}
+
+/// Send an already-signed event to `relays` via the actor's presigned-publish
+/// port. Factored out of `sign_and_publish`'s tail so
+/// `deposit.rs::CashuCompleteDepositCommand`'s retry path can re-enqueue the
+/// EXACT same cached `SignedEvent` (no new signing — see
+/// `PendingDeposit::signed_token`'s doc comment) through the identical
+/// `RawEvent`/`PublishTarget` shape a fresh sign would have used.
+pub(super) fn enqueue_signed_publish(
+    worker_tx: &CommandSender,
+    signed: &SignedEvent,
+    relays: Vec<String>,
+    correlation_id: Option<String>,
+) {
+    let raw = nmp_store::RawEvent {
+        id: signed.id.clone(),
+        pubkey: signed.unsigned.pubkey.clone(),
+        created_at: signed.unsigned.created_at,
+        kind: signed.unsigned.kind,
+        tags: signed.unsigned.tags.clone(),
+        content: signed.unsigned.content.clone(),
+        sig: signed.sig.clone(),
+    };
+    let _ = worker_tx.send(ActorCommand::Publish(PublishCommand::SignedEvent {
+        raw,
+        // A pre-signed publish must route through an explicit relay set (the
+        // kernel rejects `Auto` for `SignedEvent` — presigned publish is not
+        // the normal app write path). `ImportedOrPresigned` is the
+        // closest-fit route class: this command pre-signs through the port
+        // rather than letting the publish pipeline sign.
+        target: PublishTarget::Explicit {
+            relays,
+            route_class: PublishRouteClass::ImportedOrPresigned,
+        },
+        correlation_id,
+    }));
 }
 
 fn report_chain_failure(

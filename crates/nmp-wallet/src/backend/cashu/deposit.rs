@@ -30,6 +30,24 @@
 //! this backend will show correct balances (the ledger folds `TokenAdded`
 //! facts, not history events) but an incomplete kind:7376 history stream for
 //! other NIP-60 clients reading this wallet. Follow-up, not a silent gap.
+//!
+//! # Known limitation — a fenced-out (superseded) attempt still publishes
+//!
+//! #2910/#2923's `chain_started_at` lease (see [`PendingDeposit`]'s doc
+//! comment) stops a stale, superseded `CompleteDepositCashu` attempt from
+//! double-folding the ledger/proof inventory (its `on_signed` fences on the
+//! lease and skips the mutation), but `chain.rs`'s `sign_and_publish` still
+//! unconditionally publishes right after `on_signed` returns — there is no
+//! hook to abort that from inside the fenced-out closure. In the (narrow,
+//! requires an actually-abandoned-but-not-dead attempt to still finish
+//! signing) case this fires, the fenced-out attempt's real proofs still land
+//! on a relay as a valid, independently-signed kind:7375 event this backend
+//! just never reconciles locally today (kind:7375 cold-start reconciliation
+//! isn't implemented — see `mod.rs`'s "Live wiring... vs. still-deferred
+//! behavior" module doc comment). Not a fund-loss or double-count risk today;
+//! would become a delayed
+//! double-fold if/when that reconciliation ships without its own
+//! proof-identity dedup — worth remembering when that lands.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -51,7 +69,7 @@ use crate::journal::{
     WalletOperationId, WalletOperationState, WalletUnit,
 };
 
-use super::chain::launch_self_encrypted_publish;
+use super::chain::{self, launch_self_encrypted_publish};
 use super::state::{lock_state, CashuWalletState, PendingDeposit};
 use super::ui_codes;
 
@@ -101,6 +119,8 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
                                 mint: mint.clone(),
                                 amount_sats,
                                 minted_proofs: None,
+                                signed_token: None,
+                                chain_started_at: None,
                             },
                         );
                         let _ = guard.transition(&operation_id, WalletOperationState::MintSettled);
@@ -158,6 +178,23 @@ impl fmt::Debug for CashuCompleteDepositCommand {
     }
 }
 
+/// Where a `CompleteDepositCashu` attempt for a given `quote_id` picks back
+/// up — see the doc comment on `CashuCompleteDepositCommand::run`'s `resume`
+/// binding for the ordering/safety rationale of each variant.
+enum DepositResume {
+    Signed(SignedEvent),
+    Minted(Vec<Proof>),
+    Fresh,
+}
+
+/// How long a `chain_started_at` lease (see `PendingDeposit`'s doc comment)
+/// blocks a concurrent retry before the previous attempt is presumed
+/// abandoned and a new one is allowed to take over. Generous enough to cover
+/// a real mint HTTP round-trip plus the encrypt/sign actor round-trips
+/// (seconds, not the tens-of-seconds a slow mint might take) without making
+/// a genuinely stuck deposit wait long for a legitimate retry.
+const DEPOSIT_CHAIN_LEASE_SECS: u64 = 60;
+
 impl ProtocolCommand for CashuCompleteDepositCommand {
     fn run(
         self: Box<Self>,
@@ -178,32 +215,121 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
         let created_at = ctx.now_secs();
         let worker_tx = ctx.command_sender_clone();
         std::thread::spawn(move || {
-            // A quote already marked `ISSUED` by the mint can never be
-            // minted again — if a prior attempt got real proofs back but
-            // failed somewhere in the encrypt/sign/publish chain after that,
-            // while the process was still running (a transient port error,
-            // a dead-but-still-alive actor inbox), those proofs are the ONLY
-            // way to recover this deposit. Resume from them instead of
-            // re-touching the mint at all.
+            // Three resume points, checked in the order of "how much
+            // value-moving/signing work already happened" — never redo a
+            // step that genuinely already ran:
             //
-            // `minted_proofs` is in-memory only (see its doc comment in
-            // `state.rs`): a hard crash between `mint_tokens` succeeding and
-            // reaching this point still loses the proofs — that durable gap
-            // is tracked as issue #2910, not closed here.
-            let already_minted = {
-                let guard = lock_state(&state);
-                guard
-                    .pending_deposits
-                    .get(&quote_id)
-                    .and_then(|p| p.minted_proofs.clone())
+            // - `signed_token` set: the kind:7375 event was already SIGNED
+            //   by a prior attempt (see `PendingDeposit::signed_token`'s doc
+            //   comment — this is the #2910/#2923 fix: signing can succeed
+            //   while the publish right after it fails). Never re-sign —
+            //   only re-publish the identical cached event.
+            // - Neither `signed_token` set NOR a chain currently in flight
+            //   (`chain_started_at`, a self-healing lease — see
+            //   `PendingDeposit`'s doc comment): resume from `minted_proofs`
+            //   if a prior attempt already got real proofs back but failed
+            //   before reaching signing (a transient port error, a
+            //   dead-but-still-alive actor inbox), or mint fresh if not. The
+            //   lease is what stops a CONCURRENT retry for the SAME
+            //   `quote_id` from also entering here and racing a second sign
+            //   chain over the same proofs — that would sign two
+            //   differently-id'd token events for one real deposit and
+            //   double-fold the ledger (no proof-identity dedup, only
+            //   token-event-id dedup).
+            // - A chain is already in flight and hasn't been signed yet:
+            //   fail closed, retryable — wait for the lease to clear (either
+            //   the in-flight attempt finishes, or the lease expires and
+            //   presumes it abandoned).
+            //
+            // Both `minted_proofs`/`signed_token` are in-memory only (see
+            // their doc comments in `state.rs`): a hard crash before either
+            // is set still loses the deposit — that durable gap is tracked
+            // as issue #2910, not closed here.
+            let resume = {
+                let mut guard = lock_state(&state);
+                match guard.pending_deposits.get_mut(&quote_id) {
+                    Some(pending) => {
+                        if let Some(signed) = pending.signed_token.clone() {
+                            DepositResume::Signed(signed)
+                        } else if let Some(started_at) = pending.chain_started_at {
+                            if created_at.saturating_sub(started_at) < DEPOSIT_CHAIN_LEASE_SECS {
+                                fail(
+                                    &worker_tx,
+                                    correlation_id,
+                                    ui_codes::DEPOSIT_IN_PROGRESS,
+                                    "a completion attempt for this deposit is already in progress — retry shortly".to_string(),
+                                );
+                                return;
+                            }
+                            // Lease expired — the previous attempt is presumed
+                            // abandoned; take over.
+                            pending.chain_started_at = Some(created_at);
+                            match pending.minted_proofs.clone() {
+                                Some(proofs) => DepositResume::Minted(proofs),
+                                None => DepositResume::Fresh,
+                            }
+                        } else {
+                            pending.chain_started_at = Some(created_at);
+                            match pending.minted_proofs.clone() {
+                                Some(proofs) => DepositResume::Minted(proofs),
+                                None => DepositResume::Fresh,
+                            }
+                        }
+                    }
+                    None => {
+                        fail(
+                            &worker_tx,
+                            correlation_id,
+                            ui_codes::UNKNOWN_QUOTE,
+                            "no pending deposit for this quote".to_string(),
+                        );
+                        return;
+                    }
+                }
             };
-            let proofs = match already_minted {
-                Some(proofs) => proofs,
-                None => {
+
+            let proofs = match resume {
+                DepositResume::Signed(signed) => {
+                    // These proofs may since have been spent (e.g. sent as a
+                    // nutzap) and their token event superseded by a newer
+                    // one — republishing a fully-spent, already-superseded
+                    // event would just resurrect stale content with nothing
+                    // behind it. Require the FULL original proof set to
+                    // still be held (not just one of them — a partial spend
+                    // means the token event's remaining content is already
+                    // stale too) before republishing.
+                    let still_held = {
+                        let guard = lock_state(&state);
+                        guard
+                            .pending_deposits
+                            .get(&quote_id)
+                            .and_then(|p| p.minted_proofs.as_ref())
+                            .is_some_and(|original| {
+                                let held: std::collections::HashSet<&str> = guard
+                                    .proofs
+                                    .iter()
+                                    .filter(|p| p.token_event.as_deref() == Some(signed.id.as_str()))
+                                    .map(|p| p.proof.c.as_str())
+                                    .collect();
+                                original.iter().all(|p| held.contains(p.c.as_str()))
+                            })
+                    };
+                    if still_held {
+                        chain::enqueue_signed_publish(&worker_tx, &signed, relays, correlation_id);
+                    } else if let Some(id) = correlation_id {
+                        let result_json =
+                            serde_json::json!({ "already_settled_and_spent": true }).to_string();
+                        let _ = worker_tx.send(build_record_action_success(id, Some(result_json)));
+                    }
+                    return;
+                }
+                DepositResume::Minted(proofs) => proofs,
+                DepositResume::Fresh => {
                     let client = MintClient::new(&mint);
                     let status = match client.get_mint_quote_status(&quote_id) {
                         Ok(s) => s,
                         Err(e) => {
+                            clear_chain_lease(&state, &quote_id, created_at);
                             fail(
                                 &worker_tx,
                                 correlation_id,
@@ -218,6 +344,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                         // invoice (testnut auto-settles almost immediately) and
                         // retries `CompleteDepositCashu`. The operation stays at
                         // `MintSettled`; no journal transition here.
+                        clear_chain_lease(&state, &quote_id, created_at);
                         fail(
                             &worker_tx,
                             correlation_id,
@@ -229,6 +356,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                     let keyset = match client.get_sat_keyset() {
                         Ok(k) => k,
                         Err(e) => {
+                            clear_chain_lease(&state, &quote_id, created_at);
                             mark_operation_uncertain(
                                 &state,
                                 &operation_id,
@@ -250,6 +378,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                     let proofs = match client.mint_tokens(&quote_id, amount_sats, &keyset) {
                         Ok(p) => p,
                         Err(e) => {
+                            clear_chain_lease(&state, &quote_id, created_at);
                             mark_operation_uncertain(
                                 &state,
                                 &operation_id,
@@ -263,9 +392,18 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                     // Persist BEFORE handing off to the encrypt/sign/publish
                     // chain — from here on, a chain failure must resume from
                     // these proofs, never re-mint (see `PendingDeposit::minted_proofs`).
+                    // Fenced the same way `on_signed` is: a stale attempt
+                    // that only won its own `mint_tokens` race after a newer
+                    // attempt already took over (and possibly already
+                    // signed) must not clobber `minted_proofs` out from
+                    // under the canonical attempt's `still_held` reference
+                    // set — see `clear_chain_lease`'s doc comment for why
+                    // `created_at` is a safe fencing token.
                     let mut guard = lock_state(&state);
                     if let Some(pending) = guard.pending_deposits.get_mut(&quote_id) {
-                        pending.minted_proofs = Some(proofs.clone());
+                        if pending.chain_started_at == Some(created_at) && pending.signed_token.is_none() {
+                            pending.minted_proofs = Some(proofs.clone());
+                        }
                     }
                     drop(guard);
                     proofs
@@ -333,6 +471,26 @@ pub(super) fn dispatch_token_event(
         correlation_id,
         move |_tx, signed: &SignedEvent| {
             let mut guard = lock_state(&on_signed_state);
+            // Fencing check (see `clear_chain_lease`'s doc comment on why
+            // `created_at` is a safe, always-distinct-on-takeover token): if
+            // some OTHER, newer attempt has since taken over this quote_id's
+            // lease (this one was merely slow, not dead, when it got
+            // presumed abandoned), applying these mutations now would
+            // double-fold the SAME real proofs the newer attempt's own chain
+            // already did — sign the same underlying proof set into two
+            // different token events. Fail closed: skip the ledger/proof
+            // mutation entirely rather than double-count. The kind:7375
+            // event this chain is about to publish anyway still lands on
+            // the relay with the real proofs inside it — recovering it into
+            // this backend's state is the same durable-reconciliation gap
+            // #2910 already tracks (kind:7375 cold-start reconciliation is
+            // not implemented today — see `mod.rs`'s module docs), not a
+            // NEW loss this fencing introduces.
+            if guard.pending_deposits.get(&quote_id).and_then(|p| p.chain_started_at)
+                != Some(created_at)
+            {
+                return;
+            }
             // #2917 — the real, secret-bearing proofs this deposit minted
             // must land in the spendable inventory (`select_proofs` is what
             // `SendNutzap`/`RedeemNutzap` draw from), not just the ledger's
@@ -352,7 +510,20 @@ pub(super) fn dispatch_token_event(
             // `can_transition_to` table — so a retry that recovered via
             // `minted_proofs` still reaches `PublishPending` normally.
             let _ = guard.transition(&on_signed_op, WalletOperationState::PublishPending);
-            guard.pending_deposits.remove(&quote_id);
+            // NOT removed (#2910/#2923 money-safety fix): the publish this
+            // closure hands off to right after returning is fire-and-forget
+            // (no ACK loops back here — see `chain.rs`'s module docs) and
+            // may still fail (no relay resolves, a relay round-trip errors).
+            // Cache the signed event instead so a retry for this exact
+            // `quote_id` republishes it rather than hitting `UNKNOWN_QUOTE`
+            // with real, already-credited proofs stranded — see
+            // `PendingDeposit::signed_token`'s doc comment.
+            if let Some(pending) = guard.pending_deposits.get_mut(&quote_id) {
+                pending.signed_token = Some(signed.clone());
+                // The chain succeeded — no attempt is in flight anymore
+                // (see `PendingDeposit::chain_started_at`'s doc comment).
+                pending.chain_started_at = None;
+            }
         },
     );
 }
@@ -370,6 +541,38 @@ pub(super) fn token_event_plaintext(mint: &str, proofs: &[Proof]) -> String {
         "del": Vec::<String>::new(),
     })
     .to_string()
+}
+
+/// Release a `chain_started_at` lease (see `PendingDeposit`'s doc comment)
+/// after a synchronous, pre-chain failure — one that returns from within
+/// this SAME worker thread, before any encrypt/sign continuation was ever
+/// enqueued. Without this, a caller that pays the invoice a few seconds
+/// after a `QUOTE_NOT_PAID` response (or retries right after a
+/// `MINT_QUOTE_FAILED`/`MINT_TOKENS_FAILED`) would be told
+/// `DEPOSIT_IN_PROGRESS` for up to `DEPOSIT_CHAIN_LEASE_SECS` even though
+/// nothing is actually in flight. Async chain failures (`chain.rs`'s
+/// encrypt/sign errors) have no such hook back into this state — those
+/// self-heal only once the lease naturally expires (see
+/// `PendingDeposit::chain_started_at`'s doc comment).
+///
+/// `lease` is a FENCING token, not just a value to blank out: only clears
+/// the lease if it still equals `lease` (the `created_at` THIS attempt
+/// stamped it with when it took over). Without this compare-and-clear, a
+/// slow-but-not-actually-dead attempt A that fails after its lease already
+/// expired and was taken over by a newer attempt B would blank out B's
+/// (different, newer) lease instead of its own — reopening the door for a
+/// THIRD attempt C to race B. `created_at` is safe to use as the fencing
+/// token because a takeover only ever happens once the elapsed time since
+/// the previous `created_at` exceeds `DEPOSIT_CHAIN_LEASE_SECS`, so two
+/// attempts that both believe themselves "current" always carry distinct
+/// `created_at` values.
+fn clear_chain_lease(state: &Mutex<CashuWalletState>, quote_id: &str, lease: u64) {
+    let mut guard = lock_state(state);
+    if let Some(pending) = guard.pending_deposits.get_mut(quote_id) {
+        if pending.chain_started_at == Some(lease) {
+            pending.chain_started_at = None;
+        }
+    }
 }
 
 /// An HTTP failure talking to the mint mid-mint-request is genuinely
