@@ -63,6 +63,31 @@ private let pcLog = Logger(subsystem: \"io.f7z.chirp\", category: \"ProjectionCa
 
 ";
 
+fn app_header(source_label: &str) -> String {
+    format!(
+        "\
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen read-projections --registry {source_label} \\
+//       --platform swift-projection-cache
+//
+// Source of truth: app-local read-projections registry `{source_label}`.
+// ADR-0070 R3-S3: NMP-owned rev-aware host apply layer. This cache implements
+// the D3-3 merge algorithm exactly so app code stays oblivious to delta
+// mechanics.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import Foundation
+import os.log
+
+private let pcLog = Logger(subsystem: \"org.nmp.app\", category: \"ProjectionCache\")
+
+"
+    )
+}
+
 /// Outcome of a `--check` run.
 #[derive(Debug)]
 pub struct ProjectionCacheCheckOutcome {
@@ -73,6 +98,22 @@ pub struct ProjectionCacheCheckOutcome {
 /// Render the `ProjectionMergeCache` Swift source from the registry.
 #[must_use]
 pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
+    render_projection_cache_with_header(entries, HEADER.to_string())
+}
+
+/// Render the app-local `ProjectionMergeCache` Swift source.
+#[must_use]
+pub fn render_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+) -> String {
+    render_projection_cache_with_header(entries, app_header(source_label))
+}
+
+fn render_projection_cache_with_header(
+    entries: &[SnapshotProjectionEntry],
+    header: String,
+) -> String {
     // Collect only entries that have a typed sidecar with a swift_reader_type —
     // these are the projections the cache can validate via decode-before-commit.
     let typed_entries: Vec<&SnapshotProjectionEntry> = entries
@@ -85,7 +126,7 @@ pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
         })
         .collect();
 
-    let mut out = String::from(HEADER);
+    let mut out = header;
 
     // ── CacheEntry private struct ─────────────────────────────────────────────
     out.push_str(
@@ -313,6 +354,49 @@ pub fn generate_projection_cache(out_path: &Path) -> std::io::Result<()> {
 /// Diff a freshly-rendered output against the file at `out_path`.
 pub fn check_projection_cache(out_path: &Path) -> std::io::Result<ProjectionCacheCheckOutcome> {
     let rendered = render_projection_cache(SNAPSHOT_PROJECTIONS);
+    let actual = match std::fs::read_to_string(out_path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ProjectionCacheCheckOutcome {
+                up_to_date: false,
+                first_diff_line: None,
+            });
+        }
+        Err(err) => return Err(err),
+    };
+    if actual == rendered {
+        return Ok(ProjectionCacheCheckOutcome {
+            up_to_date: true,
+            first_diff_line: None,
+        });
+    }
+    let first_diff_line = crate::diff_report::first_diff_or_length(&actual, &rendered);
+    Ok(ProjectionCacheCheckOutcome {
+        up_to_date: false,
+        first_diff_line,
+    })
+}
+
+/// Write an app-local `ProjectionCache.generated.swift` to `out_path`.
+pub fn generate_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+    out_path: &Path,
+) -> std::io::Result<()> {
+    let rendered = render_projection_cache_for_app(entries, source_label);
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(out_path, rendered)
+}
+
+/// Diff an app-local `ProjectionCache.generated.swift` against `out_path`.
+pub fn check_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+    out_path: &Path,
+) -> std::io::Result<ProjectionCacheCheckOutcome> {
+    let rendered = render_projection_cache_for_app(entries, source_label);
     let actual = match std::fs::read_to_string(out_path) {
         Ok(s) => s,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
