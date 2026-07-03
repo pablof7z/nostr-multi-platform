@@ -9,8 +9,24 @@ description = "Wallet composition owner: backend capabilities, wallet projection
 [dependencies]
 nmp-core = { path = "../nmp-core" }
 nmp-nip47 = { path = "../nmp-nip47" }
+# W2 (#2895): the Cashu `WalletBackend` adapter consumes nip60's mint HTTP
+# lane (`cashu::client::MintClient`), wallet-config codec (`WalletConfig`),
+# and kind constants — never its own relay socket (nip60 owns zero relay I/O;
+# see nip60's own module docs).
+nmp-nip60 = { path = "../nmp-nip60" }
 nmp-ownership = { workspace = true }
+# The flat `UnsignedEvent`/`SignedEvent` shape the `Nip44EncryptForAccount` /
+# `SignEventForAccount` ports carry — the same signer-transparent seam
+# `nmp-nip17`'s gift-wrap chain uses (mirrored here for kind:17375/7375).
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+# `RawEvent` for the pre-signed publish path (`PublishCommand::SignedEvent`).
+nmp-store = { path = "../nmp-store" }
 serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
+# `test-support` enables `nmp_core::ActorMail`/`ProtocolCommandContextParts`
+# capability adapters + noop singletons the Cashu backend's command tests
+# drive directly (mirrors nmp-nip17/nmp-nip57's own dev-dependency).
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 serde_json = { workspace = true }

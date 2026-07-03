@@ -4827,7 +4827,10 @@ version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-nip47",
+ "nmp-nip60",
  "nmp-ownership",
+ "nmp-signer-iface",
+ "nmp-store",
  "serde",
  "serde_json",
 ]
