@@ -17,6 +17,9 @@
 //! - [`reset_tests`] — `CashuWalletBackend::reset` (epic #2864 Wave C,
 //!   #2908): the cross-account data-leak fix clears created/mints/pubkey/
 //!   pending-operations/balances back to a fresh, never-created wallet.
+//! - [`deposit_mint_race_tests`] — #2946: a slow real `mint_tokens` response
+//!   that outlives the `chain_started_at` lease must still have its proofs
+//!   persisted, even after a same-quote retry takes over the lease mid-flight.
 
 use std::sync::Mutex;
 
@@ -32,6 +35,7 @@ use super::*;
 
 mod create_wallet_tests;
 mod deposit_concurrency_tests;
+mod deposit_mint_race_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
 mod publish_info_tests;
@@ -299,6 +303,64 @@ pub(super) fn recv_command(rx: &std::sync::mpsc::Receiver<nmp_core::ActorMail>) 
     )
 }
 
+/// Read one full HTTP/1.1 request (headers + `Content-Length` body) off
+/// `stream`. Returns the raw bytes read and the offset where the body
+/// starts (`buf.len()` if the connection closed before headers completed).
+/// Shared by [`spawn_mock_mint`] and any other test-only mock mint server
+/// (e.g. `deposit_mint_race_tests`'s scripted mint) that needs to inspect a
+/// request before deciding how to respond.
+pub(super) fn read_http_request(stream: &mut std::net::TcpStream) -> (Vec<u8>, usize) {
+    use std::io::Read;
+
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 4096];
+    let mut header_end = None;
+    let mut content_length = 0usize;
+    loop {
+        let n = stream.read(&mut tmp).unwrap_or(0);
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&tmp[..n]);
+        if header_end.is_none() {
+            if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                header_end = Some(pos + 4);
+                let headers = String::from_utf8_lossy(&buf[..pos]).to_string();
+                for line in headers.lines() {
+                    if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                        content_length = v.trim().parse().unwrap_or(0);
+                    }
+                }
+            }
+        }
+        if let Some(he) = header_end {
+            if buf.len() >= he + content_length {
+                break;
+            }
+        }
+    }
+    let header_end = header_end.unwrap_or(buf.len());
+    (buf, header_end)
+}
+
+/// Write a minimal HTTP/1.1 response, always `Connection: close` (see
+/// [`spawn_mock_mint`]'s doc comment for why).
+pub(super) fn write_http_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
+    use std::io::Write;
+
+    let reason = match status {
+        200 => "OK",
+        404 => "Not Found",
+        _ => "Error",
+    };
+    let resp = format!(
+        "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = stream.write_all(resp.as_bytes());
+    let _ = stream.flush();
+}
+
 /// Minimal one-request-per-connection local HTTP/1.1 mock. Serves
 /// `responses` in order, one per accepted TCP connection, always closing
 /// after each response (`Connection: close`) so the client (ureq) cannot
@@ -306,7 +368,6 @@ pub(super) fn recv_command(rx: &std::sync::mpsc::Receiver<nmp_core::ActorMail>) 
 /// ordering deterministic regardless of ureq's own pooling behaviour.
 /// Mirrors `nmp_blossom::upload::http`'s test-only mock server.
 pub(super) fn spawn_mock_mint(responses: Vec<(u16, String)>) -> String {
-    use std::io::{Read, Write};
     use std::net::TcpListener;
 
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock mint listener");
@@ -317,46 +378,8 @@ pub(super) fn spawn_mock_mint(responses: Vec<(u16, String)>) -> String {
             let Ok((mut stream, _)) = listener.accept() else {
                 return;
             };
-            let mut buf = Vec::new();
-            let mut tmp = [0u8; 4096];
-            let mut header_end = None;
-            let mut content_length = 0usize;
-            loop {
-                let n = stream.read(&mut tmp).unwrap_or(0);
-                if n == 0 {
-                    break;
-                }
-                buf.extend_from_slice(&tmp[..n]);
-                if header_end.is_none() {
-                    if let Some(pos) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
-                        header_end = Some(pos + 4);
-                        let headers = String::from_utf8_lossy(&buf[..pos]).to_string();
-                        for line in headers.lines() {
-                            if let Some(v) =
-                                line.to_ascii_lowercase().strip_prefix("content-length:")
-                            {
-                                content_length = v.trim().parse().unwrap_or(0);
-                            }
-                        }
-                    }
-                }
-                if let Some(he) = header_end {
-                    if buf.len() >= he + content_length {
-                        break;
-                    }
-                }
-            }
-            let reason = match status {
-                200 => "OK",
-                404 => "Not Found",
-                _ => "Error",
-            };
-            let resp = format!(
-                "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(resp.as_bytes());
-            let _ = stream.flush();
+            let _ = read_http_request(&mut stream);
+            write_http_response(&mut stream, status, &body);
         }
     });
     url

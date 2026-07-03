@@ -257,16 +257,24 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                     // Persist BEFORE handing off to the encrypt/sign/publish
                     // chain — from here on, a chain failure must resume from
                     // these proofs, never re-mint (see `PendingDeposit::minted_proofs`).
-                    // Fenced the same way `on_signed` is: a stale attempt
-                    // that only won its own `mint_tokens` race after a newer
-                    // attempt already took over (and possibly already
-                    // signed) must not clobber `minted_proofs` out from
-                    // under the canonical attempt's `still_held` reference
-                    // set — see `clear_chain_lease`'s doc comment for why
-                    // `created_at` is a safe fencing token.
+                    // Write-if-absent, NOT fenced on `chain_started_at`
+                    // (#2946): unlike `on_signed`'s fold, there is no
+                    // clobber to guard against here — NUT-04 single-issue
+                    // means at most one attempt for a given `quote_id` ever
+                    // reaches this point with real proofs (every other
+                    // attempt's own `mint_tokens` call fails closed with
+                    // "already issued" and returns before reaching here), so
+                    // a `chain_started_at` mismatch just means a NEWER
+                    // attempt took over the lease while THIS one was still
+                    // waiting on a slow mint response. Fencing the write on
+                    // that mismatch silently drops the only copy of real,
+                    // already-minted proofs — stranding real sats (the bug
+                    // #2946 fixed). `minted_proofs.is_none()` is the correct
+                    // guard: never overwrite a set of proofs a prior attempt
+                    // already recorded.
                     let mut guard = lock_state(&state);
                     if let Some(pending) = guard.pending_deposits.get_mut(&quote_id) {
-                        if pending.chain_started_at == Some(created_at) && pending.signed_token.is_none() {
+                        if pending.minted_proofs.is_none() {
                             pending.minted_proofs = Some(proofs.clone());
                         }
                     }
