@@ -276,6 +276,42 @@ fn nmp_native_runtime_does_not_bundle_nip29_as_production_dependency() {
 }
 
 #[test]
+fn nmp_native_runtime_wallet_nips_are_feature_gated() {
+    let metadata = cargo_metadata();
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages must be an array");
+    let runtime = packages
+        .iter()
+        .find(|pkg| pkg["name"] == "nmp-native-runtime")
+        .expect("nmp-native-runtime package must be in cargo metadata");
+    let dependencies = runtime["dependencies"]
+        .as_array()
+        .expect("package dependencies must be an array");
+
+    let mut findings = Vec::new();
+    for dependency in dependencies {
+        let name = dependency["name"].as_str().unwrap_or_default();
+        if !matches!(name, "nmp-nip47" | "nmp-nip57") {
+            continue;
+        }
+        let kind = dependency["kind"].as_str().unwrap_or("normal");
+        let optional = dependency["optional"].as_bool().unwrap_or(false);
+        if kind != "dev" && !optional {
+            findings.push(format!("nmp-native-runtime -> {name} ({kind})"));
+        }
+    }
+
+    assert!(
+        findings.is_empty(),
+        "#2797: NIP-47 wallet wiring and NIP-57 payment chaining are opt-in \
+         composition, not default native runtime surface. Keep these concept \
+         crates behind the nmp-native-runtime `wallet` feature:\n{}",
+        findings.join("\n")
+    );
+}
+
+#[test]
 fn platform_dependency_gate_negative_fixture_fires() {
     let packages = serde_json::json!({
         "packages": [{
