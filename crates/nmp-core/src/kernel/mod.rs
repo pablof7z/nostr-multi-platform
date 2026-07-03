@@ -102,6 +102,8 @@ mod relay_health; // Per-relay transport health + wire-sub state + their project
 mod types;
 mod update;
 mod wire_sub; // `WireSub` row (moved out of `types.rs` for the LOC cap).
+mod wire_sub_diagnostics; // #2868 — neutral wire-subscription diagnostic seam for nmp-devtools.
+pub use wire_sub_diagnostics::WireSubscriptionDiagnosticSnapshot;
 pub use update::KERNEL_BUILTIN_PROJECTION_KEYS;
 #[cfg(any(test, feature = "test-support"))]
 pub use update::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED};
