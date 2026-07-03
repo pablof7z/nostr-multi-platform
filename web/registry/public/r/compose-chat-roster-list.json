@@ -1,0 +1,20 @@
+{
+  "name": "compose-chat-roster-list",
+  "type": "registry:ui",
+  "title": "Chat Roster List (Compose)",
+  "description": "Compose group roster list that renders Rust-owned participant rows through self-claiming profile components.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-chat-core",
+    "compose-user-avatar",
+    "compose-user-name"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/chat-roster-list/NostrGroupRosterList.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupRosterList.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.Column\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.Spacer\nimport androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.padding\nimport androidx.compose.foundation.layout.width\nimport androidx.compose.material3.MaterialTheme\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.unit.dp\n\n@Composable\nfun NostrGroupRosterList(\n    participants: List<NostrGroupChatParticipantWire>,\n    modifier: Modifier = Modifier,\n    onParticipantClick: (String) -> Unit = {},\n) {\n    Column(modifier = modifier) {\n        participants.forEach { participant ->\n            Row(\n                modifier = Modifier\n                    .fillMaxWidth()\n                    .clickable { onParticipantClick(participant.pubkey) }\n                    .padding(vertical = 6.dp),\n                verticalAlignment = Alignment.CenterVertically,\n            ) {\n                NostrAvatar(\n                    pubkey = participant.pubkey,\n                    size = 36.dp,\n                    consumerId = \"chat.roster.${participant.pubkey}.avatar\",\n                )\n                Spacer(Modifier.width(10.dp))\n                Column(modifier = Modifier.weight(1f)) {\n                    NostrProfileName(\n                        pubkey = participant.pubkey,\n                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),\n                        consumerId = \"chat.roster.${participant.pubkey}.name\",\n                    )\n                    val metadata = listOfNotNull(\n                        participant.roleLabel?.takeIf { it.isNotBlank() },\n                        participant.statusLabel?.takeIf { it.isNotBlank() },\n                    ).joinToString(\"   \")\n                    if (metadata.isNotEmpty()) {\n                        Text(\n                            text = metadata,\n                            style = MaterialTheme.typography.labelSmall,\n                            color = MaterialTheme.colorScheme.onSurfaceVariant,\n                        )\n                    }\n                }\n            }\n        }\n    }\n}\n"
+    }
+  ]
+}

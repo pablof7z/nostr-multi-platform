@@ -73,6 +73,22 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         "swiftui/relay-list/Examples/NostrRelayListPreview.swift",
         include_str!("../registry/swiftui/relay-list/Examples/NostrRelayListPreview.swift"),
     ),
+    (
+        "swiftui/chat-core/NostrGroupChatWire.swift",
+        include_str!("../registry/swiftui/chat-core/NostrGroupChatWire.swift"),
+    ),
+    (
+        "swiftui/chat-message-row/NostrGroupMessageRow.swift",
+        include_str!("../registry/swiftui/chat-message-row/NostrGroupMessageRow.swift"),
+    ),
+    (
+        "swiftui/chat-composer/NostrGroupComposer.swift",
+        include_str!("../registry/swiftui/chat-composer/NostrGroupComposer.swift"),
+    ),
+    (
+        "swiftui/chat-roster-list/NostrGroupRosterList.swift",
+        include_str!("../registry/swiftui/chat-roster-list/NostrGroupRosterList.swift"),
+    ),
     // Compose (M16-C4)
     (
         "compose/content-core/NostrContentRenderer.kt",
@@ -121,6 +137,22 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
     (
         "compose/content-view/NostrContentGrouping.kt",
         include_str!("../registry/compose/content-view/NostrContentGrouping.kt"),
+    ),
+    (
+        "compose/chat-core/NostrGroupChatWire.kt",
+        include_str!("../registry/compose/chat-core/NostrGroupChatWire.kt"),
+    ),
+    (
+        "compose/chat-message-row/NostrGroupMessageRow.kt",
+        include_str!("../registry/compose/chat-message-row/NostrGroupMessageRow.kt"),
+    ),
+    (
+        "compose/chat-composer/NostrGroupComposer.kt",
+        include_str!("../registry/compose/chat-composer/NostrGroupComposer.kt"),
+    ),
+    (
+        "compose/chat-roster-list/NostrGroupRosterList.kt",
+        include_str!("../registry/compose/chat-roster-list/NostrGroupRosterList.kt"),
     ),
     // Ratatui content widgets.
     (

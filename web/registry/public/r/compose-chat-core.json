@@ -1,0 +1,16 @@
+{
+  "name": "compose-chat-core",
+  "type": "registry:ui",
+  "title": "Chat Core (Compose)",
+  "description": "Shared Compose group-chat wire structs for Rust-owned message, reaction, and roster projections.",
+  "dependencies": [],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/compose/chat-core/NostrGroupChatWire.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupChatWire.kt",
+      "content": "package org.nmp.registry\n\ndata class NostrGroupChatReactionWire(\n    val emoji: String,\n    val count: Int,\n)\n\ndata class NostrGroupChatMessageWire(\n    val id: String,\n    val authorPubkey: String,\n    val content: String,\n    val createdAtLabel: String,\n    val replyPreview: String? = null,\n    val reactions: List<NostrGroupChatReactionWire> = emptyList(),\n    val isOutgoing: Boolean = false,\n)\n\ndata class NostrGroupChatParticipantWire(\n    val pubkey: String,\n    val roleLabel: String? = null,\n    val statusLabel: String? = null,\n)\n"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "name": "swiftui-chat-message-row",
+  "type": "registry:ui",
+  "title": "Chat Message Row (SwiftUI)",
+  "description": "SwiftUI group-chat message row with profile self-claiming, reply preview, outgoing bubble styling, and reaction badges.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-chat-core",
+    "swiftui-user-avatar",
+    "swiftui-user-name"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/chat-message-row/NostrGroupMessageRow.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupMessageRow.swift",
+      "content": "import SwiftUI\n\npublic struct NostrGroupMessageRow: View {\n    public var message: NostrGroupChatMessageWire\n    public var onReplyTap: (String) -> Void\n\n    public init(\n        message: NostrGroupChatMessageWire,\n        onReplyTap: @escaping (String) -> Void = { _ in }\n    ) {\n        self.message = message\n        self.onReplyTap = onReplyTap\n    }\n\n    public var body: some View {\n        HStack(alignment: .top, spacing: 8) {\n            if !message.isOutgoing {\n                NostrAvatar(\n                    pubkey: message.authorPubkey,\n                    size: 32,\n                    consumerID: \"chat.message.\\(message.id).avatar\"\n                )\n            }\n\n            VStack(alignment: message.isOutgoing ? .trailing : .leading, spacing: 4) {\n                if !message.isOutgoing {\n                    HStack(spacing: 6) {\n                        NostrProfileName(\n                            pubkey: message.authorPubkey,\n                            font: .caption.weight(.semibold),\n                            color: .secondary,\n                            consumerID: \"chat.message.\\(message.id).name\"\n                        )\n                        Text(message.createdAtLabel)\n                            .font(.caption2)\n                            .foregroundStyle(.secondary)\n                    }\n                }\n\n                if let replyPreview = message.replyPreview, !replyPreview.isEmpty {\n                    Button {\n                        onReplyTap(message.id)\n                    } label: {\n                        Text(replyPreview)\n                            .font(.caption)\n                            .lineLimit(2)\n                            .foregroundStyle(.secondary)\n                            .padding(.horizontal, 8)\n                            .padding(.vertical, 5)\n                            .background(.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))\n                    }\n                    .buttonStyle(.plain)\n                }\n\n                Text(message.content)\n                    .font(.body)\n                    .foregroundStyle(message.isOutgoing ? .white : .primary)\n                    .textSelection(.enabled)\n                    .padding(.horizontal, 10)\n                    .padding(.vertical, 8)\n                    .background(\n                        message.isOutgoing ? Color.accentColor : Color.secondary.opacity(0.10),\n                        in: RoundedRectangle(cornerRadius: 8)\n                    )\n\n                if !message.reactions.isEmpty {\n                    HStack(spacing: 4) {\n                        ForEach(message.reactions) { reaction in\n                            Text(\"\\(reaction.emoji) \\(reaction.count)\")\n                                .font(.caption2.weight(.medium))\n                                .padding(.horizontal, 7)\n                                .padding(.vertical, 3)\n                                .background(.secondary.opacity(0.10), in: Capsule())\n                        }\n                    }\n                }\n            }\n            .frame(maxWidth: .infinity, alignment: message.isOutgoing ? .trailing : .leading)\n        }\n        .accessibilityElement(children: .combine)\n    }\n}\n"
+    }
+  ]
+}

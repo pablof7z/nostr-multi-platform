@@ -1,0 +1,16 @@
+{
+  "name": "swiftui-chat-core",
+  "type": "registry:ui",
+  "title": "Chat Core (SwiftUI)",
+  "description": "Shared SwiftUI group-chat wire structs for Rust-owned message, reaction, and roster projections.",
+  "dependencies": [],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/swiftui/chat-core/NostrGroupChatWire.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupChatWire.swift",
+      "content": "import Foundation\n\npublic struct NostrGroupChatReactionWire: Identifiable, Equatable, Sendable {\n    public var emoji: String\n    public var count: Int\n\n    public var id: String { emoji }\n\n    public init(emoji: String, count: Int) {\n        self.emoji = emoji\n        self.count = count\n    }\n}\n\npublic struct NostrGroupChatMessageWire: Identifiable, Equatable, Sendable {\n    public var id: String\n    public var authorPubkey: String\n    public var content: String\n    public var createdAtLabel: String\n    public var replyPreview: String?\n    public var reactions: [NostrGroupChatReactionWire]\n    public var isOutgoing: Bool\n\n    public init(\n        id: String,\n        authorPubkey: String,\n        content: String,\n        createdAtLabel: String,\n        replyPreview: String? = nil,\n        reactions: [NostrGroupChatReactionWire] = [],\n        isOutgoing: Bool = false\n    ) {\n        self.id = id\n        self.authorPubkey = authorPubkey\n        self.content = content\n        self.createdAtLabel = createdAtLabel\n        self.replyPreview = replyPreview\n        self.reactions = reactions\n        self.isOutgoing = isOutgoing\n    }\n}\n\npublic struct NostrGroupChatParticipantWire: Identifiable, Equatable, Sendable {\n    public var pubkey: String\n    public var roleLabel: String?\n    public var statusLabel: String?\n\n    public var id: String { pubkey }\n\n    public init(pubkey: String, roleLabel: String? = nil, statusLabel: String? = nil) {\n        self.pubkey = pubkey\n        self.roleLabel = roleLabel\n        self.statusLabel = statusLabel\n    }\n}\n"
+    }
+  ]
+}
