@@ -9,10 +9,12 @@ description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery event
 [features]
 # `native` gates the synchronous Cashu mint HTTP client (`cashu::client`) and
 # every wallet operation that round-trips to a mint (deposit, nutzap
-# send/receive, DLEQ verification) — matches the convention in nmp-nip57 /
-# nmp-nip05. Enabled by default so existing native consumers see no change.
-# Disable with `default-features = false` for wasm32 / pure-codec builds; the
-# event codecs, Cashu proof/DLEQ types, and kind:10019 publishing remain
+# send/receive, DLEQ verification) — the same `native = ["dep:ureq"]` gate
+# name nmp-nip57 and nmp-nip05 use for their own ureq-backed HTTP workers
+# (nmp-nip57 also defaults it on; nmp-nip05 defaults it off). This crate
+# defaults it on so existing native consumers see no change. Disable with
+# `default-features = false` for wasm32 / pure-codec builds; the event
+# codecs, Cashu proof/DLEQ types, and kind:10019 publishing remain
 # always-compiled.
 default = ["native"]
 native = ["dep:ureq"]

@@ -52,9 +52,9 @@
 //!
 //! For depositing funds (mint tokens from a paid Lightning invoice) and
 //! sending/receiving NutZaps — all `native`-feature-only, since they round-
-//! trip to the Cashu mint over HTTP — see [`nip60_wallet::deposit`] and the
-//! [`Nip60WalletHandle::send_nutzap`](nip60_wallet::Nip60WalletHandle) /
-//! [`Nip60WalletHandle::redeem_nutzap`](nip60_wallet::Nip60WalletHandle) docs.
+//! trip to the Cashu mint over HTTP — see [`Nip60WalletHandle`]'s
+//! `initiate_deposit`/`complete_deposit`/`send_nutzap`/`redeem_nutzap` docs
+//! (only compiled with the `native` feature).
 
 pub mod cashu;
 pub mod error;

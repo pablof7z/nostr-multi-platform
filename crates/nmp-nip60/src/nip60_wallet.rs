@@ -27,11 +27,11 @@
 //! balance, ingest). Each concern that operates on that shared state lives in
 //! its own submodule:
 //!
-//! - [`deposit`] — minting tokens from a paid Lightning invoice (NUT-04/23,
+//! - `deposit` — minting tokens from a paid Lightning invoice (NUT-04/23,
 //!   `native` feature only).
-//! - [`nutzap_send`] — proof selection, P2PK-locking, and sending NutZaps
+//! - `nutzap_send` — proof selection, P2PK-locking, and sending NutZaps
 //!   (mint operations are `native`-only; publishing kind:10019 is not).
-//! - [`nutzap_receive`] — redeeming a received NutZap (`native` feature only).
+//! - `nutzap_receive` — redeeming a received NutZap (`native` feature only).
 //!
 //! # Typical usage
 //!

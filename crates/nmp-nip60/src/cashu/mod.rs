@@ -4,7 +4,7 @@
 //!
 //! - [`crypto`] — DHKE blind signatures and DLEQ proof verification (NUT-00, NUT-12).
 //! - [`types`] — HTTP API request/response types (NUT-01 through NUT-07).
-//! - [`client`] — Synchronous HTTP client wrapping the above. Requires the
+//! - `client` — Synchronous HTTP client wrapping the above. Requires the
 //!   `native` feature (uses `ureq`); the codec/type surface above stays
 //!   HTTP-free and always-compiled.
 
