@@ -37,7 +37,7 @@
 use std::collections::BTreeMap;
 
 use crate::kernel::cache_serve::{InterestWrite, RegistrationOutcome, RegistryWriteToken};
-use crate::planner::LogicalInterest;
+use crate::planner::{InterestId, LogicalInterest};
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// One `(scope, key)` slot: the single live interest plus the set of owners
@@ -197,6 +197,22 @@ impl InterestRegistry {
         self.slots
             .get(&(scope.clone(), *key))
             .map_or(0, |s| s.owners.len())
+    }
+
+    /// Owner refcounts keyed by planner interest id.
+    ///
+    /// The registry remains the single writer for logical-interest ownership;
+    /// diagnostics use this read model to join current wire rows back to their
+    /// originating planner interests without storing logical state on transport
+    /// rows.
+    #[must_use]
+    pub(crate) fn owner_counts_by_interest_id(&self) -> BTreeMap<InterestId, usize> {
+        let mut counts = BTreeMap::new();
+        for slot in self.slots.values() {
+            let count = counts.entry(slot.interest.id.clone()).or_insert(0usize);
+            *count = count.saturating_add(slot.owners.len());
+        }
+        counts
     }
 
     /// Count of registered `(scope, key)` slots.

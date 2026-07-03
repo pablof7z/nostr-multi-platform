@@ -67,6 +67,23 @@ fn close_receipt_marks_wire_retained_when_socket_stays_open() {
 }
 
 #[test]
+fn close_receipt_with_zero_wire_consumers_marks_last_owner_applied() {
+    let receipts = correlate_receipts_with_wire_subscriptions(
+        vec![receipt(XrayReceiptEventKind::Close, "interest-a")],
+        &[
+            XrayWireSubscriptionSnapshot::new("sub-a", "wss://relay.example", "live", 0, 0)
+                .with_originating_interest_ids(["interest-a"]),
+        ],
+    );
+
+    assert_eq!(receipts[0].outcome, XrayCommandOutcome::applied());
+    assert_eq!(
+        receipts[0].relay_effects[0].outcome,
+        XrayCommandOutcome::applied()
+    );
+}
+
+#[test]
 fn close_receipt_without_wire_row_marks_last_owner_applied() {
     let receipts = correlate_receipts_with_wire_subscriptions(
         vec![receipt(XrayReceiptEventKind::Close, "interest-a")],

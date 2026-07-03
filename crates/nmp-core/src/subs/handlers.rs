@@ -97,6 +97,17 @@ impl SubscriptionLifecycle {
         origins
     }
 
+    /// Current registry owner refcounts keyed by planner interest id.
+    ///
+    /// Read by diagnostic projections that need logical consumer counts while
+    /// preserving the registry as the single writer of logical-interest state.
+    #[must_use]
+    pub(crate) fn current_interest_owner_counts(
+        &self,
+    ) -> std::collections::BTreeMap<InterestId, usize> {
+        self.registry.owner_counts_by_interest_id()
+    }
+
     /// Per-relay routing provenance from the last successful compile, captured
     /// BEFORE the blocked-relay post-pass (SPLIT A). Empty before the first
     /// compile. Read by `Kernel::relay_diagnostics_snapshot` to surface
