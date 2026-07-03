@@ -104,6 +104,7 @@ pub struct FeedSessionDiagnosticInterest {
     pub interest_key: String,
     pub scope: String,
     pub shape: String,
+    pub planner_interest_id_hint: Option<String>,
     pub provenance: String,
     pub privacy_bearing: bool,
 }
@@ -114,12 +115,14 @@ impl FeedSessionDiagnosticInterest {
         interest_key: impl Into<String>,
         scope: impl Into<String>,
         shape: impl Into<String>,
+        planner_interest_id_hint: Option<String>,
         provenance: impl Into<String>,
     ) -> Self {
         Self {
             interest_key: interest_key.into(),
             scope: scope.into(),
             shape: shape.into(),
+            planner_interest_id_hint,
             provenance: provenance.into(),
             privacy_bearing: true,
         }

@@ -145,6 +145,8 @@ fn interest_descriptor(interest: &FeedSessionDiagnosticInterest) -> XrayInterest
         interest_key: interest.interest_key.clone(),
         scope: interest.scope.clone(),
         shape: interest.shape.clone(),
+        wire_id_hint: None,
+        planner_interest_id_hint: interest.planner_interest_id_hint.clone(),
         provenance: interest.provenance.clone(),
         privacy_bearing: interest.privacy_bearing,
     }
@@ -181,6 +183,7 @@ mod tests {
                         interest_key: "interest:a".to_string(),
                         scope: "active-account".to_string(),
                         shape: "lifecycle=tailing:shape=abc".to_string(),
+                        planner_interest_id_hint: Some("42".to_string()),
                         provenance: "active-follow-timeline".to_string(),
                         privacy_bearing: true,
                     }),

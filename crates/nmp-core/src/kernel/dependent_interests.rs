@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Kernel;
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
+use crate::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use crate::subs::{CompileTrigger, InvalidateReason, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// One child interest produced by reducing another source.
@@ -32,6 +32,7 @@ impl DependentInterestChild {
             .with(scope_key_part(&scope))
             .finish();
         let interest = LogicalInterest {
+            id: InterestId(key.0),
             scope,
             shape,
             lifecycle: InterestLifecycle::Tailing,

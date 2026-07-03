@@ -127,6 +127,12 @@ impl Pseudonyms {
             interest.interest_key = self.token("interest", &interest.interest_key);
             interest.scope = self.token("scope", &interest.scope);
             interest.shape = self.token("filter", &interest.shape);
+            if let Some(wire_id) = &mut interest.wire_id_hint {
+                *wire_id = self.token("wire", wire_id);
+            }
+            if let Some(interest_id) = &mut interest.planner_interest_id_hint {
+                *interest_id = self.token("planner-interest", interest_id);
+            }
         }
         for relay in &mut receipt.relay_effects {
             relay.relay_url = self.token("relay", &relay.relay_url);

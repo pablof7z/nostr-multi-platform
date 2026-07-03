@@ -7,7 +7,7 @@
 //! `actor::dispatch::build_open_interest`, which calls [`build_interest_pair`]
 //! directly.
 
-use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
+use crate::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// M2 (ADR-0076) — build the `(SubIdentity, LogicalInterest)` pair for an
@@ -74,6 +74,7 @@ pub(crate) fn build_interest_pair(
     let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, sub_scope);
 
     let interest = LogicalInterest {
+        id: InterestId(key.0),
         scope: interest_scope,
         shape,
         // `open_interest` is always a tailing feed subscription (never OneShot).
@@ -104,6 +105,7 @@ mod tests {
 
         assert_eq!(interest.lifecycle, InterestLifecycle::Tailing);
         assert_eq!(interest.scope, InterestScope::ActiveAccount);
+        assert_eq!(interest.id, InterestId(identity.key.0));
         assert_eq!(interest.shape.kinds, [1u32, 6u32].into_iter().collect());
         assert_eq!(
             interest.shape.authors,
