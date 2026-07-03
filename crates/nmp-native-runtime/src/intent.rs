@@ -2,7 +2,7 @@
 //!
 //! `nmp-intent` owns pure classification. The native runtime owns the
 //! side-effecting dispatch decision because it names the `NmpApp` handle,
-//! actor sender, optional search sessions, and NIP-05 protocol command lane.
+//! actor sender, optional search sessions, and optional protocol command lanes.
 //! C ABI crates parse C strings and serialize the returned value only.
 
 use nmp_core::actor::ActorCommand;
@@ -72,15 +72,7 @@ impl NmpApp {
                 self.act_on_text_query_intent(request_json, session_id);
             }
             InputIntentTarget::Nip05 { identifier } => {
-                if let Some((name, domain)) = nmp_nip05::parse_nip05(identifier) {
-                    self.send_cmd(ActorCommand::Protocol(Box::new(
-                        nmp_nip05::ResolveNip05Command {
-                            name,
-                            domain,
-                            correlation_id: None,
-                        },
-                    )));
-                }
+                self.act_on_nip05_intent(identifier);
             }
             InputIntentTarget::RelayUrl { .. } | InputIntentTarget::Registered { .. } => {}
         }
@@ -100,4 +92,20 @@ impl NmpApp {
 
     #[cfg(not(feature = "search"))]
     fn act_on_text_query_intent(&self, _request_json: &str, _session_id: Option<&str>) {}
+
+    #[cfg(feature = "nip05")]
+    fn act_on_nip05_intent(&self, identifier: &str) {
+        if let Some((name, domain)) = nmp_nip05::parse_nip05(identifier) {
+            self.send_cmd(ActorCommand::Protocol(Box::new(
+                nmp_nip05::ResolveNip05Command {
+                    name,
+                    domain,
+                    correlation_id: None,
+                },
+            )));
+        }
+    }
+
+    #[cfg(not(feature = "nip05"))]
+    fn act_on_nip05_intent(&self, _identifier: &str) {}
 }
