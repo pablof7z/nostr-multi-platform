@@ -33,16 +33,12 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use crate::actor::{register_rust_observer_muted, unregister_observer_internal};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
-use crate::substrate::{
-    IngestParser, MailboxCache, ObservedProjectionCommandHandle, ObservedProjectionSessionMap,
-    ProfileLookup,
-};
-use crate::{EmittedFeedAuthorsSlot, ObservedProjectionId, TypedProjectionData};
+use crate::substrate::{IngestParser, MailboxCache, ProfileLookup};
+use crate::{EmittedFeedAuthorsSlot, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
 
 impl super::KernelReducer {
