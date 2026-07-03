@@ -275,6 +275,7 @@ impl Kernel {
             #[cfg(not(any(test, feature = "test-support")))]
             contact_list_reader: crate::slots::empty_contact_list_reader(),
             blocked_relays: empty_blocked_relay_lookup(),
+            external_id_validator: None,
             bootstrap_self_kinds_override: None,
             outbound_public_tags: Vec::new(),
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),

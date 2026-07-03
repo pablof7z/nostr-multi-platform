@@ -1,4 +1,4 @@
-use super::super::requests::external_id_from_key;
+use super::super::requests::has_external_id_byte_hygiene;
 use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
 use crate::substrate::ProfileView;
@@ -43,7 +43,10 @@ impl Kernel {
         // one-shot `#i` fetch deposits the referencing event on arrival) — the
         // same scan-fallback shape the addressable arm uses. Newest-by-cache-
         // order wins on the (rare) multi-match.
-        if let Some(external_id) = external_id_from_key(key) {
+        if let Some(external_id) = key
+            .strip_prefix("i:")
+            .filter(|external_id| has_external_id_byte_hygiene(external_id))
+        {
             return self
                 .events
                 .values()

@@ -1,5 +1,13 @@
 use std::collections::BTreeSet;
 
+pub struct Nip73ExternalIdValidator;
+
+impl nmp_core::substrate::ExternalIdValidator for Nip73ExternalIdValidator {
+    fn is_valid_external_id(&self, external_id: &str) -> bool {
+        kind_for_id(external_id).is_some()
+    }
+}
+
 pub(crate) fn derived_kinds<'a>(ids: impl IntoIterator<Item = &'a str>) -> Option<Vec<String>> {
     let mut seen = BTreeSet::new();
     let mut kinds = Vec::new();

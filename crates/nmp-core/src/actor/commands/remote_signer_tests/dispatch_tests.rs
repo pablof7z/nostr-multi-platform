@@ -109,6 +109,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             blocked_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_blocked_relay_lookup(),
             )),
+            external_id_validator: Arc::new(std::sync::Mutex::new(None)),
             bootstrap_self_kinds: Arc::new(std::sync::Mutex::new(None)),
             routing_substrate: crate::slots::new_routing_substrate_slot(),
             publish_resolver: crate::slots::new_publish_resolver_slot(),

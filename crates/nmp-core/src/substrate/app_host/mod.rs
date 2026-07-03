@@ -35,9 +35,9 @@ use crate::subs::PlanCoverageHook;
 use crate::AppRelaySlot;
 
 use super::{
-    ActionRegistrar, DmInboxRelayLookup, ExternalEventSinkPolicy, IngestParser, MailboxCache,
-    OutboxRouter, ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
-    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+    ActionRegistrar, DmInboxRelayLookup, ExternalEventSinkPolicy, ExternalIdValidator,
+    IngestParser, MailboxCache, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
+    RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 mod observed;
@@ -222,6 +222,12 @@ pub trait BlockedRelayLookupRegistrar {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn super::BlockedRelayLookup>);
 }
 
+/// Install the protocol-owned external-id validator used by raw `i:<id>` event
+/// reference keys.
+pub trait ExternalIdValidatorRegistrar {
+    fn set_external_id_validator(&self, validator: Arc<dyn ExternalIdValidator>);
+}
+
 /// Install the outbound routing / publish / raw-forward factories and the
 /// NIP-46 bootstrap relay — the composition root's substrate-factory seam.
 pub trait RoutingFactoryRegistrar {
@@ -403,6 +409,7 @@ pub trait AppHost:
     + KernelReaderRegistrar
     + DmInboxRelayRegistrar
     + BlockedRelayLookupRegistrar
+    + ExternalIdValidatorRegistrar
     + RoutingFactoryRegistrar
     + super::search::SearchScopeRegistrar
     + super::intent::InputScopeRegistrar
@@ -424,6 +431,7 @@ impl<T> AppHost for T where
         + KernelReaderRegistrar
         + DmInboxRelayRegistrar
         + BlockedRelayLookupRegistrar
+        + ExternalIdValidatorRegistrar
         + RoutingFactoryRegistrar
         + super::search::SearchScopeRegistrar
         + super::intent::InputScopeRegistrar

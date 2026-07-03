@@ -15,10 +15,11 @@ use std::sync::Arc;
 use crate::NmpApp;
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    DmInboxRelayRegistrar, ExternalIdValidatorRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection,
+    ObservedProjectionRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
+    SnapshotProjectionRegistrar,
 };
 use nmp_ownership::ProjectionRegistrationKey;
 
@@ -183,6 +184,16 @@ impl<S> BlockedRelayLookupRegistrar for NmpAppBuilder<S> {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_blocked_relay_lookup(lookup);
+    }
+}
+
+impl<S> ExternalIdValidatorRegistrar for NmpAppBuilder<S> {
+    fn set_external_id_validator(
+        &self,
+        validator: Arc<dyn nmp_core::substrate::ExternalIdValidator>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_external_id_validator(validator);
     }
 }
 

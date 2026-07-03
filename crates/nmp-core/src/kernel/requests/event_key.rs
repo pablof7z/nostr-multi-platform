@@ -1,4 +1,4 @@
-//! ADR-0070 — the canonical raw event-key parser.
+//! Canonical raw event-key parser.
 //!
 //! The unified `resolve_ref` / `release_ref` seam (refs.rs) addresses an event
 //! by the **raw key** the FFI/JNI contract documents (resolve_ref.rs §"Key
@@ -24,6 +24,7 @@
 
 use crate::kernel::refs::{EventShape, RefLiveness};
 use crate::planner::InterestShape;
+use crate::substrate::ExternalIdValidator;
 
 /// A parsed, canonical event reference. The kernel's resolver body
 /// (`resolve_event_ref`) builds its refcount, interest, and per-key rev off
@@ -71,128 +72,28 @@ pub(in crate::kernel) fn is_lower_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// `true` when `s` is a usable NIP-73 external identifier (#1654): non-empty,
-/// free of ASCII control / whitespace bytes that could never appear in a wire
-/// `i`-tag value, AND carrying a recognised NIP-73 scheme (fail-CLOSED — a ref
-/// whose scheme the kernel does not understand never fabricates a `#i` REQ).
-///
-/// The earlier shape of this guard accepted ANY non-empty, whitespace-free
-/// string, so `i:<anything>` issued a network `#i` REQ for an arbitrary/unknown
-/// id (codex lead-gate HIGH 1). NIP-73 defines a CLOSED set of external-id
-/// schemes; we mirror that set here. The kernel still does not *interpret* the id
-/// (it forwards the verbatim value as a `#i` filter) — it only refuses to fetch a
-/// scheme NIP-73 never minted.
-pub(in crate::kernel) fn is_valid_external_id(s: &str) -> bool {
-    !s.is_empty()
-        && !s.bytes().any(|b| b.is_ascii_control() || b == b' ')
-        && is_known_nip73_scheme(s)
-}
-
-/// `true` when `s` matches one of the external-id schemes defined by NIP-73
-/// (<https://github.com/nostr-protocol/nips/blob/master/73.md>). This is the
-/// fail-closed allowlist `is_valid_external_id` gates on; an `i:` ref whose value
-/// is not one of these forms is rejected (no `#i` REQ, no fabricated preview).
-///
-/// `s` is the bytes AFTER the `i:` projection-key prefix has been stripped — i.e.
-/// the verbatim NIP-73 `i`-tag value. Callers guarantee it is non-empty and
-/// whitespace/control-free before this runs, so each arm only has to recognise
-/// the scheme shape, not re-validate byte hygiene.
-///
-/// This recognises the SCHEME SHAPE only — it deliberately does NOT validate the
-/// per-scheme value FORMAT (ISBN checksums, geohash alphabet, DOI regex, caip-2
-/// chain-id charset beyond non-empty/alnum, …). The safety property is
-/// fail-closed AT RESOLUTION: a known-scheme ref with a junk value
-/// (e.g. `isbn:garbage`) issues a `#i` REQ that matches no event and renders NO
-/// preview — that is acceptable and correct, not a hole. Input-format
-/// gatekeeping is out of scope (codex re-gate SCOPE-OUT #2).
-fn is_known_nip73_scheme(s: &str) -> bool {
-    // Bare web URL — the only NIP-73 form with NO scheme prefix. A `:`-free value
-    // can never be a prefixed scheme, so it MUST be a URL to be valid.
-    if let Some(rest) = s
-        .strip_prefix("https://")
-        .or_else(|| s.strip_prefix("http://"))
-    {
-        return !rest.is_empty();
-    }
-    // Hashtag — `#<topic>`.
-    if let Some(topic) = s.strip_prefix('#') {
-        return !topic.is_empty();
-    }
-    // Blockchain (NIP-73 generic form) — `<blockchain>:[<chainId>:]tx:<id>` and
-    // `<blockchain>:[<chainId>:]address:<addr>`. `<blockchain>` is a lowercase
-    // alphanumeric token (bitcoin, ethereum, solana, …); the optional `<chainId>`
-    // (caip-2 style) is any non-empty alnum segment — we do NOT over-validate its
-    // charset. `bitcoin:tx:<id>` (no chainId) and `ethereum:1:address:<a>` (with
-    // chainId) both pass; `bitcoin:nonsense:<v>` (bad middle segment) and a
-    // missing `tx`/`address` selector fail closed.
-    if is_known_blockchain_scheme(s) {
-        return true;
-    }
-    // Fixed-prefix schemes — the value after the prefix must be non-empty. Ordered
-    // longest-prefix-first so `podcast:item:guid:` wins over `podcast:guid:` etc.
-    const PREFIXES: &[&str] = &[
-        "podcast:item:guid:",
-        "podcast:publisher:guid:",
-        "podcast:guid:",
-        "isbn:",
-        "geo:",
-        "iso3166:",
-        "isan:",
-        "doi:",
-    ];
-    PREFIXES
-        .iter()
-        .any(|p| s.strip_prefix(p).is_some_and(|rest| !rest.is_empty()))
-}
-
-/// `true` when `s` is a NIP-73 blockchain external id:
-/// `<blockchain>[:<chainId>]:<selector>:<value>` where `<selector>` is `tx` or
-/// `address`. The leading `<blockchain>` token must be a non-empty lowercase
-/// alphanumeric string; the optional `<chainId>` is any non-empty alphanumeric
-/// segment (caip-2 style — not charset-validated beyond non-empty/alnum). The
-/// trailing `<value>` (tx hash / address) must be non-empty.
-///
-/// Generalises the formerly-hardcoded `bitcoin:`/`ethereum:` arms so any chain
-/// NIP-73 mints (`solana:tx:<id>`, …) resolves without a code change, while
-/// `<chain>:<garbage>:<value>` (bad selector) still fails closed.
-fn is_known_blockchain_scheme(s: &str) -> bool {
-    let mut parts = s.split(':');
-    let blockchain = parts.next().unwrap_or("");
-    // `<blockchain>` — non-empty lowercase alphanumeric (rejects empty, uppercase,
-    // and punctuation so a bare URL host or a `#`-tag never lands here).
-    if blockchain.is_empty()
-        || !blockchain
-            .bytes()
-            .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9'))
-    {
-        return false;
-    }
-    // Next segment is either the selector (`tx`/`address`, no chainId) OR a
-    // chainId followed by the selector. After this block `parts` is positioned at
-    // the value (the tx hash / address).
-    let second = parts.next().unwrap_or("");
-    if second != "tx" && second != "address" {
-        // `second` must instead be a non-empty alphanumeric chainId, with the
-        // selector in the FOLLOWING segment.
-        let chain_id_ok = !second.is_empty() && second.bytes().all(|b| b.is_ascii_alphanumeric());
-        let selector = parts.next().unwrap_or("");
-        if !chain_id_ok || (selector != "tx" && selector != "address") {
-            return false;
-        }
-    }
-    // The remaining text (the tx hash / address, which MAY itself contain colons)
-    // must be non-empty.
-    let value: String = parts.collect::<Vec<_>>().join(":");
-    !value.is_empty()
+/// `true` when `s` has the core-owned byte shape for an external identifier:
+/// non-empty and free of ASCII control or whitespace bytes. Scheme grammar is
+/// intentionally delegated to the registered protocol validator.
+pub(in crate::kernel) fn has_external_id_byte_hygiene(s: &str) -> bool {
+    !s.is_empty() && !s.bytes().any(|b| b.is_ascii_control() || b == b' ')
 }
 
 /// Recover the verbatim NIP-73 external id from an `i:<external-id>` projection
 /// key (#1654), or `None` when `key` is not an external-ref key. Used by the
 /// store / cache lookup paths (`lookup_for_primary_id`, `event_already_known`)
 /// to match a referencing event's `i`-tag value.
-pub(in crate::kernel) fn external_id_from_key(key: &str) -> Option<&str> {
+pub(in crate::kernel) fn external_id_from_key<'a>(
+    key: &'a str,
+    validator: Option<&dyn ExternalIdValidator>,
+) -> Option<&'a str> {
     key.strip_prefix("i:")
-        .filter(|external_id| is_valid_external_id(external_id))
+        .filter(|external_id| has_external_id_byte_hygiene(external_id))
+        .filter(|external_id| {
+            validator
+                .map(|v| v.is_valid_external_id(external_id))
+                .unwrap_or(false)
+        })
 }
 
 /// Parse a raw event key into its canonical [`EventTarget`], or `None` if the
@@ -209,7 +110,10 @@ pub(in crate::kernel) fn external_id_from_key(key: &str) -> Option<&str> {
 ///   replaceable_coord: None, filter: {"#i":[<external-id>], limit:1}}`. The
 ///   `i:` prefix is stripped to recover the verbatim external-id; the wire REQ
 ///   matches any event tagging that external id with an `i` tag.
-pub(in crate::kernel) fn parse_event_key(key: &str) -> Option<EventTarget> {
+pub(in crate::kernel) fn parse_event_key(
+    key: &str,
+    validator: Option<&dyn ExternalIdValidator>,
+) -> Option<EventTarget> {
     // Immutable event-id: the whole key is lowercase-64-hex (no colon).
     if is_lower_hex64(key) {
         let filter = InterestShape {
@@ -230,7 +134,11 @@ pub(in crate::kernel) fn parse_event_key(key: &str) -> Option<EventTarget> {
     // (no colon). The external id is the verbatim NIP-73 `i`-tag value; a
     // present-but-empty external id (`i:`) fails closed (D6).
     if let Some(external_id) = key.strip_prefix("i:") {
-        if !is_valid_external_id(external_id) {
+        if !has_external_id_byte_hygiene(external_id)
+            || !validator
+                .map(|v| v.is_valid_external_id(external_id))
+                .unwrap_or(false)
+        {
             return None;
         }
         let mut tags: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =

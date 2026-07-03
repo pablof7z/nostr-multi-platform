@@ -74,6 +74,9 @@ pub(crate) struct CompositionConfig {
     pub(crate) profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.
     pub(crate) blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
+    /// Protocol-owned external-id validator slot.
+    pub(crate) external_id_validator_slot:
+        Arc<Mutex<Option<Arc<dyn nmp_core::substrate::ExternalIdValidator>>>>,
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
     /// UniFFI NIP-19 `encode_profile` identity helper.
     pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,

@@ -107,6 +107,7 @@ pub fn spawn_actor_with_storage_path(
             contact_list_reader: crate::slots::new_contact_list_reader_slot(),
             profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
             blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+            external_id_validator: Arc::new(Mutex::new(None)),
             bootstrap_self_kinds: Arc::new(Mutex::new(None)),
             user_agent: Arc::new(Mutex::new(None)),
             outbound_public_tags: Arc::new(Mutex::new(None)),

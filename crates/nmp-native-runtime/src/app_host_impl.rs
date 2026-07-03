@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
+    DmInboxRelayRegistrar, ExternalIdValidatorRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
     SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
@@ -158,6 +158,15 @@ impl DmInboxRelayRegistrar for NmpApp {
 impl BlockedRelayLookupRegistrar for NmpApp {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         NmpApp::set_blocked_relay_lookup(self, lookup);
+    }
+}
+
+impl ExternalIdValidatorRegistrar for NmpApp {
+    fn set_external_id_validator(
+        &self,
+        validator: Arc<dyn nmp_core::substrate::ExternalIdValidator>,
+    ) {
+        NmpApp::set_external_id_validator(self, validator);
     }
 }
 

@@ -42,6 +42,20 @@ impl Kernel {
         self.blocked_relays = lookup;
     }
 
+    /// Install the protocol-owned external-id validator.
+    pub(crate) fn set_external_id_validator(
+        &mut self,
+        validator: Arc<dyn crate::substrate::ExternalIdValidator>,
+    ) {
+        self.external_id_validator = Some(validator);
+    }
+
+    pub(in crate::kernel) fn external_id_validator(
+        &self,
+    ) -> Option<&dyn crate::substrate::ExternalIdValidator> {
+        self.external_id_validator.as_deref()
+    }
+
     /// Shared handle used by `kernel/mailboxes.rs::build_routing_context`.
     pub(crate) fn blocked_relays_arc(&self) -> Arc<dyn BlockedRelayLookup> {
         Arc::clone(&self.blocked_relays)

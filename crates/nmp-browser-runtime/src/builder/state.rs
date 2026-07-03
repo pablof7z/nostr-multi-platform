@@ -92,6 +92,7 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) profile_lookup: Option<Arc<dyn ProfileLookup>>,
     pub(crate) dm_inbox_relay_lookup: Option<Arc<dyn DmInboxRelayLookup>>,
     pub(crate) blocked_relay_lookup: Option<Arc<dyn BlockedRelayLookup>>,
+    pub(crate) external_id_validator: Option<Arc<dyn nmp_core::substrate::ExternalIdValidator>>,
     /// Read-only `MailboxCache` for the NIP-19 `nprofile` encoder. Stored here;
     /// consumed when the browser snapshot/projection/encoding contract wires the
     /// identity encoder — seam: #2051.
@@ -183,6 +184,7 @@ impl BrowserBuilderInner {
             profile_lookup: None,
             dm_inbox_relay_lookup: None,
             blocked_relay_lookup: None,
+            external_id_validator: None,
             mailbox_cache_reader: None,
             routing_substrate_factory: None,
             publish_resolver_factory: None,

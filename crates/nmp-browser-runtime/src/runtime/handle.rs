@@ -100,6 +100,9 @@ impl BrowserRuntimeHandle {
         if let Some(l) = inner.blocked_relay_lookup.take() {
             inner.reducer.set_blocked_relay_lookup(l);
         }
+        if let Some(v) = inner.external_id_validator.take() {
+            inner.reducer.set_external_id_validator(v);
+        }
         if let Some(hook) = inner.coverage_hook.take() {
             inner.reducer.set_coverage_hook(hook);
         }

@@ -226,6 +226,28 @@ impl NmpApp {
         }
     }
 
+    /// Install the protocol-owned external-id validator used by raw `i:<id>`
+    /// event reference keys.
+    pub fn set_external_id_validator(
+        &self,
+        validator: std::sync::Arc<dyn nmp_core::substrate::ExternalIdValidator>,
+    ) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "external_id_validator",
+            "external_id_validator",
+            "external_id_validator",
+        ) {
+            return status;
+        }
+        if let Ok(mut slot) = self.composition.external_id_validator_slot.lock() {
+            self.record_slot_decision("external_id_validator", "external_id_validator", true);
+            *slot = Some(validator);
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
+
     /// H4 — install the read-only [`nmp_core::substrate::MailboxCache`] handle
     /// the UniFFI NIP-19 `encode_profile` helper reads kind:10002 relay
     /// hints from. Mirrors [`Self::set_blocked_relay_lookup`] /

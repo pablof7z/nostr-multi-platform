@@ -14,11 +14,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::passive_start::ActorStarter;
+use nmp_core::ObservedProjectionId;
 use nmp_core::__ffi_internal::{
     ActionRegistry, CapabilityCallbackSlot, LifecycleObserverSlot, ObservedProjectionSinkSlot,
     SnapshotProjectionSlot,
 };
-use nmp_core::ObservedProjectionId;
 use std::sync::mpsc;
 
 pub(crate) use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};

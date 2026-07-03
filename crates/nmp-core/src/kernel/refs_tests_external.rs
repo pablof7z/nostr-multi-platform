@@ -1,5 +1,5 @@
-//! #1654 — NIP-73 external-reference (`i:<external-id>`) end-to-end coverage for
-//! the `refs.event` resolver. These tests drive the SAME `resolve_ref` Event
+//! External-reference (`i:<external-id>`) end-to-end coverage for the
+//! `refs.event` resolver. These tests drive the SAME `resolve_ref` Event
 //! seam the id / coordinate forms use — there is NO parallel resolver — and
 //! prove that an `i:<external-id>` key:
 //!
@@ -17,8 +17,24 @@
 use super::nostr::NostrEvent;
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::substrate::ExternalIdValidator;
 use nmp_network::role::RelayRole;
+use std::sync::Arc;
+
+struct AcceptExternalIdValidator;
+
+impl ExternalIdValidator for AcceptExternalIdValidator {
+    fn is_valid_external_id(&self, _external_id: &str) -> bool {
+        true
+    }
+}
+
+fn kernel_with_external_id_validator() -> Kernel {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_external_id_validator(Arc::new(AcceptExternalIdValidator));
+    kernel
+}
 
 /// A real signed event (any kind) carrying a NIP-73 `["i", external_id]` tag —
 /// the referencing event an `i:<external-id>` ref resolves to (e.g. a kind:1111
@@ -48,7 +64,7 @@ fn signed_external(keys: &::nostr::Keys, kind: u32, external_id: &str, ts: u64) 
 fn claim_then_ingest(external_id: &str, kind: u32) -> (Kernel, String, String) {
     let keys = ::nostr::Keys::generate();
     let key = format!("i:{external_id}");
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -112,7 +128,7 @@ fn external_ref_per_key_rev_advances_on_ingest() {
     let external_id = "isbn:9780375704024";
     let key = format!("i:{external_id}");
     let keys = ::nostr::Keys::generate();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -181,7 +197,7 @@ fn external_ref_multi_tag_bumps_every_claimed_row() {
     let key_a = format!("i:{external_a}");
     let key_b = format!("i:{external_b}");
     let keys = ::nostr::Keys::generate();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     for key in [&key_a, &key_b] {
         kernel.resolve_ref(
@@ -221,7 +237,7 @@ fn external_ref_unresolved_fails_closed() {
     // `event_already_known` is false. The resolver never guesses; the preview
     // stays pending (absence ⇒ Unchanged on the carrier, never a fabricated row).
     let key = "i:doi:10.1000/never-seen".to_string();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -247,14 +263,12 @@ fn external_ref_unresolved_fails_closed() {
 }
 
 #[test]
-fn external_ref_known_scheme_junk_value_renders_no_preview() {
-    // codex re-gate SCOPE-OUT #2: a KNOWN scheme with a junk VALUE
-    // (`isbn:garbage`) is NOT format-validated — the kernel issues a `#i` REQ that
-    // returns nothing and renders NO preview. This is the intended fail-closed-AT-
-    // RESOLUTION property: the scheme allowlist is not an input-format gate. Proves
-    // the junk-value path resolves to absence, not a fabricated card.
+fn external_ref_validator_accepted_junk_value_renders_no_preview() {
+    // Core does not own protocol-specific value grammar. Once the registered
+    // validator accepts the stripped external id, the kernel issues a `#i` REQ
+    // and renders no preview until a matching event arrives.
     let key = "i:isbn:garbage".to_string();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -265,19 +279,17 @@ fn external_ref_known_scheme_junk_value_renders_no_preview() {
         false,
         Vec::new(),
     );
-    // The known scheme is accepted (a discovery REQ is in flight)…
     assert!(
         kernel.event_claims.contains_key(&key),
-        "a known scheme with a junk value is still a valid scheme (REQ in flight)"
+        "a validator-accepted id with no event still records a claim"
     );
-    // …but with no matching event cached, NO preview is fabricated.
     assert!(
         kernel.lookup_for_primary_id(&key).is_none(),
-        "junk-value known scheme resolves to NO preview (absence, not a card)"
+        "validator-accepted id with no matching event resolves to no preview"
     );
     assert!(
         !kernel.event_already_known(&key),
-        "junk-value known scheme: event_already_known stays false"
+        "validator-accepted id without a cached match: event_already_known stays false"
     );
 }
 
@@ -296,7 +308,7 @@ fn event_id_and_external_ref_both_bump_on_ingest() {
     let ev = signed_external(&keys, 1111, external_id, 1_700_000_000);
     let id_key = ev.id.clone();
 
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     for key in [&id_key, &ext_key] {
         kernel.resolve_ref(
@@ -338,7 +350,7 @@ fn external_ref_does_not_match_different_external_id() {
     let claimed = "podcast:item:guid:wanted";
     let key = format!("i:{claimed}");
     let keys = ::nostr::Keys::generate();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_external_id_validator();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,

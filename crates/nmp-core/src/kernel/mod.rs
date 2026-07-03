@@ -180,8 +180,8 @@ use crate::substrate::EmptyMailboxCache;
 use crate::substrate::TestInMemoryMailboxCache;
 use crate::substrate::{
     empty_blocked_relay_lookup, empty_dm_inbox_relay_lookup, BlockedRelayLookup,
-    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, MailboxCache, OutboxRouter,
-    ProfileLookup, MAX_PROJECTION_MESSAGES,
+    DmInboxRelayLookup, EmptyOutboxRouter, EventIngestDispatcher, ExternalIdValidator,
+    MailboxCache, OutboxRouter, ProfileLookup, MAX_PROJECTION_MESSAGES,
 };
 use crate::util::sort_dedup;
 pub use action_registry::{default_registry, ActionRegistry, RegistrationError};
@@ -282,6 +282,9 @@ pub struct Kernel {
     contact_list_reader: Arc<dyn ContactListReader>,
     /// Blocked-relay lookup substrate (D0, V-40).
     blocked_relays: Arc<dyn BlockedRelayLookup>,
+    /// Protocol-owned external-id validator. `None` means raw `i:<id>` event
+    /// refs fail closed.
+    external_id_validator: Option<Arc<dyn ExternalIdValidator>>,
     /// Per-app override for the active-account bootstrap self-kinds list.
     bootstrap_self_kinds_override: Option<Vec<u32>>,
     /// Substrate-generic outbound public tags appended by the publish policy
