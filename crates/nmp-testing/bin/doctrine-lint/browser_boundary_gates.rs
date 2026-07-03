@@ -5,6 +5,7 @@
 //! keep that split visible in doctrine CI.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use super::{run_lint, workspace_root};
 
@@ -154,6 +155,60 @@ fn browser_production_composition_names_owner_installers() {
              missing `{token}`"
         );
     }
+}
+
+#[test]
+fn browser_runtime_search_concept_is_feature_gated() {
+    let findings = browser_runtime_non_optional_dependency_findings(&["nmp-nip50"]);
+
+    assert!(
+        findings.is_empty(),
+        "#2797: NIP-50 search is concept-owned composition. Keep the browser \
+         runtime SearchHost implementation and worker search dispatch behind \
+         the nmp-browser-runtime `search` feature:\n{}",
+        findings.join("\n")
+    );
+}
+
+fn browser_runtime_non_optional_dependency_findings(names: &[&str]) -> Vec<String> {
+    let root = workspace_root();
+    let output = Command::new(env!("CARGO"))
+        .current_dir(&root)
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .output()
+        .expect("cargo metadata must spawn");
+    assert!(
+        output.status.success(),
+        "cargo metadata failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("cargo metadata JSON must parse");
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages must be an array");
+    let runtime = packages
+        .iter()
+        .find(|pkg| pkg["name"] == "nmp-browser-runtime")
+        .expect("nmp-browser-runtime package must be in cargo metadata");
+    let dependencies = runtime["dependencies"]
+        .as_array()
+        .expect("package dependencies must be an array");
+
+    dependencies
+        .iter()
+        .filter_map(|dependency| {
+            let name = dependency["name"].as_str().unwrap_or_default();
+            if !names.contains(&name) {
+                return None;
+            }
+            let kind = dependency["kind"].as_str().unwrap_or("normal");
+            let optional = dependency["optional"].as_bool().unwrap_or(false);
+            (!optional && kind != "dev").then(|| format!("nmp-browser-runtime -> {name} ({kind})"))
+        })
+        .collect()
 }
 
 #[test]

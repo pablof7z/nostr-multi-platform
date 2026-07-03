@@ -39,6 +39,9 @@ opfs-sqlite-backend = ["nmp-store/opfs-sqlite-backend"]
 # Expose test-support seams (e.g. `set_active_account_for_test`) so integration
 # tests in sibling crates can seed kernel state without a full identity flow.
 test-support = []
+# Enable the browser NIP-50 search adapter. Off by default so browser runtime
+# users do not compile/search-dispatch the NIP-50 concept unless composed.
+search = ["dep:nmp-nip50"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
@@ -65,7 +68,7 @@ nmp-nip25 = { path = "../nmp-nip25" }
 nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip46 = { path = "../nmp-nip46" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
-nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip50 = { path = "../nmp-nip50", optional = true }
 nmp-nip51 = { path = "../nmp-nip51" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-nip84 = { path = "../nmp-nip84" }

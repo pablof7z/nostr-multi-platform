@@ -185,6 +185,31 @@ fn request_before_start_returns_not_started() {
     assert!(resp.contains("not_started"), "resp={resp}");
 }
 
+#[cfg(not(feature = "search"))]
+#[test]
+fn search_open_fails_closed_when_feature_disabled() {
+    let mut core = NmpRuntimeCore::new();
+    let _ = core.handle_json_request(&start_req());
+    let req = serde_json::json!({
+        "type": "search_open",
+        "session_id": "search-1",
+        "query": "nostr",
+        "scope": "notes",
+        "targets": "app_default",
+        "relays": [],
+        "correlation_id": "search-open-1"
+    });
+
+    let resp = core.handle_json_request(&req.to_string());
+    let events: serde_json::Value = serde_json::from_str(&resp).expect("valid worker events JSON");
+    assert_eq!(
+        events[0]["type"], "capability_failure",
+        "search_open must fail closed without the search feature: {resp}"
+    );
+    assert_eq!(events[0]["capability"], "nmp.nip50.search.open");
+    assert_eq!(events[0]["reason"], "feature_disabled:nmp.nip50.search");
+}
+
 #[test]
 fn recent_routing_decisions_returns_error_before_start() {
     let core = NmpRuntimeCore::new();
