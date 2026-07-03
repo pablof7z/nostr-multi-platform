@@ -107,6 +107,18 @@ dedup, outbox routing, cache-serve, or close semantics.
 
 ## 7. NMP implementation (#2113, shipped)
 
+> **Superseded (2026-07-04).** The specific composition-root and delivery symbols
+> named in §7–§8 below — `op_pointer_source`, `DynamicTargetProjection`,
+> `open_pointer_source`/`register_pointer_source`, `PointerSourceSession`, and the
+> `op_pointer_source::tests::*` cases — were **deleted** as dead pre-#2777
+> hand-rolled lifecycle code. The open/close-on-shape-change reconciliation they
+> described is now owned generically by the read engine
+> (`nmp-read-session::DependentDemandReconciler`, #2818), and the live
+> pointer-source hydration path is `nmp-feed-session::pointer_target_hydration`
+> driving lifecycle through the feed engine over the pure `PointerSourceModel`
+> (which is retained). The mapping below is kept as the historical #2113 shape;
+> read it as "how NMP first expressed this pattern," not as current symbol names.
+
 The implementation is a read-model/protocol module, not a new substrate trait:
 
 ```text
