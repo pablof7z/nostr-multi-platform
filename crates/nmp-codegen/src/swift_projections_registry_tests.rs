@@ -18,8 +18,9 @@ fn registry_size_is_locked() {
     // Profile/event data is now served via refs.profile / refs.event NRRD
     // row-delta sidecars; minus the deleted global zaps sidecar (#2091);
     // minus the deleted framework-owned OP-feed product key (#2574);
-    // minus the dead `nmp.nip29.group_defaults` projection (no live
-    // consumer — every host-composition-root wiring call site was unreferenced).
+    // minus the deleted `nmp.nip29.group_defaults` projection: group-create
+    // suggested relay URLs are app/operator config exposed by a leaf-app facade,
+    // not a NIP-29 snapshot contract.
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
@@ -72,8 +73,8 @@ fn all_dotted_keys_are_present() {
         .filter(|k| k.contains('.'))
         .collect();
     // Eight dotted keys. App-owned NNFS OP-feed sessions are decoded by their
-    // caller-selected projection keys and are not shared registry members;
-    // the dead NIP-29 group-defaults projection was removed.
+    // caller-selected projection keys and are not shared registry members; the
+    // removed NIP-29 group-defaults config is not a projection.
     let expected = [
         "nmp.nip29.group_events",
         "nmp.nip29.discovered_groups",

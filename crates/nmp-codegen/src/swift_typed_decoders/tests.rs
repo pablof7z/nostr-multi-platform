@@ -244,8 +244,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
          (ADR-0072 D6, generalised from V-14 bunker_connection_state); \
          #1283 Phase 1: \
          refs.event.envelopes (NEMB); #2091: global zaps sidecar deleted; \
-         nmp.nip29.group_defaults DELETED (dead projection, no live \
-         consumer); if this changed, \
+         nmp.nip29.group_defaults DELETED (static app/operator config, not a \
+         projection); if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }

@@ -94,6 +94,15 @@ pre-v1 consumer. The correct response to a real consumer break is to migrate the
 consumer to the cleaner framework surface and, when the break reveals a missing
 generic capability, fix that capability in NMP.
 
+When the removed surface was architecturally wrong, do not resurrect it just
+because an external consumer still pins it. The replacement must preserve the
+ownership boundary. Example: `nmp.nip29.group_defaults` / `NGDF` was a static
+leaf-app suggested relay URL carried as a NIP-29 projection. Consumers bumping
+past that deletion should expose the value through their own app facade
+(`suggested_public_group_relay_url()` or equivalent) backed by app config. They
+must not restore `wire_group_defaults*`, add a compatibility projection, or
+move the operator URL into `nmp-nip29`.
+
 ### Composition Dependency
 
 External consumers compose NMP through `nmp-substrate` plus explicit

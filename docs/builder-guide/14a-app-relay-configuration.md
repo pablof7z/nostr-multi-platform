@@ -97,8 +97,24 @@ relay set:
 - NIP-29 group-create suggestions (e.g. a suggested relay URL to pre-fill on
   a create-group form) are ordinary app/operator policy: a leaf app owns that
   string as plain config. There is no kernel projection for it — a prior
-  `nmp-nip29` `GroupDefaultsProjection` round-trip for this had no live host
-  composition-root consumer and was removed.
+  `nmp-nip29` `GroupDefaultsProjection` round-trip for this promoted a static
+  product default into protocol snapshot/codegen machinery and was removed.
+
+For native apps, expose this kind of product default through the leaf app's
+own facade, not through `nmp-nip29`:
+
+```rust
+#[uniffi::export]
+impl ChirpApp {
+    pub fn suggested_public_group_relay_url(&self) -> String {
+        nmp_chirp_config::chirp_public_group_relay_url().to_string()
+    }
+}
+```
+
+The shell may use that value to seed an editable text field. The kernel does
+not observe it, replay it, encode it as a projection, or treat it as protocol
+state.
 
 ---
 
