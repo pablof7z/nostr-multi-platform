@@ -4,9 +4,9 @@
 //! HTTP/DHKE round-trip itself is `nmp-nip60`'s own tested surface).
 
 use super::*;
-use nmp_core::actor::PublishCommand;
+use nmp_core::actor::{InterestsCommand, PublishCommand};
 use nmp_core::publish::PublishTarget;
-use nmp_nip60::kinds::KIND_NIP61_NUTZAP;
+use nmp_nip60::kinds::{KIND_NIP61_NUTZAP, KIND_NIP61_NUTZAP_INFO};
 
 fn ctx(account_pubkey: Option<&str>) -> WalletBackendContext<'_> {
     WalletBackendContext {
@@ -66,6 +66,89 @@ fn no_recipient_info_fails_closed() {
     let backend = backend_with_mint();
     let errors = run_send(&backend, &FixedCachedEvents::default(), "cid-no-info", 21);
     expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+}
+
+/// #2936 — a cache miss on the recipient's kind:10019 must not just fail
+/// closed silently: it opens a warm-the-cache read interest for that
+/// specific recipient (`interests::recipient_nutzap_info_interest`) so a
+/// later retry can actually succeed once the event arrives. Without this,
+/// `SendNutzap` to any recipient this account has never incidentally
+/// observed a kind:10019 from fails closed FOREVER, no retry ever helps.
+#[test]
+fn no_recipient_info_opens_a_warm_cache_interest() {
+    let backend = backend_with_mint();
+    let commands = backend.start_intent(
+        ctx(Some(ACCOUNT)),
+        WalletIntent::SendNutzap {
+            recipient_pubkey: RECIPIENT.to_string(),
+            amount_sats: 21,
+            target_event_id: None,
+        },
+        Some("cid-warm-cache".to_string()),
+    );
+    let ActorCommand::Protocol(cmd) = commands.into_iter().next().unwrap() else {
+        panic!("expected a Protocol command");
+    };
+    let sink = Sink::new();
+    let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
+    let clock = FixedClock(1_700_000_000);
+    let recipients = FixedRecipientLookup(Vec::new());
+    let errors = RecordingErrorSurface::default();
+    let (worker_tx, _worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
+    let cached = FixedCachedEvents::default();
+    {
+        let mut c = ctx_with_cached_events_and_errors(
+            &send,
+            nmp_core::CommandSender::new(worker_tx),
+            &clock,
+            &recipients,
+            &cached,
+            &errors,
+        );
+        cmd.run(&mut c).expect("run returns Ok");
+    }
+    expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+
+    let sends = sink.sends.lock().unwrap();
+    let (identity, interest) = sends
+        .iter()
+        .find_map(|c| match c {
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
+                Some((identity.clone(), interest.clone()))
+            }
+            _ => None,
+        })
+        .expect("expected an EnsureInterest for the recipient's kind:10019");
+    assert_eq!(
+        identity,
+        crate::interests::recipient_nutzap_info_identity(RECIPIENT),
+        "must dedupe against future lookups for the same recipient"
+    );
+    assert!(interest.shape.authors.contains(RECIPIENT));
+    assert!(interest.shape.kinds.contains(&KIND_NIP61_NUTZAP_INFO));
+}
+
+/// #2936 — once the recipient's kind:10019 the interest above warmed has
+/// actually arrived (simulated here by seeding `FixedCachedEvents`, the same
+/// double a real kernel cache-serve would populate), the caller's retry
+/// finds it and proceeds PAST the recipient-info gate — it must not fail
+/// with `NO_RECIPIENT_NUTZAP_INFO` a second time.
+#[test]
+fn retry_after_interest_delivers_recipient_info_proceeds_past_the_gate() {
+    let backend = backend_with_mint();
+    let errors = run_send(&backend, &FixedCachedEvents::default(), "cid-retry-1", 21);
+    expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+
+    let info = nmp_nip60::nutzap::NutZapInfo {
+        relays: vec!["wss://recipient-relay.example".to_string()],
+        mints: vec![MINT.to_string()],
+        cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
+    };
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    // Same backend (no proofs) — the next gate it should hit is insufficient
+    // balance, never the recipient-info gate again.
+    let errors = run_send(&backend, &cached, "cid-retry-2", 21);
+    expect_error_code(&errors, ui_codes::INSUFFICIENT_BALANCE);
 }
 
 #[test]
