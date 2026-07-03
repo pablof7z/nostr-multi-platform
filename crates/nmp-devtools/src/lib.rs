@@ -7,12 +7,19 @@
 
 #![forbid(unsafe_code)]
 
+mod capsule;
+mod prover;
 mod receipt;
 mod trellis;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
 
+pub use capsule::{
+    redact_receipts, XrayCapsule, XrayCapsuleProducer, XrayCapsuleVersions, XrayRedactionMode,
+    XraySymbolicationEntry, XraySymbolicationManifest,
+};
+pub use prover::{XrayProbe, XrayReplaySession, XrayReplayTransaction, XrayScopeInventory};
 pub use receipt::{
     XrayCauseLink, XrayCommandOutcome, XrayInterestDescriptor, XrayOutcomeStatus, XrayOwnerCounts,
     XrayProjectionContext, XrayReason, XrayReasonCode, XrayReasonParam, XrayReceipt,
