@@ -47,6 +47,7 @@ search = ["dep:nmp-nip50"]
 groups = ["dep:nmp-nip29"]
 # Enable browser concept installers that are useful to social apps but are not
 # part of the runtime host seam itself.
+social-graph = ["dep:nmp-nip02", "dep:nmp-nip51"]
 comments = ["dep:nmp-nip22"]
 longform = ["dep:nmp-nip23"]
 reactions = ["dep:nmp-nip25"]
@@ -68,7 +69,7 @@ nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-read-session = { path = "../nmp-read-session" }
 nmp-kinds = { path = "../nmp-kinds" }
 nmp-note-feed = { path = "../nmp-note-feed" }
-nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip02 = { path = "../nmp-nip02", optional = true }
 nmp-nip17 = { path = "../nmp-nip17" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip23 = { path = "../nmp-nip23", optional = true }
@@ -78,7 +79,7 @@ nmp-nip29 = { path = "../nmp-nip29", optional = true }
 nmp-nip46 = { path = "../nmp-nip46" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
 nmp-nip50 = { path = "../nmp-nip50", optional = true }
-nmp-nip51 = { path = "../nmp-nip51" }
+nmp-nip51 = { path = "../nmp-nip51", optional = true }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 nmp-nip84 = { path = "../nmp-nip84", optional = true }
 nmp-planner = { path = "../nmp-planner", default-features = false }
@@ -123,4 +124,5 @@ web-sys = { version = "0.3.98", features = [
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
 nmp-codegen = { path = "../nmp-codegen" }
+nmp-nip02 = { path = "../nmp-nip02" }
 wasm-bindgen-test = "0.3"

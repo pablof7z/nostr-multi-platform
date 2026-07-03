@@ -160,11 +160,13 @@ fn browser_production_composition_names_owner_installers() {
 #[test]
 fn browser_runtime_concept_installers_are_feature_gated() {
     let findings = browser_runtime_non_optional_dependency_findings(&[
+        "nmp-nip02",
         "nmp-nip22",
         "nmp-nip23",
         "nmp-nip25",
         "nmp-nip29",
         "nmp-nip50",
+        "nmp-nip51",
         "nmp-nip84",
     ]);
 

@@ -14,10 +14,13 @@ pub(crate) fn install_browser_production_composition(
             "nmp-nip50 registration must not collide"
         );
     }
-    assert!(
-        nmp_nip02::register(app, nmp_nip02::Config::default()).is_ok(),
-        "nmp-nip02 registration must not collide"
-    );
+    #[cfg(feature = "social-graph")]
+    {
+        assert!(
+            nmp_nip02::register(app, nmp_nip02::Config::default()).is_ok(),
+            "nmp-nip02 registration must not collide"
+        );
+    }
     assert!(
         nmp_replies::register(app, nmp_replies::Config::default()).is_ok(),
         "nmp-replies registration must not collide"
@@ -51,10 +54,13 @@ pub(crate) fn install_browser_production_composition(
         nmp_wot::register(app, nmp_wot::Config::default()).is_ok(),
         "nmp-wot registration must not collide"
     );
-    assert!(
-        nmp_nip51::register(app, nmp_nip51::Config::default()).is_ok(),
-        "nmp-nip51 registration must not collide"
-    );
+    #[cfg(feature = "social-graph")]
+    {
+        assert!(
+            nmp_nip51::register(app, nmp_nip51::Config::default()).is_ok(),
+            "nmp-nip51 registration must not collide"
+        );
+    }
     #[cfg(feature = "comments")]
     {
         assert!(
