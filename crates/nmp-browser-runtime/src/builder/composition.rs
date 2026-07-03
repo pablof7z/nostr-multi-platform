@@ -22,18 +22,24 @@ pub(crate) fn install_browser_production_composition(
         nmp_replies::register(app, nmp_replies::Config::default()).is_ok(),
         "nmp-replies registration must not collide"
     );
-    assert!(
-        nmp_nip25::register(app, nmp_nip25::Config::default()).is_ok(),
-        "nmp-nip25 registration must not collide"
-    );
+    #[cfg(feature = "reactions")]
+    {
+        assert!(
+            nmp_nip25::register(app, nmp_nip25::Config::default()).is_ok(),
+            "nmp-nip25 registration must not collide"
+        );
+    }
     assert!(
         nmp_nip18::register(app, nmp_nip18::Config::default()).is_ok(),
         "nmp-nip18 registration must not collide"
     );
-    assert!(
-        nmp_nip84::register(app, nmp_nip84::Config::default()).is_ok(),
-        "nmp-nip84 registration must not collide"
-    );
+    #[cfg(feature = "bookmarks")]
+    {
+        assert!(
+            nmp_nip84::register(app, nmp_nip84::Config::default()).is_ok(),
+            "nmp-nip84 registration must not collide"
+        );
+    }
     #[cfg(feature = "groups")]
     {
         assert!(
@@ -49,18 +55,24 @@ pub(crate) fn install_browser_production_composition(
         nmp_nip51::register(app, nmp_nip51::Config::default()).is_ok(),
         "nmp-nip51 registration must not collide"
     );
-    assert!(
-        nmp_nip22::register(app, nmp_nip22::Config::default()).is_ok(),
-        "nmp-nip22 registration must not collide"
-    );
+    #[cfg(feature = "comments")]
+    {
+        assert!(
+            nmp_nip22::register(app, nmp_nip22::Config::default()).is_ok(),
+            "nmp-nip22 registration must not collide"
+        );
+    }
     assert!(
         nmp_nip17::register(app, nmp_nip17::Config::default()).is_ok(),
         "nmp-nip17 registration must not collide"
     );
-    assert!(
-        nmp_nip23::register(app, nmp_nip23::Config::default()).is_ok(),
-        "nmp-nip23 registration must not collide"
-    );
+    #[cfg(feature = "longform")]
+    {
+        assert!(
+            nmp_nip23::register(app, nmp_nip23::Config::default()).is_ok(),
+            "nmp-nip23 registration must not collide"
+        );
+    }
 }
 
 fn claim_browser_production_composition(app: &BrowserAppBuilder<ProvidersDecided>) {
