@@ -15,7 +15,9 @@
 //!   `backend::nwc` treats its own out-of-capability intents.
 //! * `snapshot()` reads the shared [`state::CashuWalletState`] this backend's
 //!   own commands/workers write (D4: this backend's commands are the sole
-//!   writer, mirroring `NwcWalletBackend`'s `WalletStatusSlot`).
+//!   writer, mirroring `NwcWalletBackend`'s `WalletStatusSlot`), including
+//!   (#2949) `recent_history`/`receive_rows` folded from the journal's
+//!   terminal operations — see `snapshot.rs`.
 //!
 //! # Live wiring (epic #2864 W7, #2908) vs. still-deferred behavior
 //!
@@ -49,6 +51,7 @@ mod redeem;
 mod redeem_worker;
 mod send;
 mod send_worker;
+mod snapshot;
 mod state;
 mod ui_codes;
 
@@ -154,6 +157,10 @@ impl WalletBackend for CashuWalletBackend {
             })
             .collect();
         projection = projection.with_balances(balances);
+        let terminal = state.journal.terminal_operations();
+        projection = projection
+            .with_recent_history(snapshot::recent_history(&state, &terminal))
+            .with_receive_rows(snapshot::receive_rows(&terminal));
         WalletBackendSnapshot { projection }
     }
 

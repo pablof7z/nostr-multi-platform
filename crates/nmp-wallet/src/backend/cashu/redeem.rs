@@ -83,6 +83,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                None,
                 correlation_id,
                 ui_codes::INVALID_NUTZAP,
                 "nutzap event not found in this backend's cache".to_string(),
@@ -93,6 +95,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                None,
                 correlation_id,
                 ui_codes::INVALID_NUTZAP,
                 "event is not a kind:9321 nutzap".to_string(),
@@ -107,6 +111,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                None,
                 correlation_id,
                 ui_codes::INVALID_NUTZAP,
                 "nutzap is not p-tagged to this account".to_string(),
@@ -125,6 +131,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                     ctx,
                     &state,
                     &operation_id,
+                    &event_id,
+                    None,
                     correlation_id,
                     ui_codes::INVALID_NUTZAP,
                     format!("nutzap decode failed: {e}"),
@@ -142,6 +150,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                Some(&nutzap),
                 correlation_id,
                 ui_codes::ALREADY_REDEEMED,
                 "nutzap already redeemed".to_string(),
@@ -161,6 +171,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                Some(&nutzap),
                 correlation_id,
                 ui_codes::NO_TRUSTED_MINT,
                 "nutzap's mint is not accepted by this wallet".to_string(),
@@ -171,6 +183,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                Some(&nutzap),
                 correlation_id,
                 ui_codes::NO_CASHU_WALLET,
                 "no Cashu wallet created yet".to_string(),
@@ -184,6 +198,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                         ctx,
                         &state,
                         &operation_id,
+                        &event_id,
+                        Some(&nutzap),
                         correlation_id,
                         ui_codes::INVALID_NUTZAP,
                         "a proof is not P2PK-locked to this wallet's Cashu pubkey".to_string(),
@@ -196,6 +212,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                Some(&nutzap),
                 correlation_id,
                 ui_codes::INVALID_NUTZAP,
                 format!("DLEQ verification failed: {e}"),
@@ -210,6 +228,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 ctx,
                 &state,
                 &operation_id,
+                &event_id,
+                Some(&nutzap),
                 correlation_id,
                 ui_codes::NO_CASHU_WALLET,
                 "no Cashu private key available in this session".to_string(),
@@ -232,6 +252,8 @@ impl ProtocolCommand for RedeemNutzapCommand {
                     ctx,
                     &state,
                     &operation_id,
+                    &event_id,
+                    Some(&nutzap),
                     correlation_id,
                     ui_codes::JOURNAL_ERROR,
                     format!("{e:?}"),
@@ -260,15 +282,47 @@ impl ProtocolCommand for RedeemNutzapCommand {
     }
 }
 
+/// `event_id`/`nutzap` are best-effort receive-candidate info (#2949):
+/// `nutzap` is `Some` once `decode_nutzap_fields` has succeeded (every fail
+/// site from `already_redeemed` onward), `None` for the earlier fail sites
+/// where the event itself is still unproven (not found, wrong kind, not
+/// p-tagged, undecodable). Recording it here — never overwriting an already-
+/// recorded consumed input, since the happy path records the real one just
+/// before the `MintPending` transition this fn is never called after except
+/// on that very transition's own failure — is what lets a rejected/
+/// unverifiable nutzap still surface in `WalletProjection::receive_rows`
+/// (see `snapshot.rs`) instead of vanishing once this operation goes
+/// terminal, matching the design doc's "Observer counting: unverifiable
+/// nutzaps may be shown as rejected... not counted as value".
+#[allow(clippy::too_many_arguments)]
 pub(super) fn fail(
     ctx: &ProtocolCommandContext<'_>,
     state: &Arc<Mutex<CashuWalletState>>,
     operation_id: &WalletOperationId,
+    event_id: &str,
+    nutzap: Option<&ReceivedNutZap>,
     correlation_id: Option<String>,
     code: &'static str,
     reason: String,
 ) -> Result<(), ProtocolCommandError> {
-    let _ = lock_state(state).transition(operation_id, WalletOperationState::Failed);
+    let mut s = lock_state(state);
+    let already_recorded = s
+        .journal
+        .get(operation_id)
+        .is_some_and(|op| !op.consumed_inputs.is_empty());
+    if !already_recorded {
+        let _ = s.journal.record_consumed_input(
+            operation_id,
+            WalletConsumedInput {
+                event_id: event_id.to_string(),
+                mint: nutzap.map(|n| n.mint_url.clone()).unwrap_or_default(),
+                unit: "sat".to_string(),
+                amount: nutzap.map(|n| n.amount_sats).unwrap_or(0),
+            },
+        );
+    }
+    let _ = s.transition(operation_id, WalletOperationState::Failed);
+    drop(s);
     super::report_pre_dispatch_failure(ctx, &correlation_id, code, reason);
     Ok(())
 }
