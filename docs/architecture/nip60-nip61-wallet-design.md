@@ -38,7 +38,9 @@ nutzaps, and later melt to BOLT-11.
 of activation, before any public product claim. That reactivation must remove
 or gate false surfaces such as unsupported `pay_invoice` stubs. An operation
 the backend cannot do is represented as an absent capability in Rust-owned
-state, not as a user-discoverable action that fails at runtime.
+state, not as a user-discoverable action that fails at runtime. (Phase 0 of
+this reactivation has landed: #2866, closing #2865; post-merge follow-ups are
+tracked in #2870 and referenced where relevant below.)
 
 The closed #1508 demo is folded into the real wallet milestone. If a gallery or
 developer demo is needed, it must exercise the same Rust actions, projections,
@@ -49,20 +51,39 @@ deleted.
 
 ### New Wallet Composition Crate
 
-Add a reusable Layer-4 crate, `nmp-wallet`, as the wallet composition owner.
-This crate owns:
+Add a reusable Layer-4 composition crate, `nmp-wallet`. Per
+[`crate-boundaries.md`](crate-boundaries.md) §9/§10a, "composition root" names
+an app/runtime installer that wires the substrate and protocol crates a
+running app needs (`nmp-substrate`, app/runtime builders, and the
+`nmp-browser-runtime` platform-adapter exception) — not a Layer-4
+protocol/product crate. `nmp-wallet` is a Layer-4 composition crate that
+assembles lower-level protocol crates, the same way `nmp-note-feed` composes
+`nmp-nip01`, `nmp-nip18`, `nmp-content`, and `nmp-feed` into one reusable feed
+surface (crate-boundaries §8). Its scope is bounded to wallet backend
+selection and journaling, not an open-ended "everything wallet" bucket — the
+same distinction crate-boundaries §8 draws between a legitimate composition
+crate and the forbidden central-relations "reusable framework bucket".
+
+`nmp-wallet` owns:
 
 - the app-facing wallet action namespaces;
 - the wallet typed projection under the `"wallet"` key;
-- backend selection policy;
+- backend selection policy: which configured `WalletBackend` handles an
+  intent, including which backend the substrate `PaymentPort` routes to for
+  NIP-57 zaps (`nmp-wallet` does not own or reassign `PaymentPort` itself —
+  see Existing NIP Crates below);
 - the durable wallet operation journal;
 - the Rust-owned `WalletBackend` seam;
-- the `PaymentPort` adapter used by NIP-57 zaps;
 - registration of wallet read interests and relay-text/event observers.
 
 `nmp-wallet` may depend on `nmp-nip47`, `nmp-nip60`, `nmp-nip57` only through
-the explicit composition surfaces it needs. `nmp-core` must not learn Cashu,
-nutzap, NWC, NIP-60, NIP-61, or mint nouns.
+the explicit composition surfaces it needs. The `nmp-nip57` dependency is
+concrete, not speculative: at composition time `nmp-wallet` calls
+`nmp_nip57::Config::with_payment_port` with an `Arc<dyn PaymentPort>` for the
+selected backend (`nmp-nip47`'s `WalletPaymentPort` today; a future Cashu-melt
+implementation once `pay_bolt11` is proven) to wire NIP-57 zaps to the active
+wallet. `nmp-core` must not learn Cashu, nutzap, NWC, NIP-60, NIP-61, or mint
+nouns.
 
 ### Existing NIP Crates
 
@@ -77,13 +98,22 @@ nutzap, NWC, NIP-60, NIP-61, or mint nouns.
 It does not own relay sockets, app product policy, UI projection keys, backend
 selection, or a private operation queue.
 
-`nmp-nip47` continues to own NWC protocol mechanics and its actor-side runtime.
-When composed through `nmp-wallet`, its current `"wallet"` projection becomes
-backend-internal state. Standalone NWC-only composition may keep the existing
-projection until the migration removes that compatibility path.
+`nmp-nwc` owns the pure NWC protocol codec: connection-URI parsing, NIP-04/
+NIP-44 request/response encryption, and the `kind:23194`/`kind:23195` event
+shapes. `nmp-nip47` owns the NWC actor-side runtime, its `nmp.wallet.*` action
+surface, and — per crate-boundaries §8 — the `PaymentPort` implementation
+(`WalletPaymentPort`) injected into the zap chain at composition time. This
+design does not reassign `PaymentPort` ownership away from `nmp-nip47`;
+`nmp-wallet` only selects which backend that port routes to when NWC is one of
+several configured backends. When composed through `nmp-wallet`, `nmp-nip47`'s
+current `"wallet"` projection becomes backend-internal state. Standalone
+NWC-only composition may keep the existing projection until the migration
+removes that compatibility path.
 
 `nmp-nip57` remains wallet-agnostic. It emits `PaymentIntent` through the
-substrate `PaymentPort`; `nmp-wallet` supplies the selected backend adapter.
+substrate `PaymentPort`; it does not depend on `nmp-nip47` or `nmp-nip60`.
+`nmp-wallet` supplies the selected backend's `Arc<dyn PaymentPort>`
+implementation to `nmp-nip57`'s composition entry point.
 
 ### Runtime And Shell
 
@@ -218,10 +248,17 @@ For receiving nutzaps:
    journal and redeemed event ids remain the source of retry safety.
 3. Redeem only events whose mint and P2PK lock match the active `kind:10019`.
 
-The current parked `nmp-nip60` references to `relay` tags on `kind:17375` are
-legacy design residue. Activation should remove that as the source of truth, or
-parse it only as a non-authoritative compatibility hint that cannot override
-`kind:10019` or NIP-65 fallback.
+`nmp-nip60` is an active workspace member (Phase 0, #2866, closing #2865).
+`relay` tags on `kind:17375` are decoded into `legacy_relay_hint`, a field
+named and documented as a non-authoritative compatibility hint — it must never
+become the relay-selection source of truth. `kind:10019` `relay` tags, with
+NIP-65 fallback, remain the only authoritative relay set, and that resolution
+policy belongs to `nmp-wallet` (Phase 1), not `nmp-nip60`. This boundary is not
+yet fully closed: post-merge review (#2870) found that `nmp-nip60`'s
+`publish_nutzap_info` helper currently seeds a `kind:10019`'s `relay` tags
+directly from `legacy_relay_hint` — dormant today (zero callers) but the one
+path where the hint would become truth if left unfixed. That fix must land
+before `nmp-wallet` gives `publish_nutzap_info` its first caller.
 
 ## State Machine
 
@@ -249,6 +286,95 @@ the missing NIP-60 events or unlocks the local selection.
 Reducers do not await mint HTTP. They emit commands, and mint workers return
 raw results. Rust maps those results into wallet state, action stages, and
 publish commands.
+
+## Three Wallet-State Concerns
+
+Wallet state is chaotic to reason about: NIP-09 deletions arrive, mint
+reconciliation probes report that a proof was already spent, new `kind:7375`
+token events land, nutzaps are redeemed — all interleaved and out of order. To
+keep this tractable, `nmp-wallet` separates three concerns that must never be
+conflated. They are distinguished by their **write moment**, not their lifetime.
+
+| Concern | Write moment | Question it answers | Storage |
+|---|---|---|---|
+| Money-safety saga | pre-effect | "did my mint spend happen before I crashed?" | durable, persisted, at-most-once |
+| Derived state | fold result | "what is my proof set / balance right now?" | in-memory, rebuildable |
+| Causal trail | post-observation | "why is the state the shape it is right now?" | in-memory ring, over a durable `kind:7376` tier |
+
+The saga (the state machine above) writes **pre-effect** — "about to consume
+proofs A,B for a mint spend." That pre-record *is* the at-most-once mechanism.
+The causal trail writes **post-observation** — facts about what arrived,
+settled, or reconciled. Derived state is the fold over post-observation facts.
+
+The trail cannot be read out of the saga: the saga only knows *locally
+initiated* operations, while most of what makes wallet state chaotic — inbound
+token arrivals, NIP-09 deletions from the user's *other* devices, incoming
+nutzaps — never touches the saga. The relationship is **producer/consumer**: the
+saga emits facts into the trail (`MintSettled`, `Unknown → reconciled`,
+`Failed`) so the trail can also explain locally caused shape changes. Their
+schemas never merge — money-critical pre-effect records must not live in a
+diagnostic log with bounded eviction.
+
+## Event-Sourced Reducer And Causal Trail
+
+`nmp-wallet` computes wallet state as a fold over an ordered stream of typed
+`WalletFact`s, each carrying its cause and provenance:
+
+```rust
+enum WalletFact {
+    TokenAdded     { token_event: EventId, amount: Msat, mint: MintUrl, via: Provenance },
+    TokenDeleted   { token_event: EventId, cause: DeleteCause },   // NIP-09 in, or local rollover
+    MintProbed     { proof: ProofRef, verdict: ProofVerdict },     // Spent / Unspent / Unknown
+    NutzapRedeemed { nutzap: EventId, amount: Msat, sender: PubkeyRef },
+    SagaTransition { op: CorrelationId, from: OpState, to: OpState }, // producer wiring from the saga
+    StateRebuilt   { from: Vec<EventId> },                          // genesis fact after restart
+}
+
+enum Provenance  { Relay(RelayRef), Saga(CorrelationId), MintRollover }
+enum DeleteCause { Nip09Delete { by: EventId }, LocalRollover { op: CorrelationId } }
+```
+
+Two views are maintained over the same fact stream:
+
+- a **time-ordered bounded delta ring** — answers "what sequence of events
+  produced this shape?";
+- a **per-atom last-cause index** (`token_event_id → last WalletFact that
+  touched it`) — answers "why is *this specific* proof/token here?". This index
+  is `O(current state)`, not `O(traffic)`, so a nutzap flood cannot evict the
+  cause of a token the user still holds.
+
+Four invariants keep the reducer honest:
+
+1. **Confluence.** The reducer's terminal state must be order-insensitive even
+   though the trail is order-sensitive. A NIP-09 delete arriving before the
+   `kind:7375` it deletes must tombstone, not no-op; otherwise two devices show
+   different balances and the trail "explains" a state that should not exist.
+2. **The ring is never a rebuild authority.** Restart rebuilds state from Nostr
+   events plus saga reconciliation, entering the trail as a `StateRebuilt`
+   genesis fact — named explicitly so restart is never later "optimized" into
+   ring replay.
+3. **Derived state rides Trellis only at the acquisition layer** (which
+   relays/filters/interests, per the `kind:10019` relay rules). Proof-set
+   derivation is Nostr/product meaning and stays actor-owned in `nmp-wallet`,
+   never in Trellis core (ADR-0075 Ownership). A causal timeline is a different
+   primitive from Trellis's dependency graph, and ADR-0075 confines Trellis
+   trace to dev-only tooling — so the trail is `nmp-wallet`'s own construct.
+4. **Privacy at the type level.** `WalletFact` payloads carry only event ids, op
+   ids, amounts-by-unit, and canonical mint URLs (and the latter only when the
+   URL is already public via `kind:10019`) — never proofs, proof secrets, or
+   keys. This is a property of the types, not a display-edge filter.
+
+### Durable Tier: `kind:7376`, Not A Local Trail
+
+The causal trail does not get its own durable local store. The durable causal
+record is the protocol's own: NIP-60 `kind:7376` history events (already
+required by this design for every balance-changing operation; codec in
+`crates/nmp-nip60/src/history_event.rs`) plus the `del` field on token events.
+On restart, the wallet folds `kind:7376` into coarse pre-session facts, and the
+in-memory ring then accumulates fine-grained facts from there — two resolutions
+in one timeline. The in-memory ring is only the session-local high-resolution
+overlay (mint-probe verdicts, arrival provenance, saga correlation ids) too
+transient or too fine for `kind:7376`.
 
 ## NIP-60 Event Rules
 
@@ -337,7 +463,8 @@ The wallet runtime treats Cashu proofs and private keys as secret material.
 
 Activation requires:
 
-- `cargo test -p nmp-nip60` after the crate returns to workspace membership;
+- `cargo test -p nmp-nip60` clean for any `nmp-nip60` change (the crate is an
+  active workspace/CI member as of Phase 0, #2866);
 - `cargo test -p nmp-wallet` for backend selection, journal transitions,
   projection bounds, and compatibility aliases;
 - NIP-60 event tests for wallet, token, history, quote, NIP-09 delete tags, and
