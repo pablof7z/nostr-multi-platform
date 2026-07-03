@@ -261,10 +261,6 @@ pub(crate) const GC_TICK_INTERVAL: Duration = Duration::from_secs(60);
 // MLS / NIP-17 publish path).
 pub use relay_roles::has_role;
 pub(crate) use relay_roles::{canonical_relay_role, relay_role_options};
-// `nostrconnect_relay_url` is consumed by `nmp-ffi` (native only) through
-// `nmp_core::__ffi_internal::nostrconnect_relay_url`.
-#[cfg(feature = "native")]
-pub use relay_roles::nostrconnect_relay_url;
 
 // ADR-0071 — `ActorCommand` collapsed into typed command-family payloads.
 // The top-level enum + sub-enum families live in `actor_command.rs`; the

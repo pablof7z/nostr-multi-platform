@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::{has_role, nostrconnect_relay_url};
+use nmp_core::__ffi_internal::has_role;
 
 use crate::{NmpApp, NmpConfigStatus};
 
@@ -99,9 +99,9 @@ impl NmpApp {
     #[must_use]
     pub fn nostrconnect_relay_url(&self) -> Option<String> {
         if let Ok(guard) = self.configured_relays.lock() {
-            if let Some(url) =
-                nostrconnect_relay_url(guard.as_slice().iter().map(|row| (row.url(), row.role())))
-            {
+            if let Some(url) = configured_nostrconnect_relay_url(
+                guard.as_slice().iter().map(|row| (row.url(), row.role())),
+            ) {
                 return Some(url);
             }
         }
@@ -198,6 +198,13 @@ impl NmpApp {
     }
 }
 
+fn configured_nostrconnect_relay_url<'a, I>(rows: I) -> Option<String>
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    nmp_router::nostrconnect_bootstrap_relay_url(rows, |role| has_role(role, "write"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,5 +266,46 @@ mod tests {
         let path = dir.join(RELAY_CONFIG_FILENAME);
         std::fs::write(&path, b"{ this is not valid json").expect("write malformed");
         assert!(load(&dir).is_none(), "unparseable sidecar must yield None");
+    }
+
+    #[test]
+    fn nostrconnect_configured_selection_uses_router_policy_and_core_roles() {
+        let rows = [
+            ("read-relay", "read"),
+            ("write-relay", "write"),
+            ("both-relay", "both"),
+        ];
+
+        assert_eq!(
+            configured_nostrconnect_relay_url(rows),
+            Some("write-relay".to_string())
+        );
+    }
+
+    #[test]
+    fn nostrconnect_configured_selection_accepts_composite_role() {
+        let rows = [
+            ("indexer-relay", "indexer"),
+            ("composite-relay", "both,indexer"),
+        ];
+
+        assert_eq!(
+            configured_nostrconnect_relay_url(rows),
+            Some("composite-relay".to_string())
+        );
+    }
+
+    #[test]
+    fn nostrconnect_relay_url_falls_back_to_registered_bootstrap() {
+        let app = crate::new_app();
+        assert_eq!(
+            app.set_nostrconnect_bootstrap_relay("bootstrap-relay".to_string()),
+            NmpConfigStatus::Ok
+        );
+
+        assert_eq!(
+            app.nostrconnect_relay_url(),
+            Some("bootstrap-relay".to_string())
+        );
     }
 }

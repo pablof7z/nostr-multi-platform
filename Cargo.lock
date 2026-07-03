@@ -4022,6 +4022,7 @@ dependencies = [
  "nmp-ownership",
  "nmp-planner",
  "nmp-read-session",
+ "nmp-router",
  "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",

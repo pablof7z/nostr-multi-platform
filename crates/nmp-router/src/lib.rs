@@ -45,6 +45,7 @@ mod discovery;
 mod indexer_republish;
 mod ingest;
 mod nip65_resolver;
+mod nostrconnect;
 mod relay_admission;
 mod router;
 
@@ -57,6 +58,7 @@ pub use ingest::Kind10002Parser;
 pub use nip65_resolver::{
     is_discovery_kind, Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD,
 };
+pub use nostrconnect::bootstrap_relay_url as nostrconnect_bootstrap_relay_url;
 pub use publish_relay_list::{
     build_relay_list_event, register_actions, PublishRelayListAction, PublishRelayListInput,
     RelayListEntry, RelayMarker,

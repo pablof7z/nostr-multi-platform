@@ -14,6 +14,7 @@ crate-type = ["rlib"]
 default = ["native"]
 native = [
     "nmp-core/native",
+    "nmp-router/native",
 ]
 nip05 = [
     "native",
@@ -55,6 +56,7 @@ marmot = ["native", "dep:nmp-marmot"]
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-router = { path = "../nmp-router", default-features = false }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }

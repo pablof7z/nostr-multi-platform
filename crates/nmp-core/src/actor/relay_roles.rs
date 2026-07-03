@@ -147,66 +147,9 @@ fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
         .map(str::to_ascii_lowercase)
 }
 
-/// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow
-/// from the user's configured relay rows.
-///
-/// Returns the first write-capable relay URL, or `None` when no write relay
-/// is configured. The caller is responsible for supplying a host-registered
-/// bootstrap relay when `None` is returned — nmp-core holds no hardcoded
-/// fallback URL (V-65 / D0).
-pub fn nostrconnect_relay_url<'a, I>(rows: I) -> Option<String>
-where
-    I: IntoIterator<Item = (&'a str, &'a str)>,
-{
-    rows.into_iter()
-        .find(|(_, role)| has_role(role, "write"))
-        .map(|(url, _)| url.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn nostrconnect_prefers_first_write_eligible_relay() {
-        let rows = [
-            ("wss://read.example", "read"),
-            ("wss://write.example", "write"),
-            ("wss://both.example", "both"),
-        ];
-
-        assert_eq!(
-            nostrconnect_relay_url(rows),
-            Some("wss://write.example".to_string()),
-            "first write-capable relay should own nostrconnect handshakes"
-        );
-    }
-
-    #[test]
-    fn nostrconnect_accepts_composite_role_tokens() {
-        let rows = [
-            ("wss://indexer.example", "indexer"),
-            ("wss://composite.example", "both,indexer"),
-        ];
-
-        assert_eq!(
-            nostrconnect_relay_url(rows),
-            Some("wss://composite.example".to_string()),
-            "both,indexer semantically includes write"
-        );
-    }
-
-    #[test]
-    fn nostrconnect_returns_none_without_write_relay() {
-        let rows = [
-            ("wss://read.example", "read"),
-            ("wss://indexer.example", "indexer"),
-        ];
-
-        // V-65: no hardcoded fallback — the caller supplies a host-registered
-        // bootstrap relay when the user has no configured write relay.
-        assert_eq!(nostrconnect_relay_url(rows), None);
-    }
 
     #[test]
     fn role_options_are_projection_ready() {
