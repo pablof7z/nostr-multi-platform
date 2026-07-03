@@ -1,6 +1,8 @@
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 
+use crate::typing_event::{chat_typing_status_tag, ChatRemoteTypingSpec};
+
 use super::*;
 
 fn projection() -> ChatPresenceProjection {
@@ -16,6 +18,22 @@ fn event(id: &str, author: &str, kind: u32, created_at: u64, group: &str) -> Ker
         tags: vec![vec!["h".into(), group.into()]],
         content: String::new(),
         relay_provenance: Vec::new(),
+    }
+}
+
+fn typing_event(
+    id: &str,
+    author: &str,
+    created_at: u64,
+    group: &str,
+    is_typing: bool,
+) -> KernelEvent {
+    KernelEvent {
+        tags: vec![
+            vec!["h".into(), group.into()],
+            chat_typing_status_tag(is_typing),
+        ],
+        ..event(id, author, 24_010, created_at, group)
     }
 }
 
@@ -64,4 +82,61 @@ fn stopped_typing_removes_participant() {
     assert!(p.apply_typing(TypingUpdate::started("alice", 100, 300)));
     assert!(p.apply_typing(TypingUpdate::stopped("alice", 150)));
     assert!(p.snapshot().typing.is_empty());
+}
+
+#[test]
+fn remote_typing_events_update_typing_state() {
+    let p = ChatPresenceProjection::with_remote_typing(
+        "wss://groups.example.com",
+        "room-a",
+        "me",
+        vec![9],
+        ChatRemoteTypingSpec::with_ttl_ms(vec![24_010], 5_000),
+    );
+
+    p.on_kernel_event(&typing_event("t1", "alice", 10, "room-a", true));
+    assert_eq!(
+        p.snapshot().typing,
+        vec![ChatPresenceTyping {
+            pubkey: "alice".into(),
+            updated_at_ms: 10_000,
+            expires_at_ms: 15_000,
+        }]
+    );
+
+    p.on_kernel_event(&typing_event("t2", "alice", 11, "room-a", false));
+    assert!(p.snapshot().typing.is_empty());
+}
+
+#[test]
+fn remote_typing_excludes_self_and_non_matching_groups() {
+    let p = ChatPresenceProjection::with_remote_typing(
+        "wss://groups.example.com",
+        "room-a",
+        "me",
+        vec![9],
+        ChatRemoteTypingSpec::new(vec![24_010]),
+    );
+
+    p.on_kernel_event(&typing_event("t1", "me", 10, "room-a", true));
+    p.on_kernel_event(&typing_event("t2", "alice", 10, "room-b", true));
+
+    assert!(p.snapshot().typing.is_empty());
+}
+
+#[test]
+fn remote_typing_kind_does_not_increment_unread_when_messages_are_unbounded() {
+    let p = ChatPresenceProjection::with_remote_typing(
+        "wss://groups.example.com",
+        "room-a",
+        "me",
+        Vec::new(),
+        ChatRemoteTypingSpec::new(vec![24_010]),
+    );
+
+    p.on_kernel_event(&typing_event("t1", "alice", 10, "room-a", true));
+    p.on_kernel_event(&event("m1", "alice", 9, 11, "room-a"));
+
+    assert_eq!(p.snapshot().unread_count, 1);
+    assert_eq!(p.snapshot().typing.len(), 1);
 }

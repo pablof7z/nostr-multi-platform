@@ -1,8 +1,8 @@
 //! Chat read-state and typing projection.
 //!
-//! The projection consumes scoped message events plus explicit local inputs:
-//! read-marker advances and typing clock/update events. It never reads wall
-//! clock time itself, so replay stays deterministic.
+//! The projection consumes scoped message events, read-marker advances, local
+//! typing updates, remote typing events, and explicit clock updates. It never
+//! reads wall clock time itself, so replay stays deterministic.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -11,6 +11,8 @@ use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGE
 use nmp_core::ObservedProjectionSink;
 use nmp_nip29::kinds::h_tag_value;
 use serde::{Deserialize, Serialize};
+
+use crate::typing_event::ChatRemoteTypingSpec;
 
 /// The event cursor up to which the active user has read.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -41,7 +43,6 @@ impl ReadMarker {
 pub struct ChatPresenceTyping {
     /// Raw hex pubkey.
     pub pubkey: String,
-    /// Explicit input time when the typing state was observed.
     pub updated_at_ms: u64,
     /// Explicit expiry boundary. Pruned only after a clock input advances past it.
     pub expires_at_ms: u64,
@@ -102,6 +103,7 @@ pub struct ChatPresenceProjection {
     group_id: String,
     active_pubkey: String,
     message_kinds: Vec<u32>,
+    remote_typing: ChatRemoteTypingSpec,
     state: Mutex<ChatPresenceState>,
 }
 
@@ -120,6 +122,23 @@ impl ChatPresenceProjection {
         active_pubkey: impl Into<String>,
         message_kinds: Vec<u32>,
     ) -> Self {
+        Self::with_remote_typing(
+            host_relay_url,
+            group_id,
+            active_pubkey,
+            message_kinds,
+            ChatRemoteTypingSpec::default(),
+        )
+    }
+
+    #[must_use]
+    pub fn with_remote_typing(
+        host_relay_url: impl Into<String>,
+        group_id: impl Into<String>,
+        active_pubkey: impl Into<String>,
+        message_kinds: Vec<u32>,
+        remote_typing: ChatRemoteTypingSpec,
+    ) -> Self {
         let mut kinds = message_kinds;
         kinds.sort_unstable();
         kinds.dedup();
@@ -128,6 +147,7 @@ impl ChatPresenceProjection {
             group_id: group_id.into(),
             active_pubkey: active_pubkey.into(),
             message_kinds: kinds,
+            remote_typing,
             state: Mutex::new(ChatPresenceState {
                 messages: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 read_marker: None,
@@ -199,15 +219,27 @@ impl ChatPresenceProjection {
             })
     }
 
-    fn accepts(&self, event: &KernelEvent) -> bool {
+    fn same_group(&self, event: &KernelEvent) -> bool {
         h_tag_value(&event.tags) == Some(self.group_id.as_str())
+    }
+
+    fn accepts_message(&self, event: &KernelEvent) -> bool {
+        self.same_group(event)
+            && !self.remote_typing.contains_kind(event.kind)
             && (self.message_kinds.is_empty() || self.message_kinds.contains(&event.kind))
     }
 }
 
 impl ObservedProjectionSink for ChatPresenceProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if !self.accepts(event) {
+        if !self.same_group(event) {
+            return;
+        }
+        if let Some(update) = self.remote_typing.update_from_event(event) {
+            let _ = self.apply_typing(update);
+            return;
+        }
+        if !self.accepts_message(event) {
             return;
         }
         let Ok(mut state) = self.state.lock() else {
