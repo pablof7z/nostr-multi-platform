@@ -1,20 +1,20 @@
 //! `SendNutzap` intent -> P2PK-lock proofs to a recipient's Cashu pubkey at a
 //! mutually-trusted mint, publish kind:9321 (#2917, epic #2864 W8).
 //!
-//! # Recipient resolution — cache-read-or-fail-closed
+//! # Recipient resolution — cache-read, warm-on-miss, fail-closed (#2936)
 //!
 //! This wallet has no read interest for an arbitrary recipient's kind:10019
 //! by default (unlike the active account's own self-authored events —
 //! `interests.rs`). `ctx.latest_author_kind` is a POINT-IN-TIME cache read
 //! (see its doc comment), not a fetch: a recipient this account has never
-//! observed a kind:10019 from fails closed here immediately. There is no
-//! async fetch-then-resume in this PR — see the module docs on
-//! `CachedEventLookup`'s trait definition for why (no generic mechanism
-//! exists yet to resume a `ProtocolCommand` when a one-shot interest's event
-//! arrives; building one is out of this ticket's `nmp-wallet`/`nmp-nip60`
-//! scope). The caller (action retry, or a future observe-then-retry UX) is
-//! responsible for trying again once the recipient's info has actually
-//! arrived through the ordinary kernel read path.
+//! observed a kind:10019 from misses here. On a miss, `run()` opens
+//! `interests::recipient_nutzap_info_interest` for that recipient (via the
+//! generic `ctx.ensure_interest`, mirroring `nmp-marmot`'s peer-KeyPackage
+//! lookup) so the event flows into the kernel event store — then still fails
+//! closed on THIS attempt. There is no in-command fetch-then-resume: the
+//! caller (action retry, or a future observe-then-retry UX) is responsible
+//! for trying again; once the recipient's kind:10019 has arrived through the
+//! newly-opened interest, that retry finds it cached and proceeds.
 //!
 //! # Deferred: republishing kind:7375/kind:5 for spent/change proofs
 //!
@@ -89,6 +89,15 @@ impl ProtocolCommand for SendNutzapCommand {
 
         let Some(info_event) = ctx.latest_author_kind(&recipient_pubkey, KIND_NIP61_NUTZAP_INFO)
         else {
+            // Warm the cache for next time: nothing else subscribes to a
+            // third party's kind:10019 by default (#2936). This attempt
+            // still fails closed; the caller's existing retry loop is what
+            // picks up the recipient's info once this interest's REQ
+            // delivers it.
+            ctx.ensure_interest(
+                crate::interests::recipient_nutzap_info_identity(&recipient_pubkey),
+                crate::interests::recipient_nutzap_info_interest(&recipient_pubkey),
+            );
             return fail(
                 ctx,
                 &state,
