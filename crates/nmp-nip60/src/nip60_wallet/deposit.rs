@@ -5,6 +5,7 @@
 //! mint over HTTP via [`crate::cashu::client`].
 
 use crate::cashu::client::MintClient;
+use crate::cashu::types::MintQuoteState;
 use crate::error::Nip60Error;
 use crate::history_event::{build_history_event, HistoryRecord};
 use crate::token_event::{build_token_event, TokenRecord};
@@ -52,7 +53,7 @@ impl Nip60WalletHandle {
     pub fn complete_deposit(&self, deposit: &DepositRequest) -> Result<u64, Nip60Error> {
         let client = MintClient::new(&deposit.mint_url);
         let status = client.get_mint_quote_status(&deposit.quote_id)?;
-        if status.state != "PAID" && !status.paid {
+        if status.state != MintQuoteState::Paid {
             return Err(Nip60Error::QuoteNotPaid);
         }
 
@@ -99,14 +100,27 @@ impl Nip60WalletHandle {
 }
 
 /// A pending deposit request (bolt11 invoice + quote id).
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DepositRequest {
-    /// The bolt11 Lightning invoice to pay.
+    /// The bolt11 Lightning invoice to pay. Secret-adjacent: identifies a
+    /// specific payment; never printed in `Debug`.
     pub bolt11: String,
-    /// Mint quote id — pass to [`Nip60WalletHandle::complete_deposit`] once paid.
+    /// Mint quote id — pass to [`Nip60WalletHandle::complete_deposit`] once
+    /// paid. Secret-adjacent: never printed in `Debug`.
     pub quote_id: String,
     /// Mint URL this deposit is for.
     pub mint_url: String,
     /// Requested amount in sats.
     pub amount_sats: u64,
+}
+
+impl std::fmt::Debug for DepositRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DepositRequest")
+            .field("bolt11", &"<redacted>")
+            .field("quote_id", &"<redacted>")
+            .field("mint_url", &self.mint_url)
+            .field("amount_sats", &self.amount_sats)
+            .finish()
+    }
 }

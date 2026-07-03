@@ -10,7 +10,9 @@ use nostr::EventId;
 use nostr::PublicKey;
 
 #[cfg(feature = "native")]
-use crate::cashu::client::{self as cashu_client, split_amount, MintClient};
+use crate::cashu::client::{self as cashu_client, MintClient};
+#[cfg(feature = "native")]
+use crate::cashu::split_amount;
 #[cfg(feature = "native")]
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
@@ -86,7 +88,8 @@ impl Nip60WalletHandle {
             .unwrap_or_else(|| recipient_pubkey.to_hex());
 
         // Get P2PK locked proofs.
-        let proofs = self.create_p2pk_proofs(amount_sats, &recipient_cashu_pubkey, &recipient_mint)?;
+        let proofs =
+            self.create_p2pk_proofs(amount_sats, &recipient_cashu_pubkey, &recipient_mint)?;
         let nutzap_proofs: Vec<NutZapProof> = proofs.into_iter().map(Into::into).collect();
 
         // Build and queue nutzap event.
@@ -136,7 +139,8 @@ impl Nip60WalletHandle {
             .collect();
 
         // Compute mint fee and deduct from change.
-        let fee = cashu_client::MintClient::compute_fee(selected.len() as u64, keyset.input_fee_ppk);
+        let fee =
+            cashu_client::MintClient::compute_fee(selected.len() as u64, keyset.input_fee_ppk);
         let gross_change = selected_total - amount_sats;
         if gross_change < fee {
             return Err(Nip60Error::InsufficientBalance {
