@@ -5,10 +5,9 @@ use std::collections::HashMap;
 
 use nostr::Keys;
 
-use crate::actor::{canonical_relay_role, has_role};
+use crate::actor::canonical_relay_role;
 use crate::kernel::{AppRelay, Kernel};
 use crate::relay::{canonical_relay_url, OutboundMessage};
-use crate::util::sort_dedup;
 use nmp_signer_iface::UnsignedEvent;
 
 use super::account_ops::{retarget_timeline, sync_kernel};
@@ -107,8 +106,8 @@ pub(crate) fn create_account(
                 // outbox resolver (`PublishTarget::Auto`) would resolve
                 // `NoTargets` and the publish engine would silently drop this
                 // profile metadata — nobody would ever see the new account's
-                // display name. Route the initial kind:0 to the explicit
-                // cold-start target instead.
+                // display name. Route the initial kind:0 to the router-owned
+                // cold-start target seam instead.
                 let target_relays = cold_start_publish_targets(kernel, &relay_rows);
                 if target_relays.is_empty() {
                     // D6: no usable cold-start relay — surface a toast, never
@@ -146,15 +145,13 @@ pub(crate) fn create_account(
     }
 
     // ── Publish kind:10002 relay list ─────────────────────────────
-    let relay_tags = nip65_tags_from_relay_rows(&relay_rows);
-    if let (false, Some(author)) = (relay_tags.is_empty(), identity.active_pubkey()) {
-        let unsigned_relay = UnsignedEvent {
-            pubkey: author,
-            kind: crate::kinds::KIND_RELAY_LIST,
-            tags: relay_tags,
-            content: String::new(),
-            created_at: kernel.now_secs(),
-        };
+    let relay_list_support = kernel.relay_list_publish_support();
+    if let (Some(mut unsigned_relay), Some(author)) = (
+        relay_list_support.build_unsigned_event_from_rows(&relay_rows),
+        identity.active_pubkey(),
+    ) {
+        unsigned_relay.pubkey = author;
+        unsigned_relay.created_at = kernel.now_secs();
         // Local-key invariant (see kind:0 site above) — synchronous Ready
         // branch via sign_active_nonblocking, no actor stall (D8). V-111 / #972.
         debug_assert!(
@@ -172,10 +169,8 @@ pub(crate) fn create_account(
                 // would resolve `NoTargets` and the publish engine would silently
                 // drop this very event — the chicken-and-egg the account can never
                 // escape (it can't announce its relays because it has no relays on
-                // record). Route the initial relay list explicitly instead: to the
-                // relays the user just declared (the canonical NIP-65 home of a
-                // relay list — publish it to the relays it names) unioned with the
-                // well-known discovery seed so others can find the new account.
+                // record). Route the initial relay list explicitly through the
+                // router-owned cold-start target seam.
                 // `publish_signed_to` also routes the signed event through the
                 // local accepted-event chokepoint, so the NIP-65 read model is
                 // updated by the canonical kind:10002 parser path rather than a
@@ -228,36 +223,28 @@ pub(crate) fn create_account(
 }
 
 /// Resolve the explicit relay set every *initial* event a brand-new account
-/// emits — kind:0 (profile metadata), kind:3 (contacts) and kind:10002 (relay
-/// list) — is published to on account creation (cold-start).
+/// emits — kind:0 (profile metadata), kind:3 (contacts) and the router-owned
+/// relay-list event — is published to on account creation (cold-start).
 ///
 /// A freshly-created account has no kind:10002 in the store, so the NIP-65
 /// outbox resolver cannot route any of its first events — it would resolve
-/// `NoTargets` and the publish engine would drop them. This helper builds the
-/// explicit cold-start target instead:
-///
-/// 1. The canonical relay rows the user just declared during onboarding; and
-/// 2. The kernel's well-known discovery seed (`bootstrap_discovery_relays`) so
-///    other clients performing relay-list / profile discovery can find the new
-///    account.
+/// `NoTargets` and the publish engine would drop them. This helper delegates
+/// the target choice to the installed router-owned support object, passing the
+/// onboarding relay rows and the kernel's bootstrap discovery candidates.
 ///
 /// The result is sorted + deduped. It is empty only when the user supplied no
 /// relays AND no discovery relays are configured — the caller treats an empty
 /// result as a D6 graceful failure (toast, never panic).
 ///
 /// This applies ONLY to cold-start: `create_account` is the sole caller, and a
-/// brand-new account by construction has no prior kind:10002. A user updating
+/// brand-new account by construction has no prior relay-list event. A user updating
 /// their profile / contacts / relay list later publishes through
 /// `publish_signed` (`Auto`), which routes to their already-declared write
 /// relays — that path is unaffected.
 fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[AppRelay]) -> Vec<String> {
-    let mut targets: Vec<String> = relay_rows
-        .iter()
-        .map(|row| row.url.clone())
-        .chain(kernel.bootstrap_discovery_relays())
-        .collect();
-    sort_dedup(&mut targets);
-    targets
+    kernel
+        .relay_list_publish_support()
+        .cold_start_publish_targets(relay_rows, kernel.bootstrap_discovery_relays())
 }
 
 /// Canonicalize the onboarding-declared `(url, role)` pairs into `AppRelay`
@@ -281,25 +268,10 @@ fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<AppRelay> 
         .collect()
 }
 
-fn nip65_tags_from_relay_rows(rows: &[AppRelay]) -> Vec<Vec<String>> {
-    rows.iter()
-        .filter_map(|row| {
-            let read = has_role(&row.role, "read");
-            let write = has_role(&row.role, "write");
-            match (read, write) {
-                (true, true) => Some(vec!["r".to_string(), row.url.clone()]),
-                (true, false) => Some(vec!["r".to_string(), row.url.clone(), "read".to_string()]),
-                (false, true) => Some(vec!["r".to_string(), row.url.clone(), "write".to_string()]),
-                (false, false) => None,
-            }
-        })
-        .collect()
-}
-
 /// Publish the cold-start kind:3 contacts list (the app-supplied
 /// `initial_follows`) for a brand-new account.
 ///
-/// Like kind:0 and kind:10002, this is a cold-start publish: the account has
+/// Like kind:0 and the relay-list event, this is a cold-start publish: the account has
 /// no kind:10002 on file, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
 /// would resolve `NoTargets` and the publish engine would silently drop the
 /// contacts list — the new account's follows would never propagate. The

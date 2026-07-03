@@ -91,6 +91,9 @@ impl BrowserRuntimeHandle {
             );
             inner.reducer.set_publish_resolver(resolver);
         }
+        if let Some(support) = inner.relay_list_publish_support.take() {
+            inner.reducer.set_relay_list_publish_support(support);
+        }
 
         if let Some(l) = inner.profile_lookup.take() {
             inner.reducer.set_profile_lookup(l);

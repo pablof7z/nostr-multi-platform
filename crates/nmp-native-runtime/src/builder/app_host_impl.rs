@@ -248,6 +248,14 @@ impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
         app.set_publish_resolver_factory(factory);
     }
 
+    fn set_relay_list_publish_support(
+        &self,
+        support: Arc<dyn nmp_core::slots::RelayListPublishSupport>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        let _ = app.set_relay_list_publish_support(support);
+    }
+
     fn set_external_event_sink_policy_factory<F>(&self, factory: F)
     where
         F: Fn(

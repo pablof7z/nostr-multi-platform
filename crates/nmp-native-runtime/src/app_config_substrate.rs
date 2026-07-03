@@ -416,6 +416,26 @@ impl NmpApp {
         }
     }
 
+    /// Install router-owned relay-list publish support before actor start.
+    pub fn set_relay_list_publish_support(
+        &self,
+        support: std::sync::Arc<dyn nmp_core::slots::RelayListPublishSupport>,
+    ) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "relay_list_publish_support",
+            "relay_list_publish_support",
+            "relay_list_publish_support",
+        ) {
+            return status;
+        }
+        if let Ok(mut slot) = self.composition.relay_list_publish_support.lock() {
+            *slot = support;
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
+
     /// Test-support: install a deterministic kernel clock BEFORE
     /// `nmp_app_start`. The actor applies it via `Kernel::set_clock` at
     /// construction, so every event the kernel stamps thereafter reads its

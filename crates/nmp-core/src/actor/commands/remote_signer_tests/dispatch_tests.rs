@@ -113,6 +113,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             bootstrap_self_kinds: Arc::new(std::sync::Mutex::new(None)),
             routing_substrate: crate::slots::new_routing_substrate_slot(),
             publish_resolver: crate::slots::new_publish_resolver_slot(),
+            relay_list_publish_support: crate::slots::new_relay_list_publish_support_slot(),
             external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
             kernel_clock: crate::slots::new_kernel_clock_slot(),
             gc_budget_ceiling: None,

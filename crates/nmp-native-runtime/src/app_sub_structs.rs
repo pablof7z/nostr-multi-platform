@@ -15,7 +15,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::{
     ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicySlot,
     MlsLocalNsecSlot, NostrConnectBootstrapRelaySlot, NostrConnectPermsSlot, PublishResolverSlot,
-    PullCursorRegistryHandleSlot, RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
+    PullCursorRegistryHandleSlot, RelayListPublishSupportSlot, RoutingSubstrateSlot,
+    RoutingTraceSlot, StoragePathSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 
@@ -62,6 +63,8 @@ pub(crate) struct CompositionConfig {
     pub(crate) routing_substrate: RoutingSubstrateSlot,
     /// Spec §271 (2026-05-25) — per-app substrate-publish-resolver factory slot.
     pub(crate) publish_resolver: PublishResolverSlot,
+    /// Router-owned relay-list publish support.
+    pub(crate) relay_list_publish_support: RelayListPublishSupportSlot,
     /// Per-app override for the active-account bootstrap Tailing self-kinds
     /// list. Snapshotted by the actor in `ActorConfigSources` at start; a late
     /// write after `nmp_app_start` has no effect.

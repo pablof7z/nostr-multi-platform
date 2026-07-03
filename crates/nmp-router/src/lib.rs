@@ -58,8 +58,8 @@ pub use nip65_resolver::{
     is_discovery_kind, Nip65OutboxResolver, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD,
 };
 pub use publish_relay_list::{
-    build_relay_list_event, register_actions, PublishRelayListAction, PublishRelayListInput,
-    RelayListEntry, RelayMarker,
+    build_relay_list_event, register_actions, Nip65RelayListPublishSupport, PublishRelayListAction,
+    PublishRelayListInput, RelayListEntry, RelayMarker,
 };
 pub use relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
 pub use router::GenericOutboxRouter;

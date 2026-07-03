@@ -423,6 +423,8 @@ pub struct Kernel {
     local_write_relays_handle: LocalWriteRelaysSlot,
     /// Shared active-account pubkey (D4 sole-writer: kernel actor).
     active_account_handle: ActiveAccountSlot,
+    /// Router-owned relay-list publish support.
+    relay_list_publish_support: Arc<dyn crate::slots::RelayListPublishSupport>,
     /// W2 in-memory relay-author score map (D4 sole writer).
     relay_score_map: relay_score::RelayAuthorScoreMap,
     /// W2 pluggable relay-author-score persistence store.

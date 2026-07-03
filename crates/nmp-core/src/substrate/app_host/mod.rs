@@ -29,6 +29,7 @@ use std::sync::Arc;
 use crate::publish::OutboxResolver;
 use crate::slots::{
     ActiveAccountSlot, ContactListReader, EventStoreSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+    RelayListPublishSupport,
 };
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
@@ -244,6 +245,8 @@ pub trait RoutingFactoryRegistrar {
             + Send
             + Sync
             + 'static;
+
+    fn set_relay_list_publish_support(&self, support: Arc<dyn RelayListPublishSupport>);
 
     /// Register the external event sink policy factory.
     ///

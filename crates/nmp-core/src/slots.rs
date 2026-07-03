@@ -21,6 +21,11 @@ use zeroize::Zeroizing;
 mod contact_list;
 mod reaction;
 
+pub use crate::slots_relay_list_publish::{
+    empty_relay_list_publish_support, new_relay_list_publish_support_slot,
+    EmptyRelayListPublishSupport, RelayListPublishSupport, RelayListPublishSupportSlot,
+};
+
 pub use contact_list::{
     empty_contact_list_reader, ContactListDraft, ContactListEvent, ContactListReader,
 };

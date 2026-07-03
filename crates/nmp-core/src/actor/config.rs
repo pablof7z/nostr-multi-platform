@@ -8,7 +8,8 @@ use crate::slots::{
     ActiveAccountSlot, ActiveLocalKeysSlot, ContactListReader, ContactListReaderSlot,
     EventStoreSlot, ExternalEventSinkPolicyFactory, ExternalEventSinkPolicySlot, KernelClockSlot,
     MlsLocalNsecSlot, PublishResolverFactory, PublishResolverSlot, PullCursorRegistryHandleSlot,
-    RoutingSubstrateFactory, RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
+    RelayListPublishSupport, RelayListPublishSupportSlot, RoutingSubstrateFactory,
+    RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
@@ -72,6 +73,7 @@ pub struct ActorConfigSources {
     pub bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     pub routing_substrate: RoutingSubstrateSlot,
     pub publish_resolver: PublishResolverSlot,
+    pub relay_list_publish_support: RelayListPublishSupportSlot,
     pub external_event_sink_policy: ExternalEventSinkPolicySlot,
     pub kernel_clock: KernelClockSlot,
     /// Test-support durable-LRU ceiling for GC.  Set by
@@ -157,6 +159,11 @@ impl ActorConfigSources {
                 .lock()
                 .ok()
                 .and_then(|guard| guard.as_ref().map(Arc::clone)),
+            relay_list_publish_support: self
+                .relay_list_publish_support
+                .lock()
+                .map(|guard| Arc::clone(&*guard))
+                .unwrap_or_else(|_| crate::slots::empty_relay_list_publish_support()),
             external_event_sink_policy: self
                 .external_event_sink_policy
                 .lock()
@@ -198,6 +205,7 @@ pub struct ActorConfig {
     pub bootstrap_self_kinds: Option<Vec<u32>>,
     pub routing_substrate: Option<Arc<RoutingSubstrateFactory>>,
     pub publish_resolver: Option<Arc<PublishResolverFactory>>,
+    pub relay_list_publish_support: Arc<dyn RelayListPublishSupport>,
     pub external_event_sink_policy: Option<Arc<ExternalEventSinkPolicyFactory>>,
     pub kernel_clock: Option<Arc<dyn crate::kernel::Clock>>,
     /// Test-support only — see `ActorConfigSources::gc_budget_ceiling`.
@@ -255,6 +263,7 @@ impl ActorConfig {
             );
             kernel.set_publish_resolver(resolver);
         }
+        kernel.set_relay_list_publish_support(Arc::clone(&self.relay_list_publish_support));
         if let Some(clock) = &self.kernel_clock {
             kernel.set_clock(Arc::clone(clock));
         }

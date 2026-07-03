@@ -113,6 +113,7 @@ pub fn spawn_actor_with_storage_path(
             outbound_public_tags: Arc::new(Mutex::new(None)),
             routing_substrate: crate::slots::new_routing_substrate_slot(),
             publish_resolver: crate::slots::new_publish_resolver_slot(),
+            relay_list_publish_support: crate::slots::new_relay_list_publish_support_slot(),
             external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
             kernel_clock: crate::slots::new_kernel_clock_slot(),
             gc_budget_ceiling: None,

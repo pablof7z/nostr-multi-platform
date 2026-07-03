@@ -88,6 +88,13 @@ impl ConformanceHarness {
         self.kernel.last_error_toast_snapshot().cloned()
     }
 
+    pub fn set_relay_list_publish_support(
+        &mut self,
+        support: Arc<dyn crate::slots::RelayListPublishSupport>,
+    ) {
+        self.kernel.set_relay_list_publish_support(support);
+    }
+
     /// Seed a kind:1 note into the kernel read-cache. `tags` carries whatever
     /// NIP-10 structure the test needs.
     pub fn seed_note(&mut self, id: &str, author: &str, tags: Vec<Vec<String>>) {

@@ -342,6 +342,14 @@ impl<S> RoutingFactoryRegistrar for BrowserAppBuilder<S> {
         g.publish_resolver_factory = Some(Box::new(factory));
     }
 
+    fn set_relay_list_publish_support(
+        &self,
+        support: Arc<dyn nmp_core::slots::RelayListPublishSupport>,
+    ) {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.relay_list_publish_support = Some(support);
+    }
+
     fn set_external_event_sink_policy_factory<F>(&self, factory: F)
     where
         F: Fn(

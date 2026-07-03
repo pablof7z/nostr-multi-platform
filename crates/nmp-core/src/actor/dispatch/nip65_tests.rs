@@ -1,9 +1,8 @@
 //! End-to-end tests for the NIP-65 auto-publish piggyback on
 //! `AddRelay` / `RemoveRelay`.
 //!
-//! Builder unit tests live next to the builder
-//! (`actor::commands::relays::tests`). These tests pin the wiring —
-//! that the dispatch arms actually invoke the builder, gate on the
+//! Builder unit tests live in `nmp-router`. These tests pin the wiring —
+//! that the dispatch arms actually invoke the router-owned support seam, gate on the
 //! active signer, skip no-op edits, and route through
 //! `publish_unsigned_event` (i.e. the kind:10002 frame lands in the
 //! outbound `EVENT` stream the same way every other publish does).
@@ -21,6 +20,9 @@ use crate::actor::commands::{
 use crate::actor::SignerSource;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::slots::RelayListPublishSupport;
+use nmp_signer_iface::UnsignedEvent;
+use std::sync::Arc;
 
 use super::helpers::maybe_publish_relay_list_after_edit;
 
@@ -32,7 +34,34 @@ use super::helpers::maybe_publish_relay_list_after_edit;
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
 fn fresh_kernel() -> Kernel {
-    Kernel::new(DEFAULT_VISIBLE_LIMIT)
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_relay_list_publish_support(Arc::new(TestRelayListPublishSupport));
+    kernel
+}
+
+struct TestRelayListPublishSupport;
+
+impl RelayListPublishSupport for TestRelayListPublishSupport {
+    fn build_unsigned_event_from_rows(&self, rows: &[crate::AppRelay]) -> Option<UnsignedEvent> {
+        if rows.is_empty() {
+            return None;
+        }
+        Some(UnsignedEvent {
+            pubkey: String::new(),
+            kind: crate::kinds::KIND_RELAY_LIST,
+            tags: Vec::new(),
+            content: String::new(),
+            created_at: 0,
+        })
+    }
+
+    fn cold_start_publish_targets(
+        &self,
+        _declared_rows: &[crate::AppRelay],
+        bootstrap_relays: Vec<String>,
+    ) -> Vec<String> {
+        bootstrap_relays
+    }
 }
 
 fn fresh_identity() -> IdentityRuntime {

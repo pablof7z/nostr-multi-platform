@@ -76,13 +76,10 @@ pub(super) fn update_local_key_slots(
 ///    in that case would waste a write and bump the timestamp for no
 ///    behavioural change. `projection_before` is the snapshot the caller
 ///    took *before* the local mutation; equality means "no semantic change".
-/// 3. **No NIP-65-eligible rows.** A projection containing only pure-indexer
-///    rows (or one that becomes empty after the edit) cannot produce a
-///    kind:10002 with `r` tags. `build_relay_list_event`
-///    returns `None` in that case, and the function bails before any
-///    publish — an empty kind:10002 is the destructive "clear my NIP-65
-///    metadata" signal, and we must never emit that as a side effect of
-///    a relay edit.
+/// 3. **Router declines to build.** A projection containing no router-owned
+///    relay-list expression produces `None`, and the function bails before any
+///    publish. This prevents local relay edits from emitting a destructive
+///    empty relay-list event.
 ///
 /// # `correlation_id`
 ///
@@ -111,8 +108,12 @@ pub(super) fn maybe_publish_relay_list_after_edit(
     if projection_after == projection_before {
         return Vec::new();
     }
-    // Guard 3: skip when the projection has no NIP-65 expression.
-    let Some(unsigned) = commands::build_relay_list_event(projection_after) else {
+    // Guard 3: router-owned support decides whether the projection has a
+    // publishable relay-list expression.
+    let Some(unsigned) = kernel
+        .relay_list_publish_support()
+        .build_unsigned_event_from_rows(projection_after)
+    else {
         return Vec::new();
     };
     commands::publish_unsigned_event(identity, kernel, unsigned, None, None, None, parked_ops)

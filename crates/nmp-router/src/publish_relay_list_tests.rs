@@ -371,3 +371,67 @@ fn build_event_tags_match_kernel_ingest_shape() {
         }
     }
 }
+
+#[test]
+fn support_builds_after_edit_event_from_app_relay_rows() {
+    let rows = vec![
+        nmp_core::AppRelay::new("wss://write.example".to_string(), "write".to_string()),
+        nmp_core::AppRelay::new("wss://read.example".to_string(), "read".to_string()),
+        nmp_core::AppRelay::new("wss://both.example".to_string(), "both,indexer".to_string()),
+        nmp_core::AppRelay::new("wss://indexer.example".to_string(), "indexer".to_string()),
+    ];
+    let event = Nip65RelayListPublishSupport
+        .build_unsigned_event_from_rows(&rows)
+        .expect("content rows produce relay-list event");
+    assert_eq!(event.kind, 10002);
+    assert_eq!(
+        event.tags,
+        vec![
+            vec![
+                "r".to_string(),
+                "wss://write.example".to_string(),
+                "write".to_string()
+            ],
+            vec![
+                "r".to_string(),
+                "wss://read.example".to_string(),
+                "read".to_string()
+            ],
+            vec!["r".to_string(), "wss://both.example".to_string()],
+        ]
+    );
+}
+
+#[test]
+fn support_returns_none_for_indexer_only_rows() {
+    let rows = vec![nmp_core::AppRelay::new(
+        "wss://indexer.example".to_string(),
+        "indexer".to_string(),
+    )];
+    assert!(Nip65RelayListPublishSupport
+        .build_unsigned_event_from_rows(&rows)
+        .is_none());
+}
+
+#[test]
+fn support_resolves_cold_start_targets_from_declared_and_bootstrap_relays() {
+    let rows = vec![
+        nmp_core::AppRelay::new("wss://declared-b.example/".to_string(), "write".to_string()),
+        nmp_core::AppRelay::new("wss://declared-a.example".to_string(), "read".to_string()),
+    ];
+    let targets = Nip65RelayListPublishSupport.cold_start_publish_targets(
+        &rows,
+        vec![
+            "wss://bootstrap.example".to_string(),
+            "wss://declared-a.example".to_string(),
+        ],
+    );
+    assert_eq!(
+        targets,
+        vec![
+            "wss://bootstrap.example".to_string(),
+            "wss://declared-a.example".to_string(),
+            "wss://declared-b.example".to_string(),
+        ]
+    );
+}

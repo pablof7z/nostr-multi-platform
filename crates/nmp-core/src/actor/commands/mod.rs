@@ -257,7 +257,7 @@ pub(super) use publish_contacts::{follow, follow_many};
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub use conformance_support::ConformanceHarness;
 #[cfg(feature = "native")]
-pub(super) use relays::{add_relay, build_relay_list_event, remove_relay};
+pub(super) use relays::{add_relay, remove_relay};
 // V-38: wallet runtime + status slot moved to `crates/nmp-nip47`.
 // `nmp-core` no longer has a `wallet` feature, a `wallet::` submodule, or
 // any `WalletRuntime` / `WalletStatus` / `WalletStatusSlot` re-export.
