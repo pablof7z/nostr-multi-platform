@@ -158,14 +158,21 @@ fn browser_production_composition_names_owner_installers() {
 }
 
 #[test]
-fn browser_runtime_read_concepts_are_feature_gated() {
-    let findings = browser_runtime_non_optional_dependency_findings(&["nmp-nip50", "nmp-nip29"]);
+fn browser_runtime_concept_installers_are_feature_gated() {
+    let findings = browser_runtime_non_optional_dependency_findings(&[
+        "nmp-nip22",
+        "nmp-nip23",
+        "nmp-nip25",
+        "nmp-nip29",
+        "nmp-nip50",
+        "nmp-nip84",
+    ]);
 
     assert!(
         findings.is_empty(),
-        "#2797: read concepts are concept-owned composition. Keep browser \
-         runtime concept hosts and worker dispatch behind off-by-default \
-         nmp-browser-runtime features:\n{}",
+        "#2797: concept installers are concept-owned composition. Keep browser \
+         runtime concept hosts, worker dispatch, and optional installers behind \
+         off-by-default nmp-browser-runtime features:\n{}",
         findings.join("\n")
     );
 }
