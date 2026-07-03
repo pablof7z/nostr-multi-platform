@@ -38,12 +38,20 @@ pub(super) fn receive_rows(terminal: &[WalletOperation]) -> Vec<WalletReceiveRow
         .iter()
         .filter(|op| op.kind == WalletOperationKind::RedeemNutzap)
         .map(|op| {
-            let input = op.consumed_inputs.last();
+            let (event_id, mint, amount, unit) = match op.consumed_inputs.last() {
+                Some(input) => (
+                    input.event_id.clone(),
+                    input.mint.clone(),
+                    input.amount,
+                    input.unit.clone(),
+                ),
+                None => (String::new(), String::new(), 0, "sat".to_string()),
+            };
             WalletReceiveRow {
-                event_id: input.map_or_else(String::new, |i| i.event_id.clone()),
-                mint: input.map_or_else(String::new, |i| i.mint.clone()),
-                amount: input.map_or(0, |i| i.amount),
-                unit: input.map_or_else(|| "sat".to_string(), |i| i.unit.clone()),
+                event_id,
+                mint,
+                amount,
+                unit,
                 accepted: op.state == WalletOperationState::Settled,
             }
         })
