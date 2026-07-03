@@ -10,8 +10,8 @@ description = "Concept-neutral read-lifecycle engine: one open/replace/close reg
 crate-type = ["rlib"]
 
 [dependencies]
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
 nmp-ownership = { workspace = true }
 
 [dev-dependencies]

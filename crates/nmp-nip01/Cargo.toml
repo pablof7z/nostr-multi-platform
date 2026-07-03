@@ -9,12 +9,12 @@ description = "NIP-01 short text notes (kind:1) relation surface as an NMP proto
 [dependencies]
 nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
 # Direct dep on nmp-store for VerifiedEvent / RawEvent / StoredEvent —
 # the nmp_core::store compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
-nmp-threading = { path = "../nmp-threading" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-threading = { path = "../nmp-threading", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 tracing = "0.1"

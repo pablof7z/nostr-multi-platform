@@ -10,7 +10,7 @@ description = "NIP-11 relay information documents as an NMP protocol crate — a
 nmp-ownership = { workspace = true }
 # Substrate seams: RelayConnectedHook slot, ActorCommand::SetRelayInfo,
 # the RelayInfoDoc carried-through type.
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Off-thread HTTP GET. Same crate + feature set as nmp-nip57's LNURL fetcher

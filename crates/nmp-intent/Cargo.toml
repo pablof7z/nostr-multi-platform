@@ -11,16 +11,16 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", version = "0.8.4" }
 # NIP-19/21 entity codec (Layer 0) carved out of nmp-core per issue #2515.
-nmp-nostr-id = { path = "../nmp-nostr-id" }
+nmp-nostr-id = { path = "../nmp-nostr-id", version = "0.8.4" }
 # NIP-50 search request shape — the orchestrator serializes a `SearchRequest`
 # into the opaque `InputIntentTarget::TextQuery { request_json }` so nmp-core
 # stays noun-free.
-nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip50 = { path = "../nmp-nip50", version = "0.8.4" }
 # NIP-05 canonical shape parser. The classifier's NIP-05 rung DEFERS to
 # `parse_nip05` (default features — pure shape only, no `native` HTTP) so its
 # accept set is identical to the dispatch-layer resolver's (#1882: no silent
 # no-op). Mirrors the nmp-nip50 dependency above.
-nmp-nip05 = { path = "../nmp-nip05" }
+nmp-nip05 = { path = "../nmp-nip05", version = "0.8.4" }
 serde_json = { workspace = true }

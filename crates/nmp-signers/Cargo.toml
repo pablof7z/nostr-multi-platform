@@ -24,7 +24,7 @@ nmp-ownership = { workspace = true }
 # so this Layer-1 crate sits cleanly below the kernel without naming it just to
 # name substrate types. This also keeps `nmp-signers` trivially wasm-buildable
 # (it never pulls nmp-core's native-only transport deps).
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
 # `nip04`/`nip44`: NIP-46 RPC payload crypto. `nip49`: encrypted nsec storage.
 # `nip46` is deliberately NOT enabled — `nostr`'s `NostrConnectURI::Bunker` lacks
 # this crate's `bunker://` hardening (length cap, `perms`, `extra` round-trip,

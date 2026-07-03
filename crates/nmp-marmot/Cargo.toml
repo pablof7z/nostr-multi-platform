@@ -8,18 +8,18 @@ description = "Marmot Protocol (MLS-over-Nostr) as a Layer-4 NIP crate. Sole imp
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", version = "0.8.4" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608).
-nmp-planner = { path = "../nmp-planner" }
+nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
 # Direct dep on nmp-store for VerifiedEvent / RawEvent — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
 # nmp-nip59 supplies the NIP-59 gift-wrap free functions used to deliver MLS
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.
-nmp-nip59 = { path = "../nmp-nip59" }
+nmp-nip59 = { path = "../nmp-nip59", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 zeroize = { workspace = true }

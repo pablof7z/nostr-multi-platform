@@ -18,7 +18,7 @@ nostr = { version = "0.44", default-features = false, features = ["nip44", "nip5
 # KIND_GIFT_WRAP from nmp-core (that direction would create a compile cycle
 # because nmp-core → nmp-nip59 already). nmp-kinds has zero workspace deps
 # so the cycle is structurally impossible.
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
 
 [dev-dependencies]
 nostr = { version = "0.44", default-features = false, features = ["std", "nip44", "nip59"] }

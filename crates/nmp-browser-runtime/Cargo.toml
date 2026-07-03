@@ -56,41 +56,41 @@ bookmarks = ["dep:nmp-nip84"]
 [dependencies]
 nmp-ownership = { workspace = true }
 # Kernel + composition surface. default-features=false keeps wasm32 free of mio/lmdb.
-nmp-core = { path = "../nmp-core", default-features = false }
+nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
 # NIP-19 entity codec (Layer 4) carved out of nmp-core per issue #2515.
-nmp-nostr-id = { path = "../nmp-nostr-id" }
-nmp-content = { path = "../nmp-content" }
-nmp-substrate = { path = "../nmp-substrate", default-features = false }
-nmp-store = { path = "../nmp-store" }
-nmp-network = { path = "../nmp-network", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nmp-feed = { path = "../nmp-feed" }
-nmp-feed-session = { path = "../nmp-feed-session" }
-nmp-read-session = { path = "../nmp-read-session" }
-nmp-kinds = { path = "../nmp-kinds" }
-nmp-note-feed = { path = "../nmp-note-feed" }
-nmp-nip02 = { path = "../nmp-nip02", optional = true }
-nmp-nip17 = { path = "../nmp-nip17" }
-nmp-nip18 = { path = "../nmp-nip18" }
-nmp-nip23 = { path = "../nmp-nip23", optional = true }
-nmp-nip22 = { path = "../nmp-nip22", optional = true }
-nmp-nip25 = { path = "../nmp-nip25", optional = true }
-nmp-nip29 = { path = "../nmp-nip29", optional = true }
-nmp-nip46 = { path = "../nmp-nip46" }
-nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false }
-nmp-nip50 = { path = "../nmp-nip50", optional = true }
-nmp-nip51 = { path = "../nmp-nip51", optional = true }
-nmp-nip57 = { path = "../nmp-nip57", default-features = false }
-nmp-nip84 = { path = "../nmp-nip84", optional = true }
-nmp-planner = { path = "../nmp-planner", default-features = false }
-nmp-replies = { path = "../nmp-replies" }
-nmp-router = { path = "../nmp-router", default-features = false }
+nmp-nostr-id = { path = "../nmp-nostr-id", version = "0.8.4" }
+nmp-content = { path = "../nmp-content", version = "0.8.4" }
+nmp-substrate = { path = "../nmp-substrate", default-features = false, version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
+nmp-feed-session = { path = "../nmp-feed-session", version = "0.8.4" }
+nmp-read-session = { path = "../nmp-read-session", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-note-feed = { path = "../nmp-note-feed", version = "0.8.4" }
+nmp-nip02 = { path = "../nmp-nip02", optional = true, version = "0.8.4" }
+nmp-nip17 = { path = "../nmp-nip17", version = "0.8.4" }
+nmp-nip18 = { path = "../nmp-nip18", version = "0.8.4" }
+nmp-nip23 = { path = "../nmp-nip23", optional = true, version = "0.8.4" }
+nmp-nip22 = { path = "../nmp-nip22", optional = true, version = "0.8.4" }
+nmp-nip25 = { path = "../nmp-nip25", optional = true, version = "0.8.4" }
+nmp-nip29 = { path = "../nmp-nip29", optional = true, version = "0.8.4" }
+nmp-nip46 = { path = "../nmp-nip46", version = "0.8.4" }
+nmp-nip46-runtime = { path = "../nmp-nip46-runtime", default-features = false, version = "0.8.4" }
+nmp-nip50 = { path = "../nmp-nip50", optional = true, version = "0.8.4" }
+nmp-nip51 = { path = "../nmp-nip51", optional = true, version = "0.8.4" }
+nmp-nip57 = { path = "../nmp-nip57", default-features = false, version = "0.8.4" }
+nmp-nip84 = { path = "../nmp-nip84", optional = true, version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
+nmp-replies = { path = "../nmp-replies", version = "0.8.4" }
+nmp-router = { path = "../nmp-router", default-features = false, version = "0.8.4" }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`
 # keeps the native build free of wasm-only signing bridges; the `wasm` feature
 # above propagates `nmp-signers/wasm` for production wasm32 builds.
-nmp-signers = { path = "../nmp-signers", default-features = false }
-nmp-wot = { path = "../nmp-wot" }
+nmp-signers = { path = "../nmp-signers", default-features = false, version = "0.8.4" }
+nmp-wot = { path = "../nmp-wot", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 flatbuffers = { workspace = true }

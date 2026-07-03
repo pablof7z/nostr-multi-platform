@@ -8,20 +8,20 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind tr
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-read-session = { path = "../nmp-read-session" }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-read-session = { path = "../nmp-read-session", version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
 # `nmp-relay-url` is a Layer-0 (dependency-free) crate that owns the `RelayUrl`
 # alias (#2648) — re-export it rather than redefining a competing copy.
-nmp-relay-url = { path = "../nmp-relay-url" }
+nmp-relay-url = { path = "../nmp-relay-url", version = "0.8.4" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is already
 # in the dep graph through nmp-core.
-nmp-planner = { path = "../nmp-planner" }
+nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent used in tests and
 # action implementations — the nmp_core::store compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
 # Typed FlatBuffers sidecar codecs for the snapshot projections (ADR-0072).
 # Workspace-pinned to 25.12.19, enforced by ci/check-flatbuffers-version-pins.sh.
 flatbuffers = { workspace = true }

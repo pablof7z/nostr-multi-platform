@@ -25,28 +25,28 @@ native = [
 nmp-ownership = { workspace = true }
 # Native runtime owner — `NmpApp` handle + lifecycle API, owned by value
 # inside the facade's `Arc<GalleryApp>` UniFFI object.
-nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime" }
+nmp-native-runtime = { path = "../../../../crates/nmp-native-runtime", version = "0.8.4" }
 # Shared Rust-side mechanics (lifecycle, update sink, capability callback,
 # dispatch, clamp policy) the facade delegates to — never copied.
-nmp-uniffi-support = { path = "../../../../crates/nmp-uniffi-support" }
-nmp-core = { path = "../../../../crates/nmp-core" }
-nmp-nostr-id = { path = "../../../../crates/nmp-nostr-id" }
-nmp-content = { path = "../../../../crates/nmp-content" }
-nmp-nip02 = { path = "../../../../crates/nmp-nip02" }
-nmp-nip17 = { path = "../../../../crates/nmp-nip17" }
-nmp-nip18 = { path = "../../../../crates/nmp-nip18" }
-nmp-nip23 = { path = "../../../../crates/nmp-nip23" }
-nmp-nip22 = { path = "../../../../crates/nmp-nip22" }
-nmp-nip25 = { path = "../../../../crates/nmp-nip25" }
-nmp-nip29 = { path = "../../../../crates/nmp-nip29" }
-nmp-nip50 = { path = "../../../../crates/nmp-nip50" }
-nmp-nip51 = { path = "../../../../crates/nmp-nip51" }
-nmp-nip84 = { path = "../../../../crates/nmp-nip84" }
-nmp-replies = { path = "../../../../crates/nmp-replies" }
-nmp-router = { path = "../../../../crates/nmp-router" }
-nmp-signer-iface = { path = "../../../../crates/nmp-signer-iface" }
-nmp-substrate = { path = "../../../../crates/nmp-substrate" }
-nmp-wot = { path = "../../../../crates/nmp-wot" }
+nmp-uniffi-support = { path = "../../../../crates/nmp-uniffi-support", version = "0.8.4" }
+nmp-core = { path = "../../../../crates/nmp-core", version = "0.8.4" }
+nmp-nostr-id = { path = "../../../../crates/nmp-nostr-id", version = "0.8.4" }
+nmp-content = { path = "../../../../crates/nmp-content", version = "0.8.4" }
+nmp-nip02 = { path = "../../../../crates/nmp-nip02", version = "0.8.4" }
+nmp-nip17 = { path = "../../../../crates/nmp-nip17", version = "0.8.4" }
+nmp-nip18 = { path = "../../../../crates/nmp-nip18", version = "0.8.4" }
+nmp-nip23 = { path = "../../../../crates/nmp-nip23", version = "0.8.4" }
+nmp-nip22 = { path = "../../../../crates/nmp-nip22", version = "0.8.4" }
+nmp-nip25 = { path = "../../../../crates/nmp-nip25", version = "0.8.4" }
+nmp-nip29 = { path = "../../../../crates/nmp-nip29", version = "0.8.4" }
+nmp-nip50 = { path = "../../../../crates/nmp-nip50", version = "0.8.4" }
+nmp-nip51 = { path = "../../../../crates/nmp-nip51", version = "0.8.4" }
+nmp-nip84 = { path = "../../../../crates/nmp-nip84", version = "0.8.4" }
+nmp-replies = { path = "../../../../crates/nmp-replies", version = "0.8.4" }
+nmp-router = { path = "../../../../crates/nmp-router", version = "0.8.4" }
+nmp-signer-iface = { path = "../../../../crates/nmp-signer-iface", version = "0.8.4" }
+nmp-substrate = { path = "../../../../crates/nmp-substrate", version = "0.8.4" }
+nmp-wot = { path = "../../../../crates/nmp-wot", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 zeroize = { workspace = true }

@@ -11,9 +11,9 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core" }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-core = { path = "../nmp-core", version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

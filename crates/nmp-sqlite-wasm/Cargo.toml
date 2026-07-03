@@ -19,7 +19,7 @@ path = "src/lib.rs"
 # the wasm-only target table below.
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

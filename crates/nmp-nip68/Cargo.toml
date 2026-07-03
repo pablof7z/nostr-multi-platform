@@ -8,19 +8,19 @@ description = "NIP-68 picture-first feed primitives for NMP: kind:20 PictureEven
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nmp-feed = { path = "../nmp-feed" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
 # Direct dep on nmp-store for StoredEvent / RawEvent — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
 # Canonical DeleteRecord (kind:5 decode) for picture-source delete-folding —
 # nmp-nip18 is not the generic deletion owner (ADR-0074, widened by #2589).
-nmp-nip09 = { path = "../nmp-nip09" }
-nmp-nip18 = { path = "../nmp-nip18" }
-nmp-nip92-types = { path = "../nmp-nip92-types" }
-nmp-planner = { path = "../nmp-planner" }
+nmp-nip09 = { path = "../nmp-nip09", version = "0.8.4" }
+nmp-nip18 = { path = "../nmp-nip18", version = "0.8.4" }
+nmp-nip92-types = { path = "../nmp-nip92-types", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

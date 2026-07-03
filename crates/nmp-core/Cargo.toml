@@ -97,8 +97,8 @@ indexmap = "2.14"
 # from here so every existing `nmp_core::kinds::KIND_*` call site is unchanged,
 # while NIP crates (e.g. nmp-nip59) can also depend on nmp-kinds without
 # creating the nmp-nip59 → nmp-core compile cycle.
-nmp-kinds = { path = "../nmp-kinds" }
-nmp-nip42-types = { path = "../nmp-nip42-types" }
+nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-nip42-types = { path = "../nmp-nip42-types", version = "0.8.4" }
 # NIP-19 bech32 entity codec + NIP-21 `nostr:` URI surface — the Nostr
 # identifier vocabulary, hosted at Layer 0 in `nmp-nostr-id` (issue #2515;
 # crate-boundaries.md §2/§3). This is a normal DOWNWARD edge (L3→L0), legal
@@ -107,8 +107,8 @@ nmp-nip42-types = { path = "../nmp-nip42-types" }
 # consume the codec, and depending downward on identifier vocabulary is not a
 # layer inversion. (The earlier L4 placement created an illegal L3→L4 back-edge;
 # moving the vocabulary to L0 removes it.)
-nmp-nostr-id = { path = "../nmp-nostr-id" }
-nmp-relay-url = { path = "../nmp-relay-url" }
+nmp-nostr-id = { path = "../nmp-nostr-id", version = "0.8.4" }
+nmp-relay-url = { path = "../nmp-relay-url", version = "0.8.4" }
 # NIP-59 gift-wrap primitives are NOT a production dependency of the kernel:
 # the former `ActorCommand::SendGiftWrappedDm` arm was deleted (V-39) and the
 # seal+wrap path now lives entirely in `nmp-nip17`'s `SendGiftWrappedDmCommand`.
@@ -119,7 +119,7 @@ nmp-relay-url = { path = "../nmp-relay-url" }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 # V-38: the `nmp-nwc` dep was deleted from `nmp-core`. NIP-47 is consumed
 # exclusively by `crates/nmp-nip47` post-V-38.
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
 # Step 8 (extraction phase A): the native WebSocket relay worker
 # (`relay_worker/`) + the wire-transport-agnostic `relay_protocol`
 # constants moved to `nmp-network`. The actor consumes
@@ -129,7 +129,7 @@ nmp-signer-iface = { path = "../nmp-signer-iface" }
 # always-on (with `default-features = false` so wasm32 stays clean).
 # `mio` / `rustls` deps moved with the worker; they no longer appear in
 # this manifest.
-nmp-network = { path = "../nmp-network", default-features = false }
+nmp-network = { path = "../nmp-network", default-features = false, version = "0.8.4" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 # tungstenite: still named here because the kernel's outbound/inbound wire
@@ -153,14 +153,14 @@ zeroize = { workspace = true }
 # so existing import sites compile unchanged. The `lmdb-backend` Cargo feature
 # here forwards to `nmp-store/lmdb-backend`, which is the one place the heed /
 # nostr-database / nmp-nostr-lmdb graph is pulled in.
-nmp-store = { path = "../nmp-store" }
+nmp-store = { path = "../nmp-store", version = "0.8.4" }
 # LogicalInterest + subscription compiler live in `nmp-planner` (see
 # `docs/architecture/crate-boundaries.md` §9). nmp-core re-exports
 # `planner::*` and `stable_hash::*` from this crate so existing import sites
 # compile unchanged. nmp-planner is a Layer-2 foundation with NO back-edge
 # into nmp-core — keeps the dep graph acyclic.
-nmp-planner = { path = "../nmp-planner" }
-nmp-nip65-types = { path = "../nmp-nip65-types", optional = true }
+nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
+nmp-nip65-types = { path = "../nmp-nip65-types", optional = true, version = "0.8.4" }
 
 # W1 — wasm-safe time shim. `web-time 1.1.0` is already in the workspace
 # Cargo.lock (transitive via egui/winit) — no new version enters the tree.
