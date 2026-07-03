@@ -14,8 +14,9 @@ mod trellis;
 pub mod ownership;
 
 pub use receipt::{
-    XrayInterestDescriptor, XrayOwnerCounts, XrayProjectionContext, XrayReceipt,
-    XrayReceiptEventKind, XrayReceiptStream, XrayRelayEffect, XrayTeardownCascade,
-    XrayTransactionMarker,
+    XrayCauseLink, XrayCommandOutcome, XrayInterestDescriptor, XrayOutcomeStatus, XrayOwnerCounts,
+    XrayProjectionContext, XrayReason, XrayReasonCode, XrayReasonParam, XrayReceipt,
+    XrayReceiptEventKind, XrayReceiptRecorder, XrayReceiptStream, XrayRecordingConfig,
+    XrayRelayEffect, XrayTeardownCascade, XrayTimestamp, XrayTransactionMarker,
 };
 pub use trellis::{receipts_from_trellis_commands, TrellisReceiptPayload};

@@ -1,31 +1,17 @@
-use std::collections::VecDeque;
-use std::num::NonZeroUsize;
-
 use serde::{Deserialize, Serialize};
 
-/// Stable context shared by receipts emitted for one projection transaction.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct XrayProjectionContext {
-    pub projection_key: String,
-    pub scope_label: String,
-    pub owner_key: String,
-    pub reason: String,
+use super::{XrayCauseLink, XrayReason};
+
+/// Wall-clock timestamp assigned by NMP at the receipt boundary.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct XrayTimestamp {
+    pub unix_ms: u64,
 }
 
-impl XrayProjectionContext {
+impl XrayTimestamp {
     #[must_use]
-    pub fn new(
-        projection_key: impl Into<String>,
-        scope_label: impl Into<String>,
-        owner_key: impl Into<String>,
-        reason: impl Into<String>,
-    ) -> Self {
-        Self {
-            projection_key: projection_key.into(),
-            scope_label: scope_label.into(),
-            owner_key: owner_key.into(),
-            reason: reason.into(),
-        }
+    pub const fn new(unix_ms: u64) -> Self {
+        Self { unix_ms }
     }
 }
 
@@ -46,6 +32,40 @@ impl XrayTransactionMarker {
     }
 }
 
+/// Stable context shared by receipts emitted for one projection transaction.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct XrayProjectionContext {
+    pub projection_key: String,
+    pub view_label: String,
+    pub parent_scope: Option<String>,
+    pub owner_key: String,
+    pub reason: XrayReason,
+}
+
+impl XrayProjectionContext {
+    #[must_use]
+    pub fn new(
+        projection_key: impl Into<String>,
+        view_label: impl Into<String>,
+        owner_key: impl Into<String>,
+        reason: XrayReason,
+    ) -> Self {
+        Self {
+            projection_key: projection_key.into(),
+            view_label: view_label.into(),
+            parent_scope: None,
+            owner_key: owner_key.into(),
+            reason,
+        }
+    }
+
+    #[must_use]
+    pub fn with_parent_scope(mut self, parent_scope: impl Into<String>) -> Self {
+        self.parent_scope = Some(parent_scope.into());
+        self
+    }
+}
+
 /// NMP-owned description of the interest affected by a resource receipt.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct XrayInterestDescriptor {
@@ -53,6 +73,7 @@ pub struct XrayInterestDescriptor {
     pub scope: String,
     pub shape: String,
     pub provenance: String,
+    pub privacy_bearing: bool,
 }
 
 impl XrayInterestDescriptor {
@@ -68,6 +89,7 @@ impl XrayInterestDescriptor {
             scope: scope.into(),
             shape: shape.into(),
             provenance: provenance.into(),
+            privacy_bearing: true,
         }
     }
 }
@@ -80,6 +102,33 @@ pub enum XrayReceiptEventKind {
     Replace,
     Refresh,
     Close,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum XrayOutcomeStatus {
+    Applied,
+    Retained,
+    Pending,
+    Failed,
+    Unknown,
+}
+
+/// Outcome after a receipt is joined to kernel/socket effects.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct XrayCommandOutcome {
+    pub status: XrayOutcomeStatus,
+    pub code: String,
+}
+
+impl XrayCommandOutcome {
+    #[must_use]
+    pub fn applied() -> Self {
+        Self {
+            status: XrayOutcomeStatus::Applied,
+            code: "applied".to_string(),
+        }
+    }
 }
 
 /// Owner-count state around a resource receipt.
@@ -115,6 +164,7 @@ pub struct XrayRelayEffect {
     pub state: String,
     pub consumer_count: u32,
     pub events_rx: u64,
+    pub outcome: XrayCommandOutcome,
 }
 
 impl XrayRelayEffect {
@@ -132,6 +182,7 @@ impl XrayRelayEffect {
             state: state.into(),
             consumer_count,
             events_rx,
+            outcome: XrayCommandOutcome::applied(),
         }
     }
 }
@@ -164,13 +215,16 @@ impl XrayTeardownCascade {
 pub struct XrayReceipt {
     pub sequence: u64,
     pub transaction: XrayTransactionMarker,
+    pub timestamp: XrayTimestamp,
     pub context: XrayProjectionContext,
     pub event: XrayReceiptEventKind,
-    pub resource_key: String,
+    pub resource_id: String,
     pub interest: Option<XrayInterestDescriptor>,
     pub owner_counts: XrayOwnerCounts,
+    pub outcome: XrayCommandOutcome,
     pub teardown: XrayTeardownCascade,
     pub relay_effects: Vec<XrayRelayEffect>,
+    pub cause: Option<XrayCauseLink>,
 }
 
 impl XrayReceipt {
@@ -178,20 +232,24 @@ impl XrayReceipt {
     pub fn new(
         context: XrayProjectionContext,
         transaction: XrayTransactionMarker,
+        timestamp: XrayTimestamp,
         event: XrayReceiptEventKind,
-        resource_key: impl Into<String>,
+        resource_id: impl Into<String>,
         interest: Option<XrayInterestDescriptor>,
     ) -> Self {
         Self {
             sequence: 0,
             transaction,
+            timestamp,
             context,
             event,
-            resource_key: resource_key.into(),
+            resource_id: resource_id.into(),
             interest,
             owner_counts: XrayOwnerCounts::unknown(),
+            outcome: XrayCommandOutcome::applied(),
             teardown: XrayTeardownCascade::default(),
             relay_effects: Vec::new(),
+            cause: None,
         }
     }
 
@@ -212,99 +270,10 @@ impl XrayReceipt {
         self.relay_effects = relay_effects;
         self
     }
-}
-
-/// Bounded ordered receipt stream.
-#[derive(Clone, Debug)]
-pub struct XrayReceiptStream {
-    capacity: usize,
-    next_sequence: u64,
-    receipts: VecDeque<XrayReceipt>,
-}
-
-impl XrayReceiptStream {
-    #[must_use]
-    pub fn new(capacity: NonZeroUsize) -> Self {
-        Self {
-            capacity: capacity.get(),
-            next_sequence: 1,
-            receipts: VecDeque::with_capacity(capacity.get()),
-        }
-    }
 
     #[must_use]
-    pub fn len(&self) -> usize {
-        self.receipts.len()
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.receipts.is_empty()
-    }
-
-    #[must_use]
-    pub fn next_sequence(&self) -> u64 {
-        self.next_sequence
-    }
-
-    pub fn push(&mut self, mut receipt: XrayReceipt) -> u64 {
-        let sequence = self.next_sequence;
-        self.next_sequence = self.next_sequence.saturating_add(1);
-        receipt.sequence = sequence;
-        self.receipts.push_back(receipt);
-        while self.receipts.len() > self.capacity {
-            self.receipts.pop_front();
-        }
-        sequence
-    }
-
-    pub fn push_batch<I>(&mut self, receipts: I)
-    where
-        I: IntoIterator<Item = XrayReceipt>,
-    {
-        for receipt in receipts {
-            self.push(receipt);
-        }
-    }
-
-    pub fn receipts(&self) -> impl ExactSizeIterator<Item = &XrayReceipt> {
-        self.receipts.iter()
-    }
-
-    #[must_use]
-    pub fn snapshot(&self) -> Vec<XrayReceipt> {
-        self.receipts.iter().cloned().collect()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn receipt(key: &str) -> XrayReceipt {
-        XrayReceipt::new(
-            XrayProjectionContext::new("app.feed.home", "home", "owner", "test"),
-            XrayTransactionMarker::new(7, 3),
-            XrayReceiptEventKind::Open,
-            key,
-            None,
-        )
-    }
-
-    #[test]
-    fn stream_assigns_ordered_sequences_and_retains_bounded_tail() {
-        let mut stream = XrayReceiptStream::new(NonZeroUsize::new(2).unwrap());
-
-        assert_eq!(stream.push(receipt("a")), 1);
-        assert_eq!(stream.push(receipt("b")), 2);
-        assert_eq!(stream.push(receipt("c")), 3);
-
-        let snapshot = stream.snapshot();
-        assert_eq!(snapshot.len(), 2);
-        assert_eq!(snapshot[0].sequence, 2);
-        assert_eq!(snapshot[0].resource_key, "b");
-        assert_eq!(snapshot[1].sequence, 3);
-        assert_eq!(snapshot[1].resource_key, "c");
-        assert_eq!(stream.next_sequence(), 4);
+    pub fn with_cause(mut self, cause: XrayCauseLink) -> Self {
+        self.cause = Some(cause);
+        self
     }
 }
