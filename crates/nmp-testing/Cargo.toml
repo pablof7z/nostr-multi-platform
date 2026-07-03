@@ -116,6 +116,8 @@ tempfile = "3"
 # Relay-search-radius acceptance tests (A1-A6) capture stderr using FD-level
 # pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.
 libc = "0.2"
+# Kernel ingest allocation gate (#2798). Test-only heap profiler.
+dhat = "0.3.3"
 
 # SLICE-NS-M14-002 (#2388) — FFI transport A/B microbench comparing the C-lane
 # (extern "C" ptr/len + shell copy) against the UniFFI lane (real RustBuffer
@@ -165,6 +167,10 @@ path = "tests/cache_serve_replay_fixtures.rs"
 [[test]]
 name = "doctrine_lint_smoke"
 path = "bin/doctrine-lint/tests.rs"
+
+[[test]]
+name = "kernel_ingest_allocation_gate"
+path = "tests/kernel_ingest_allocation_gate.rs"
 
 [[test]]
 name = "doctrine_native_smoke"

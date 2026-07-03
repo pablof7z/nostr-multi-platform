@@ -102,10 +102,18 @@ fn nmp_wasm_is_not_reintroduced_as_live_crate_in_source() {
                 let Ok(text) = std::fs::read_to_string(&path) else {
                     continue;
                 };
+                let mut in_retired_crates = false;
                 for (n, line) in text.lines().enumerate() {
                     let trimmed = line.trim_start();
                     // Allow comment lines that document the deletion.
                     if trimmed.starts_with('#') {
+                        continue;
+                    }
+                    if trimmed.starts_with("[[") {
+                        in_retired_crates = trimmed == "[[retired_crates]]";
+                        continue;
+                    }
+                    if in_retired_crates {
                         continue;
                     }
                     for phrase in banned {
@@ -357,9 +365,17 @@ fn nmp_uniffi_is_not_reintroduced_as_live_crate_in_source() {
                 let Ok(text) = std::fs::read_to_string(&path) else {
                     continue;
                 };
+                let mut in_retired_crates = false;
                 for (n, line) in text.lines().enumerate() {
                     let trimmed = line.trim_start();
                     if trimmed.starts_with('#') {
+                        continue;
+                    }
+                    if trimmed.starts_with("[[") {
+                        in_retired_crates = trimmed == "[[retired_crates]]";
+                        continue;
+                    }
+                    if in_retired_crates {
                         continue;
                     }
                     for phrase in banned {

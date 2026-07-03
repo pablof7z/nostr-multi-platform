@@ -6,10 +6,11 @@
 //! type authority). See `docs/decisions/0071-write-intents-and-route-provenance.md`
 //! for the full rationale.
 //!
-//! The `actor` module is private (`mod actor`, not `pub mod actor`), so this
-//! `pub` is only reachable from outside the crate through the `testing`
-//! re-export gate. In normal (non-test-support) builds nothing re-exports
-//! these items, so they remain effectively crate-private.
+//! The `actor` module is part of the current pre-v1 public surface because
+//! protocol crates still translate typed intents into actor command enums.
+//! New root exports are frozen by the doctrine-lint surface baseline; prefer
+//! crate-root re-exports and concept-owned adapters over adding new direct
+//! actor paths.
 
 use crate::app::KernelAction;
 

@@ -131,6 +131,51 @@ overwritten.
 train requires `docs/migration-notes/<tag>.md` for every public `nmp-v*` tag, so
 consumers should read that note before expecting the re-pin to compile.
 
+### `nmp doctor [--json] [--strict] [--manifest nmp.toml]`
+
+Runs read-only, offline coherence checks for an app's `nmp.toml`, Cargo
+manifests, and `Cargo.lock`.
+
+```sh
+nmp doctor
+nmp doctor --json
+nmp doctor --strict --manifest apps/example/nmp.toml
+```
+
+Exit codes:
+
+- `0` — no error-level findings.
+- `1` — at least one error-level finding. `--strict` promotes warnings to
+  errors before choosing the exit code.
+- `2` — the command cannot run because `nmp.toml`, `Cargo.toml`, or
+  `Cargo.lock` input could not be read or parsed.
+
+Human output groups findings by severity and prints a stable check id. JSON
+output is an array of `{id, level, message, subject}` objects.
+
+Checks:
+
+- `D01` — all `nmp-*` dependencies across discovered Cargo manifests use one
+  source family (`path`, one git remote, registry, or workspace).
+- `D02` — `Cargo.lock` agrees with declared `nmp-*` dependency sources.
+- `D03` — no dependency names a retired crate from the canonical
+  `release/nmp-release.toml` retired-crate list.
+- `D04` — every path dependency exists, points at a crate, and the package name
+  matches the dependency.
+- `D05` — baseline report of the current NMP source/pin shape.
+- `D06` — companion crate groups declared in `[companions]` are pinned to the
+  same git revision/tag/branch.
+- `D07` — `nmp.toml` parses coherently and every `[modules]` crate is present
+  in the app Cargo manifests.
+
+Declare companion lockstep groups in `nmp.toml` when an app intentionally pins
+two framework crates together:
+
+```toml
+[companions]
+signing = ["nmp-nip46", "nmp-nip46-runtime"]
+```
+
 ### `nmp add component <id> [--path DIR] [--registry DIR] [--with ROLES]`
 
 Copies an app-owned source component from the NMP component registry into an
