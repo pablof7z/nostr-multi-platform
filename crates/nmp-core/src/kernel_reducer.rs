@@ -268,6 +268,7 @@ impl KernelReducer {
 // `CommandApplyOutcome`. Shared by the wasm runtime and any future headless
 // runtime so there is one command-application path.
 mod command_apply;
+mod command_apply_contacts;
 mod command_apply_publish;
 pub use command_apply::CommandApplyOutcome;
 mod composition_seams;

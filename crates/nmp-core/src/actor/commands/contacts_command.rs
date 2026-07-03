@@ -34,8 +34,8 @@ pub enum ContactsCommand {
     /// each reads the current kind:3 before the prior signed event is ingested,
     /// so each publishes a kind:3 with only +1 p-tag and last-write-wins
     /// silently drops every follow but the last), this command reads kind:3
-    /// EXACTLY ONCE, folds all target pubkeys via `kind3_tags_after_add` in a
-    /// single pass, and produces ONE signed kind:3. The race is structurally
+    /// EXACTLY ONCE, asks the installed NIP-02 contact-list writer to fold all
+    /// target pubkeys in a single pass, and produces ONE signed kind:3. The race is structurally
     /// impossible: a single command = a single actor-thread execution slot =
     /// one atomic read-modify-write.
     ///

@@ -123,11 +123,12 @@ pub struct PubkeyAction {
 /// Carries the full set of pubkeys to be added to the active account's
 /// kind:3 in a single atomic read-modify-write-publish cycle. The
 /// actor's `FollowMany` command handler owns validation (per-entry hex
-/// shape check, self-exclusion, dedup via idempotent `kind3_tags_after_add`).
+/// shape check, self-exclusion, dedup via the installed NIP-02 writer).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FollowManyAction {
     /// The set of hex pubkeys to follow. May include duplicates or the
-    /// active account's own pubkey — the actor drops them silently.
+    /// active account's own pubkey — the actor drops them silently through the
+    /// installed NIP-02 contact-list writer's idempotent add grammar.
     pub pubkeys: Vec<String>,
 }
 

@@ -79,66 +79,6 @@ pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
         .collect()
 }
 
-// ─── NIP-02 kind:3 contact-list edit builders ────────────────────────────────
-
-/// Return the FULL kind:3 tag set that results from adding a follow on `target`
-/// to `current` — splicing ONLY the `p` section while preserving everything
-/// else verbatim (issue #1246).
-///
-/// `current` is the active account's existing kind:3 tag set
-/// (`Vec<Vec<String>>`), obtained from a confirmed-loaded kind:3 via
-/// [`crate::kernel_reducer::KernelReducer::try_current_contact_list_event`] (or
-/// the native kernel contact-list edit gate). Callers MUST confirm the kind:3
-/// is loaded first — editing a not-yet-loaded list and re-publishing would
-/// silently wipe the user's contacts.
-///
-/// Preservation contract:
-/// - Every **non-`p`** tag (relay-list `["r", …]`, `["d", …]`, etc.) is
-///   carried through verbatim, in document order.
-/// - Every existing `["p", pk, relay?, petname?]` entry keeps its relay-hint
-///   (column 2) and petname (column 3) columns — the edit never strips them.
-/// - Document order of all retained tags is preserved.
-///
-/// Idempotent: if a `p` tag for `target` (matched on column 1, the pubkey) is
-/// already present, the set is returned unchanged — no duplicate, and the
-/// existing entry's relay-hint / petname survive. Otherwise a bare
-/// `["p", target]` is appended after the existing tags.
-#[must_use]
-pub fn kind3_tags_after_add(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
-    let mut tags: Vec<Vec<String>> = current.to_vec();
-    let already_present = tags.iter().any(|t| {
-        t.first().map(String::as_str) == Some("p") && t.get(1).map(String::as_str) == Some(target)
-    });
-    if !already_present {
-        tags.push(vec!["p".to_string(), target.to_string()]);
-    }
-    tags
-}
-
-/// Return the FULL kind:3 tag set that results from removing the follow on
-/// `target` from `current` — dropping ONLY the matching `p` entries while
-/// preserving everything else verbatim (issue #1246).
-///
-/// Drops every `["p", target, …]` entry of ANY arity (bare, relay-hinted, or
-/// relay-hinted-with-petname) matched on column 1 (the pubkey). Every non-`p`
-/// tag and every `p` tag for a different pubkey — including its relay-hint and
-/// petname columns — is carried through verbatim in document order.
-///
-/// Idempotent: if no `p` tag for `target` is present, the set is returned
-/// unchanged. Same must-be-loaded safety constraint as
-/// [`kind3_tags_after_add`].
-#[must_use]
-pub fn kind3_tags_after_remove(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
-    current
-        .iter()
-        .filter(|t| {
-            !(t.first().map(String::as_str) == Some("p")
-                && t.get(1).map(String::as_str) == Some(target))
-        })
-        .cloned()
-        .collect()
-}
-
 // ─── NIP-25 reaction builder ─────────────────────────────────────────────────
 
 /// Build NIP-25 kind:7 reaction tags and normalised content for
@@ -179,7 +119,7 @@ pub fn reaction_tags(
 }
 
 // Unit tests live in a sibling file to keep this module under the 500-line
-// ceiling. `tags_tests.rs` covers constructors, readers, and kind-3 edit tags.
+// ceiling. `tags_tests.rs` covers the shared constructors and readers.
 #[cfg(test)]
 #[path = "tags_tests.rs"]
 mod tags_tests;

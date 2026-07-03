@@ -6,16 +6,20 @@
 use super::*;
 
 mod claim_expansion;
+#[cfg(any(test, feature = "test-support"))]
+mod contact_list;
 mod preverified_support;
 
 // Claim-expansion test-observation registry (thread-local). Re-exported so the
 // existing `test_support::<fn>` call sites in `relay_score_record.rs` and the
 // claim-expansion tests keep resolving after the split for the file-size cap.
+#[cfg(test)]
+pub(crate) use self::claim_expansion::{clear_claim_expansion_subs, register_claim_expansion_sub};
 pub(crate) use self::claim_expansion::{
     get_claim_expansion_author, mark_claim_expansion_match_seen, take_claim_expansion_match_seen,
 };
-#[cfg(test)]
-pub(crate) use self::claim_expansion::{clear_claim_expansion_subs, register_claim_expansion_sub};
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) use self::contact_list::TestStoreContactListReader;
 
 pub(crate) fn test_support_now() -> Instant {
     Instant::now()
@@ -41,58 +45,6 @@ impl crate::substrate::IngestParser for ProfileViewSeedParser {
             },
         );
     }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-pub(crate) struct TestStoreContactListReader {
-    store: std::sync::Arc<dyn crate::store::EventStore>,
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl TestStoreContactListReader {
-    pub(crate) fn new(store: std::sync::Arc<dyn crate::store::EventStore>) -> Self {
-        Self { store }
-    }
-
-    fn latest_event(&self, author_hex: &str) -> Option<crate::slots::ContactListEvent> {
-        let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
-        let mut iter = self
-            .store
-            .scan_by_author_kind(&author, &[crate::kinds::KIND_CONTACT_LIST], None, None, 1)
-            .ok()?;
-        iter.next()?.ok().map(|stored| crate::slots::ContactListEvent {
-                tags: stored.raw.tags.clone(),
-                content: stored.raw.content.clone(),
-                created_at: stored.raw.created_at,
-        })
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-impl crate::slots::ContactListReader for TestStoreContactListReader {
-    fn follows(&self, author_hex: &str) -> Option<Vec<String>> {
-        self.latest_event(author_hex)
-            .map(|event| test_contact_follows(&event.tags))
-    }
-
-    fn event_for_edit(&self, author_hex: &str) -> Option<crate::slots::ContactListEvent> {
-        self.latest_event(author_hex)
-    }
-}
-
-#[cfg(any(test, feature = "test-support"))]
-fn test_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
-    tags.iter()
-        .filter_map(|tag| {
-            if tag.first().map(String::as_str) == Some("p") {
-                tag.get(1)
-                    .filter(|value| crate::kernel::is_hex_pubkey(value))
-                    .cloned()
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 impl Kernel {
@@ -149,13 +101,14 @@ impl Kernel {
         };
         let verified = VerifiedEvent::from_raw_unchecked(raw);
         let active_contacts_before = self.active_contacts_snapshot_for_author(pubkey);
-        let outcome = match self
-            .store
-            .insert(verified.clone(), &relay_url.to_string(), received_at_ms)
-        {
-            Ok(o) => o,
-            Err(_) => return None,
-        };
+        let outcome =
+            match self
+                .store
+                .insert(verified.clone(), &relay_url.to_string(), received_at_ms)
+            {
+                Ok(o) => o,
+                Err(_) => return None,
+            };
         if matches!(
             outcome,
             InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }

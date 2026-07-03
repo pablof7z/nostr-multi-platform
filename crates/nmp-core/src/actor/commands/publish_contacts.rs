@@ -33,22 +33,32 @@ pub(crate) fn follow(
             correlation_id,
         );
     }
-    let Some((current_tags, current_content, baseline_created_at)) =
-        kernel.try_current_contact_list_event_for_edit()
-    else {
+    let Some(current) = kernel.try_current_contact_list_event_for_edit() else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
-    let tags = if add {
-        crate::tags::kind3_tags_after_add(&current_tags, pubkey)
+    let created_at = kernel.now_secs().max(current.created_at.saturating_add(1));
+    let draft = if add {
+        kernel
+            .contact_list_reader()
+            .draft_after_add(&author, &current, pubkey, created_at)
     } else {
-        crate::tags::kind3_tags_after_remove(&current_tags, pubkey)
+        kernel
+            .contact_list_reader()
+            .draft_after_remove(&author, &current, pubkey, created_at)
+    };
+    let Some(draft) = draft else {
+        return fail_publish(
+            kernel,
+            "contact_list_writer_not_installed".to_string(),
+            correlation_id,
+        );
     };
     let unsigned = UnsignedEvent {
-        pubkey: author,
-        kind: 3,
-        tags,
-        content: current_content,
-        created_at: kernel.now_secs().max(baseline_created_at.saturating_add(1)),
+        pubkey: draft.pubkey,
+        kind: draft.kind,
+        tags: draft.tags,
+        content: draft.content,
+        created_at: draft.created_at,
     };
     sign_and_publish_contact_edit(identity, kernel, unsigned, correlation_id, parked_ops)
 }
@@ -66,14 +76,12 @@ pub(crate) fn follow_many(
     let Some(author) = identity.active_pubkey() else {
         return toast_no_account(kernel, "follow_many", correlation_id);
     };
-    let Some((current_tags, current_content, baseline_created_at)) =
-        kernel.try_current_contact_list_event_for_edit()
-    else {
+    let Some(mut current) = kernel.try_current_contact_list_event_for_edit() else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
 
     let self_pk: &str = &author;
-    let mut merged_tags = current_tags;
+    let mut draft = None;
     for pk in pubkeys {
         if pk.len() != 64 || !crate::kernel::is_hex_pubkey(pk) {
             continue;
@@ -81,15 +89,38 @@ pub(crate) fn follow_many(
         if pk.as_str() == self_pk || active_pubkey_hint.map_or(false, |h| h == pk.as_str()) {
             continue;
         }
-        merged_tags = crate::tags::kind3_tags_after_add(&merged_tags, pk);
+        let created_at = kernel.now_secs().max(current.created_at.saturating_add(1));
+        let Some(next_draft) = kernel
+            .contact_list_reader()
+            .draft_after_add(&author, &current, pk, created_at)
+        else {
+            return fail_publish(
+                kernel,
+                "contact_list_writer_not_installed".to_string(),
+                correlation_id,
+            );
+        };
+        current = crate::slots::ContactListEvent {
+            tags: next_draft.tags.clone(),
+            content: next_draft.content.clone(),
+            created_at: next_draft.created_at,
+        };
+        draft = Some(next_draft);
     }
 
+    let Some(draft) = draft else {
+        return fail_publish(
+            kernel,
+            "follow_many: no valid pubkeys to follow".to_string(),
+            correlation_id,
+        );
+    };
     let unsigned = UnsignedEvent {
-        pubkey: author,
-        kind: 3,
-        tags: merged_tags,
-        content: current_content,
-        created_at: kernel.now_secs().max(baseline_created_at.saturating_add(1)),
+        pubkey: draft.pubkey,
+        kind: draft.kind,
+        tags: draft.tags,
+        content: draft.content,
+        created_at: draft.created_at,
     };
     sign_and_publish_contact_edit(identity, kernel, unsigned, correlation_id, parked_ops)
 }

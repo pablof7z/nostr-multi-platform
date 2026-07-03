@@ -21,8 +21,8 @@ pub const DEFAULT_EMIT_HZ: u32 = 4;
 // The per-account follow-set cap is GONE (#1497 amendment 6): the follow-feed
 // collapsed to ONE multi-author interest with no per-author limit, so there is
 // no longer a wire-subscription bound for the follow-set projections to mirror.
-// The shared follow-set extraction recipe (which `p` tags count) lives in
-// `crate::tags::contact_follows`, uncapped.
+// The shared follow-set extraction recipe (which `p` tags count) lives in the
+// installed protocol-owned contact-list reader, uncapped.
 
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
 /// form.
