@@ -11,6 +11,22 @@ use crate::{BrowserAppBuilder, BrowserRunConfig};
 
 use super::started_handle;
 
+const BROWSER_FEATURE_GATED_ACTION_NAMESPACES: &[&str] = &[
+    "nmp.follow",
+    "nmp.follow_many",
+    "nmp.nip25.react",
+    "nmp.nip25.unreact",
+    "nmp.nip51.add_bookmark",
+    "nmp.nip51.add_bookmark_set_item",
+    "nmp.nip51.block_relay",
+    "nmp.nip51.publish_web_bookmark",
+    "nmp.nip51.remove_bookmark",
+    "nmp.nip51.remove_bookmark_set_item",
+    "nmp.nip51.unblock_relay",
+    "nmp.nip84.publish_highlight",
+    "nmp.unfollow",
+];
+
 /// #1007 PR-7 -- injection identity: a store handed to `inject_store` must be
 /// the exact `Arc` the kernel reducer holds after `start()`.
 #[test]
@@ -105,19 +121,31 @@ fn browser_bookmarks_feature_registers_nip84_action_namespaces() {
     assert_registered_action_namespaces(&["nmp.nip84.publish_highlight"]);
 }
 
+#[cfg(feature = "social-graph")]
+#[test]
+fn browser_social_graph_feature_registers_nip02_and_nip51_action_namespaces() {
+    assert_registered_action_namespaces(&[
+        "nmp.follow",
+        "nmp.follow_many",
+        "nmp.nip51.add_bookmark",
+        "nmp.nip51.add_bookmark_set_item",
+        "nmp.nip51.block_relay",
+        "nmp.nip51.publish_web_bookmark",
+        "nmp.nip51.remove_bookmark",
+        "nmp.nip51.remove_bookmark_set_item",
+        "nmp.nip51.unblock_relay",
+        "nmp.unfollow",
+    ]);
+}
+
 fn browser_default_action_namespaces() -> Vec<&'static str> {
-    let browser_feature_gated = [
-        "nmp.nip25.react",
-        "nmp.nip25.unreact",
-        "nmp.nip84.publish_highlight",
-    ];
     nmp_codegen::canonical_default_action_namespaces()
         .into_iter()
-        .filter(|ns| !browser_feature_gated.contains(ns))
+        .filter(|ns| !BROWSER_FEATURE_GATED_ACTION_NAMESPACES.contains(ns))
         .collect()
 }
 
-#[cfg(any(feature = "bookmarks", feature = "reactions"))]
+#[cfg(any(feature = "bookmarks", feature = "reactions", feature = "social-graph"))]
 fn assert_registered_action_namespaces(namespaces: &[&str]) {
     let handle = started_handle();
     let registered = handle.runtime.action_registry.action_namespaces();
