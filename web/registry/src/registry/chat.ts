@@ -11,6 +11,11 @@ const chatMessageRowKotlin = nativeSource("registry/compose/chat-message-row/Nos
 const chatComposerKotlin = nativeSource("registry/compose/chat-composer/NostrGroupComposer.kt");
 const chatRosterListKotlin = nativeSource("registry/compose/chat-roster-list/NostrGroupRosterList.kt");
 
+const chatCoreRust = nativeSource("registry/tui/chat-core/nostr_group_chat_wire.rs");
+const chatMessageRowRust = nativeSource("registry/tui/chat-message-row/nostr_group_message_row.rs");
+const chatComposerRust = nativeSource("registry/tui/chat-composer/nostr_group_composer.rs");
+const chatRosterListRust = nativeSource("registry/tui/chat-roster-list/nostr_group_roster_list.rs");
+
 export const chatComponents: Component[] = [
   {
     slug: "chat-core",
@@ -38,6 +43,17 @@ export const chatComponents: Component[] = [
         screenshots: [],
         customization: [
           "Keep these wire structs aligned with the Rust-owned group-chat projection; do not parse Nostr tags in Compose.",
+        ],
+      },
+      tui: {
+        status: "stable",
+        installId: "tui/chat-core",
+        version: "0.1.0",
+        dependencies: [],
+        files: [{ source: "tui/chat-core/nostr_group_chat_wire.rs", target: "src/components/nostr_chat/nostr_group_chat_wire.rs", role: "source", content: chatCoreRust }],
+        screenshots: [],
+        customization: [
+          "Keep these wire structs aligned with the Rust-owned group-chat projection; do not parse Nostr tags in the TUI.",
         ],
       },
     },
@@ -70,6 +86,17 @@ export const chatComponents: Component[] = [
           "Feed it `NostrGroupChatMessageWire` rows from Rust projections. Profile name/avatar resolution stays component-owned through the user components.",
         ],
       },
+      tui: {
+        status: "stable",
+        installId: "tui/chat-message-row",
+        version: "0.1.0",
+        dependencies: ["chat-core", "user-avatar", "user-name"],
+        files: [{ source: "tui/chat-message-row/nostr_group_message_row.rs", target: "src/components/nostr_chat/nostr_group_message_row.rs", role: "source", content: chatMessageRowRust }],
+        screenshots: [],
+        customization: [
+          "Feed it `NostrGroupChatMessageWire` rows from Rust projections. Profile name/avatar resolution stays component-owned through the TUI user components.",
+        ],
+      },
     },
   },
   {
@@ -100,6 +127,17 @@ export const chatComponents: Component[] = [
           "Route `onSend` into your Rust-owned group action. The component owns only draft text and disabled state.",
         ],
       },
+      tui: {
+        status: "stable",
+        installId: "tui/chat-composer",
+        version: "0.1.0",
+        dependencies: ["chat-core"],
+        files: [{ source: "tui/chat-composer/nostr_group_composer.rs", target: "src/components/nostr_chat/nostr_group_composer.rs", role: "source", content: chatComposerRust }],
+        screenshots: [],
+        customization: [
+          "Route trimmed drafts into your Rust-owned group action. The component owns only display state.",
+        ],
+      },
     },
   },
   {
@@ -128,6 +166,17 @@ export const chatComponents: Component[] = [
         screenshots: [],
         customization: [
           "Pass participant rows from the NIP-29 roster projection. The row components own profile self-claims.",
+        ],
+      },
+      tui: {
+        status: "stable",
+        installId: "tui/chat-roster-list",
+        version: "0.1.0",
+        dependencies: ["chat-core", "user-avatar", "user-name"],
+        files: [{ source: "tui/chat-roster-list/nostr_group_roster_list.rs", target: "src/components/nostr_chat/nostr_group_roster_list.rs", role: "source", content: chatRosterListRust }],
+        screenshots: [],
+        customization: [
+          "Pass participant rows from the NIP-29 roster projection. The rows own visible profile self-claims through the TUI user components.",
         ],
       },
     },
