@@ -48,6 +48,7 @@ mod publish_info;
 mod redeem;
 mod redeem_worker;
 mod send;
+mod send_worker;
 mod state;
 mod ui_codes;
 

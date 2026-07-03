@@ -40,6 +40,7 @@ use crate::journal::{
 };
 
 use super::chain::launch_self_encrypted_publish;
+use super::deposit::token_event_plaintext;
 use super::state::{lock_state, CashuWalletState};
 use super::ui_codes;
 
@@ -115,6 +116,21 @@ pub(super) fn run_redeem_worker(args: RedeemWorkerArgs) {
     };
     let fee = MintClient::compute_fee(input_proofs.len() as u64, keyset.input_fee_ppk);
     let net_total = nutzap.amount_sats.saturating_sub(fee);
+    if net_total == 0 {
+        // The redemption fee alone consumes (or exceeds) the whole nutzap —
+        // `split_amount(0)` yields no outputs, which `prepare_swap_request`
+        // would reject anyway, but checking here gives a precise, non-network
+        // `Failed` (nothing was sent to the mint) instead of relying on that
+        // downstream validation and landing in the ambiguous `Unknown` state.
+        let _ = lock_state(&state).transition(&operation_id, WalletOperationState::Failed);
+        fail_worker(
+            &worker_tx,
+            correlation_id,
+            ui_codes::INSUFFICIENT_BALANCE,
+            "redemption fee consumes the entire nutzap amount".to_string(),
+        );
+        return;
+    }
     let output_amounts = split_amount(net_total);
 
     // Unlink from the sender — never republish the received proofs
@@ -205,7 +221,12 @@ pub(super) fn finish_redeem(args: FinishRedeemArgs) {
         correlation_id,
         move |_tx, token_signed: &SignedEvent| {
             let token_event_id = token_signed.id.clone();
-            let fresh_proofs = fresh_proofs.clone();
+            // `nutzap`/`nutzap_wallet_event`/`fresh_proofs` are only used
+            // here — this closure is `FnOnce` (called exactly once by
+            // `chain.rs`'s sign continuation) and owns them outright via the
+            // `move`, so they move into `PublishHistoryArgs` directly rather
+            // than cloning an about-to-be-dropped capture.
+            //
             // MintSettled -> PublishPending: the fresh-proofs token event is
             // signed (about to be enqueued); the history publish chained
             // below carries this operation to its terminal `Settled`.
@@ -216,9 +237,9 @@ pub(super) fn finish_redeem(args: FinishRedeemArgs) {
                 state: on_signed_state,
                 operation_id: on_signed_op,
                 account_pubkey: account_for_history,
-                nutzap: nutzap.clone(),
-                nutzap_wallet_event: nutzap_wallet_event.clone(),
-                mint: mint_for_token.clone(),
+                nutzap,
+                nutzap_wallet_event,
+                mint: mint_for_token,
                 fresh_proofs,
                 token_event_id,
                 relays: relays_for_history,
@@ -305,19 +326,6 @@ fn publish_redeem_history(args: PublishHistoryArgs) {
             let _ = s.transition(&on_signed_op, WalletOperationState::Settled);
         },
     );
-}
-
-/// Mirrors `deposit.rs`'s `token_event_plaintext` exactly (kind:7375's
-/// NIP-44-encrypted content shape) — duplicated rather than shared because
-/// the two call sites have no common module without a larger refactor, and
-/// the shape is a two-line JSON object.
-fn token_event_plaintext(mint: &str, proofs: &[Proof]) -> String {
-    serde_json::json!({
-        "mint": mint,
-        "proofs": proofs,
-        "del": Vec::<String>::new(),
-    })
-    .to_string()
 }
 
 /// The kind:7376 plaintext (encrypted content) + plain tags for a redeemed

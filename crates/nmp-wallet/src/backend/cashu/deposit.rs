@@ -357,7 +357,13 @@ pub(super) fn dispatch_token_event(
     );
 }
 
-fn token_event_plaintext(mint: &str, proofs: &[Proof]) -> String {
+/// The kind:7375 token event's NIP-44-encrypted content shape — shared with
+/// `redeem_worker.rs`'s own fresh-proofs publish (#2917 W9), which reuses
+/// this exact function rather than duplicating it (both are pure JSON
+/// construction, no signer/raw-key involvement, so unlike
+/// `create_wallet.rs`'s `wallet_config_plaintext`/`redeem_worker.rs`'s
+/// `history_plaintext_and_tags` there is no reason for two copies).
+pub(super) fn token_event_plaintext(mint: &str, proofs: &[Proof]) -> String {
     serde_json::json!({
         "mint": mint,
         "proofs": proofs,

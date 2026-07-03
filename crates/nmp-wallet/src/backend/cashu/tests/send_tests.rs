@@ -190,6 +190,12 @@ fn finish_send_updates_proofs_ledger_and_publishes_kind_9321() {
         mint: MINT.to_string(),
         proof: spent_proof,
     }];
+    // `finish_send` no longer removes `selected` itself — its caller
+    // (`SendNutzapCommand::run`) reserves the selection synchronously
+    // BEFORE spawning the worker (closes the double-tap race; see that
+    // call site's comment), so a direct `finish_send` test must mirror
+    // that reservation itself.
+    state::lock_state(&backend.state).remove_proofs(&selected);
     // 21 sats P2PK-locked to the recipient + 8 sats change (no fee — a
     // synthetic swap response, never a real mint's arithmetic).
     let new_proofs = vec![synthetic_proof(21, "02bb"), synthetic_proof(8, "02cc")];
