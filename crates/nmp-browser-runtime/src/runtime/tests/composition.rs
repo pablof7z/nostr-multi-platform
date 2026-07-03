@@ -77,7 +77,7 @@ fn browser_start_registers_every_canonical_default_action_namespace() {
     let handle = started_handle();
     let registered = handle.runtime.action_registry.action_namespaces();
 
-    for ns in nmp_codegen::canonical_default_action_namespaces() {
+    for ns in browser_default_action_namespaces() {
         assert!(
             registered.iter().any(|registered| registered == ns),
             "browser production composition omitted canonical action namespace `{ns}`; \
@@ -91,6 +91,43 @@ fn browser_start_registers_every_canonical_default_action_namespace() {
             .any(|ns| ns == "nmp.template.never.registered"),
         "control case: an unregistered namespace must not appear"
     );
+}
+
+#[cfg(feature = "reactions")]
+#[test]
+fn browser_reactions_feature_registers_nip25_action_namespaces() {
+    assert_registered_action_namespaces(&["nmp.nip25.react", "nmp.nip25.unreact"]);
+}
+
+#[cfg(feature = "bookmarks")]
+#[test]
+fn browser_bookmarks_feature_registers_nip84_action_namespaces() {
+    assert_registered_action_namespaces(&["nmp.nip84.publish_highlight"]);
+}
+
+fn browser_default_action_namespaces() -> Vec<&'static str> {
+    let browser_feature_gated = [
+        "nmp.nip25.react",
+        "nmp.nip25.unreact",
+        "nmp.nip84.publish_highlight",
+    ];
+    nmp_codegen::canonical_default_action_namespaces()
+        .into_iter()
+        .filter(|ns| !browser_feature_gated.contains(ns))
+        .collect()
+}
+
+#[cfg(any(feature = "bookmarks", feature = "reactions"))]
+fn assert_registered_action_namespaces(namespaces: &[&str]) {
+    let handle = started_handle();
+    let registered = handle.runtime.action_registry.action_namespaces();
+    for ns in namespaces {
+        assert!(
+            registered.iter().any(|registered| registered == ns),
+            "browser production composition omitted feature-gated action namespace `{ns}`; \
+             registered namespaces: {registered:?}"
+        );
+    }
 }
 
 #[test]
