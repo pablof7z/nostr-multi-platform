@@ -128,6 +128,8 @@ mod ram_eviction_tests;
 #[cfg(test)]
 mod ram_eviction_view_pin_tests;
 #[cfg(test)]
+mod recipient_publish_relays_tests;
+#[cfg(test)]
 mod refs_tests;
 #[cfg(test)]
 mod relay_score_tests;
