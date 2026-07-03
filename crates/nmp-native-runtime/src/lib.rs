@@ -1,9 +1,9 @@
 //! Native runtime owner for NMP applications.
 //!
 //! This crate owns the Rust-native app runtime: `NmpApp`, actor lifecycle,
-//! runtime slots, native registration APIs, feed/search/group session
-//! orchestration, and the typestate builder. C ABI crates wrap this surface;
-//! they do not own runtime state.
+//! runtime slots, native registration APIs, feed/session orchestration, optional
+//! concept host seams, and the typestate builder. C ABI crates wrap this
+//! surface; they do not own runtime state.
 
 pub mod action_dispatch;
 mod app_config_hooks;
@@ -41,6 +41,7 @@ mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;
 mod relay_config;
+#[cfg(feature = "search")]
 mod search;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;

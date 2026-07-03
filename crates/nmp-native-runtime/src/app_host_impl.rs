@@ -253,9 +253,9 @@ impl HostCapabilities for NmpApp {
     }
 
     /// Store the host-installed preferred-relay source (NIP-50 search reads it
-    /// back in `open_search`). Overrides the trait's no-op default so the real
-    /// composition host actually retains the provider; scaffolded hosts keep the
-    /// no-op and resolve to an empty relay set (cache-only search).
+    /// back in `open_search`). Overrides the trait's no-op default only when
+    /// the search concept is composed.
+    #[cfg(feature = "search")]
     fn install_preferred_relay_source(
         &self,
         source: std::sync::Arc<dyn nmp_core::substrate::PreferredRelaySource>,

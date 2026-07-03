@@ -110,6 +110,9 @@ pub(crate) struct CapabilityPorts {
         Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>>,
     /// NIP-50 higher-order search relay source (kind:10007 read seam +
     /// app-default fallback).
+    // Feature-conditionally live: read only when the `search` feature composes
+    // the NIP-50 SearchHost implementation.
+    #[allow(dead_code)]
     pub(crate) search_relay_source: SearchRelaySourceSlot,
     /// ADR-0072 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
     /// `CompositionConfig`) because `nmp_external_signer_init` can refresh it

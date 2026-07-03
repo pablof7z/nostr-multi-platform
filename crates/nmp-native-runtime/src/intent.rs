@@ -2,8 +2,8 @@
 //!
 //! `nmp-intent` owns pure classification. The native runtime owns the
 //! side-effecting dispatch decision because it names the `NmpApp` handle,
-//! actor sender, search sessions, and NIP-05 protocol command lane. C ABI
-//! crates parse C strings and serialize the returned value only.
+//! actor sender, optional search sessions, and NIP-05 protocol command lane.
+//! C ABI crates parse C strings and serialize the returned value only.
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
@@ -69,14 +69,7 @@ impl NmpApp {
                 }));
             }
             InputIntentTarget::TextQuery { request_json } => {
-                if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
-                    if let Some(request) = nmp_nip50::parse_search_request(request_json) {
-                        let _ = nmp_nip50::open_search(
-                            self,
-                            nmp_nip50::Nip50SearchSession::new(request, session_id),
-                        );
-                    }
-                }
+                self.act_on_text_query_intent(request_json, session_id);
             }
             InputIntentTarget::Nip05 { identifier } => {
                 if let Some((name, domain)) = nmp_nip05::parse_nip05(identifier) {
@@ -92,4 +85,19 @@ impl NmpApp {
             InputIntentTarget::RelayUrl { .. } | InputIntentTarget::Registered { .. } => {}
         }
     }
+
+    #[cfg(feature = "search")]
+    fn act_on_text_query_intent(&self, request_json: &str, session_id: Option<&str>) {
+        if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
+            if let Some(request) = nmp_nip50::parse_search_request(request_json) {
+                let _ = nmp_nip50::open_search(
+                    self,
+                    nmp_nip50::Nip50SearchSession::new(request, session_id),
+                );
+            }
+        }
+    }
+
+    #[cfg(not(feature = "search"))]
+    fn act_on_text_query_intent(&self, _request_json: &str, _session_id: Option<&str>) {}
 }
