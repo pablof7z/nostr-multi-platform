@@ -27,10 +27,7 @@ use crate::signer::{
     PendingCipherCompletions, SignerCompletion,
 };
 
-use super::{
-    BrowserGroupDiscoverySession, BrowserGroupEventsSession, BrowserNotificationsSession,
-    NoopRoutingTrace,
-};
+use super::{BrowserNotificationsSession, NoopRoutingTrace};
 use crate::feed::OpenedBrowserFeedSession;
 
 /// Public-facing handle to the browser runtime (issue #2058 — hides raw
@@ -55,8 +52,6 @@ pub struct BrowserRuntimeHandle {
 
     pub(super) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
-    pub(super) group_discovery_sessions: HashMap<String, BrowserGroupDiscoverySession>,
-    pub(super) group_events_sessions: HashMap<String, BrowserGroupEventsSession>,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,
     pub(crate) feed_registry: nmp_feed::FeedRegistrySlot,
     pub(crate) feed_sessions: nmp_feed::FeedSessionRegistry,
@@ -218,8 +213,6 @@ impl BrowserRuntimeHandle {
             signer_state_slot,
             preferred_relay_source,
             observed_projection_registrar,
-            group_discovery_sessions: HashMap::new(),
-            group_events_sessions: HashMap::new(),
             notifications_sessions: HashMap::new(),
             feed_registry: nmp_feed::new_feed_registry_slot(),
             feed_sessions: nmp_feed::FeedSessionRegistry::default(),

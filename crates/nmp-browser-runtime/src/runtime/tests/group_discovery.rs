@@ -1,41 +1,43 @@
 use super::started_handle;
-use crate::runtime::BrowserGroupDiscoverySessionDescriptor;
+use nmp_nip29::{
+    close_nip29_group_discovery_session, open_nip29_group_discovery_session,
+    Nip29GroupDiscoverySession, DISCOVERED_GROUPS_KEY,
+};
 
 const RELAY: &str = "wss://groups.example";
 
 #[test]
 fn browser_group_discovery_replaces_same_session_and_close_is_idempotent() {
-    let mut handle = started_handle();
-    let first = handle
-        .open_nip29_group_discovery_session(BrowserGroupDiscoverySessionDescriptor {
-            relay_url: RELAY.to_string(),
-            session_id: "catalog".to_string(),
-        })
-        .expect("first group-discovery session");
-    assert_eq!(first.projection_key(), "nmp.nip29.discovered_groups");
-    assert_eq!(handle.group_discovery_sessions.len(), 1);
+    let handle = started_handle();
+    let first = open_nip29_group_discovery_session(
+        &handle,
+        Nip29GroupDiscoverySession::new(RELAY.to_string()),
+    );
+    assert_eq!(first.key(), DISCOVERED_GROUPS_KEY);
+    assert_eq!(handle.feed_sessions.live_count(), 1);
 
-    let replacement = handle
-        .open_nip29_group_discovery_session(BrowserGroupDiscoverySessionDescriptor {
-            relay_url: "wss://other-groups.example".to_string(),
-            session_id: "catalog".to_string(),
-        })
-        .expect("replacement group-discovery session");
+    let replacement = open_nip29_group_discovery_session(
+        &handle,
+        Nip29GroupDiscoverySession::new("wss://other-groups.example".to_string()),
+    );
     assert_eq!(
-        handle.group_discovery_sessions.len(),
+        handle.feed_sessions.live_count(),
         1,
-        "same-session replacement must remove stale observer bookkeeping"
+        "discovery singleton replacement must remove stale read lifecycle"
     );
 
-    handle.close_nip29_group_discovery_session(first);
+    assert!(!close_nip29_group_discovery_session(&handle, first));
     assert_eq!(
-        handle.group_discovery_sessions.len(),
+        handle.feed_sessions.live_count(),
         1,
         "closing a replaced handle is idempotent and must not tear down the replacement"
     );
 
-    handle.close_nip29_group_discovery_session(replacement.clone());
-    assert!(handle.group_discovery_sessions.is_empty());
-    handle.close_nip29_group_discovery_session(replacement);
-    assert!(handle.group_discovery_sessions.is_empty());
+    assert!(close_nip29_group_discovery_session(
+        &handle,
+        replacement.clone()
+    ));
+    assert_eq!(handle.feed_sessions.live_count(), 0);
+    assert!(!close_nip29_group_discovery_session(&handle, replacement));
+    assert_eq!(handle.feed_sessions.live_count(), 0);
 }

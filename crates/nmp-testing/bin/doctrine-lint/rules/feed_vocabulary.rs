@@ -10,7 +10,7 @@
 //! This is a ratchet, not a blanket "session" ban: `nmp-feed-session`,
 //! `session_engine.rs`, `FeedSessionRegistry`, `FeedSessionId`, and NIP-50
 //! search / NIP-29 group session vocabulary (`Nip50SearchSession`,
-//! `Nip29GroupDiscoverySession`, `BrowserGroupDiscoverySessionHandle`, …) are
+//! `Nip29GroupDiscoverySession`, `Nip29GroupDiscoveryHandle`, …) are
 //! explicitly untouched internal-runtime or separate-domain vocabulary and
 //! must not be flagged. The banned list below names only the exact retired
 //! feed-facade identifiers so unrelated "session" vocabulary in the same
@@ -29,7 +29,7 @@ pub const ID: &str = "feed_vocabulary";
 /// The exact retired feed-facade identifiers. Each is distinctive enough that
 /// it cannot appear as a substring of a legitimate, still-current identifier
 /// (`FeedSessionRegistry`, `FeedSessionId`, `FeedSessionHost`, `Nip50SearchSession`,
-/// `ActiveFollowsOpFeedSession`, `BrowserGroupDiscoverySessionHandle`, …) — see
+/// `ActiveFollowsOpFeedSession`, `Nip29GroupDiscoveryHandle`, …) — see
 /// the module doc for why those stay unbanned.
 const BANNED_TOKENS: &[&str] = &[
     "FeedSessions",
@@ -121,7 +121,7 @@ mod tests {
             "pub struct Nip50SearchSession {",
             "pub fn open_search_session(&self, descriptor: Nip50SearchSession) {}",
             "pub struct ActiveFollowsOpFeedSession {",
-            "pub struct BrowserGroupDiscoverySessionHandle {",
+            "pub struct Nip29GroupDiscoveryHandle {",
             "pub fn feed_session_is_open(&self, handle: &FeedHandle) -> bool {",
             "pub fn live_feed_session_count(&self) -> usize {",
         ] {
@@ -154,6 +154,8 @@ mod tests {
         assert!(!file_in_scope(Path::new(
             "crates/nmp-feed-session/src/session_engine.rs"
         )));
-        assert!(!file_in_scope(Path::new("crates/nmp-uniffi/src/sessions/feed.rs")));
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-uniffi/src/sessions/feed.rs"
+        )));
     }
 }
