@@ -11,9 +11,9 @@ mod presence;
 mod wire;
 
 pub use group::{
-    chat_presence_filter_json, close_chat_presence_session, open_chat_presence_session,
-    open_chat_presence_session_with_reader, ChatPresenceHandle, ChatPresenceSession,
-    CHAT_PRESENCE_KEY,
+    chat_presence_filter_json, chat_presence_projection_key, close_chat_presence_session,
+    open_chat_presence_session, open_chat_presence_session_with_reader, ChatPresenceHandle,
+    ChatPresenceSession, CHAT_PRESENCE_KEY,
 };
 pub use presence::{
     ChatPresenceProjection, ChatPresenceSnapshot, ChatPresenceTyping, ReadMarker, TypingUpdate,
