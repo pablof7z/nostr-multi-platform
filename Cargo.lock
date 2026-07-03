@@ -3810,6 +3810,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-chat"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-nip29",
+ "nmp-ownership",
+ "nmp-read-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-cli"
 version = "0.8.4"
 dependencies = [

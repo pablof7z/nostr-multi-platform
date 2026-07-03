@@ -1,0 +1,22 @@
+[package]
+name = "nmp-chat"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Reusable chat read-state and presence projections for NMP apps; transport stays owned by protocol crates."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+flatbuffers = { workspace = true }
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-nip29 = { path = "../nmp-nip29" }
+nmp-ownership = { workspace = true }
+nmp-read-session = { path = "../nmp-read-session" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

@@ -238,6 +238,11 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "BOOKMARK_LIST",
         "crates/nmp-nip51/src/wire/bookmark_list_producer_consts.generated.rs",
     ),
+    pub_target(
+        "nmp.chat.presence",
+        "CHAT_PRESENCE",
+        "crates/nmp-chat/src/wire/chat_presence_producer_consts.generated.rs",
+    ),
 ];
 
 /// Build an all-`pub` kernel target (the common case).

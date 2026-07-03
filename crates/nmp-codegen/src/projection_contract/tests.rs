@@ -129,6 +129,7 @@ fn swift_presented_contract_keys_match_registry() {
         "nmp.nip23.articles",
         "nmp.wot.bootstrap",
         "nmp.notifications",
+        "nmp.chat.presence",
     ];
 
     let registry_keys: std::collections::BTreeSet<&str> =

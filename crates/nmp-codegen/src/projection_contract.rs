@@ -139,6 +139,7 @@ pub struct ProjectionContract {
 // name constants live in the `table` child module (split to keep this file under
 // the 500-LOC hard ceiling). Re-exported so `projection_contract::PROJECTION_CONTRACT`
 // resolves unchanged.
+mod chat;
 mod table;
 // Marmot host-registered projection entries split out for 500-LOC cap.
 mod marmot;
