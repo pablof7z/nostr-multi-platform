@@ -89,7 +89,7 @@ export const chatComponents: Component[] = [
       tui: {
         status: "stable",
         installId: "tui/chat-message-row",
-        version: "0.1.0",
+        version: "0.1.1",
         dependencies: ["chat-core", "user-avatar", "user-name"],
         files: [{ source: "tui/chat-message-row/nostr_group_message_row.rs", target: "src/components/nostr_chat/nostr_group_message_row.rs", role: "source", content: chatMessageRowRust }],
         screenshots: [],
