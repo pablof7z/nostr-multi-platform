@@ -127,6 +127,9 @@ mod table;
 mod nip29;
 // Marmot opt-in action entry split out of `table.rs` for 500-LOC cap.
 mod marmot;
+// nmp-wallet's select_backend + Cashu/nutzap entries (#2920), split out of
+// `table.rs` for the same 500-LOC cap.
+mod wallet;
 pub use table::{ACTION_CONTRACT, PUBLISH_NAMESPACE};
 
 /// Look up an action contract by routing namespace.

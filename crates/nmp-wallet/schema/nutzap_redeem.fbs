@@ -1,0 +1,24 @@
+namespace nmp.wallet;
+
+// #2920 (epic #2864) — typed FlatBuffers payload for the
+// `nmp.wallet.nutzap.redeem` `ActionModule`. The OPAQUE `DispatchEnvelope.payload`
+// for that namespace; the registry adapter decodes against THIS schema, gating
+// `schema_version` BEFORE `start()` (fail-closed on mismatch).
+//
+// Mirrors `NutzapRedeemAction { event_id }`, translated to
+// `WalletIntent::RedeemNutzap` in `execute()`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/nutzap_redeem.fbs
+
+table NutzapRedeemPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Event id (hex) of the kind:9321 nutzap event to redeem.
+  event_id:string (required);
+}
+
+file_identifier "NWNR";
+root_type NutzapRedeemPayload;

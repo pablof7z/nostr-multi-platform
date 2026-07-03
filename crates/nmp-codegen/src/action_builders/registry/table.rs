@@ -12,6 +12,12 @@ use super::host_called::{
     EDIT_METADATA, JOIN_GROUP, PUBLISH_GROUP_EVENT, PUBLISH_HIGHLIGHT, PUBLISH_WEB_BOOKMARK,
     REMOVE_BOOKMARK_SET_ITEM, REPLY,
 };
+// nmp-wallet's select_backend + Cashu/nutzap builders (#2920, epic #2864).
+use super::wallet::{
+    WALLET_CASHU_COMPLETE_DEPOSIT, WALLET_CASHU_CREATE, WALLET_CASHU_DEPOSIT_QUOTE,
+    WALLET_CASHU_RECOVER, WALLET_NUTZAP_PUBLISH_INFO, WALLET_NUTZAP_REDEEM, WALLET_NUTZAP_SEND,
+    WALLET_SELECT_BACKEND,
+};
 use super::{ActionBuilder, FieldKind, PayloadField};
 
 /// The flat-table builders (ADR-0071 §3 acceptance scope).
@@ -318,4 +324,13 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     JOIN_GROUP,
     CREATE_GROUP,
     EDIT_METADATA,
+    // nmp-wallet — select_backend + Cashu/nutzap families (#2920, epic #2864).
+    WALLET_SELECT_BACKEND,
+    WALLET_CASHU_CREATE,
+    WALLET_CASHU_RECOVER,
+    WALLET_CASHU_DEPOSIT_QUOTE,
+    WALLET_CASHU_COMPLETE_DEPOSIT,
+    WALLET_NUTZAP_PUBLISH_INFO,
+    WALLET_NUTZAP_SEND,
+    WALLET_NUTZAP_REDEEM,
 ];

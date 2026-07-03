@@ -143,6 +143,9 @@ pub struct ActionBuilder {
 #[path = "registry/host_called.rs"]
 mod host_called;
 mod table;
+// nmp-wallet's select_backend + Cashu/nutzap builders (#2920, epic #2864),
+// split out for the same reason.
+mod wallet;
 pub use table::ACTION_BUILDERS;
 
 // ── nmp.publish — the UNION-bodied builders (ADR-0071 §3) ────────────────────

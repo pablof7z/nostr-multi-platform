@@ -11,8 +11,14 @@
 //! UI state, or own NIP-specific event codecs. Protocol mechanics remain in
 //! `nmp-nip47`, `nmp-nip57`, and `nmp-nip60`; app shells render this crate's
 //! projection and dispatch typed actions only.
-
-#![forbid(unsafe_code)]
+//!
+// `deny` (not `forbid`) so the eight generated FlatBuffers bindings modules
+// `wire.rs` carries (#2920, epic #2864) may opt back in via
+// `#[allow(unsafe_code)]` — FlatBuffers accessors are intrinsically `unsafe`;
+// `forbid` cannot be locally overridden. All hand-written code in this crate
+// remains unsafe-free — the allow is scoped to the `#[path]`-included
+// generated files only, mirroring `nmp-content`'s own `wire::typed_fb` posture.
+#![deny(unsafe_code)]
 
 pub mod action;
 pub mod backend;
@@ -27,7 +33,12 @@ pub mod register;
 pub mod runtime;
 pub mod selector;
 pub mod ui_codes;
+mod wire;
 
+pub use action::{
+    CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
+    NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction, SelectBackendAction,
+};
 pub use backend::cashu::{CashuWalletBackend, CASHU_BACKEND_ID};
 pub use backend::nwc::{NwcWalletBackend, NWC_BACKEND_ID};
 pub use backend::{

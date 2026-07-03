@@ -13,6 +13,13 @@ use super::{
 use super::nip29::{
     NIP29_CREATE_GROUP, NIP29_DISCOVER, NIP29_EDIT_METADATA, NIP29_JOIN, NIP29_PUBLISH_GROUP_EVENT,
 };
+// nmp-wallet's select_backend + Cashu/nutzap entries (#2920, epic #2864,
+// split out for the 500-LOC cap).
+use super::wallet::{
+    WALLET_CASHU_COMPLETE_DEPOSIT, WALLET_CASHU_CREATE, WALLET_CASHU_DEPOSIT_QUOTE,
+    WALLET_CASHU_RECOVER, WALLET_NUTZAP_PUBLISH_INFO, WALLET_NUTZAP_REDEEM, WALLET_NUTZAP_SEND,
+    WALLET_SELECT_BACKEND,
+};
 
 const PUBLIC_REEXPORT: PublicReExportPolicy = PublicReExportPolicy::OwnerCratePayload;
 const TYPED_ONLY: TypedDispatchPolicy = TypedDispatchPolicy::TypedOnly;
@@ -464,6 +471,16 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
+    // nmp-wallet — select_backend + Cashu/nutzap families (#2920, epic #2864).
+    // Full entries in `wallet.rs`.
+    WALLET_SELECT_BACKEND,
+    WALLET_CASHU_CREATE,
+    WALLET_CASHU_RECOVER,
+    WALLET_CASHU_DEPOSIT_QUOTE,
+    WALLET_CASHU_COMPLETE_DEPOSIT,
+    WALLET_NUTZAP_PUBLISH_INFO,
+    WALLET_NUTZAP_SEND,
+    WALLET_NUTZAP_REDEEM,
     // nmp-marmot — MLS-over-Nostr write seam (opt-in via `--features marmot`).
     MARMOT_ACTION,
     // nmp-nip29 — NIP-29 group actions (issue #2170). Full entries in `nip29.rs`.

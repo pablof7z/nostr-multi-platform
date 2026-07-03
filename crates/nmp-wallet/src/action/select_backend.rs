@@ -10,7 +10,10 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, DeclaredActionNamespace};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    DeclaredActionNamespace,
+};
 
 use crate::backend::WalletBackendId;
 use crate::selector::{SelectorError, WalletBackendSelector};
@@ -40,6 +43,13 @@ impl ActionModule for SelectBackendModule {
     );
 
     type Action = SelectBackendAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.select_backend` `ActionPayload` codec (`NWSB`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     /// Validate `backend_id` up front so a bad selection never reaches
     /// `execute()` — an unregistered id is a structured rejection, not a

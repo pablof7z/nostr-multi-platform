@@ -1,0 +1,24 @@
+namespace nmp.wallet;
+
+// #2920 (epic #2864) — typed FlatBuffers payload for the
+// `nmp.wallet.nutzap.publish_info` `ActionModule`. The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter decodes
+// against THIS schema, gating `schema_version` BEFORE `start()` (fail-closed on
+// mismatch).
+//
+// Mirrors `NutzapPublishInfoAction {}` — a unit action with no fields beyond
+// the tripwire. Translated to `WalletIntent::PublishNutzapInfo` in `execute()`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/nutzap_publish_info.fbs
+
+table NutzapPublishInfoPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode). The only
+  // field — publish_info carries no action data.
+  schema_version:uint;
+}
+
+file_identifier "NWPI";
+root_type NutzapPublishInfoPayload;

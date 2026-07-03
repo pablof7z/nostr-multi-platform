@@ -1,0 +1,30 @@
+namespace nmp.wallet;
+
+// #2920 (epic #2864) — typed FlatBuffers payload for the
+// `nmp.wallet.cashu.deposit_quote` `ActionModule`. The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter decodes
+// against THIS schema, gating `schema_version` BEFORE `start()` (fail-closed on
+// mismatch).
+//
+// Mirrors `CashuDepositQuoteAction { mint, amount_sats }`, translated to
+// `WalletIntent::DepositQuoteCashu` in `execute()`. The `quote_id` this
+// produces round-trips back to the host via the async `ActionResult` keyed on
+// THIS call's `correlation_id` — see `nmp.wallet.cashu.complete_deposit`, the
+// follow-up action that carries that `quote_id`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/cashu_deposit_quote.fbs
+
+table CashuDepositQuotePayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The Cashu mint base URL to request a deposit quote from.
+  mint:string (required);
+  // The deposit amount in satoshis. `start()` rejects zero.
+  amount_sats:ulong;
+}
+
+file_identifier "NWDQ";
+root_type CashuDepositQuotePayload;

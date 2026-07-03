@@ -1,0 +1,29 @@
+namespace nmp.wallet;
+
+// #2920 (epic #2864) — typed FlatBuffers payload for the
+// `nmp.wallet.nutzap.send` `ActionModule`. The OPAQUE `DispatchEnvelope.payload`
+// for that namespace; the registry adapter decodes against THIS schema, gating
+// `schema_version` BEFORE `start()` (fail-closed on mismatch).
+//
+// Mirrors `NutzapSendAction { recipient_pubkey, amount_sats, target_event_id }`,
+// translated to `WalletIntent::SendNutzap` in `execute()`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/nutzap_send.fbs
+
+table NutzapSendPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Hex pubkey of the nutzap recipient.
+  recipient_pubkey:string (required);
+  // The nutzap amount in satoshis. `start()` rejects zero.
+  amount_sats:ulong;
+  // Optional target event id (a nutzap on a note, kind:9321 `e` tag).
+  // Absent when empty — a top-level nutzap to the recipient's pubkey.
+  target_event_id:string;
+}
+
+file_identifier "NWNS";
+root_type NutzapSendPayload;
