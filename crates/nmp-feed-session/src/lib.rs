@@ -42,6 +42,7 @@ mod nip29_group_context;
 mod nip29_group_sources;
 mod nip51_sources;
 mod observed_source;
+mod params;
 mod pointer_target_hydration;
 mod resolve;
 mod resolve_static;
@@ -66,7 +67,9 @@ mod trellis_resources;
 mod trellis_resources_tests;
 mod wot_graph;
 pub(crate) use active_shape::read_active;
+pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
+pub use params::validate_feed_params;
 pub use session_engine::OpScopeSessionArtifacts;
 
 /// Compiled ownership descriptor for crate-ownership reports.
@@ -79,7 +82,7 @@ pub type IdentityChangeObserverId = u64;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FeedOpenError {
     /// The declared [`FeedParams`] failed primary-kind validation.
-    InvalidParams(nmp_nip18::PrimaryKindError),
+    InvalidParams(PrimaryKindError),
     /// The declared scope is recognized by the model but unsupported by this
     /// runtime/capability set.
     ScopeNotSupportedYet { scope: &'static str },

@@ -359,6 +359,19 @@ fn nmp_native_runtime_op_feed_concepts_are_feature_gated() {
 }
 
 #[test]
+fn nmp_native_runtime_feed_repost_validation_is_session_owned() {
+    let findings = native_runtime_non_optional_dependency_findings(&["nmp-nip18"]);
+
+    assert!(
+        findings.is_empty(),
+        "#2797: feed primary-kind validation derives NIP-18 repost/delete \
+         acquisition through nmp-feed-session. Keep nmp-native-runtime from \
+         depending on nmp-nip18 directly:\n{}",
+        findings.join("\n")
+    );
+}
+
+#[test]
 fn platform_dependency_gate_negative_fixture_fires() {
     let packages = serde_json::json!({
         "packages": [{
