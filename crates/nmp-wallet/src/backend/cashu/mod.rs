@@ -3,18 +3,16 @@
 //!
 //! This adapter owns:
 //!
-//! * `capabilities()` advertises exactly `create_cashu_wallet` +
-//!   `deposit_cashu` — this is the actual implemented scope; nutzap
-//!   send/receive/publish-info and mint-probe observation are separate epic
-//!   #2864 waves this backend does not implement yet (see
-//!   `WalletCapabilities::cashu_wallet_and_deposit`'s doc comment).
-//! * `start_intent()` maps `CreateCashuWallet`/`DepositQuoteCashu`/`CompleteDepositCashu`
-//!   onto `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`)
-//!   that drive the signer-transparent NIP-44 + sign ports and `nmp-nip60`'s
-//!   mint HTTP lane. Every other intent variant is NWC/nutzap-shaped and this
-//!   backend does not implement it, so `start_intent` is a documented no-op
-//!   for those (never a panic — D6), same as `backend::nwc` treats its own
-//!   out-of-capability intents.
+//! * `capabilities()` advertises `cashu_nutzaps()` (#2917 — create/deposit
+//!   plus publish-info/send/redeem nutzap, and `observe_nutzap_receipts`; see
+//!   `WalletCapabilities::cashu_nutzaps`'s doc comment).
+//! * `start_intent()` maps every `WalletIntent` this backend implements onto
+//!   `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`,
+//!   `publish_info.rs`, `send.rs`, `redeem.rs`) that drive the
+//!   signer-transparent NIP-44 + sign ports and `nmp-nip60`'s mint HTTP lane.
+//!   `RecoverCashuWallet`/`MeltCashu` remain unimplemented, so `start_intent`
+//!   is a documented no-op for those (never a panic — D6), same as
+//!   `backend::nwc` treats its own out-of-capability intents.
 //! * `snapshot()` reads the shared [`state::CashuWalletState`] this backend's
 //!   own commands/workers write (D4: this backend's commands are the sole
 //!   writer, mirroring `NwcWalletBackend`'s `WalletStatusSlot`).
@@ -24,30 +22,33 @@
 //! `crate::register::register` now constructs this backend, registers it in
 //! the `WalletBackendSelector`, and (via `crate::runtime::WalletRuntime`)
 //! routes every observed kind:9321/10019/17375/7375/7376/7374 `KernelEvent`
-//! into `on_wallet_event` for real — so the wiring described below as
-//! "not wired here" as of W2 IS wired now. What remains a documented no-op
-//! is each method's OWN internal logic, narrower than "not called at all":
-//!
-//! * `on_wallet_event` is called on every matching observed event, but its
-//!   body still does nothing with them: reconciling kind:17375/7375/7376
-//!   durable events into `WalletLedger::rebuild_from` on cold start needs a
-//!   signer-mediated NIP-44 decrypt this backend does not yet perform (this
-//!   backend's in-memory state today is populated only by its own
-//!   `start_intent`-driven operations). A documented no-op, not a silent
-//!   partial read — reachable and exercised by `runtime`'s tests, just
-//!   inert.
+//! into `on_wallet_event`. As of #2917, `on_wallet_event` acts on kind:9321
+//! (dispatches `redeem::RedeemNutzapCommand` — see that method's doc comment)
+//! but still no-ops kind:17375/7375/7376/10019: reconciling THOSE durable
+//! events into `WalletLedger::rebuild_from` on cold start needs a
+//! signer-mediated NIP-44 decrypt this backend does not yet perform (this
+//! backend's in-memory state today is populated only by its own
+//! `start_intent`-driven operations, plus whatever `on_wallet_event` folds
+//! from observed kind:9321s). A documented no-op, not a silent partial read.
 //! * `on_mint_result` — this backend's own `ProtocolCommand` workers
-//!   (`CashuDepositQuoteCommand`, `CashuCompleteDepositCommand`) own the full
-//!   mint-round-trip -> state/publish mapping directly against the richer
-//!   data the mint response actually carries (quote id, bolt11, proofs); the
-//!   coarse `MintResult` seam (operation_id + Settled/Failed/Unknown) cannot
-//!   carry that shape, and nothing constructs one for this backend today.
-//!   Mirrors `NwcWalletBackend::on_mint_result`'s treatment of the same seam
-//!   for the opposite reason ("not this backend's concept").
+//!   (`CashuDepositQuoteCommand`, `CashuCompleteDepositCommand`, and #2917's
+//!   send/redeem workers) own the full mint-round-trip -> state/publish
+//!   mapping directly against the richer data the mint response actually
+//!   carries (quote id, bolt11, proofs); the coarse `MintResult` seam
+//!   (operation_id + Settled/Failed/Unknown) cannot carry that shape, and
+//!   nothing constructs one for this backend today. Mirrors
+//!   `NwcWalletBackend::on_mint_result`'s treatment of the same seam for the
+//!   opposite reason ("not this backend's concept").
 
 mod chain;
 mod create_wallet;
 mod deposit;
+mod nutzap_dispatch;
+mod publish_info;
+mod redeem;
+mod redeem_worker;
+mod send;
+mod send_worker;
 mod state;
 mod ui_codes;
 
@@ -69,6 +70,8 @@ use crate::capability::WalletCapabilities;
 
 use create_wallet::CreateCashuWalletCommand;
 use deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
+use nutzap_dispatch::redeem_operation_id;
+use redeem::RedeemNutzapCommand;
 use state::{is_well_formed_mint_url, lock_state, CashuWalletState};
 
 /// Canonical id this backend registers under.
@@ -125,7 +128,7 @@ impl WalletBackend for CashuWalletBackend {
     }
 
     fn capabilities(&self) -> WalletCapabilities {
-        WalletCapabilities::cashu_wallet_and_deposit()
+        WalletCapabilities::cashu_nutzaps()
     }
 
     fn snapshot(&self, _scope: WalletProjectionScope) -> WalletBackendSnapshot {
@@ -170,6 +173,21 @@ impl WalletBackend for CashuWalletBackend {
             WalletIntent::CompleteDepositCashu { quote_id } => {
                 self.start_complete_deposit(ctx, quote_id, correlation_id)
             }
+            WalletIntent::PublishNutzapInfo => self.start_publish_nutzap_info(ctx, correlation_id),
+            WalletIntent::SendNutzap {
+                recipient_pubkey,
+                amount_sats,
+                target_event_id,
+            } => self.start_send_nutzap(
+                ctx,
+                recipient_pubkey,
+                amount_sats,
+                target_event_id,
+                correlation_id,
+            ),
+            WalletIntent::RedeemNutzap { event_id } => {
+                self.start_redeem_nutzap(ctx, event_id, correlation_id)
+            }
             // Not this backend's capability — `capabilities()` already tells
             // callers not to route these here. A no-op rather than a panic
             // keeps a stray dispatch harmless (D6), same as `backend::nwc`.
@@ -180,21 +198,47 @@ impl WalletBackend for CashuWalletBackend {
             WalletIntent::SelectBackend { .. }
             | WalletIntent::PayBolt11 { .. }
             | WalletIntent::RecoverCashuWallet
-            | WalletIntent::PublishNutzapInfo
-            | WalletIntent::SendNutzap { .. }
-            | WalletIntent::RedeemNutzap { .. }
             | WalletIntent::MeltCashu { .. } => Vec::new(),
         }
     }
 
     fn on_wallet_event(
         &self,
-        _ctx: WalletBackendContext<'_>,
-        _event: &KernelEvent,
+        ctx: WalletBackendContext<'_>,
+        event: &KernelEvent,
     ) -> Vec<ActorCommand> {
-        // See the module doc comment: cold-start reconciliation from the
-        // kernel's fetched event stream is live-wiring (W7), not wired here.
-        Vec::new()
+        // #2917 (W9) — a received nutzap. Everything else (kind:17375/7375/
+        // 7376/10019 cold-start reconciliation) stays the documented no-op
+        // from the module doc comment.
+        if event.kind != nmp_nip60::kinds::KIND_NIP61_NUTZAP {
+            return Vec::new();
+        }
+        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
+            return Vec::new();
+        };
+        // Keyed by the nutzap's own event id (not a correlation id — this
+        // path has none): re-observing the same kind:9321 (a relay resend,
+        // or an explicit `nmp.wallet.nutzap.redeem` retry for one the
+        // observer already started) hits `DuplicateOperation` here and is
+        // silently skipped rather than double-dispatched — a natural
+        // at-most-once guard shared with `start_redeem_nutzap` below.
+        let operation_id = redeem_operation_id(&event.id);
+        {
+            let mut state = lock_state(&self.state);
+            if state
+                .begin_operation(operation_id.clone(), WalletOperationKind::RedeemNutzap)
+                .is_err()
+            {
+                return Vec::new();
+            }
+        }
+        vec![ActorCommand::Protocol(Box::new(RedeemNutzapCommand {
+            state: Arc::clone(&self.state),
+            operation_id,
+            account_pubkey,
+            event_id: event.id.clone(),
+            correlation_id: None,
+        }))]
     }
 
     fn on_mint_result(
@@ -352,6 +396,7 @@ impl CashuWalletBackend {
             },
         ))]
     }
+
 }
 
 /// The operation id `start_intent`'s pre-dispatch journal writes key on. Uses
@@ -371,16 +416,21 @@ fn operation_id_for(
     }
 }
 
-/// [`create_wallet::CreateCashuWalletCommand`]'s pure-computation pre-dispatch
-/// failure path (e.g. Cashu pubkey derivation) — reported through `ctx`
-/// directly since it runs synchronously inside `run`, before any port command
-/// is sent.
+/// A `ProtocolCommand::run` body's own pure-computation or validation failure
+/// path (e.g. Cashu pubkey derivation, an unresolvable recipient/relay set)
+/// — reported through `ctx` directly since it runs synchronously inside
+/// `run`, before (or instead of) any port/worker-thread command is sent.
+/// `code` is the specific `ui_codes` constant for this failure (never the
+/// generic `OPERATION_FAILED` — #2917's send/redeem/publish-info commands
+/// each have several distinguishable fail-closed reasons a caller should be
+/// able to tell apart).
 fn report_pre_dispatch_failure(
     ctx: &ProtocolCommandContext<'_>,
     correlation_id: &Option<String>,
+    code: &'static str,
     reason: String,
 ) {
-    let token = UiToken::error(ui_codes::OPERATION_FAILED, reason.clone());
+    let token = UiToken::error(code, reason.clone());
     ctx.set_last_error_token(&token);
     if let Some(id) = correlation_id.clone() {
         ctx.record_action_failure(id, reason);

@@ -1,16 +1,16 @@
 //! `nmp.wallet.nutzap.*` — W5 (#2908, epic #2864).
 //!
-//! Dispatch points, not finished flows: no registered backend advertises
-//! `publish_nutzap_info`/`send_nutzap`/`redeem_nutzap` yet (NWC has no Cashu
-//! concept; `CashuWalletBackend::capabilities()` is
-//! `cashu_wallet_and_deposit()`, which deliberately does not bundle the
-//! nutzap flags — see that constructor's doc comment). That makes these
-//! three modules fail closed through the SAME generic
-//! `require_capable_backend`/`selector.dispatch` path `action::cashu`'s
-//! implemented actions use (shared via `action::mod`'s `require_capable_backend`)
-//! — an absent capability, not a panic and not a special-cased rejection.
-//! The moment a future wave (#2864 W8/W9/W13) makes a backend advertise one
-//! of these flags, these modules start reaching it with no code change here.
+//! Dispatch-only, same shape as `action::cashu`'s implemented actions
+//! (shared `require_capable_backend`/`dispatch_and_forward` via
+//! `action::mod`): validate the typed payload in `start()`, translate it to a
+//! `WalletIntent`, and route it through the selector in `execute()`. NWC
+//! never advertises any of the three capabilities (no Cashu concept); the
+//! Cashu backend advertises all three as of #2917
+//! (`CashuWalletBackend::capabilities()` = `cashu_nutzaps()`) and implements
+//! them in `backend::cashu::{publish_info,send,redeem}`. Absent capability
+//! (a backend that doesn't implement one of these) is a structured
+//! `require_capable_backend` rejection, never a panic and never a
+//! special-cased path here.
 
 use std::sync::Arc;
 

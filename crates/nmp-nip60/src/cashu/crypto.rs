@@ -170,6 +170,15 @@ pub fn random_secret() -> [u8; 32] {
     sk.secret_bytes()
 }
 
+/// [`random_secret`], hex-encoded — the ordinary (non-P2PK) output-proof
+/// secret shape a swap's change outputs use. A thin convenience so callers
+/// outside this crate (e.g. `nmp-wallet`'s nutzap send/redeem flows) don't
+/// need their own `hex` dependency just for this one encode.
+#[must_use]
+pub fn random_secret_hex() -> String {
+    hex::encode(random_secret())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

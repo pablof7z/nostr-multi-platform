@@ -38,3 +38,47 @@ pub const MINT_TOKENS_FAILED: &str = "wallet_cashu_mint_tokens_failed";
 /// A durable journal operation could not be recorded/transitioned (should be
 /// unreachable in normal operation; surfaced rather than silently dropped).
 pub const JOURNAL_ERROR: &str = "wallet_cashu_journal_error";
+
+// ─── #2917 (epic #2864 W8/W9/W13) — nutzap loop ────────────────────────────
+
+/// `PublishNutzapInfo` has no relay set to publish kind:10019 to (neither the
+/// active account's own cached kind:10019 nor a NIP-65 fallback resolved).
+pub const NO_NUTZAP_RELAYS: &str = "wallet_cashu_no_nutzap_relays";
+
+/// `SendNutzap`'s recipient has no cached kind:10019 — see
+/// `CachedEventLookup`'s doc comment: this is a point-in-time cache read, not
+/// a fetch, so a recipient never previously observed fails closed here.
+pub const NO_RECIPIENT_NUTZAP_INFO: &str = "wallet_cashu_no_recipient_nutzap_info";
+
+/// The recipient's kind:10019 lists no mint this wallet also accepts, or (for
+/// `RedeemNutzap`) the nutzap's `u` mint is not in the active account's own
+/// accepted-mint list.
+pub const NO_TRUSTED_MINT: &str = "wallet_cashu_no_trusted_mint";
+
+/// The recipient's kind:10019 carries no usable P2PK pubkey and no fallback
+/// (NIP-61 allows falling back to the recipient's Nostr pubkey, but this
+/// wallet requires an explicit Cashu P2PK pubkey to lock to).
+pub const NO_RECIPIENT_P2PK: &str = "wallet_cashu_no_recipient_p2pk";
+
+/// The recipient's kind:10019 lists no relay to publish the kind:9321 to.
+pub const NO_RECIPIENT_RELAYS: &str = "wallet_cashu_no_recipient_relays";
+
+/// This wallet's held proofs at the chosen mint do not cover the requested
+/// send amount.
+pub const INSUFFICIENT_BALANCE: &str = "wallet_cashu_insufficient_balance";
+
+/// The NUT-03 swap (P2PK-locking outgoing proofs, or unlinking incoming
+/// proofs on redeem) failed at the mint.
+pub const SWAP_FAILED: &str = "wallet_cashu_swap_failed";
+
+/// `RedeemNutzap` named an `event_id` this backend has never observed (or
+/// the observed kind:9321 failed a required verification: wrong `p` tag,
+/// untrusted mint, wrong P2PK lock, or bad/missing DLEQ).
+pub const INVALID_NUTZAP: &str = "wallet_cashu_invalid_nutzap";
+
+/// `RedeemNutzap` named an `event_id` already redeemed — never double-count.
+pub const ALREADY_REDEEMED: &str = "wallet_cashu_already_redeemed";
+
+/// No Cashu wallet is active (no `cashu_pubkey_hex`/`cashu_privkey`) — every
+/// nutzap operation requires a created wallet first.
+pub const NO_CASHU_WALLET: &str = "wallet_cashu_no_wallet";

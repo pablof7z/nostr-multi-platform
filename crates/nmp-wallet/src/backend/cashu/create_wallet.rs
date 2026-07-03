@@ -51,7 +51,23 @@ impl ProtocolCommand for CreateCashuWalletCommand {
             super::report_pre_dispatch_failure(
                 ctx,
                 &correlation_id,
+                super::ui_codes::OPERATION_FAILED,
                 "cashu pubkey derivation failed".to_string(),
+            );
+            return Ok(());
+        };
+        // #2917 — parsed once up front so a malformed `privkey_hex` (should
+        // never happen: `WalletConfig::generate` just produced it) fails
+        // closed here rather than leaving `RedeemNutzap` to discover a bad
+        // key later.
+        let Ok(cashu_sk) = <nostr::secp256k1::SecretKey as std::str::FromStr>::from_str(
+            &config.privkey_hex,
+        ) else {
+            super::report_pre_dispatch_failure(
+                ctx,
+                &correlation_id,
+                super::ui_codes::OPERATION_FAILED,
+                "cashu privkey parse failed".to_string(),
             );
             return Ok(());
         };
@@ -74,6 +90,7 @@ impl ProtocolCommand for CreateCashuWalletCommand {
             account_pubkey,
             KIND_NIP60_WALLET,
             plaintext,
+            Vec::new(),
             relays,
             created_at,
             correlation_id,
@@ -82,6 +99,7 @@ impl ProtocolCommand for CreateCashuWalletCommand {
                 state.created = true;
                 state.mints = vec![mint];
                 state.cashu_pubkey_hex = Some(cashu_pubkey_hex);
+                state.cashu_privkey = Some(super::state::CashuP2pkSecret(cashu_sk));
                 // Best-effort: a journal-invariant violation here would mean
                 // this operation was already terminal, which can't happen on
                 // this single-shot path — but never panic on it (D6).

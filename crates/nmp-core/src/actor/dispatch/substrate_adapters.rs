@@ -120,6 +120,30 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
     }
 }
 
+/// #2917 — bridge the kernel's event store into the substrate
+/// [`crate::substrate::CachedEventLookup`] capability. Read-only, so `try_borrow`
+/// (not `_mut`) is enough; a contended borrow returns `None` rather than
+/// panicking, matching every other read adapter's defensive shape.
+pub(super) struct CachedEventLookupAdapter<'a> {
+    pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
+}
+
+impl<'a> crate::substrate::CachedEventLookup for CachedEventLookupAdapter<'a> {
+    fn event_by_id(&self, id: &str) -> Option<crate::substrate::KernelEvent> {
+        self.kernel
+            .try_borrow()
+            .ok()
+            .and_then(|k| k.cached_event_by_id(id))
+    }
+
+    fn latest_author_kind(&self, author: &str, kind: u32) -> Option<crate::substrate::KernelEvent> {
+        self.kernel
+            .try_borrow()
+            .ok()
+            .and_then(|k| k.cached_latest_author_kind(author, kind))
+    }
+}
+
 /// ADR-0072 §D4 — bridge the actor's snapped per-app host-op handler into the
 /// substrate [`crate::substrate::HostOpHandlerAccess`] capability. Reaches no
 /// kernel/identity state.

@@ -66,13 +66,17 @@ impl WalletCapabilities {
         }
     }
 
-    /// W2 (#2895) — the Cashu `WalletBackend` adapter's actual scope: create a
-    /// wallet and deposit into it. Nutzap send/receive/publish-info and
-    /// mint-probe observation are separate epic #2864 waves this adapter does
-    /// not implement yet; bundling them into `cashu_nutzaps()` would advertise
-    /// capabilities the backend cannot execute (`start_intent` would silently
-    /// no-op them — the opposite of "absent capability means absent user
-    /// action").
+    /// W2 (#2895) — the Cashu `WalletBackend` adapter's scope BEFORE #2917
+    /// (W8/W9/W13) implemented nutzap send/receive/publish-info: create a
+    /// wallet and deposit into it, nothing else. `CashuWalletBackend` itself
+    /// has since moved on to `cashu_nutzaps()`; this constant survives as a
+    /// smaller capability-set fixture other tests build stub backends from
+    /// (see `selector_tests.rs`), not as a description of the real backend's
+    /// current scope. Bundling nutzap flags into a backend that cannot
+    /// execute them would advertise capabilities `start_intent` would
+    /// silently no-op — the opposite of "absent capability means absent user
+    /// action" — which is what kept this narrower constant around as a
+    /// deliberately-incomplete fixture shape.
     #[must_use]
     pub const fn cashu_wallet_and_deposit() -> Self {
         Self {
@@ -148,8 +152,10 @@ mod tests {
         assert!(!actions.contains(&ACTION_PAY_INVOICE));
     }
 
-    /// W2 (#2895) — the Cashu backend advertises exactly create+deposit, not
-    /// the full nutzap bundle it doesn't implement yet.
+    /// W2 (#2895) — this narrower constant (pre-#2917) still advertises
+    /// exactly create+deposit, not the full nutzap bundle — a stub-backend
+    /// fixture shape `selector_tests.rs` still relies on; the REAL
+    /// `CashuWalletBackend` advertises `cashu_nutzaps()` since #2917.
     #[test]
     fn cashu_wallet_and_deposit_advertises_only_create_and_deposit() {
         let caps = WalletCapabilities::cashu_wallet_and_deposit();

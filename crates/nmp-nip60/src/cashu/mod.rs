@@ -21,7 +21,8 @@ pub mod types;
 #[cfg(feature = "native")]
 pub use client::MintClient;
 pub use crypto::{
-    blind_message, hash_to_curve, random_secret, unblind_signature, verify_dleq, DleqProof,
+    blind_message, hash_to_curve, random_secret, random_secret_hex, unblind_signature, verify_dleq,
+    DleqProof,
 };
 pub use http::{
     build_check_state_request, build_get_keys_request, build_get_keysets_request,

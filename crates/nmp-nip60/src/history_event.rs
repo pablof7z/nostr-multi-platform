@@ -5,7 +5,7 @@
 //! Redeemed (nutzap) events are referenced in plain `e` tags (not encrypted).
 
 use nostr::nips::nip44;
-use nostr::{Event, EventBuilder, EventId, Keys, Kind, Tag};
+use nostr::{Event, EventBuilder, EventId, Keys, Kind, PublicKey, Tag};
 
 use crate::error::Nip60Error;
 use crate::kinds::KIND_NIP60_HISTORY;
@@ -37,6 +37,14 @@ pub struct HistoryRecord {
     pub destroyed: Vec<EventId>,
     /// Nutzap event IDs that were redeemed — stored plain.
     pub redeemed: Vec<EventId>,
+    /// Sender pubkeys of the redeemed nutzaps in [`Self::redeemed`] — stored
+    /// plain (NIP-61 requires the redeemer's history event to name who sent
+    /// each redeemed nutzap; see nip60-nip61-wallet-design.md, "Receiving":
+    /// "publish `kind:7376` with redeemed `e` tags and sender `p` tags").
+    /// Not required to line up index-for-index with `redeemed` — a redeemer
+    /// may append a sender without a matching `e` tag position guarantee, so
+    /// callers should treat both lists as sets, not parallel arrays.
+    pub redeemed_senders: Vec<PublicKey>,
 }
 
 impl HistoryRecord {
@@ -47,6 +55,7 @@ impl HistoryRecord {
             created: Vec::new(),
             destroyed: Vec::new(),
             redeemed: Vec::new(),
+            redeemed_senders: Vec::new(),
         }
     }
 
@@ -57,6 +66,7 @@ impl HistoryRecord {
             created: Vec::new(),
             destroyed: Vec::new(),
             redeemed: Vec::new(),
+            redeemed_senders: Vec::new(),
         }
     }
 }
@@ -81,12 +91,16 @@ pub fn build_history_event(record: &HistoryRecord, keys: &Keys) -> Result<EventB
         nip44::encrypt(keys.secret_key(), &keys.public_key(), json, nip44::Version::V2)
             .map_err(|e| Nip60Error::Nip44(format!("{e}")))?;
 
-    // Redeemed events go in plain tags (not encrypted).
+    // Redeemed events and their senders go in plain tags (not encrypted) —
+    // NIP-61 requires both to stay publicly verifiable.
     let mut tags = Vec::new();
     for id in &record.redeemed {
         tags.push(Tag::parse(["e", &id.to_hex(), "", "redeemed"]).map_err(|e| {
             Nip60Error::Event(format!("history redeemed tag: {e}"))
         })?);
+    }
+    for sender in &record.redeemed_senders {
+        tags.push(Tag::public_key(*sender));
     }
 
     Ok(EventBuilder::new(Kind::from(KIND_NIP60_HISTORY as u16), content).tags(tags))
@@ -134,5 +148,38 @@ mod tests {
             .expect("signed history event");
 
         assert_eq!(redeemed_nutzap_ids(&event), vec![redeemed]);
+    }
+
+    /// A redeemed nutzap's history event must carry the sender's pubkey as a
+    /// plain `p` tag alongside the plain redeemed `e` tag (NIP-61 requires
+    /// both stay publicly verifiable — see `HistoryRecord::redeemed_senders`'s
+    /// doc comment).
+    #[test]
+    fn redeemed_senders_emit_plain_p_tags() {
+        let keys = Keys::generate();
+        let sender = Keys::generate().public_key();
+        let redeemed = EventId::from_byte_array([7u8; 32]);
+        let mut history = HistoryRecord::new_in(10);
+        history.redeemed.push(redeemed);
+        history.redeemed_senders.push(sender);
+
+        let event = build_history_event(&history, &keys)
+            .expect("history event builder")
+            .sign_with_keys(&keys)
+            .expect("signed history event");
+
+        assert!(
+            event
+                .tags
+                .iter()
+                .any(|t| t.as_slice() == ["p", &sender.to_hex()]),
+            "expected a plain p tag for the redeemed sender, got {:?}",
+            event.tags
+        );
+        // The p tag must be genuinely plain — never folded into the
+        // NIP-44-encrypted content the way `direction`/`amount` are.
+        let decrypted = nip44::decrypt(keys.secret_key(), &keys.public_key(), &event.content)
+            .expect("decrypt history content");
+        assert!(!decrypted.contains(&sender.to_hex()));
     }
 }

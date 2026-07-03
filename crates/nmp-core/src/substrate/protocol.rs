@@ -46,10 +46,11 @@ pub use command_error::ProtocolCommandError;
 #[path = "protocol/capabilities.rs"]
 mod capabilities;
 pub use capabilities::{
-    ActionStageTracker, DmInboxRelayLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
-    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
-    NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
+    ActionStageTracker, CachedEventLookup, DmInboxRelayLookup, ErrorSurface, HostOpHandlerAccess,
+    KernelClock, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
+    NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
+    NoopWalletKernelAccess, NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess,
+    ZapProfileLookup,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -121,6 +122,15 @@ pub struct ProtocolCommandContext<'a> {
     /// the existing relay-worker plumbing without re-entering through
     /// `send` (which would defer by at least one tick).
     outbound: Option<&'a mut Vec<OutboundMessage>>,
+    /// #2917 — optional cached-event read capability, attached the same way
+    /// as `outbound` (a builder, not a `ProtocolCommandContextParts` field)
+    /// so adding it does not ripple through every existing call site that
+    /// constructs a `Parts` literal. `None` for every command that never
+    /// calls `with_cached_events` (i.e. every command except the dispatch
+    /// arm's production wiring) — `event_by_id`/`latest_author_kind` simply
+    /// return `None` in that case, the same "capability absent" shape the
+    /// `outbound` sink already uses.
+    cached_events: Option<&'a dyn CachedEventLookup>,
 }
 
 impl<'a> ProtocolCommandContext<'a> {
@@ -160,6 +170,7 @@ impl<'a> ProtocolCommandContext<'a> {
             wallet_kernel,
             zap_profiles,
             outbound: None,
+            cached_events: None,
         }
     }
 
@@ -168,6 +179,15 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn with_outbound(mut self, outbound: &'a mut Vec<OutboundMessage>) -> Self {
         self.outbound = Some(outbound);
+        self
+    }
+
+    /// #2917 builder: attach the [`CachedEventLookup`] capability. See the
+    /// `cached_events` field doc comment for why this is a builder rather
+    /// than a `ProtocolCommandContextParts` field.
+    #[must_use]
+    pub fn with_cached_events(mut self, cached_events: &'a dyn CachedEventLookup) -> Self {
+        self.cached_events = Some(cached_events);
         self
     }
 
