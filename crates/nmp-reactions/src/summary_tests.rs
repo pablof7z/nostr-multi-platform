@@ -14,7 +14,6 @@ use nmp_read_session::{
     ReadSessionRegistry, TeardownAction,
 };
 
-use super::generated::nmp::reactions::root_as_reaction_summary_snapshot;
 use super::*;
 
 const TARGET: &str = "1111111111111111111111111111111111111111111111111111111111111111";
@@ -122,16 +121,18 @@ fn typed_output_round_trips() {
         }],
     };
     let bytes = encode_reaction_summary_snapshot(&snapshot);
-    let decoded = root_as_reaction_summary_snapshot(&bytes).unwrap();
-    assert_eq!(decoded.schema_version(), REACTION_SUMMARY_SCHEMA_VERSION);
-    assert_eq!(decoded.target_id(), Some(TARGET));
-    assert_eq!(decoded.total(), 2);
-    let groups = decoded.groups().unwrap();
-    assert_eq!(groups.len(), 1);
-    assert_eq!(groups.get(0).token(), Some("+"));
-    assert_eq!(groups.get(0).count(), 2);
-    let reactors: Vec<&str> = groups.get(0).reactor_pubkeys().unwrap().iter().collect();
-    assert_eq!(reactors, vec![AUTHOR_A, AUTHOR_B]);
+    assert_eq!(
+        crate::decode_reaction_summary_snapshot(&bytes).unwrap(),
+        snapshot
+    );
+}
+
+#[test]
+fn public_decoder_rejects_malformed_payload() {
+    assert_eq!(
+        crate::decode_reaction_summary_snapshot(b"not-nrcs").unwrap_err(),
+        "missing NRCS file identifier"
+    );
 }
 
 #[test]
@@ -279,11 +280,15 @@ fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
     // active-account pubkey against (identity-free viewer derivation).
     host.feed(&reaction(REACTION_A, AUTHOR_A, "+"));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
-    assert_eq!(decoded.total(), 1);
-    let groups = decoded.groups().unwrap();
-    let reactors: Vec<&str> = groups.get(0).reactor_pubkeys().unwrap().iter().collect();
-    assert!(reactors.contains(&AUTHOR_A), "shell membership check works");
+    let decoded = crate::decode_reaction_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.total, 1);
+    assert!(
+        decoded.groups[0]
+            .reactor_pubkeys
+            .iter()
+            .any(|pubkey| pubkey == AUTHOR_A),
+        "shell membership check works"
+    );
 
     let filters = host.opened_filters.lock().unwrap().clone();
     assert_eq!(
@@ -301,8 +306,8 @@ fn open_reactions_drives_the_engine_and_close_withdraws_everything() {
         REACTION_A,
     ));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_reaction_summary_snapshot(&data.payload).unwrap();
-    assert_eq!(decoded.total(), 0);
+    let decoded = crate::decode_reaction_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.total, 0);
 
     // Close withdraws the demand and tombstones the output — and the engine
     // no longer tracks the read (no leak).

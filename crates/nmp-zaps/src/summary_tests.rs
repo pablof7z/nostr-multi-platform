@@ -15,7 +15,6 @@ use nmp_read_session::{
     ReadSessionRegistry, TeardownAction,
 };
 
-use super::generated::nmp::zaps::root_as_zap_summary_snapshot;
 use super::*;
 use crate::target::ZapTarget;
 
@@ -211,15 +210,18 @@ fn typed_output_round_trips() {
         }],
     };
     let bytes = encode_zap_summary_snapshot(&snapshot);
-    let decoded = root_as_zap_summary_snapshot(&bytes).unwrap();
-    assert_eq!(decoded.schema_version(), ZAP_SUMMARY_SCHEMA_VERSION);
-    assert_eq!(decoded.target_id(), Some(TARGET));
-    assert_eq!(decoded.total_msats(), 15_000);
-    assert_eq!(decoded.zap_count(), 1);
-    let zappers = decoded.zappers().unwrap();
-    assert_eq!(zappers.len(), 1);
-    assert_eq!(zappers.get(0).pubkey(), Some("alice"));
-    assert_eq!(zappers.get(0).total_msats(), 15_000);
+    assert_eq!(
+        crate::decode_zap_summary_snapshot(&bytes).unwrap(),
+        snapshot
+    );
+}
+
+#[test]
+fn public_decoder_rejects_malformed_payload() {
+    assert_eq!(
+        crate::decode_zap_summary_snapshot(b"not-nzsm").unwrap_err(),
+        "missing NZSM file identifier"
+    );
 }
 
 #[test]
@@ -364,9 +366,9 @@ fn open_zaps_drives_the_engine_and_close_withdraws_everything() {
     // Live delivery folds into the typed output the shell will render.
     host.feed(&receipt(RECEIPT_A, TARGET, Some("alice"), 10_000));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_zap_summary_snapshot(&data.payload).unwrap();
-    assert_eq!(decoded.total_msats(), 10_000);
-    assert_eq!(decoded.zap_count(), 1);
+    let decoded = crate::decode_zap_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.total_msats, 10_000);
+    assert_eq!(decoded.zap_count, 1);
 
     // Close withdraws the demand and tombstones the output — the engine no
     // longer tracks the read (no leak).
@@ -408,13 +410,12 @@ fn derived_delete_demand_routes_zap_receipt_delete_discovered_after_open() {
         RECEIPT_B,
     ));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_zap_summary_snapshot(&data.payload).unwrap();
+    let decoded = crate::decode_zap_summary_snapshot(&data.payload).unwrap();
     assert_eq!(
-        decoded.zap_count(),
-        0,
+        decoded.zap_count, 0,
         "delete delivered through the derived demand retracts the receipt"
     );
-    assert_eq!(decoded.total_msats(), 0);
+    assert_eq!(decoded.total_msats, 0);
 
     assert!(close_zaps(&host, handle));
 }
