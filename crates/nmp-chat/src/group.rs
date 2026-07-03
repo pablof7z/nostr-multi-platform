@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_nip29::GroupId;
-use nmp_ownership::DeclaredProjectionKey;
+use nmp_ownership::FrameworkProjectionKey;
 use nmp_read_session::{
     close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
     ReadSpec,
@@ -18,12 +18,9 @@ use crate::wire::{
 
 const SCOPE_GLOBAL: u32 = 1;
 const CHAT_PRESENCE_REPLAY_LIMIT: usize = 80;
-const CHAT_PRESENCE_CONSUMER: &str = "chat-presence";
 
-/// Snapshot key + singleton session key for chat read-state and typing presence.
+/// Schema/family key for chat read-state and typing presence projections.
 pub const CHAT_PRESENCE_KEY: &str = "nmp.chat.presence";
-const CHAT_PRESENCE_PROJECTION_TOKEN: DeclaredProjectionKey =
-    DeclaredProjectionKey::framework(CHAT_PRESENCE_KEY, "projection.nmp.chat.presence");
 
 /// Descriptor for a group-scoped chat-presence typed read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +54,11 @@ impl ChatPresenceSession {
     pub fn message_kinds(&self) -> &[u32] {
         &self.message_kinds
     }
+
+    #[must_use]
+    pub fn projection_key(&self) -> String {
+        chat_presence_projection_key(&self.group_id)
+    }
 }
 
 /// Runtime handle for one chat-presence read session.
@@ -68,6 +70,16 @@ impl ChatPresenceHandle {
     pub fn key(&self) -> &str {
         &self.0.projection_key
     }
+}
+
+/// Concrete typed-projection key for one NIP-29 group presence/read-state session.
+#[must_use]
+pub fn chat_presence_projection_key(group_id: &GroupId) -> String {
+    format!(
+        "{CHAT_PRESENCE_KEY}.h{}.g{}",
+        lower_hex(group_id.host_relay_url.as_bytes()),
+        lower_hex(group_id.local_id.as_bytes())
+    )
 }
 
 #[must_use]
@@ -91,6 +103,7 @@ pub fn open_chat_presence_session_with_reader(
     } = descriptor;
     let filter_json = chat_presence_filter_json(&group_id, &message_kinds);
     let relay_pin = Some(group_id.host_relay_url.clone());
+    let projection_key = chat_presence_projection_key(&group_id);
     let projection = Arc::new(ChatPresenceProjection::new(
         group_id.host_relay_url.clone(),
         group_id.local_id.clone(),
@@ -100,10 +113,11 @@ pub fn open_chat_presence_session_with_reader(
     let projection_reader = Arc::clone(&projection);
 
     let projection_for_output = Arc::clone(&projection);
+    let output_key = projection_key.clone();
     let output_encoder: ReadOutputEncoder = Box::new(move || {
         let snapshot = projection_for_output.snapshot();
         Some(TypedProjectionData {
-            key: CHAT_PRESENCE_KEY.to_string(),
+            key: output_key.clone(),
             schema_id: CHAT_PRESENCE_SCHEMA_ID.to_string(),
             schema_version: CHAT_PRESENCE_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(CHAT_PRESENCE_FILE_IDENTIFIER).into_owned(),
@@ -112,14 +126,17 @@ pub fn open_chat_presence_session_with_reader(
         })
     });
 
-    let _ = host.close_read_session_by_projection_key(CHAT_PRESENCE_KEY);
+    let projection_token =
+        FrameworkProjectionKey::declared(projection_key.clone(), "projection.nmp.chat.presence")
+            .expect("chat presence keys use the nmp.chat.presence family");
+    let _ = host.close_read_session_by_projection_key(&projection_key);
     let read_handle = open_read(
         host,
         ReadSpec {
-            projection_key: CHAT_PRESENCE_PROJECTION_TOKEN.into(),
+            projection_key: projection_token.into(),
             demands: vec![ReadDemand {
                 filter_json,
-                consumer_id: CHAT_PRESENCE_CONSUMER.to_string(),
+                consumer_id: projection_key,
                 scope: SCOPE_GLOBAL,
                 relay_pin,
                 is_indexer_discovery: false,
@@ -155,6 +172,16 @@ pub fn chat_presence_filter_json(group_id: &GroupId, message_kinds: &[u32]) -> S
     }
     map.insert("#h".to_string(), serde_json::json!([group_id.local_id]));
     serde_json::Value::Object(map).to_string()
+}
+
+fn lower_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
 
 #[cfg(test)]
