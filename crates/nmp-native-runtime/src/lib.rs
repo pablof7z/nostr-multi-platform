@@ -77,7 +77,7 @@ pub use feed_params::{
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
-pub use nmp_nip18::PrimaryKindError;
+pub use nmp_feed_session::PrimaryKindError;
 #[cfg(feature = "op-feed")]
 pub use op_feed_session::{
     active_follows_op_feed_params, open_active_follows_op_feed,

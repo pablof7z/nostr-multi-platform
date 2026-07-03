@@ -279,10 +279,10 @@ impl NmpApp {
 
     /// #1740 step 2 — open ONE feed session owning its full lifecycle.
     ///
-    /// 1. Validate `params`' primary kinds at THIS seam (fail-closed on
-    ///    wrapper/delete/empty), deriving the acquisition kind set. The validator
-    ///    (`validate_feed_params`) is the single canonical owner of that protocol
-    ///    knowledge; this seam names no wrapper/delete kind itself.
+    /// 1. Validate `params`' primary kinds through the shared feed-session seam
+    ///    (fail-closed on wrapper/delete/empty), deriving the acquisition kind
+    ///    set. The validator names protocol wrapper/delete kinds in
+    ///    `nmp-feed-session`; the native runtime only applies the result.
     /// 2. Run the canonical NMP feed compiler to register the feed over the
     ///    EXISTING mechanics and produce its teardown recipe (or fail closed for
     ///    an unsupported scope).
@@ -328,10 +328,10 @@ impl NmpApp {
         ) -> Result<(FeedCompileOutput, T), FeedOpenError>,
     ) -> Result<(FeedHandle, T), FeedOpenError> {
         // 1. Fail-closed primary-kind validation, ENFORCED at the seam (not left
-        //    to each compiler). The single canonical validator rejects wrapper/
-        //    delete/empty primary kinds and derives the acquisition kind set.
+        //    to each compiler). The shared feed-session validator rejects
+        //    wrapper/delete/empty primary kinds and derives the acquisition set.
         let acquisition_kinds =
-            crate::validate_feed_params(params).map_err(FeedOpenError::InvalidParams)?;
+            nmp_feed_session::validate_feed_params(params).map_err(FeedOpenError::InvalidParams)?;
 
         // 2. Compile + register over the existing mechanics. A scope not yet
         //    wired fails closed here WITHOUT having registered anything.

@@ -64,7 +64,6 @@ nmp-read-session = { path = "../nmp-read-session" }
 nmp-note-feed = { path = "../nmp-note-feed", optional = true }
 nmp-nip02 = { path = "../nmp-nip02", optional = true }
 nmp-nip05 = { path = "../nmp-nip05", optional = true }
-nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip46 = { path = "../nmp-nip46", optional = true }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true }
 nmp-nip47 = { path = "../nmp-nip47", optional = true }

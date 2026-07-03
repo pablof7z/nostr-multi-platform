@@ -4009,7 +4009,6 @@ dependencies = [
  "nmp-marmot",
  "nmp-nip02",
  "nmp-nip05",
- "nmp-nip18",
  "nmp-nip23",
  "nmp-nip29",
  "nmp-nip46",

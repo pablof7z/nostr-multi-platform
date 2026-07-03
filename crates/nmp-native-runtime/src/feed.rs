@@ -6,33 +6,19 @@
 /// Re-export the canonical typed feed-session declaration model (#1740).
 ///
 /// The protocol-agnostic param model lives in `nmp-feed` (single source). This
-/// FFI module re-exports the param types and owns the primary-kind validation —
-/// which IS protocol knowledge (it names the derived-acquisition wrapper/delete
-/// kinds) and so lives in this composition layer, NOT in the generic
-/// `nmp-feed` engine (D0). The validation transform itself is the single
-/// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
+/// FFI module re-exports the param types while the runtime-independent
+/// `nmp-feed-session` compiler owns primary-kind validation and acquisition
+/// derivation. Platform runtimes must not depend on NIP-18 directly just to
+/// open generic feeds.
 pub use nmp_feed::{
     feed, source, CustomAdmissionDef, CustomAdmissionId, CustomOrderDef, CustomOrderId,
     CustomSourceDef, CustomSourceId, FeedAdmission, FeedHandle, FeedItemProjection, FeedKey,
     FeedLoadStatus, FeedLoadStopReason, FeedOrder, FeedParams, FeedScope, FeedSessionId, FeedShape,
     FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
+pub use nmp_feed_session::validate_feed_params;
 
-use nmp_nip18::PrimaryKindError;
-
-/// Validate a [`FeedParams`] declaration's primary kinds and return the compiled
-/// acquisition kind set (primary ∪ derived wrappers ∪ kind 5).
-///
-/// Thin wrapper over the single canonical validator
-/// [`nmp_nip18::validate_primary_kinds`] (wrapper/delete/empty rejection + the
-/// acquisition derivation). Fail-closed (D6 — typed [`nmp_nip18::PrimaryKindError`],
-/// never panic). This is the ONE place the open-feed seam, the FFI/WASM boundary,
-/// and the perspective compiler validate primary kinds.
-pub fn validate_feed_params(
-    params: &FeedParams,
-) -> Result<std::collections::BTreeSet<u32>, PrimaryKindError> {
-    nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied())
-}
+use nmp_feed_session::PrimaryKindError;
 
 /// Decode a `FeedParams` JSON payload and validate its primary kinds.
 ///
@@ -60,60 +46,6 @@ pub enum FeedParamsDecodeError {
     MalformedJson,
     /// The decoded params failed validation (e.g. wrapper/delete primary kind).
     InvalidParams(PrimaryKindError),
-}
-
-#[cfg(test)]
-mod primary_kind_validation_tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    const KIND_DELETE: u32 = 5;
-
-    #[test]
-    fn validate_feed_params_accepts_primary_and_derives_wrappers_and_delete() {
-        // Delegates to the canonical `nmp_nip18::validate_primary_kinds`: a valid
-        // primary declaration compiles to `primary ∪ derived wrappers ∪ kind 5`.
-        assert_eq!(
-            validate_feed_params(&sample_params(vec![1])),
-            Ok(BTreeSet::from([1, 6, KIND_DELETE]))
-        );
-        assert_eq!(
-            validate_feed_params(&sample_params(vec![20])),
-            Ok(BTreeSet::from([20, 16, KIND_DELETE]))
-        );
-    }
-
-    #[test]
-    fn validate_feed_params_fails_closed_on_wrapper_delete_empty() {
-        assert_eq!(
-            validate_feed_params(&sample_params(vec![1, 6])),
-            Err(PrimaryKindError::RepostWrapper { kind: 6 }),
-            "kind 6 is derived acquisition, not primary"
-        );
-        assert_eq!(
-            validate_feed_params(&sample_params(vec![1, KIND_DELETE])),
-            Err(PrimaryKindError::DeleteKind),
-            "kind 5 is derived suppression, not primary"
-        );
-        assert_eq!(
-            validate_feed_params(&sample_params(vec![])),
-            Err(PrimaryKindError::EmptyPrimaryKinds),
-            "an open feed must declare at least one primary kind"
-        );
-    }
-
-    fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
-        FeedParams {
-            primary_kinds,
-            shape: FeedShape::RootIndexed,
-            source: FeedScope::ActiveUserFollows,
-            admission: FeedAdmission::All,
-            order: FeedOrder::NewestByFeedPosition,
-            window: FeedWindowPolicy::default(),
-            key: ProjectionKey::app_owned("app.feed.following").unwrap(),
-            item_projection: nmp_feed::FeedItemProjection::FeedRows,
-        }
-    }
 }
 
 #[cfg(test)]
