@@ -326,16 +326,25 @@ fn publish_initial_follows(
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();
     };
-    let tags = follows
-        .iter()
-        .map(|p| vec!["p".to_string(), p.clone()])
-        .collect::<Vec<_>>();
+    let Some(draft) =
+        kernel
+            .contact_list_reader()
+            .initial_draft(&author, follows, kernel.now_secs())
+    else {
+        set_create_account_error(
+            kernel,
+            crate::ui_token::codes::IDENTITY_CONTACTS_NO_COLD_START_RELAYS,
+            "could not publish contacts — contact-list writer is not installed",
+            None,
+        );
+        return Vec::new();
+    };
     let unsigned = UnsignedEvent {
-        pubkey: author,
-        kind: 3,
-        tags,
-        content: String::new(),
-        created_at: kernel.now_secs(),
+        pubkey: draft.pubkey,
+        kind: draft.kind,
+        tags: draft.tags,
+        content: draft.content,
+        created_at: draft.created_at,
     };
     // Local-key invariant: `publish_initial_follows` is only called from
     // `create_account` (after a fresh local key is activated), so

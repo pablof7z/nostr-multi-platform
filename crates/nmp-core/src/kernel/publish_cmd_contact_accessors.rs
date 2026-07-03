@@ -60,10 +60,9 @@ impl Kernel {
     /// concern, not a contact-list-editing one — capping here would silently
     /// drop follows ≥501 on every edit).
     #[must_use]
-    pub(crate) fn try_current_contact_list_event(&self) -> Option<(Vec<Vec<String>>, String, u64)> {
+    pub(crate) fn try_current_contact_list_event(&self) -> Option<crate::slots::ContactListEvent> {
         let author_hex = self.active_account_pubkey()?;
-        let event = self.contact_list_reader().event_for_edit(author_hex)?;
-        Some((event.tags, event.content, event.created_at))
+        self.contact_list_reader().event_for_edit(author_hex)
     }
 
     /// Resolve the active account's CURRENT contact-list baseline for a follow-set
@@ -85,7 +84,7 @@ impl Kernel {
     #[must_use]
     pub(crate) fn try_current_contact_list_event_for_edit(
         &self,
-    ) -> Option<(Vec<Vec<String>>, String, u64)> {
+    ) -> Option<crate::slots::ContactListEvent> {
         self.try_current_contact_list_event()
     }
 }

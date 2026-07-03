@@ -46,6 +46,6 @@ impl super::KernelReducer {
     pub fn try_current_contact_list_event(&self) -> Option<(Vec<Vec<String>>, String)> {
         self.kernel
             .try_current_contact_list_event()
-            .map(|(tags, content, _created_at)| (tags, content))
+            .map(|event| (event.tags, event.content))
     }
 }

@@ -18,13 +18,51 @@ pub(crate) fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
         .collect()
 }
 
+/// Return the full kind:3 tag set that results from adding a follow on
+/// `target` to `current`, preserving every existing non-matching tag verbatim.
+#[must_use]
+pub fn tags_after_add(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
+    let mut tags = current.to_vec();
+    let already_present = tags.iter().any(|tag| {
+        tag.first().map(String::as_str) == Some("p")
+            && tag.get(1).map(String::as_str) == Some(target)
+    });
+    if !already_present {
+        tags.push(vec!["p".to_string(), target.to_string()]);
+    }
+    tags
+}
+
+/// Return the full kind:3 tag set that results from removing every `p` tag for
+/// `target`, preserving all other tags and columns verbatim.
+#[must_use]
+pub fn tags_after_remove(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
+    current
+        .iter()
+        .filter(|tag| {
+            !(tag.first().map(String::as_str) == Some("p")
+                && tag.get(1).map(String::as_str) == Some(target))
+        })
+        .cloned()
+        .collect()
+}
+
+/// Build the initial kind:3 tag set for a new account's app-supplied follows.
+#[must_use]
+pub fn initial_tags(follows: &[String]) -> Vec<Vec<String>> {
+    follows
+        .iter()
+        .map(|pubkey| vec!["p".to_string(), pubkey.clone()])
+        .collect()
+}
+
 fn is_hex_pubkey(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::contact_follows;
+    use super::{contact_follows, initial_tags, tags_after_add, tags_after_remove};
 
     fn hex_pk(i: usize) -> String {
         format!(
@@ -86,5 +124,84 @@ mod tests {
             vec!["p".to_string(), pk.clone()],
         ];
         assert_eq!(contact_follows(&tags), vec![pk.clone(), pk]);
+    }
+
+    #[test]
+    fn tags_after_add_preserves_existing_tags_and_columns() {
+        let existing = hex_pk(10);
+        let new_target = hex_pk(11);
+        let tags = vec![
+            vec![
+                "r".to_string(),
+                "wss://relay".to_string(),
+                "read".to_string(),
+            ],
+            vec![
+                "p".to_string(),
+                existing.clone(),
+                "wss://hint".to_string(),
+                "alice".to_string(),
+            ],
+        ];
+        let edited = tags_after_add(&tags, &new_target);
+        assert_eq!(
+            edited,
+            vec![
+                vec![
+                    "r".to_string(),
+                    "wss://relay".to_string(),
+                    "read".to_string()
+                ],
+                vec![
+                    "p".to_string(),
+                    existing,
+                    "wss://hint".to_string(),
+                    "alice".to_string(),
+                ],
+                vec!["p".to_string(), new_target],
+            ]
+        );
+    }
+
+    #[test]
+    fn tags_after_add_is_idempotent() {
+        let pk = hex_pk(12);
+        let tags = vec![vec![
+            "p".to_string(),
+            pk.clone(),
+            "wss://hint".to_string(),
+            "alice".to_string(),
+        ]];
+        assert_eq!(tags_after_add(&tags, &pk), tags);
+    }
+
+    #[test]
+    fn tags_after_remove_drops_matching_p_tags_of_any_arity() {
+        let target = hex_pk(13);
+        let kept = hex_pk(14);
+        let tags = vec![
+            vec!["r".to_string(), "wss://relay".to_string()],
+            vec!["p".to_string(), target.clone()],
+            vec![
+                "p".to_string(),
+                target.clone(),
+                "wss://hint".to_string(),
+                "alice".to_string(),
+            ],
+            vec!["p".to_string(), kept.clone(), "wss://other".to_string()],
+        ];
+        assert_eq!(
+            tags_after_remove(&tags, &target),
+            vec![
+                vec!["r".to_string(), "wss://relay".to_string()],
+                vec!["p".to_string(), kept, "wss://other".to_string()],
+            ]
+        );
+    }
+
+    #[test]
+    fn initial_tags_builds_bare_p_tags_in_order() {
+        let follows = vec![hex_pk(15), hex_pk(16)];
+        assert_eq!(initial_tags(&follows), p_tags(&follows));
     }
 }

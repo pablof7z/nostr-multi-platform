@@ -18,47 +18,10 @@ use std::sync::{Arc, Mutex};
 
 use zeroize::Zeroizing;
 
-/// Store-derived contact-list row exposed by the protocol-owned reader.
-///
-/// The kernel needs the loaded baseline for follow-list edits, but it must not
-/// know the wire kind or parsing rules. Protocol crates provide this raw row
-/// through [`ContactListReader`]; the kernel treats it as opaque tags/content
-/// plus a replacement timestamp.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ContactListEvent {
-    pub tags: Vec<Vec<String>>,
-    pub content: String,
-    pub created_at: u64,
-}
-
-/// Protocol-owned reader for an account's contact/follow state.
-///
-/// `nmp-core` owns the lifecycle reaction ("the active account's contacts
-/// changed") and follow-edit safety gate, but the protocol crate owns how that
-/// fact is derived from stored events. `None` means no loaded contact-list row.
-pub trait ContactListReader: Send + Sync {
-    fn follows(&self, author_hex: &str) -> Option<Vec<String>>;
-
-    fn event_for_edit(&self, author_hex: &str) -> Option<ContactListEvent>;
-}
-
-#[derive(Debug, Default)]
-pub struct EmptyContactListReader;
-
-impl ContactListReader for EmptyContactListReader {
-    fn follows(&self, _author_hex: &str) -> Option<Vec<String>> {
-        None
-    }
-
-    fn event_for_edit(&self, _author_hex: &str) -> Option<ContactListEvent> {
-        None
-    }
-}
-
-#[must_use]
-pub fn empty_contact_list_reader() -> Arc<dyn ContactListReader> {
-    Arc::new(EmptyContactListReader)
-}
+mod contact_list;
+pub use contact_list::{
+    empty_contact_list_reader, ContactListDraft, ContactListEvent, ContactListReader,
+};
 
 /// Typed slot for the active account's MLS nsec (bech32, zeroized on overwrite).
 ///

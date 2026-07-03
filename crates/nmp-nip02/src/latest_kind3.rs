@@ -4,7 +4,7 @@
 //! an author is therefore derived from that author's latest kind:3 event in the
 //! kernel event store, not from a separate contacts cache.
 
-use nmp_core::slots::{ContactListEvent, ContactListReader, EventStoreSlot};
+use nmp_core::slots::{ContactListDraft, ContactListEvent, ContactListReader, EventStoreSlot};
 use nmp_store::{EventStore, StoredEvent};
 use std::sync::Arc;
 
@@ -46,6 +46,53 @@ impl ContactListReader for LatestKind3FollowSet {
             tags: stored.raw.tags.clone(),
             content: stored.raw.content.clone(),
             created_at: stored.raw.created_at,
+        })
+    }
+
+    fn draft_after_add(
+        &self,
+        author_hex: &str,
+        current: &ContactListEvent,
+        target: &str,
+        created_at: u64,
+    ) -> Option<ContactListDraft> {
+        Some(ContactListDraft {
+            pubkey: author_hex.to_string(),
+            kind: nmp_core::kinds::KIND_CONTACT_LIST,
+            tags: crate::contact_tags::tags_after_add(&current.tags, target),
+            content: current.content.clone(),
+            created_at,
+        })
+    }
+
+    fn draft_after_remove(
+        &self,
+        author_hex: &str,
+        current: &ContactListEvent,
+        target: &str,
+        created_at: u64,
+    ) -> Option<ContactListDraft> {
+        Some(ContactListDraft {
+            pubkey: author_hex.to_string(),
+            kind: nmp_core::kinds::KIND_CONTACT_LIST,
+            tags: crate::contact_tags::tags_after_remove(&current.tags, target),
+            content: current.content.clone(),
+            created_at,
+        })
+    }
+
+    fn initial_draft(
+        &self,
+        author_hex: &str,
+        follows: &[String],
+        created_at: u64,
+    ) -> Option<ContactListDraft> {
+        Some(ContactListDraft {
+            pubkey: author_hex.to_string(),
+            kind: nmp_core::kinds::KIND_CONTACT_LIST,
+            tags: crate::contact_tags::initial_tags(follows),
+            content: String::new(),
+            created_at,
         })
     }
 }

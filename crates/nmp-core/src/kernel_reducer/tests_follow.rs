@@ -183,7 +183,21 @@ fn kind3_edit_add_preserves_relay_hints_petnames_non_p_and_content() {
 
     let (tags, content) = r.try_current_contact_list_event().expect("loaded");
     let new_target = "f".repeat(64);
-    let edited = crate::tags::kind3_tags_after_add(&tags, &new_target);
+    let draft = r
+        .kernel
+        .contact_list_reader()
+        .draft_after_add(
+            ACCOUNT_PK,
+            &crate::slots::ContactListEvent {
+                tags,
+                content: content.clone(),
+                created_at: 1_700_000_000,
+            },
+            &new_target,
+            1_700_000_001,
+        )
+        .expect("test contact-list writer installed");
+    let edited = draft.tags;
 
     // Non-`p` tag survives verbatim, in place.
     assert!(
@@ -223,7 +237,21 @@ fn kind3_edit_remove_preserves_relay_hints_petnames_non_p_and_content() {
 
     let (tags, content) = r.try_current_contact_list_event().expect("loaded");
     // Remove the bare follow B; A (relay-hinted + petnamed) must remain.
-    let edited = crate::tags::kind3_tags_after_remove(&tags, FOLLOW_B);
+    let draft = r
+        .kernel
+        .contact_list_reader()
+        .draft_after_remove(
+            ACCOUNT_PK,
+            &crate::slots::ContactListEvent {
+                tags,
+                content: content.clone(),
+                created_at: 1_700_000_000,
+            },
+            FOLLOW_B,
+            1_700_000_001,
+        )
+        .expect("test contact-list writer installed");
+    let edited = draft.tags;
 
     assert!(
         !edited
@@ -259,7 +287,22 @@ fn kind3_edit_remove_drops_relay_hinted_and_petnamed_p_of_any_arity() {
     // The remove editor must drop a `p` matched on its pubkey regardless of
     // arity — a relay-hinted, petnamed `p` for the target must disappear.
     let tags = rich_kind3_tags();
-    let edited = crate::tags::kind3_tags_after_remove(&tags, FOLLOW_A);
+    let r = KernelReducer::new();
+    let draft = r
+        .kernel
+        .contact_list_reader()
+        .draft_after_remove(
+            ACCOUNT_PK,
+            &crate::slots::ContactListEvent {
+                tags,
+                content: String::new(),
+                created_at: 1_700_000_000,
+            },
+            FOLLOW_A,
+            1_700_000_001,
+        )
+        .expect("test contact-list writer installed");
+    let edited = draft.tags;
     assert!(
         !edited
             .iter()
@@ -281,6 +324,21 @@ fn kind3_edit_add_is_idempotent_preserving_existing_columns() {
     // Re-adding an already-followed pubkey must NOT append a duplicate and must
     // leave the existing entry's relay hint + petname untouched.
     let tags = rich_kind3_tags();
-    let edited = crate::tags::kind3_tags_after_add(&tags, FOLLOW_A);
+    let r = KernelReducer::new();
+    let draft = r
+        .kernel
+        .contact_list_reader()
+        .draft_after_add(
+            ACCOUNT_PK,
+            &crate::slots::ContactListEvent {
+                tags: tags.clone(),
+                content: String::new(),
+                created_at: 1_700_000_000,
+            },
+            FOLLOW_A,
+            1_700_000_001,
+        )
+        .expect("test contact-list writer installed");
+    let edited = draft.tags;
     assert_eq!(edited, tags, "idempotent add must return the set unchanged");
 }
