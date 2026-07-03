@@ -61,10 +61,7 @@ pub use embed_registry::{
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};
-pub use pointer_source::{
-    open_pointer_source, register_pointer_source, PointerItem, PointerSortMode, PointerSourceModel,
-    PointerSourceParams, PointerSourceSession,
-};
+pub use pointer_source::{PointerItem, PointerSortMode, PointerSourceModel};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
 pub use wire::{

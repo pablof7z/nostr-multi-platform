@@ -15,31 +15,21 @@
 //!
 //! # What lives here vs. the kernel
 //!
-//! [`register_pointer_source`] drives the read model through the kernel's
-//! observed-projection and dependent-interest seams: it feeds pointer events in,
-//! reads [`PointerSourceModel::target_demand`] back out, and materializes that
-//! demand as a kernel-owned dependent-interest set plus a delivery projection.
-//! Every target request therefore flows through the existing registry / planner
-//! / router / cache path — there is no out-of-band `fetchEvents` lane.
-//!
-//! The `pointedBy` index is read-model state, not kernel source-of-truth state
-//! (D4): the kernel owns the live target interests; this struct owns only the
-//! derived projection.
+//! This module owns only the pure read-model state — extracting demanded
+//! targets from pointer events, hydrating them, and projecting the result.
+//! Wiring that state to the kernel's observed-projection and
+//! dependent-interest seams is the read engine's job now
+//! (`DependentDemandReconciler`, `crates/nmp-read-session/src/dependent.rs`,
+//! #2818); the hand-rolled composition root that used to live here was
+//! deleted as dead code (#2956).
 //!
 //! See `docs/research/ndk/meta-subscribe.md` for the full NDK mapping and the
 //! relationship to the adjacent ReducedSource feed primitive (#2092).
 
-mod composition;
-#[cfg(test)]
-mod composition_tests;
 mod model;
 mod projection;
-mod shapes;
 #[cfg(test)]
 mod tests;
 
-pub use composition::{
-    open_pointer_source, register_pointer_source, PointerSourceParams, PointerSourceSession,
-};
 pub use model::PointerSourceModel;
 pub use projection::{PointerItem, PointerSortMode};
