@@ -49,12 +49,20 @@ impl Config {
 #[derive(Clone)]
 pub struct Handles {
     pub wallet: WalletRuntimeHandle,
+    /// Clone of the [`WalletStatusSlot`] the runtime was registered with
+    /// (D4: the runtime is the slot's sole writer). Callers that need to
+    /// *read* readiness for an already-registered runtime — e.g.
+    /// `nmp_wallet::backend::NwcWalletBackend`, which derives
+    /// `WalletReadiness` from this same slot in its `snapshot()` — clone
+    /// this instead of re-deriving a slot bound to nothing.
+    pub status: WalletStatusSlot,
 }
 
 impl std::fmt::Debug for Handles {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Handles")
             .field("wallet", &"WalletRuntimeHandle")
+            .field("status", &"WalletStatusSlot")
             .finish()
     }
 }
@@ -183,10 +191,13 @@ pub fn register(
     config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     // 1. Shared status slot — one `Arc` clone goes to the runtime (sole
-    //    writer, D4), the other is captured below by the typed snapshot
-    //    projection closure.
+    //    writer, D4), one is captured below by the typed snapshot projection
+    //    closure, and one is handed back via `Handles::status` for callers
+    //    that need to read readiness for this same runtime (e.g.
+    //    `nmp_wallet::backend::NwcWalletBackend`).
     let status_slot: WalletStatusSlot = new_wallet_status_slot();
     let typed_projection_slot = Arc::clone(&status_slot);
+    let handles_status_slot = Arc::clone(&status_slot);
 
     // 2. Wallet runtime — held inside an `Arc<Mutex<Option<WalletRuntime>>>`
     //    handle the action modules, the `ProtocolCommand` impls, and the
@@ -229,8 +240,13 @@ pub fn register(
 
     // Hand the per-app handle back so the caller can thread it into the NIP-57
     // zap auto-chain (ADR-0072 rung 5.2; `nmp-nip47` must not depend on
-    // `nmp-nip57`, so the zap override lives at the caller).
-    Ok(Handles { wallet: handle })
+    // `nmp-nip57`, so the zap override lives at the caller) — and the shared
+    // status slot, so callers like `NwcWalletBackend` can derive readiness
+    // for this same runtime without a second registration.
+    Ok(Handles {
+        wallet: handle,
+        status: handles_status_slot,
+    })
 }
 
 /// Build the typed `"wallet"` sidecar entry from the shared status slot, or
