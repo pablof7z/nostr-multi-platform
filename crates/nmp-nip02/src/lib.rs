@@ -53,7 +53,7 @@ use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::ActionModule;
 use nmp_core::substrate::{
     ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, KernelReaderRegistrar,
-    SnapshotProjectionRegistrar,
+    PublishPolicyRegistrar, SnapshotProjectionRegistrar,
 };
 use serde::{Deserialize, Serialize};
 
@@ -85,12 +85,30 @@ pub fn register(
               + HostCapabilities
               + IdentityChangeRegistrar
               + KernelReaderRegistrar
+              + PublishPolicyRegistrar
               + SnapshotProjectionRegistrar),
     _config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    declare_publish_policy(app).map_err(|_| nmp_core::substrate::RegistrationError {
+        namespace: "publish_policy",
+        prior_provider: "nmp-core::publish",
+        new_provider: "nmp-nip02",
+    })?;
     register_follow_actions(app);
     register_follow_state_runtime(app);
     Ok(Handles {})
+}
+
+pub fn declare_publish_policy(
+    app: &impl PublishPolicyRegistrar,
+) -> Result<(), nmp_core::publish::PublishPolicyRegistrationError> {
+    app.register_reserved_publish_builder(
+        nmp_core::kinds::KIND_CONTACT_LIST,
+        "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+         not PublishRaw (the actor owns the follow-list state)",
+    )?;
+    app.register_discovery_indexable_publish_kind(nmp_core::kinds::KIND_CONTACT_LIST);
+    Ok(())
 }
 
 const FOLLOW_LIST_PROJECTION_KEY: nmp_ownership::DeclaredProjectionKey =
@@ -467,6 +485,11 @@ mod tests {
             }
             other => panic!("expected ActorCommand::Unfollow, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn registers_contact_list_publish_policy() {
+        declare_publish_policy(&()).expect("kind:3 policy registration must be idempotent");
     }
 }
 

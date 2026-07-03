@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, ObservedProjectionRegistrar,
-    SnapshotProjectionRegistrar,
+    PublishPolicyRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_nip50::SearchFallbackRelays;
 
@@ -52,9 +52,15 @@ pub fn register(
               + ObservedProjectionRegistrar
               + HostCapabilities
               + SnapshotProjectionRegistrar
+              + PublishPolicyRegistrar
               + IdentityChangeRegistrar),
     config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
+    crate::declare_publish_policy(app).map_err(|_| nmp_core::substrate::RegistrationError {
+        namespace: "publish_policy",
+        prior_provider: "nmp-core::publish",
+        new_provider: "nmp-nip51",
+    })?;
     let mute = crate::runtime::register_mute_runtime(app);
     let bookmarks = crate::runtime::register_bookmark_runtime(app);
     crate::runtime::register_bookmark_set_runtime(app);

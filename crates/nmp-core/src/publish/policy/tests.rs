@@ -15,38 +15,84 @@ use crate::kinds::{
     KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST, KIND_PROFILE_METADATA, KIND_REACTION,
     KIND_RELAY_LIST, KIND_SHORT_TEXT_NOTE,
 };
+use std::sync::Once;
+
+static REGISTER_TEST_POLICIES: Once = Once::new();
+
+fn register_test_protocol_policies() {
+    REGISTER_TEST_POLICIES.call_once(|| {
+        register_reserved_publish_builder(
+            KIND_PROFILE_METADATA,
+            "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+        )
+        .expect("kind:0 policy must register");
+        register_discovery_indexable_publish_kind(KIND_PROFILE_METADATA);
+        register_reserved_publish_builder(
+            KIND_CONTACT_LIST,
+            "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+             not PublishRaw (the actor owns the follow-list state)",
+        )
+        .expect("kind:3 policy must register");
+        register_discovery_indexable_publish_kind(KIND_CONTACT_LIST);
+        register_reserved_publish_builder(
+            KIND_BOOKMARK_LIST,
+            "kind:10003 bookmark list must be modified via \
+             nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+             (the NIP-51 builder owns the list merge)",
+        )
+        .expect("kind:10003 policy must register");
+        register_discovery_indexable_publish_range(10_000..=19_999);
+        register_discovery_indexable_publish_kind(KIND_RELAY_LIST);
+        register_discovery_indexable_publish_kind(KIND_DM_RELAY_LIST);
+        register_discovery_indexable_publish_kind(KIND_MUTE_LIST);
+        register_discovery_indexable_publish_kind(KIND_BLOCKED_RELAYS);
+    });
+}
 
 /// The reserved-builder kinds must classify as `ReservedBuilderOnly` and
 /// surface the matching builder.
 #[test]
 fn reserved_builder_kinds_are_classified_reserved() {
+    register_test_protocol_policies();
+    let profile = ReservedBuilderPolicy::new(
+        "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+    );
+    let contacts = ReservedBuilderPolicy::new(
+        "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+         not PublishRaw (the actor owns the follow-list state)",
+    );
+    let bookmarks = ReservedBuilderPolicy::new(
+        "kind:10003 bookmark list must be modified via \
+         nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+         (the NIP-51 builder owns the list merge)",
+    );
     assert_eq!(
         classify_publish_behavior(KIND_PROFILE_METADATA),
-        PublishBehavior::ReservedBuilderOnly(ReservedKind::Profile),
+        PublishBehavior::ReservedBuilderOnly(profile),
         "kind:0 profile is reserved to PublishProfile"
     );
     assert_eq!(
         classify_publish_behavior(KIND_CONTACT_LIST),
-        PublishBehavior::ReservedBuilderOnly(ReservedKind::Contacts),
+        PublishBehavior::ReservedBuilderOnly(contacts),
         "kind:3 contacts is reserved to nmp.follow / nmp.unfollow"
     );
     assert_eq!(
         classify_publish_behavior(KIND_BOOKMARK_LIST),
-        PublishBehavior::ReservedBuilderOnly(ReservedKind::Bookmarks),
+        PublishBehavior::ReservedBuilderOnly(bookmarks),
         "kind:10003 bookmarks are reserved to NIP-51 bookmark builders"
     );
 
     assert_eq!(
         classify_publish_behavior(KIND_PROFILE_METADATA).reserved_builder(),
-        Some(ReservedKind::Profile)
+        Some(profile)
     );
     assert_eq!(
         classify_publish_behavior(KIND_CONTACT_LIST).reserved_builder(),
-        Some(ReservedKind::Contacts)
+        Some(contacts)
     );
     assert_eq!(
         classify_publish_behavior(KIND_BOOKMARK_LIST).reserved_builder(),
-        Some(ReservedKind::Bookmarks)
+        Some(bookmarks)
     );
 }
 
@@ -55,20 +101,30 @@ fn reserved_builder_kinds_are_classified_reserved() {
 /// downstream shells surface them, so the strings are a behaviour contract.
 #[test]
 fn reserved_kind_rejection_messages_are_preserved() {
+    register_test_protocol_policies();
     // Exact-match the verbatim wording the old `action.rs` literal guards
     // produced — downstream shells surface these strings and the action tests
     // assert on them, so they are a behaviour contract, not a substring hint.
     assert_eq!(
-        ReservedKind::Profile.raw_publish_rejection(),
+        classify_publish_behavior(KIND_PROFILE_METADATA)
+            .reserved_builder()
+            .expect("kind:0 must be reserved")
+            .raw_publish_rejection(),
         "use PublishProfile (not PublishRaw) for kind:0 profile updates",
     );
     assert_eq!(
-        ReservedKind::Contacts.raw_publish_rejection(),
+        classify_publish_behavior(KIND_CONTACT_LIST)
+            .reserved_builder()
+            .expect("kind:3 must be reserved")
+            .raw_publish_rejection(),
         "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
          not PublishRaw (the actor owns the follow-list state)",
     );
     assert_eq!(
-        ReservedKind::Bookmarks.raw_publish_rejection(),
+        classify_publish_behavior(KIND_BOOKMARK_LIST)
+            .reserved_builder()
+            .expect("kind:10003 must be reserved")
+            .raw_publish_rejection(),
         "kind:10003 bookmark list must be modified via \
          nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
          (the NIP-51 builder owns the list merge)",
@@ -97,10 +153,28 @@ fn private_envelope_kinds_fail_closed() {
     );
 }
 
+#[test]
+fn private_fail_closed_is_hardcoded_ahead_of_registered_policy() {
+    register_discovery_indexable_publish_kind(KIND_GIFT_WRAP);
+    register_discovery_indexable_publish_kind(KIND_CHAT_MESSAGE);
+
+    assert_eq!(
+        classify_publish_behavior(KIND_GIFT_WRAP),
+        PublishBehavior::PrivateFailClosed,
+        "registered public policy must never downgrade gift-wrap routing"
+    );
+    assert_eq!(
+        classify_publish_behavior(KIND_CHAT_MESSAGE),
+        PublishBehavior::PrivateFailClosed,
+        "registered public policy must never downgrade sealed chat routing"
+    );
+}
+
 /// Discovery-indexable replaceables route normally but are recorded as
 /// discovery-indexable so the policy mirrors the resolver's indexer fan-out.
 #[test]
 fn discovery_indexable_kinds_are_classified() {
+    register_test_protocol_policies();
     for kind in [
         KIND_RELAY_LIST,
         KIND_DM_RELAY_LIST,
@@ -128,6 +202,7 @@ fn discovery_indexable_kinds_are_classified() {
 /// are publicly routable and publishable raw.
 #[test]
 fn public_kinds_are_routable() {
+    register_test_protocol_policies();
     for kind in [
         KIND_SHORT_TEXT_NOTE, // kind:1
         KIND_REACTION,        // kind:7
@@ -154,6 +229,7 @@ fn public_kinds_are_routable() {
 /// shrink it without updating this assertion.
 #[test]
 fn only_expected_kinds_are_reserved_across_full_sweep() {
+    register_test_protocol_policies();
     let mut reserved: Vec<u32> = Vec::new();
     for kind in 0u32..=40_000 {
         if classify_publish_behavior(kind).reserved_builder().is_some() {
@@ -221,6 +297,7 @@ fn private_kinds_require_verified_private_inbox_for_routing() {
 /// validation with EITHER target — the D10 gate only constrains private kinds.
 #[test]
 fn non_private_kinds_route_with_any_target() {
+    register_test_protocol_policies();
     use crate::publish::{PublishRouteClass, PublishTarget};
 
     for kind in [

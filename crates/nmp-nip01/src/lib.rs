@@ -81,3 +81,22 @@ pub use view::{
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
+
+pub fn declare_publish_policy(
+    app: &impl nmp_core::substrate::PublishPolicyRegistrar,
+) -> Result<(), nmp_core::publish::PublishPolicyRegistrationError> {
+    app.register_reserved_publish_builder(
+        nmp_core::kinds::KIND_PROFILE_METADATA,
+        "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+    )?;
+    app.register_discovery_indexable_publish_kind(nmp_core::kinds::KIND_PROFILE_METADATA);
+    Ok(())
+}
+
+#[cfg(test)]
+mod publish_policy_tests {
+    #[test]
+    fn registers_profile_publish_policy() {
+        crate::declare_publish_policy(&()).expect("kind:0 policy registration must be idempotent");
+    }
+}

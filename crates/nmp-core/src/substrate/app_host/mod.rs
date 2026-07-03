@@ -24,6 +24,7 @@
 //! must NOT.
 
 use std::ops::Range;
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use crate::publish::OutboxResolver;
@@ -223,6 +224,32 @@ pub trait BlockedRelayLookupRegistrar {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn super::BlockedRelayLookup>);
 }
 
+/// Register protocol-owned publish classifications.
+///
+/// The registry feeds the static publish-policy door
+/// (`classify_publish_behavior`) because publish validation runs below any
+/// app/context object. Registrations are idempotent process-wide facts about
+/// Nostr kinds; protocol installers call this during explicit composition.
+pub trait PublishPolicyRegistrar {
+    fn register_reserved_publish_builder(
+        &self,
+        kind: u32,
+        raw_publish_rejection: &'static str,
+    ) -> Result<(), crate::publish::PublishPolicyRegistrationError> {
+        crate::publish::register_reserved_publish_builder(kind, raw_publish_rejection)
+    }
+
+    fn register_discovery_indexable_publish_kind(&self, kind: u32) {
+        crate::publish::register_discovery_indexable_publish_kind(kind);
+    }
+
+    fn register_discovery_indexable_publish_range(&self, range: RangeInclusive<u32>) {
+        crate::publish::register_discovery_indexable_publish_range(range);
+    }
+}
+
+impl<T> PublishPolicyRegistrar for T {}
+
 /// Install the outbound routing / publish / raw-forward factories and the
 /// NIP-46 bootstrap relay — the composition root's substrate-factory seam.
 pub trait RoutingFactoryRegistrar {
@@ -407,6 +434,7 @@ pub trait AppHost:
     + DmInboxRelayRegistrar
     + BlockedRelayLookupRegistrar
     + DraftBuilderRegistrar
+    + PublishPolicyRegistrar
     + RoutingFactoryRegistrar
     + super::search::SearchScopeRegistrar
     + super::intent::InputScopeRegistrar
@@ -429,6 +457,7 @@ impl<T> AppHost for T where
         + DmInboxRelayRegistrar
         + BlockedRelayLookupRegistrar
         + DraftBuilderRegistrar
+        + PublishPolicyRegistrar
         + RoutingFactoryRegistrar
         + super::search::SearchScopeRegistrar
         + super::intent::InputScopeRegistrar

@@ -1,8 +1,37 @@
 use super::*;
 use crate::actor::PublishCommand;
 use nmp_signer_iface::UnsignedEvent;
+use std::sync::Once;
+
+mod signer_serde_tests;
+
+static REGISTER_TEST_POLICIES: Once = Once::new();
+
+fn register_test_protocol_policies() {
+    REGISTER_TEST_POLICIES.call_once(|| {
+        crate::publish::register_reserved_publish_builder(
+            0,
+            "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+        )
+        .expect("kind:0 policy must register");
+        crate::publish::register_reserved_publish_builder(
+            3,
+            "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+             not PublishRaw (the actor owns the follow-list state)",
+        )
+        .expect("kind:3 policy must register");
+        crate::publish::register_reserved_publish_builder(
+            10_003,
+            "kind:10003 bookmark list must be modified via \
+             nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+             (the NIP-51 builder owns the list merge)",
+        )
+        .expect("kind:10003 policy must register");
+    });
+}
 
 fn ctx() -> ActionContext {
+    register_test_protocol_policies();
     ActionContext::default()
 }
 
@@ -437,37 +466,5 @@ fn execute_publish_reply_emits_publish_reply_command() {
             assert_eq!(correlation_id.as_deref(), Some("test-cid"));
         }
         other => panic!("expected PublishReply, got {other:?}"),
-    }
-}
-
-#[test]
-fn publish_raw_serde_default_signer_is_active_when_field_omitted() {
-    // Backward-compat: dispatch JSON may omit `signer`; `#[serde(default)]`
-    // must deserialize it to Active rather than failing the decode.
-    let json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#;
-    let action: PublishAction =
-        serde_json::from_str(json).expect("legacy PublishRaw JSON must deserialize");
-    match action {
-        PublishAction::PublishRaw { signer, .. } => assert_eq!(signer, PublishSigner::Active),
-        other => panic!("expected PublishRaw, got {other:?}"),
-    }
-}
-
-#[test]
-fn publish_raw_serde_round_trips_registered_signer_provenance() {
-    // The selector must also survive the wire when a host supplies it, so
-    // a shell can address an agent key by typed provenance + hex pubkey.
-    let agent_pk = "a".repeat(64);
-    let json = format!(
-        r#"{{"PublishRaw":{{"kind":1,"tags":[],"content":"hi","target":"Auto","signer":{{"kind":"registered","pubkey":"{agent_pk}","provenance":"app_managed"}}}}}}"#
-    );
-    let action: PublishAction =
-        serde_json::from_str(&json).expect("PublishRaw JSON with typed signer must deserialize");
-    match action {
-        PublishAction::PublishRaw { signer, .. } => assert_eq!(
-            signer,
-            PublishSigner::registered(agent_pk, PublishSignerProvenance::AppManaged)
-        ),
-        other => panic!("expected PublishRaw, got {other:?}"),
     }
 }

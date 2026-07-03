@@ -94,8 +94,9 @@ pub use app_host::{
     DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
     IngestParserRegistrar, KernelReaderRegistrar, ObservedProjection,
     ObservedProjectionCommandHandle, ObservedProjectionRegistrar, ObservedProjectionSessionMap,
-    PreferredRelaySource, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    PreferredRelaySource, PublishPolicyRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SnapshotProjectionRegistrar,
 };
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
 // #1811 — FTS scope registry surface.
