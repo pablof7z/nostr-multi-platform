@@ -3,7 +3,9 @@
 //! This crate owns the wallet product surface described in
 //! `docs/architecture/nip60-nip61-wallet-design.md`: action namespaces, backend
 //! capability flags, the bounded `"wallet"` projection shape, operation-journal
-//! state, the unified backend seam, and the payment-port adapter NIP-57 uses.
+//! state, and the unified backend seam. It selects which backend's
+//! `PaymentPort` adapter NIP-57 pays through; the adapter itself is owned by
+//! the crate implementing that backend (`nmp-nip47` for NWC today).
 //!
 //! It deliberately does not open relay sockets, perform mint HTTP, hold native
 //! UI state, or own NIP-specific event codecs. Protocol mechanics remain in
@@ -31,7 +33,9 @@ pub use journal::{
     WalletJournalError, WalletLedger, WalletOperation, WalletOperationId, WalletOperationJournal,
     WalletOperationKind, WalletOperationState, WalletSagaEvent, WalletTrailEntry, WalletUnit,
 };
-pub use payment_port::{WalletBolt11Payment, WalletPaymentCommandFactory, WalletPaymentPort};
+pub use payment_port::{
+    WalletBackendPaymentCommandFactory, WalletBackendPaymentRouter, WalletBolt11Payment,
+};
 pub use projection::{
     WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletProjection, WalletReadiness,
     WalletReceiveRow, MAX_WALLET_PROJECTION_ROWS, WALLET_PROJECTION_KEY,

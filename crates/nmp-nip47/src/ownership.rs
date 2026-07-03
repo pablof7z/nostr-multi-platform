@@ -8,8 +8,8 @@ nmp_ownership::declare_crate_ownership! {
             id: "nip47.wallet_runtime",
             exclusive: true,
             scope: {
-                kind: "action",
-                value: "nmp.wallet.pay_invoice",
+                kind: "namespace",
+                value: "nmp-nip47",
                 context: "",
             },
             owns: [
@@ -20,7 +20,7 @@ nmp_ownership::declare_crate_ownership! {
     notes: [
         {
             claim: "nip47.wallet_runtime",
-            text: "The legacy `nmp.wallet.*` namespaces and `wallet` projection key are now owned by nmp-wallet while nmp-nip47 remains their current NWC compatibility implementation.",
+            text: "The `nmp.wallet.*` action namespaces and `wallet` projection key are exclusively owned by nmp-wallet (see crates/nmp-wallet/src/ownership.rs); nmp-nip47 remains their current NWC runtime implementation but does not itself claim the action namespace.",
         },
     ],
 }

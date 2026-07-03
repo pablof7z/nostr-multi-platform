@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.wallet",
     crate_name: "nmp-wallet",
-    summary: "Wallet composition crate. Owns wallet action namespaces, the bounded wallet projection shape, backend capability policy, operation journal state, the unified WalletBackend seam, and the PaymentPort adapter.",
+    summary: "Wallet composition crate. Owns wallet action namespaces, the bounded wallet projection shape, backend capability policy, operation journal state, and the unified WalletBackend seam. Selects which backend's PaymentPort adapter NIP-57 pays through; the adapter itself is owned by the crate implementing that backend.",
     claims: [
         {
             claim_type: "namespace",
@@ -104,7 +104,7 @@ nmp_ownership::declare_crate_ownership! {
                 context: "",
             },
             owns: [
-                "WalletBackend seam, capability flags, backend selection policy, operation journal, and PaymentPort adapter",
+                "WalletBackend seam, capability flags, backend selection policy, operation journal, and PaymentPort backend selection",
             ],
         },
     ],
