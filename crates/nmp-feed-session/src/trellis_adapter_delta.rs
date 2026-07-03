@@ -4,8 +4,12 @@ use nmp_core::{DependentInterestChild, DependentInterestDelta, DependentInterest
 use nmp_planner::InterestScope;
 use trellis_core::{ResourceCommand, ResourceKey};
 
+use crate::diagnostics::{
+    FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
+    FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReceipt,
+};
 use crate::trellis_resources::{
-    FeedSessionInterestScope, FeedSessionResourceCommand, InterestDemand,
+    digest, lifecycle_part, FeedSessionInterestScope, FeedSessionResourceCommand, InterestDemand,
 };
 
 #[derive(Default)]
@@ -13,15 +17,39 @@ pub(super) struct FeedSessionResourceLedger {
     active_children: BTreeMap<ResourceKey, DependentInterestChild>,
 }
 
+pub(super) struct FeedSessionResourceLedgerOutput {
+    pub(super) delta: DependentInterestDelta,
+    pub(super) diagnostics: Vec<FeedSessionDiagnosticReceipt>,
+}
+
 impl FeedSessionResourceLedger {
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "ledger unit tests exercise the no-diagnostics path; production uses delta_with_diagnostics"
+        )
+    )]
     pub(super) fn delta(
         &mut self,
         commands: &[ResourceCommand<FeedSessionResourceCommand>],
     ) -> DependentInterestDelta {
+        self.delta_with_diagnostics(commands, false).delta
+    }
+
+    pub(super) fn delta_with_diagnostics(
+        &mut self,
+        commands: &[ResourceCommand<FeedSessionResourceCommand>],
+        diagnostics_enabled: bool,
+    ) -> FeedSessionResourceLedgerOutput {
         let mut delta = DependentInterestDelta {
             commands: Vec::new(),
         };
+        let mut diagnostics = Vec::new();
         for command in commands {
+            let before = owner_count(self.active_children.contains_key(command.key()));
+            let diagnostic_event = diagnostic_event_kind(command);
+            let diagnostic_interest = diagnostic_interest(command);
             match command {
                 ResourceCommand::Open { key, command, .. } => {
                     self.upsert_child(
@@ -55,8 +83,17 @@ impl FeedSessionResourceLedger {
                     }
                 }
             }
+            if diagnostics_enabled {
+                let after = owner_count(self.active_children.contains_key(command.key()));
+                diagnostics.push(FeedSessionDiagnosticReceipt {
+                    event: diagnostic_event,
+                    resource_id: command.key().as_str().to_string(),
+                    interest: diagnostic_interest,
+                    owner_counts: FeedSessionDiagnosticOwnerCounts::known(before, after),
+                });
+            }
         }
-        delta
+        FeedSessionResourceLedgerOutput { delta, diagnostics }
     }
 
     fn upsert_child(
@@ -99,6 +136,59 @@ fn child_from_command(command: &FeedSessionResourceCommand) -> Option<DependentI
 
 fn child_from_demand(demand: &InterestDemand) -> DependentInterestChild {
     DependentInterestChild::tailing(demand.shape.clone(), interest_scope(&demand.scope))
+}
+
+fn diagnostic_event_kind(
+    command: &ResourceCommand<FeedSessionResourceCommand>,
+) -> FeedSessionDiagnosticEventKind {
+    match command {
+        ResourceCommand::Open { .. } => FeedSessionDiagnosticEventKind::Open,
+        ResourceCommand::Replace { .. } => FeedSessionDiagnosticEventKind::Replace,
+        ResourceCommand::Refresh { .. } => FeedSessionDiagnosticEventKind::Refresh,
+        ResourceCommand::Close { .. } => FeedSessionDiagnosticEventKind::Close,
+    }
+}
+
+fn diagnostic_interest(
+    command: &ResourceCommand<FeedSessionResourceCommand>,
+) -> Option<FeedSessionDiagnosticInterest> {
+    match command {
+        ResourceCommand::Open { command, .. }
+        | ResourceCommand::Replace { command, .. }
+        | ResourceCommand::Refresh { command, .. } => interest_from_command(command),
+        ResourceCommand::Close { .. } => None,
+    }
+}
+
+fn interest_from_command(
+    command: &FeedSessionResourceCommand,
+) -> Option<FeedSessionDiagnosticInterest> {
+    match command {
+        FeedSessionResourceCommand::OpenInterest(demand) => Some(interest_from_demand(demand)),
+        FeedSessionResourceCommand::CloseInterest(_)
+        | FeedSessionResourceCommand::ReplaceInterestSet(_)
+        | FeedSessionResourceCommand::ReplayFromStore(_)
+        | FeedSessionResourceCommand::AttachProjection(_)
+        | FeedSessionResourceCommand::DetachProjection(_) => None,
+    }
+}
+
+fn interest_from_demand(demand: &InterestDemand) -> FeedSessionDiagnosticInterest {
+    let interest_key = demand.resource_key();
+    FeedSessionDiagnosticInterest::new(
+        interest_key.as_str().to_string(),
+        demand.scope.key_part(),
+        format!(
+            "lifecycle={}:shape={}",
+            lifecycle_part(&demand.lifecycle),
+            digest(("interest-shape", &demand.shape))
+        ),
+        demand.provenance.key_part(),
+    )
+}
+
+fn owner_count(active: bool) -> u32 {
+    u32::from(active)
 }
 
 fn interest_scope(scope: &FeedSessionInterestScope) -> InterestScope {

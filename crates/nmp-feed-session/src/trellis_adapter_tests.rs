@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
-    mpsc, Arc,
+    mpsc, Arc, Mutex,
 };
 use std::thread;
 
@@ -12,8 +12,13 @@ use nmp_feed::FeedShape;
 use nmp_planner::InterestShape;
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
-use crate::trellis_adapter::{FeedSessionOutputFrameKind, FeedSessionTrellisAdapter};
+use crate::trellis_adapter::FeedSessionTrellisAdapter;
+use crate::trellis_adapter_trace::FeedSessionOutputFrameKind;
 use crate::trellis_resources::FeedSessionRouteProvenance;
+use crate::{
+    FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticReasonCode,
+    FeedSessionDiagnosticsHandle, FeedSessionDiagnosticsSink,
+};
 
 fn author_shape(author: &str) -> InterestShape {
     InterestShape::timeline_for(
@@ -36,6 +41,23 @@ fn extra(values: Vec<AcquisitionInterest>) -> ExtraAcquisition {
 fn command_receiver() -> (CommandSender, mpsc::Receiver<ActorMail>) {
     let (tx, rx) = mpsc::channel();
     (CommandSender::new(tx), rx)
+}
+
+#[derive(Default)]
+struct RecordingDiagnostics {
+    batches: Mutex<Vec<FeedSessionDiagnosticBatch>>,
+}
+
+impl RecordingDiagnostics {
+    fn batches(&self) -> Vec<FeedSessionDiagnosticBatch> {
+        self.batches.lock().unwrap().clone()
+    }
+}
+
+impl FeedSessionDiagnosticsSink for RecordingDiagnostics {
+    fn record(&self, batch: FeedSessionDiagnosticBatch) {
+        self.batches.lock().unwrap().push(batch);
+    }
 }
 
 fn drain_deltas(
@@ -97,6 +119,92 @@ fn close_authors(commands: &[DependentInterestDeltaCommand]) -> BTreeSet<String>
         })
         .flat_map(|child| authors(std::slice::from_ref(child)))
         .collect()
+}
+
+#[test]
+fn adapter_emits_live_diagnostics_when_sink_is_enabled() {
+    let (sender, _rx) = command_receiver();
+    let diagnostics = Arc::new(RecordingDiagnostics::default());
+    let adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        "app.feed.synthetic",
+        FeedShape::RootIndexed,
+        Vec::new(),
+        sender,
+        FeedSessionDiagnosticsHandle::new(diagnostics.clone()),
+    )
+    .unwrap();
+
+    assert!(adapter.sync(&extra(vec![interest("alice")]), "source-changed"));
+
+    let batches = diagnostics.batches();
+    assert_eq!(batches.len(), 1);
+    let batch = &batches[0];
+    assert_eq!(batch.projection_key, "app.feed.synthetic");
+    assert_eq!(batch.view_label, "root-indexed");
+    assert_eq!(
+        batch.reason.code,
+        FeedSessionDiagnosticReasonCode::AcquisitionSync
+    );
+    assert_eq!(batch.reason.label, "source-changed");
+    assert!(batch.transaction.transaction > 0);
+    assert_eq!(batch.receipts.len(), 1);
+    let receipt = &batch.receipts[0];
+    assert_eq!(receipt.event, FeedSessionDiagnosticEventKind::Open);
+    assert_eq!(receipt.owner_counts.before, 0);
+    assert_eq!(receipt.owner_counts.after, 1);
+    let interest = receipt.interest.as_ref().unwrap();
+    assert_eq!(interest.scope, "active-account");
+    assert_eq!(interest.provenance, "active-follow-timeline");
+    assert!(interest.shape.starts_with("lifecycle=tailing:shape="));
+    assert!(
+        !interest.shape.contains("alice"),
+        "diagnostic shape label should not expose raw author keys"
+    );
+
+    let remove_count = Arc::new(AtomicUsize::new(0));
+    (adapter.close_action(remove_projection_action(Arc::clone(&remove_count))))();
+
+    let batches = diagnostics.batches();
+    assert_eq!(batches.len(), 2);
+    let close = &batches[1];
+    assert_eq!(
+        close.reason.code,
+        FeedSessionDiagnosticReasonCode::AcquisitionClose
+    );
+    assert_eq!(close.receipts.len(), 1);
+    assert_eq!(
+        close.receipts[0].event,
+        FeedSessionDiagnosticEventKind::Close
+    );
+    assert_eq!(close.receipts[0].owner_counts.before, 1);
+    assert_eq!(close.receipts[0].owner_counts.after, 0);
+    assert!(close.receipts[0].interest.is_none());
+}
+
+#[test]
+fn source_effect_diagnostics_are_marked_separately_from_initial_sync() {
+    let (sender, rx) = command_receiver();
+    let diagnostics = Arc::new(RecordingDiagnostics::default());
+    let adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        "app.feed.synthetic",
+        FeedShape::RootIndexed,
+        Vec::new(),
+        sender,
+        FeedSessionDiagnosticsHandle::new(diagnostics.clone()),
+    )
+    .unwrap();
+
+    assert!(adapter.sync_source_effect_for_test(&extra(vec![interest("alice")]), "source-changed"));
+    let deltas = drain_deltas(&rx);
+    assert_eq!(deltas.len(), 1);
+    assert_eq!(deltas[0].2, "source-changed");
+
+    let batches = diagnostics.batches();
+    assert_eq!(batches.len(), 1);
+    assert_eq!(
+        batches[0].reason.code,
+        FeedSessionDiagnosticReasonCode::SourceEffect
+    );
 }
 
 #[test]

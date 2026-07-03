@@ -6,14 +6,13 @@ use std::sync::{
 
 use nmp_feed::FeedShape;
 
-use crate::trellis_adapter::{
-    FeedSessionOutputFrameKind, FeedSessionResourceTraceKind, FeedSessionTrellisAdapter,
-};
+use crate::trellis_adapter::FeedSessionTrellisAdapter;
 use crate::trellis_adapter_equivalence_support::{
     assert_changed_step, assert_unchanged_step, command_receiver, delta_close_authors,
     drain_delta_commands, drain_mark_changed, expected_traces, extra_from_authors,
     remove_projection_action, trace_delta, OldReplacementPath,
 };
+use crate::trellis_adapter_trace::{FeedSessionOutputFrameKind, FeedSessionResourceTraceKind};
 
 #[test]
 fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {

@@ -9,9 +9,8 @@ use nmp_core::{CommandSender, DependentInterestChild, DependentInterestDeltaComm
 use nmp_planner::InterestShape;
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
-use crate::trellis_adapter::{
-    FeedSessionResourceTrace, FeedSessionResourceTraceKind, FeedSessionTrellisAdapter,
-};
+use crate::trellis_adapter::FeedSessionTrellisAdapter;
+use crate::trellis_adapter_trace::{FeedSessionResourceTrace, FeedSessionResourceTraceKind};
 use crate::trellis_resources::FeedSessionRouteProvenance;
 
 #[derive(Default)]

@@ -98,7 +98,13 @@ fn build_observed_source_session(
     source_observer.sync();
 
     let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new(key, shape, interests, sender)?;
+    let acquisition_adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        key,
+        shape,
+        interests,
+        sender,
+        app.feed_session_diagnostics(),
+    )?;
     acquisition_adapter.sync(&extra_acquisition, "feed-observed-source-acquisition");
 
     for hook in reactivity_hooks {
