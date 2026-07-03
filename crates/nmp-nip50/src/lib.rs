@@ -37,9 +37,11 @@ pub use scopes::{
     SCOPE_NAME_PROFILES,
 };
 pub use search::{
-    close_search_read, close_search_read_by_key, install_search_relay_source, open_search_read,
-    resolve_search_relays, search_projection_key, search_relay_plan, OpenSearchRead,
-    RelayPinnedInterest, SearchFallbackRelays, SearchReadHandle, SearchRelaySource,
+    close_search, close_search_read, close_search_read_by_key, install_search_relay_source,
+    open_search, open_search_read, parse_search_request, resolve_search_relays,
+    search_projection_key, search_relay_plan, search_snapshot_bytes, Nip50SearchHandle,
+    Nip50SearchSession, OpenSearchRead, RelayPinnedInterest, SearchFallbackRelays, SearchHost,
+    SearchReadHandle, SearchRelaySource,
 };
 pub use wire::{
     decode_search_results_snapshot, encode_search_results_snapshot,

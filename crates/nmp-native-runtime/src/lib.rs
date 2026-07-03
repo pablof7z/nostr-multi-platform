@@ -82,14 +82,12 @@ pub use group_feed::{
 pub use intent::InputIntentDispatch;
 pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_nip18::PrimaryKindError;
-pub use nmp_nip50::SearchRequest;
 pub use op_feed_session::{
     active_follows_op_feed_params, open_active_follows_op_feed,
     open_active_follows_op_feed_with_mute, ActiveFollowsOpFeedSession,
 };
 pub use plain_reactions::Nip25ReactionsHandle;
 pub use prestart_config::NmpConfigStatus;
-pub use search::{parse_search_request, Nip50SearchHandle, Nip50SearchSession};
 #[cfg(any(test, feature = "test-support"))]
 pub use signer_ports_test_support::{
     install_bunker_hook_for_test, install_external_signer_hook_for_test,

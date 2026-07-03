@@ -37,9 +37,10 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use nmp_native_runtime::NmpApp;
-use nmp_native_runtime::{Nip50SearchHandle, Nip50SearchSession};
-use nmp_nip50::{SearchRequest, SearchScope, SearchTargets};
+use nmp_nip50::{
+    close_search, open_search, search_snapshot_bytes, Nip50SearchHandle, Nip50SearchSession,
+    SearchRequest, SearchScope, SearchTargets,
+};
 use nostr::util::JsonUtil as _;
 use nostr::{EventBuilder, Keys, Kind, Tag, TagKind, Timestamp, ToBech32 as _};
 
@@ -252,7 +253,10 @@ fn drive_and_assert(app: *mut nmp_native_runtime::NmpApp, rx: &Receiver<()>) -> 
             Some(20),
         )
         .expect("explicit request");
-        let _ = app_ref.open_search_session(Nip50SearchSession::new(explicit, "sc-explicit-probe"));
+        let _ = open_search(
+            app_ref,
+            Nip50SearchSession::new(explicit, "sc-explicit-probe"),
+        );
         let probe_deadline = Instant::now() + Duration::from_secs(20);
         let mut proved = false;
         loop {
@@ -266,7 +270,7 @@ fn drive_and_assert(app: *mut nmp_native_runtime::NmpApp, rx: &Receiver<()>) -> 
             let _ = rx.recv_timeout(Duration::from_secs(2));
         }
         eprintln!("[SC-TRANSPARENCY] EXPLICIT probe → nostr.wine returned hits: {proved}");
-        app_ref.close_search_session(&Nip50SearchHandle::for_key("sc-explicit-probe"));
+        close_search(app_ref, &Nip50SearchHandle::for_key("sc-explicit-probe"));
         proved
     };
 
@@ -279,7 +283,7 @@ fn drive_and_assert(app: *mut nmp_native_runtime::NmpApp, rx: &Receiver<()>) -> 
         // fallback; once nos.lol serves the kind:10007 into the auto-wired
         // SearchRelayListProjection, UserPreferred resolves to nostr.wine and
         // the pinned search REQ fans out there.
-        let _ = app_ref.open_search_session(Nip50SearchSession::new(request.clone(), session));
+        let _ = open_search(app_ref, Nip50SearchSession::new(request.clone(), session));
 
         let wine_hit = search_req_hit_wine(app_ref);
         let hits = decode_hits(app_ref, session);
@@ -341,7 +345,7 @@ fn search_req_hit_wine(app: &nmp_native_runtime::NmpApp) -> bool {
 
 /// Decode the current N50S search snapshot into its hits.
 fn decode_hits(app: &nmp_native_runtime::NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
-    app.search_session_snapshot_bytes(&Nip50SearchHandle::for_key(session))
+    search_snapshot_bytes(app, &Nip50SearchHandle::for_key(session))
         .and_then(|bytes| nmp_nip50::decode_search_results_snapshot(&bytes).ok())
         .map(|snap| snap.hits)
         .unwrap_or_default()

@@ -70,10 +70,11 @@ impl NmpApp {
             }
             InputIntentTarget::TextQuery { request_json } => {
                 if let Some(session_id) = session_id.filter(|s| !s.is_empty()) {
-                    if let Some(request) = crate::search::parse_search_request(request_json) {
-                        let _ = self.open_search_session(crate::search::Nip50SearchSession::new(
-                            request, session_id,
-                        ));
+                    if let Some(request) = nmp_nip50::parse_search_request(request_json) {
+                        let _ = nmp_nip50::open_search(
+                            self,
+                            nmp_nip50::Nip50SearchSession::new(request, session_id),
+                        );
                     }
                 }
             }

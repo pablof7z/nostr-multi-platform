@@ -8,7 +8,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{KernelEvent, PreferredRelaySource};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::FrameworkProjectionKey;
 use nmp_read_session::{
@@ -44,6 +44,132 @@ pub struct OpenSearchRead {
     pub handle: SearchReadHandle,
     /// Resolved live relay pins. Empty means cache-only search.
     pub relays: Vec<String>,
+}
+
+/// Host capabilities the NIP-50 public search doorway needs.
+///
+/// Runtime crates implement this once beside their generic [`ReadHost`] impl.
+/// The concept crate owns the public `open_search` / `close_search` lifecycle;
+/// the host only supplies runtime-owned resources without growing NIP-50
+/// methods of its own.
+pub trait SearchHost: ReadHost {
+    /// The host-installed preferred relay source used for `UserPreferred` and
+    /// `AppDefault` target resolution.
+    fn search_relay_source(&self) -> Option<Arc<dyn PreferredRelaySource>>;
+
+    /// The host event store used for bounded cache seeding.
+    fn search_event_store(&self) -> Option<Arc<dyn EventStore>>;
+
+    /// Pull the latest typed snapshot payload for `projection_key`.
+    fn search_snapshot_payload(&self, projection_key: &str) -> Option<Vec<u8>>;
+}
+
+/// Descriptor for one host-driven NIP-50 search read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip50SearchSession {
+    request: SearchRequest,
+    key: String,
+}
+
+impl Nip50SearchSession {
+    /// Build a search descriptor with a caller-stable key.
+    #[must_use]
+    pub fn new(request: SearchRequest, key: impl Into<String>) -> Self {
+        Self {
+            request,
+            key: key.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn request(&self) -> &SearchRequest {
+        &self.request
+    }
+}
+
+/// Runtime handle for one NIP-50 search read session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Nip50SearchHandle {
+    key: String,
+    projection_key: String,
+    read_handle: Option<SearchReadHandle>,
+}
+
+impl Nip50SearchHandle {
+    /// Reconstruct the typed handle used by legacy close/read operations.
+    #[must_use]
+    pub fn for_key(key: impl Into<String>) -> Self {
+        let key = key.into();
+        Self {
+            projection_key: search_projection_key(&key),
+            key,
+            read_handle: None,
+        }
+    }
+
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
+        &self.projection_key
+    }
+}
+
+struct PreferredRelaySearchSource<'a>(&'a dyn PreferredRelaySource);
+
+impl SearchRelaySource for PreferredRelaySearchSource<'_> {
+    fn user_preferred(&self) -> Vec<String> {
+        self.0.primary()
+    }
+
+    fn app_default(&self) -> Vec<String> {
+        self.0.fallback()
+    }
+}
+
+/// Open a NIP-50 search session through the concept-owned lifecycle doorway.
+#[must_use]
+pub fn open_search<H>(host: &H, descriptor: Nip50SearchSession) -> Nip50SearchHandle
+where
+    H: SearchHost,
+{
+    let opened = open_search_for_key(host, descriptor.request, &descriptor.key);
+    Nip50SearchHandle {
+        key: descriptor.key,
+        projection_key: opened.handle.projection_key().to_string(),
+        read_handle: Some(opened.handle),
+    }
+}
+
+/// Close a NIP-50 search session by its typed handle.
+pub fn close_search<H>(host: &H, handle: &Nip50SearchHandle) -> bool
+where
+    H: ReadHost,
+{
+    if let Some(read_handle) = handle.read_handle.as_ref() {
+        return close_search_read(host, read_handle);
+    }
+    close_search_read_by_key(host, &handle.key)
+}
+
+/// Read the current typed `N50S` search-results buffer for a live session.
+#[must_use]
+pub fn search_snapshot_bytes<H>(host: &H, handle: &Nip50SearchHandle) -> Option<Vec<u8>>
+where
+    H: SearchHost,
+{
+    host.search_snapshot_payload(handle.projection_key())
+}
+
+fn open_search_for_key<H>(host: &H, request: SearchRequest, session_id: &str) -> OpenSearchRead
+where
+    H: SearchHost,
+{
+    let relay_source = host.search_relay_source();
+    let relay_source = relay_source.as_deref().map(PreferredRelaySearchSource);
+    let relay_source = relay_source
+        .as_ref()
+        .map(|source| source as &dyn SearchRelaySource);
+    let store = host.search_event_store();
+    open_search_read(host, request, session_id, relay_source, store.as_deref())
 }
 
 struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
@@ -148,4 +274,22 @@ pub fn close_search_read(host: &dyn ReadHost, handle: &SearchReadHandle) -> bool
 #[must_use]
 pub fn close_search_read_by_key(host: &dyn ReadHost, session_id: &str) -> bool {
     host.close_read_session_by_projection_key(&search_projection_key(session_id))
+}
+
+/// Parse the JSON search request payload into a validated [`SearchRequest`].
+///
+/// The JSON mirrors `SearchRequest`'s serde shape but re-runs
+/// [`SearchRequest::new`] so the NIP-50 bounded-query validation and
+/// `max_hits` cap apply.
+pub fn parse_search_request(json: &str) -> Option<SearchRequest> {
+    #[derive(serde::Deserialize)]
+    struct Dto {
+        query: String,
+        scope: crate::SearchScope,
+        targets: crate::SearchTargets,
+        #[serde(default)]
+        max_hits: Option<usize>,
+    }
+    let dto: Dto = serde_json::from_str(json).ok()?;
+    SearchRequest::new(&dto.query, dto.scope, dto.targets, dto.max_hits)
 }

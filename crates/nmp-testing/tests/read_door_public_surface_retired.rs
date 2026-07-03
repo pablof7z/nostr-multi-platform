@@ -31,8 +31,14 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
             "crates/nmp-native-runtime/src/search.rs",
             &[
                 "pub fn open_search(",
+                "pub fn open_search_session(",
                 "pub fn close_search(",
+                "pub fn close_search_session(",
                 "pub fn search_snapshot_bytes(",
+                "pub fn search_session_snapshot_bytes(",
+                "pub fn parse_search_request(",
+                "pub struct Nip50SearchHandle",
+                "pub struct Nip50SearchSession",
             ][..],
         ),
         (
@@ -52,7 +58,13 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
         ),
         (
             "crates/nmp-native-runtime/src/lib.rs",
-            &["pub mod op_pointer_source"][..],
+            &[
+                "pub mod op_pointer_source",
+                "pub use nmp_nip50::SearchRequest",
+                "Nip50SearchHandle",
+                "Nip50SearchSession",
+                "parse_search_request",
+            ][..],
         ),
         (
             "crates/nmp-native-runtime/src/op_pointer_source/mod.rs",
