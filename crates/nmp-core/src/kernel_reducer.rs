@@ -325,6 +325,10 @@ mod command_apply_tests;
 mod command_apply_publish_tests;
 
 #[cfg(test)]
+#[path = "kernel_reducer/command_apply_publish_draft_tests.rs"]
+mod command_apply_publish_draft_tests;
+
+#[cfg(test)]
 #[path = "kernel_reducer/command_apply_publish_timestamp_tests.rs"]
 mod command_apply_publish_timestamp_tests;
 
