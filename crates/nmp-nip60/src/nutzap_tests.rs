@@ -137,3 +137,93 @@ fn nutzap_event_tags_matches_build_nutzap_event() {
 
     assert_eq!(tags, event_tags);
 }
+
+// ─── #2933 — missing DLEQ must fail closed, not pass silently ────────────
+
+fn received_nutzap(proof: NutZapProof, mint_id: &str) -> ReceivedNutZap {
+    ReceivedNutZap {
+        event_id: EventId::from_byte_array([7u8; 32]),
+        sender_pubkey: Keys::generate().public_key(),
+        proofs: vec![proof],
+        mint_url: format!("https://mint-{mint_id}.example"),
+        amount_sats: 4,
+        comment: String::new(),
+        zapped_event_id: None,
+    }
+}
+
+#[test]
+fn verify_nutzap_dleq_rejects_a_proof_with_no_dleq() {
+    let (keyset, _mint_sk) = crate::cashu::http::mint_http_support::fixture_keyset();
+    let proof = NutZapProof {
+        amount: 4,
+        id: keyset.id.clone(),
+        secret: "s3cr3t".to_string(),
+        c: "02".to_string() + &"ab".repeat(32),
+        dleq: None,
+    };
+    let nutzap = received_nutzap(proof, "no-dleq");
+
+    let err = verify_nutzap_dleq_against_keyset(&nutzap, &keyset)
+        .expect_err("a proof with no DLEQ must be rejected, never skipped");
+    assert!(matches!(err, Nip60Error::Crypto(_)));
+}
+
+#[test]
+fn verify_nutzap_dleq_rejects_a_dleq_missing_the_blinding_factor() {
+    let (keyset, _mint_sk) = crate::cashu::http::mint_http_support::fixture_keyset();
+    let proof = NutZapProof {
+        amount: 4,
+        id: keyset.id.clone(),
+        secret: "s3cr3t".to_string(),
+        c: "02".to_string() + &"ab".repeat(32),
+        dleq: Some(crate::cashu::types::DleqProofWire {
+            e: "00".repeat(32),
+            s: "00".repeat(32),
+            r: None,
+        }),
+    };
+    let nutzap = received_nutzap(proof, "no-r");
+
+    let err = verify_nutzap_dleq_against_keyset(&nutzap, &keyset)
+        .expect_err("a DLEQ with no blinding factor r cannot be verified and must be rejected");
+    assert!(matches!(err, Nip60Error::Crypto(_)));
+}
+
+/// The contrasting positive case: a genuinely valid DLEQ (built the same way
+/// a real mint would sign one — see `mint_http_support::prove_dleq`) must
+/// still pass, proving the #2933 fix only closes the missing-DLEQ hole, not
+/// DLEQ verification itself.
+#[test]
+fn verify_nutzap_dleq_accepts_a_genuine_dleq() {
+    use crate::cashu::crypto::{blind_message, unblind_signature};
+    use crate::cashu::http::mint_http_support::{fixture_keyset, prove_dleq, secp};
+    use nostr::secp256k1::{PublicKey as SecpPublicKey, Scalar, SecretKey};
+
+    let (keyset, mint_sk) = fixture_keyset();
+    let secp_ctx = secp();
+    let secret = "nutzap-proof-secret".to_string();
+    let r = SecretKey::new(&mut nostr::secp256k1::rand::thread_rng());
+    let b_prime = blind_message(secret.as_bytes(), &r, &secp_ctx).expect("blind");
+    let c_prime = b_prime
+        .mul_tweak(&secp_ctx, &Scalar::from(mint_sk))
+        .expect("mint sign C' = k*B'");
+    let mint_pk = SecpPublicKey::from_secret_key(&secp_ctx, &mint_sk);
+    let c = unblind_signature(&c_prime, &r, &mint_pk, &secp_ctx).expect("unblind");
+    let (e_hex, s_hex) = prove_dleq(&b_prime, &c_prime, &mint_sk, &secp_ctx);
+
+    let proof = NutZapProof {
+        amount: 4,
+        id: keyset.id.clone(),
+        secret,
+        c: hex::encode(c.serialize()),
+        dleq: Some(crate::cashu::types::DleqProofWire {
+            e: e_hex,
+            s: s_hex,
+            r: Some(hex::encode(r.secret_bytes())),
+        }),
+    };
+    let nutzap = received_nutzap(proof, "valid");
+
+    verify_nutzap_dleq_against_keyset(&nutzap, &keyset).expect("genuine DLEQ must verify");
+}

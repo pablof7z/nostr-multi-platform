@@ -139,20 +139,7 @@ pub fn verify_dleq(
     let r2 = PublicKey::combine_keys(&[&s_b_prime, &neg_e_c_prime])
         .map_err(|e| Nip60Error::Crypto(format!("DLEQ R2 combine: {e}")))?;
 
-    // Cashu NUT-12 (nutshell reference): SHA256 of UTF-8 hex of UNCOMPRESSED points
-    // hash_e(R1, R2, K, C') → SHA256(hex(R1_uncompressed) + hex(R2_uncompressed) + hex(K_uncompressed) + hex(C'_uncompressed))
-    // Note: nutshell uses uncompressed (65-byte, 04||x||y) NOT compressed (33-byte), and
-    // the hash input is the concatenated hex string encoded as UTF-8 bytes.
-    let e_str = format!(
-        "{}{}{}{}",
-        hex::encode(r1.serialize_uncompressed()),      // 130 hex chars
-        hex::encode(r2.serialize_uncompressed()),
-        hex::encode(mint_pubkey.serialize_uncompressed()),   // K (mint pubkey), not B'
-        hex::encode(c_prime.serialize_uncompressed()),
-    );
-    let mut h = Sha256::new();
-    h.update(e_str.as_bytes());
-    let e_expected: [u8; 32] = h.finalize().into();
+    let e_expected = dleq_challenge(&r1, &r2, mint_pubkey, c_prime);
 
     if e_expected != proof.e {
         return Err(Nip60Error::Crypto(format!(
@@ -162,6 +149,35 @@ pub fn verify_dleq(
         )));
     }
     Ok(())
+}
+
+/// The NUT-12 DLEQ challenge transcript hash `e = H(R1 || R2 || K || C')`.
+///
+/// Cashu (nutshell reference): SHA256 of the UTF-8 hex of UNCOMPRESSED
+/// points, concatenated in that order. Nutshell uses uncompressed (65-byte,
+/// `04||x||y`) points, NOT compressed (33-byte) ones, and the hash input is
+/// the concatenated hex string encoded as UTF-8 bytes.
+///
+/// `pub(crate)` (not private) so the mint-side prover a test fixture needs
+/// (`cashu::http::mint_http_support::prove_dleq`) computes the IDENTICAL
+/// challenge this verifier checks against, rather than a second, independent
+/// copy of the transcript formula that could silently drift from this one.
+pub(crate) fn dleq_challenge(
+    r1: &PublicKey,
+    r2: &PublicKey,
+    mint_pubkey: &PublicKey,
+    c_prime: &PublicKey,
+) -> [u8; 32] {
+    let e_str = format!(
+        "{}{}{}{}",
+        hex::encode(r1.serialize_uncompressed()),
+        hex::encode(r2.serialize_uncompressed()),
+        hex::encode(mint_pubkey.serialize_uncompressed()),
+        hex::encode(c_prime.serialize_uncompressed()),
+    );
+    let mut h = Sha256::new();
+    h.update(e_str.as_bytes());
+    h.finalize().into()
 }
 
 /// A random 32-byte secret (used as the proof secret `x`).

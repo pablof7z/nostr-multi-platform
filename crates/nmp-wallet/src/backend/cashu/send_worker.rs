@@ -16,6 +16,28 @@
 //!   swap even if the response was lost in transit, so [`mark_uncertain`]
 //!   leaves the reservation in place and fails `Unknown` (never restore an
 //!   input that might already be spent).
+//!
+//! # Fold-after-sign ordering (#2934 money-safety fix)
+//!
+//! Once `client.swap(..)` itself returns `Ok`, the mint HAS committed —
+//! `finish_send` is everything after that. Its ledger fold (marking
+//! `selected` spent, crediting the change proofs, the `MintSettled`
+//! transition) only runs inside the outgoing kind:9321's `on_signed`
+//! closure, never before — mirrors `redeem_worker.rs`'s `finish_redeem`
+//! (fold only in the LAST `on_signed` of its own chain), and for the
+//! identical reason: `chain.rs::sign_and_publish` returns on a sign `Err`
+//! WITHOUT calling `on_signed`, so folding before that point would debit the
+//! sender's reported balance for a nutzap that was never actually signed or
+//! published — the recipient gets nothing while the sender's balance already
+//! reflects the send. If sign fails, none of that fold runs: the operation
+//! simply never advances past `MintPending`, and the ledger keeps showing
+//! the pre-send balance. This has the same accepted #2910-class gap
+//! `finish_redeem` documents: the swap's real outputs (`nutzap_proofs`,
+//! `change_proofs`) live only in this closure's capture until folded, so a
+//! sign failure (or a crash) still loses track of them for THIS attempt —
+//! not closed by this fix, tracked as #2910 — but it can never double-debit
+//! or silently strand a debit with no matching effect, which is what #2934
+//! closes.
 
 use std::sync::{Arc, Mutex};
 
@@ -179,12 +201,15 @@ pub(super) struct FinishSendArgs {
     pub(super) correlation_id: Option<String>,
 }
 
-/// Everything after the mint has already committed the swap: fold local
-/// state, build kind:9321, sign, publish. Split out of `run_send_worker` so
-/// tests can drive this directly with synthetic post-swap proofs — the DHKE
-/// blind/unblind math itself is `nmp-nip60`'s own already-tested surface
-/// (mirrors `deposit.rs`'s `dispatch_token_event` split for the identical
-/// reason).
+/// Everything after the mint has already committed the swap: build
+/// kind:9321, sign, publish, and — only once that sign actually succeeds —
+/// fold local state. Split out of `run_send_worker` so tests can drive this
+/// directly with synthetic post-swap proofs — the DHKE blind/unblind math
+/// itself is `nmp-nip60`'s own already-tested surface (mirrors
+/// `deposit.rs`'s `dispatch_token_event` split for the identical reason).
+///
+/// See this file's module docs ("Fold-after-sign ordering") for why the
+/// fold moved into `on_signed` instead of running here up front.
 pub(super) fn finish_send(args: FinishSendArgs) {
     let FinishSendArgs {
         worker_tx,
@@ -204,48 +229,6 @@ pub(super) fn finish_send(args: FinishSendArgs) {
 
     let nutzap_proofs: Vec<Proof> = new_proofs[..nutzap_count].to_vec();
     let change_proofs: Vec<Proof> = new_proofs[nutzap_count..].to_vec();
-
-    // Fold the swap's real effect into local state BEFORE building the
-    // outgoing kind:9321 — the mint has already committed the swap; a crash
-    // from here on must not lose track of which proofs are spent/live.
-    // `selected` was already removed from the inventory synchronously in
-    // `SendNutzapCommand::run` (the reservation that closes the double-tap
-    // race — see that call site's comment), so there is nothing left to
-    // remove here; only the trail/ledger fold and the change proofs remain.
-    {
-        let mut s = lock_state(&state);
-        // Per-proof `MintProbed{Spent}` (not `TokenDeleted`) — a consumed
-        // proof may share its kind:7375 token event with OTHER, unselected
-        // proofs that are still live; `TokenDeleted` operates at whole-event
-        // granularity and would zero those out too.
-        for stored in &selected {
-            s.ledger.apply(WalletFact::MintProbed {
-                proof: crate::journal::ProofRef::new(stored.proof.c.clone()),
-                verdict: crate::journal::ProofVerdict::Spent,
-            });
-        }
-        if !change_proofs.is_empty() {
-            let change_atoms: Vec<ProofAtom> = change_proofs
-                .iter()
-                .map(|p| ProofAtom {
-                    proof: crate::journal::ProofRef::new(p.c.clone()),
-                    amount_msat: p.amount.saturating_mul(1000),
-                })
-                .collect();
-            // No real kind:7375 event exists yet for this change (see module
-            // docs' "Deferred" section) — a stable synthetic id keys the
-            // trail/balance fold the same way a real event id would.
-            s.ledger.apply(WalletFact::TokenAdded {
-                token_event: WalletEventId::new(format!("pending-change-{}", operation_id.as_str())),
-                mint: MintUrl::new(mint.clone()),
-                unit: WalletUnit::new("sat"),
-                proofs: change_atoms,
-                via: Provenance::Saga(CorrelationId::new(operation_id.as_str())),
-            });
-        }
-        s.add_proofs(None, mint.clone(), change_proofs);
-        let _ = s.transition(&operation_id, WalletOperationState::MintSettled);
-    }
 
     let Ok(recipient_pk) = nostr::PublicKey::from_hex(&recipient_pubkey) else {
         fail_worker(
@@ -290,7 +273,49 @@ pub(super) fn finish_send(args: FinishSendArgs) {
         created_at,
         correlation_id,
         move |_tx, _signed| {
+            // Fold the swap's real effect into local state ONLY now that the
+            // outgoing kind:9321 is actually signed (#2934) — see this
+            // file's module docs. `selected` was already removed from the
+            // inventory synchronously in `SendNutzapCommand::run` (the
+            // reservation that closes the double-tap race — see that call
+            // site's comment), so there is nothing left to remove here; only
+            // the trail/ledger fold and the change proofs remain.
             let mut s = lock_state(&on_signed_state);
+            // Per-proof `MintProbed{Spent}` (not `TokenDeleted`) — a
+            // consumed proof may share its kind:7375 token event with OTHER,
+            // unselected proofs that are still live; `TokenDeleted` operates
+            // at whole-event granularity and would zero those out too.
+            for stored in &selected {
+                s.ledger.apply(WalletFact::MintProbed {
+                    proof: crate::journal::ProofRef::new(stored.proof.c.clone()),
+                    verdict: crate::journal::ProofVerdict::Spent,
+                });
+            }
+            if !change_proofs.is_empty() {
+                let change_atoms: Vec<ProofAtom> = change_proofs
+                    .iter()
+                    .map(|p| ProofAtom {
+                        proof: crate::journal::ProofRef::new(p.c.clone()),
+                        amount_msat: p.amount.saturating_mul(1000),
+                    })
+                    .collect();
+                // No real kind:7375 event exists yet for this change (see
+                // module docs' "Deferred" section) — a stable synthetic id
+                // keys the trail/balance fold the same way a real event id
+                // would.
+                s.ledger.apply(WalletFact::TokenAdded {
+                    token_event: WalletEventId::new(format!(
+                        "pending-change-{}",
+                        on_signed_op.as_str()
+                    )),
+                    mint: MintUrl::new(mint.clone()),
+                    unit: WalletUnit::new("sat"),
+                    proofs: change_atoms,
+                    via: Provenance::Saga(CorrelationId::new(on_signed_op.as_str())),
+                });
+            }
+            s.add_proofs(None, mint, change_proofs);
+            let _ = s.transition(&on_signed_op, WalletOperationState::MintSettled);
             let _ = s.transition(&on_signed_op, WalletOperationState::PublishPending);
         },
     );

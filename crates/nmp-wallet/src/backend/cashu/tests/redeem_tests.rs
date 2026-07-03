@@ -59,10 +59,12 @@ fn expect_error_code(errors: &RecordingErrorSurface, code: &str) {
     assert_eq!(errors.last_token_code.lock().unwrap().as_deref(), Some(code));
 }
 
-/// A proof with a P2PK secret locked to `pubkey`, no DLEQ (mint doesn't
-/// advertise NUT-12 — `verify_nutzap_dleq` skips proofs with no `dleq`, per
-/// its own doc comment, so this is a valid "no DLEQ offered" fixture, not a
-/// bypass).
+/// A proof with a P2PK secret locked to `pubkey`, no DLEQ. Every test below
+/// that uses this fixture fails closed at an EARLIER gate (unknown event,
+/// wrong `p` tag, untrusted mint, no wallet, wrong lock target, ...) than
+/// `verify_nutzap_dleq`, which — since #2933 — rejects a missing DLEQ rather
+/// than skipping it; this fixture never reaches that check in this file's
+/// tests, so `dleq: None` stays a harmless placeholder here, not a bypass.
 fn locked_proof(amount: u64, c: &str, pubkey: &str) -> NutZapProof {
     NutZapProof {
         amount,

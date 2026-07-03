@@ -330,29 +330,61 @@ pub fn decode_nutzap_fields(
 
 /// Verify all DLEQ proofs on the proofs in a received nutzap.
 ///
-/// Fetches the mint's keyset to get the signing public keys, then verifies
-/// each proof's DLEQ proof if present. Requires `dleq.r` (the blinding factor
-/// stored with the proof) to reconstruct B' and C' for verification.
+/// Fetches the mint's keyset to get the signing public keys, then hands off
+/// to [`verify_nutzap_dleq_against_keyset`] for the actual (pure, keyset-as-
+/// parameter) verification.
 ///
 /// Requires the `native` feature — it round-trips to the mint over HTTP
 /// (`crate::cashu::client`) to fetch the keyset.
 #[cfg(feature = "native")]
 pub fn verify_nutzap_dleq(nutzap: &ReceivedNutZap) -> Result<(), Nip60Error> {
+    let client = crate::cashu::client::MintClient::new(&nutzap.mint_url);
+    let keyset = client.get_sat_keyset()?;
+    verify_nutzap_dleq_against_keyset(nutzap, &keyset)
+}
+
+/// The pure DLEQ-verification half of [`verify_nutzap_dleq`], split out (a)
+/// so it is unit-testable without a live mint HTTP round-trip and (b) to
+/// mirror `blinded::finalize_blinded_outputs`'s own "keyset passed in, no
+/// I/O in here" shape.
+///
+/// Verifies each proof's DLEQ proof, requiring `dleq.r` (the blinding factor
+/// stored with the proof) to reconstruct B' and C'.
+///
+/// # Missing DLEQ fails closed (#2933)
+///
+/// A nutzap's proofs are a value claim from an untrusted THIRD PARTY (the
+/// sender, or a relay serving a forged event) — unlike `MintClient`'s own
+/// swap/mint calls, which use `DleqPolicy::VerifyIfPresent` because those
+/// round-trips always land at a mint this wallet already accepts (a mint
+/// that lies there is a trust decision this wallet already made, not
+/// something DLEQ defends against). Skipping a nutzap proof with no DLEQ (or
+/// no blinding factor `r`, without which B'/C' cannot be reconstructed) used
+/// to let it pass unverified; the design doc's "verify DLEQ before counting"
+/// invariant means missing evidence must count as failed evidence.
+pub(crate) fn verify_nutzap_dleq_against_keyset(
+    nutzap: &ReceivedNutZap,
+    keyset: &crate::cashu::types::KeySet,
+) -> Result<(), Nip60Error> {
     use crate::cashu::crypto::{hash_to_curve, verify_dleq, DleqProof};
     use crate::cashu::http::build_pubkey_map;
     use nostr::secp256k1::{PublicKey, Scalar, SecretKey};
 
-    let client = crate::cashu::client::MintClient::new(&nutzap.mint_url);
-    let keyset = client.get_sat_keyset()?;
-    let pubkey_map = build_pubkey_map(&keyset)?;
+    let pubkey_map = build_pubkey_map(keyset)?;
     let secp = nostr::secp256k1::Secp256k1::new();
 
     for proof in &nutzap.proofs {
         let Some(ref dleq_wire) = proof.dleq else {
-            continue; // mint may not support NUT-12
+            return Err(Nip60Error::Crypto(format!(
+                "nutzap proof (C={}) has no DLEQ proof — missing DLEQ is rejected, not skipped",
+                proof.c
+            )));
         };
         let Some(ref r_hex) = dleq_wire.r else {
-            continue; // no blinding factor → cannot reconstruct B' / C'
+            return Err(Nip60Error::Crypto(format!(
+                "nutzap proof (C={}) DLEQ is missing the blinding factor r",
+                proof.c
+            )));
         };
 
         let mint_pk = pubkey_map.get(&proof.amount).ok_or_else(|| {

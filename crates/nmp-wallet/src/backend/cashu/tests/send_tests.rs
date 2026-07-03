@@ -370,3 +370,121 @@ fn finish_send_updates_proofs_ledger_and_publishes_kind_9321() {
         "only the 8-sat change proof remains in balance (amount_msat = sats*1000)"
     );
 }
+
+/// #2934 money-safety fix — a sign failure AFTER the mint swap has already
+/// committed (mirrors a NIP-46 bunker timeout/disconnect) must never debit
+/// the sender's reported balance for a nutzap that was never actually
+/// signed or published. Same setup as
+/// `finish_send_updates_proofs_ledger_and_publishes_kind_9321` up to the
+/// sign step, but fails the sign instead of completing it — proving the
+/// ledger fold (and the operation's journal transition) only ever runs
+/// inside a successful `on_signed`, never before it.
+#[test]
+fn finish_send_sign_failure_leaves_balance_and_journal_state_untouched() {
+    let backend = backend_with_mint();
+    let operation_id = crate::journal::WalletOperationId::new("cid-sign-fail");
+    let spent_proof = synthetic_proof(30, "02aa");
+    {
+        let mut state = state::lock_state(&backend.state);
+        state
+            .begin_operation(operation_id.clone(), WalletOperationKind::SendNutzap)
+            .unwrap();
+        state.add_proofs(
+            Some("token-event-1".to_string()),
+            MINT.to_string(),
+            vec![spent_proof.clone()],
+        );
+        // Seed the pre-send ledger balance the same way a real prior deposit
+        // fold would have, so the assertion below proves the balance is
+        // UNCHANGED after the failed sign, not merely absent.
+        state.ledger.apply(crate::journal::WalletFact::TokenAdded {
+            token_event: crate::journal::WalletEventId::new("token-event-1"),
+            mint: crate::journal::MintUrl::new(MINT),
+            unit: crate::journal::WalletUnit::new("sat"),
+            proofs: vec![crate::journal::ProofAtom {
+                proof: crate::journal::ProofRef::new("02aa".to_string()),
+                amount_msat: 30_000,
+            }],
+            via: crate::journal::Provenance::Saga(crate::journal::CorrelationId::new("seed")),
+        });
+        state
+            .journal
+            .record_consumed_input(
+                &operation_id,
+                crate::journal::WalletConsumedInput {
+                    event_id: "token-event-1".to_string(),
+                    mint: MINT.to_string(),
+                    unit: "sat".to_string(),
+                    amount: 30,
+                },
+            )
+            .unwrap();
+        state
+            .transition(&operation_id, crate::journal::WalletOperationState::MintPending)
+            .unwrap();
+    }
+    let selected = vec![state::StoredProof {
+        token_event: Some("token-event-1".to_string()),
+        mint: MINT.to_string(),
+        proof: spent_proof,
+    }];
+    state::lock_state(&backend.state).remove_proofs(&selected);
+    let new_proofs = vec![synthetic_proof(21, "02bb"), synthetic_proof(8, "02cc")];
+
+    let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
+    send::finish_send(send::FinishSendArgs {
+        worker_tx: nmp_core::CommandSender::new(worker_tx),
+        state: std::sync::Arc::clone(&backend.state),
+        operation_id: operation_id.clone(),
+        account_pubkey: ACCOUNT.to_string(),
+        recipient_pubkey: RECIPIENT.to_string(),
+        mint: MINT.to_string(),
+        selected,
+        new_proofs,
+        nutzap_count: 1,
+        target_event_id: None,
+        relays: vec!["wss://recipient-relay.example".to_string()],
+        created_at: 1_700_000_000,
+        correlation_id: Some("cid-sign-fail".to_string()),
+    });
+
+    let sign_continuation = match recv_command(&worker_rx) {
+        ActorCommand::Sign(nmp_core::actor::SignCommand::EventForAccount { continuation, .. }) => {
+            continuation
+        }
+        other => panic!("expected EventForAccount (sign step), got {other:?}"),
+    };
+    // Simulate a NIP-46 bunker timeout/disconnect — `chain.rs`'s
+    // `sign_and_publish` returns on a sign `Err` WITHOUT ever calling
+    // `on_signed`.
+    sign_continuation.call(Err("bunker timeout".to_string()));
+
+    // `report_chain_failure` still surfaces an error token/action-failure
+    // record on this same channel — drain whatever it sent and prove NONE of
+    // it is a publish. The kind:9321 was never signed, so it must never
+    // reach the publish pipeline either.
+    while let Ok(mail) = worker_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+        let cmd = unwrap_mail(mail);
+        assert!(
+            !matches!(cmd, ActorCommand::Publish(_)),
+            "a failed sign must never enqueue a publish, got {cmd:?}"
+        );
+    }
+
+    let state = state::lock_state(&backend.state);
+    assert_eq!(
+        state.ledger.state().balance(
+            &crate::journal::MintUrl::new(MINT),
+            &crate::journal::WalletUnit::new("sat")
+        ),
+        30_000,
+        "the sender's reported balance must stay at its pre-send value — a \
+         failed sign must never debit it"
+    );
+    assert_eq!(
+        state.journal.get(&operation_id).unwrap().state,
+        crate::journal::WalletOperationState::MintPending,
+        "a failed sign must never advance the operation past MintPending \
+         (MintSettled/PublishPending only ever follow a successful sign)"
+    );
+}
