@@ -55,6 +55,44 @@ fn react_rejects_malformed_ids() {
 }
 
 #[test]
+fn reaction_draft_builder_owns_kind7_tag_grammar() {
+    let draft =
+        crate::build_reaction_draft(TARGET, Some(AUTHOR), "").expect("valid target and author");
+    assert_eq!(
+        draft.tags,
+        vec![
+            vec!["e".to_string(), TARGET.to_string()],
+            vec!["p".to_string(), AUTHOR.to_string()],
+        ]
+    );
+    assert_eq!(draft.content, "+");
+}
+
+#[test]
+fn reaction_draft_builder_degrades_when_author_absent() {
+    let draft = crate::build_reaction_draft(TARGET, None, "🤙").expect("valid target");
+    assert_eq!(draft.tags, vec![vec!["e".to_string(), TARGET.to_string()]]);
+    assert_eq!(draft.content, "🤙");
+}
+
+#[test]
+fn reaction_draft_builder_rejects_malformed_target_or_author() {
+    assert!(crate::build_reaction_draft("bad", Some(AUTHOR), "+").is_err());
+    assert!(crate::build_reaction_draft(TARGET, Some("bad"), "+").is_err());
+}
+
+#[test]
+fn reducer_reaction_draft_uses_registered_nip25_builder() {
+    let mut reducer = nmp_core::KernelReducer::new();
+    crate::install_reaction_draft_builder(&mut reducer);
+    let (tags, content) = reducer
+        .build_reaction_draft(TARGET, " ")
+        .expect("registered NIP-25 builder accepts valid target");
+    assert_eq!(tags, vec![vec!["e".to_string(), TARGET.to_string()]]);
+    assert_eq!(content, "+");
+}
+
+#[test]
 fn react_protocol_publishes_kind7_via_one_door() {
     let cmd = capture_execute(|send| {
         ReactModule

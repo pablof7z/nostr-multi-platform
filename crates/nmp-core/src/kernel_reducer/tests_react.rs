@@ -1,12 +1,12 @@
 //! Tests for [`KernelReducer::build_reaction_draft`].
 //!
-//! `build_reaction_draft` is the PR-6a wasm write-path seam for NIP-25
-//! kind:7 reactions. These tests verify the hex-validation contract, the
-//! D6 graceful degradation when the target event's author is not in the
-//! read-cache, and the `p`-tag inclusion when the author IS cached.
+//! Core owns only author resolution and delegation to the registered protocol
+//! builder. Protocol grammar is tested in the protocol crate.
 
 use super::*;
+use crate::slots::{ReactionDraft, ReactionDraftBuilder};
 use crate::store::{RawEvent, VerifiedEvent};
+use std::sync::Arc;
 
 // ─── Synthetic event IDs (valid 64-char hex) ────────────────────────────────
 
@@ -15,34 +15,54 @@ const TARGET_AUTHOR: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-#[test]
-fn build_reaction_draft_returns_none_for_invalid_hex() {
-    let r = KernelReducer::new();
-    assert!(r.build_reaction_draft("not-hex", "+").is_none());
-    assert!(r.build_reaction_draft("deadbeef", "+").is_none()); // too short
+#[derive(Debug)]
+struct EchoReactionBuilder;
+
+impl ReactionDraftBuilder for EchoReactionBuilder {
+    fn build_reaction_draft(
+        &self,
+        target_event_id: &str,
+        target_author_pubkey: Option<&str>,
+        reaction: &str,
+    ) -> Option<ReactionDraft> {
+        Some(ReactionDraft {
+            tags: vec![vec![
+                "builder".to_string(),
+                target_event_id.to_string(),
+                target_author_pubkey.unwrap_or("").to_string(),
+            ]],
+            content: reaction.to_string(),
+        })
+    }
 }
 
 #[test]
-fn build_reaction_draft_degrades_gracefully_when_author_not_cached() {
-    // Valid 64-char hex id but target event is absent from read-cache —
-    // build_reaction_draft returns e-tag only (valid NIP-25, D6).
+fn build_reaction_draft_returns_none_without_registered_builder() {
     let r = KernelReducer::new();
+    assert!(r.build_reaction_draft(TARGET_ID, "+").is_none());
+}
+
+#[test]
+fn build_reaction_draft_delegates_without_author_when_target_not_cached() {
+    let mut r = KernelReducer::new();
+    r.set_reaction_draft_builder(Arc::new(EchoReactionBuilder));
     let (tags, content) = r
         .build_reaction_draft(TARGET_ID, "+")
-        .expect("valid hex id should return Some");
-    assert_eq!(tags.len(), 1, "only e-tag expected when author not cached");
-    assert_eq!(tags[0][0], "e");
+        .expect("registered builder should return Some");
+    assert_eq!(tags[0][0], "builder");
     assert_eq!(tags[0][1], TARGET_ID);
+    assert_eq!(tags[0][2], "");
     assert_eq!(content, "+");
 }
 
 #[test]
-fn build_reaction_draft_includes_p_tag_when_author_cached() {
+fn build_reaction_draft_delegates_with_resolved_author_when_cached() {
     // ingest_pre_verified_event populates BOTH the store AND self.events (the
     // HashMap read-cache that event_author reads). Store-only seeding (as used
     // by seed_event_with_kind in tests_reply_tags) is insufficient here
     // because event_author reads self.events, not the store.
     let mut r = KernelReducer::new();
+    r.set_reaction_draft_builder(Arc::new(EchoReactionBuilder));
     let raw = RawEvent {
         id: TARGET_ID.to_string(),
         pubkey: TARGET_AUTHOR.to_string(),
@@ -58,35 +78,9 @@ fn build_reaction_draft_includes_p_tag_when_author_cached() {
 
     let (tags, content) = r
         .build_reaction_draft(TARGET_ID, "+")
-        .expect("valid hex id should return Some after ingest");
-    assert_eq!(
-        tags.len(),
-        2,
-        "e-tag + p-tag expected when author is cached"
-    );
-    assert_eq!(tags[0][0], "e");
+        .expect("registered builder should return Some after ingest");
+    assert_eq!(tags[0][0], "builder");
     assert_eq!(tags[0][1], TARGET_ID);
-    assert_eq!(tags[1][0], "p");
-    assert_eq!(tags[1][1], TARGET_AUTHOR);
+    assert_eq!(tags[0][2], TARGET_AUTHOR);
     assert_eq!(content, "+");
-}
-
-#[test]
-fn build_reaction_draft_normalises_blank_reaction_to_plus() {
-    let r = KernelReducer::new();
-    let (_, content) = r.build_reaction_draft(TARGET_ID, "").expect("valid hex id");
-    assert_eq!(content, "+", "empty string must normalise to '+'");
-    let (_, content2) = r
-        .build_reaction_draft(TARGET_ID, "   ")
-        .expect("valid hex id");
-    assert_eq!(content2, "+", "whitespace-only must normalise to '+'");
-}
-
-#[test]
-fn build_reaction_draft_passes_through_emoji_reaction() {
-    let r = KernelReducer::new();
-    let (_, content) = r
-        .build_reaction_draft(TARGET_ID, "🤙")
-        .expect("valid hex id");
-    assert_eq!(content, "🤙");
 }

@@ -209,45 +209,6 @@ pub fn reply_tags(
     tags
 }
 
-// ─── NIP-25 reaction builder ─────────────────────────────────────────────────
-
-/// Build NIP-25 kind:7 reaction tags and normalised content for
-/// `target_event_id`.
-///
-/// Returns `None` when `target_event_id` is not a valid 64-char hex event id
-/// (same gate as `crate::kernel::is_hex_id`). Otherwise returns
-/// `Some((tags, content))` where:
-/// - `tags` = `[["e", target_event_id], ["p", author]?]`
-/// - `content` = `reaction` normalised to `"+"` when blank
-///
-/// `author` is `None` when the target event's author is absent from the
-/// caller's read-cache; the e-tag-only reaction is still valid NIP-25 (D6:
-/// degrade, never refuse the publish).
-///
-/// Shared canonical implementation; both `KernelReducer::build_reaction_draft`
-/// (wasm write-path) and native `actor::commands::publish::react` delegate
-/// here so tag logic is defined once and cannot silently drift.
-#[must_use]
-pub fn reaction_tags(
-    target_event_id: &str,
-    author: Option<&str>,
-    reaction: &str,
-) -> Option<(Vec<Vec<String>>, String)> {
-    if !crate::kernel::is_hex_id(target_event_id) {
-        return None;
-    }
-    let content = if reaction.trim().is_empty() {
-        "+".to_string()
-    } else {
-        reaction.to_string()
-    };
-    let mut tags = vec![vec!["e".to_string(), target_event_id.to_string()]];
-    if let Some(pk) = author {
-        tags.push(vec!["p".to_string(), pk.to_string()]);
-    }
-    Some((tags, content))
-}
-
 // ─── NIP-10 reference parser ─────────────────────────────────────────────────
 
 /// A single `e`-tag reference: the pointed-to event id, plus the optional

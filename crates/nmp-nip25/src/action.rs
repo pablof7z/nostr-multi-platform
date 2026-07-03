@@ -1,5 +1,6 @@
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
+use nmp_core::slots::{ReactionDraft, ReactionDraftBuilder};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
@@ -7,6 +8,7 @@ use nmp_core::substrate::{
 use nmp_nip09::DeletionRequest;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub const KIND_REACTION: u32 = 7;
 /// Kind integer for NIP-09 deletion events (kind:5). Kept here because the
@@ -14,7 +16,7 @@ pub const KIND_REACTION: u32 = 7;
 /// canonical builder and ownership for kind:5 artifacts live in `nmp-nip09`.
 pub const KIND_REACTION_DELETE: u32 = 5;
 
-type ReactionDraft = nmp_ownership::OwnedEventDraft<UnsignedEvent>;
+type ReactionEventDraft = nmp_ownership::OwnedEventDraft<UnsignedEvent>;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ReactAction {
@@ -46,6 +48,19 @@ pub struct UnreactReactionCommand {
 
 pub struct ReactModule;
 pub struct UnreactModule;
+#[derive(Debug, Default)]
+pub struct Nip25ReactionDraftBuilder;
+
+impl ReactionDraftBuilder for Nip25ReactionDraftBuilder {
+    fn build_reaction_draft(
+        &self,
+        target_event_id: &str,
+        target_author_pubkey: Option<&str>,
+        reaction: &str,
+    ) -> Option<ReactionDraft> {
+        build_reaction_draft(target_event_id, target_author_pubkey, reaction).ok()
+    }
+}
 
 impl ActionModule for ReactModule {
     const NAMESPACE: nmp_core::substrate::DeclaredActionNamespace =
@@ -126,7 +141,7 @@ impl ProtocolCommand for PublishReactionCommand {
     ) -> Result<(), ProtocolCommandError> {
         let event = build_reaction_event(&self.action)
             .map_err(|err| ProtocolCommandError::new(format!("react: {err}")))?;
-        let draft = ReactionDraft::new(event, crate::ownership::REACTION_EVENT_PROVENANCE);
+        let draft = ReactionEventDraft::new(event, crate::ownership::REACTION_EVENT_PROVENANCE);
         ctx.send(ActorCommand::Publish(PublishCommand::owned_draft(
             draft,
             Some(self.correlation_id),
@@ -154,6 +169,13 @@ impl ProtocolCommand for UnreactReactionCommand {
 pub(crate) fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(ReactModule);
     app.register_default_action(UnreactModule);
+}
+
+/// Install the NIP-25 reaction draft builder into a reducer-hosted composition
+/// root. This keeps the reducer/browser write path on the same protocol-owned
+/// grammar as the registered action command.
+pub fn install_reaction_draft_builder(reducer: &mut nmp_core::KernelReducer) {
+    reducer.set_reaction_draft_builder(Arc::new(Nip25ReactionDraftBuilder));
 }
 
 fn validate_react(action: &ReactAction) -> Result<(), ActionRejection> {
@@ -197,31 +219,45 @@ pub fn build_reaction_event(action: &ReactAction) -> Result<UnsignedEvent, Strin
         Err(ActionRejection::Invalid(msg)) => return Err(msg),
         Err(other) => return Err(format!("{other:?}")),
     }
-    let (tags, content) = reaction_tags(action)
-        .ok_or_else(|| "react requires a 64-hex target_event_id".to_string())?;
+    let draft = build_reaction_draft(
+        &action.target_event_id,
+        action.target_author_pubkey.as_deref(),
+        &action.reaction,
+    )?;
     Ok(UnsignedEvent {
         pubkey: String::new(),
         kind: KIND_REACTION,
-        tags,
-        content,
+        tags: draft.tags,
+        content: draft.content,
         created_at: 0,
     })
 }
 
-fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
-    if !is_hex64(&action.target_event_id) {
-        return None;
+/// Build NIP-25 kind:7 reaction tags and normalized content.
+///
+/// The target author's `p` tag is included when supplied by the caller's read
+/// cache. Missing author degrades to an `e`-only reaction draft.
+pub fn build_reaction_draft(
+    target_event_id: &str,
+    target_author_pubkey: Option<&str>,
+    reaction: &str,
+) -> Result<ReactionDraft, String> {
+    if !is_hex64(target_event_id) {
+        return Err("react requires a 64-hex target_event_id".to_string());
     }
-    let content = if action.reaction.trim().is_empty() {
+    if target_author_pubkey.is_some_and(|author| !is_hex64(author)) {
+        return Err("react target_author_pubkey must be 64-hex when provided".to_string());
+    }
+    let content = if reaction.trim().is_empty() {
         "+".to_string()
     } else {
-        action.reaction.clone()
+        reaction.to_string()
     };
-    let mut tags = vec![vec!["e".to_string(), action.target_event_id.clone()]];
-    if let Some(author) = &action.target_author_pubkey {
-        tags.push(vec!["p".to_string(), author.clone()]);
+    let mut tags = vec![vec!["e".to_string(), target_event_id.to_string()]];
+    if let Some(author) = target_author_pubkey {
+        tags.push(vec!["p".to_string(), author.to_string()]);
     }
-    Some((tags, content))
+    Ok(ReactionDraft { tags, content })
 }
 
 /// Build a kind:5 deletion draft for a reaction event, delegating construction
@@ -229,7 +265,7 @@ fn reaction_tags(action: &ReactAction) -> Option<(Vec<Vec<String>>, String)> {
 /// (ADR-0074 composable-ownership doctrine). The reaction event id has already
 /// been validated as 64-hex by `UnreactModule::start`, so the call always
 /// succeeds; we treat errors as internal bugs and propagate via unwrap.
-fn reaction_delete_draft(reaction_event_id: String, reason: String) -> ReactionDraft {
+fn reaction_delete_draft(reaction_event_id: String, reason: String) -> ReactionEventDraft {
     nmp_nip09::build_deletion_draft(&DeletionRequest {
         event_ids: vec![reaction_event_id],
         kinds: vec![],
