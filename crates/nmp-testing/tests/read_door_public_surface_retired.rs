@@ -27,6 +27,9 @@ fn code_only(line: &str) -> &str {
 fn retired_app_visible_read_doors_are_not_public_defs() {
     let root = repo_root();
     let absent_files = [
+        "crates/nmp-native-runtime/src/plain_reactions.rs",
+        "crates/nmp-native-runtime/src/plain_reactions/types.rs",
+        "crates/nmp-native-runtime/src/plain_reactions_tests.rs",
         "crates/nmp-native-runtime/src/group_feed/roster.rs",
         "crates/nmp-browser-runtime/src/runtime/group_events.rs",
         "crates/nmp-browser-runtime/src/runtime/group_discovery.rs",
@@ -118,7 +121,12 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
                 "GROUP_EVENTS_KEY",
                 "GROUP_ROSTER_KEY",
                 "JOINED_GROUPS_KEY",
+                "Nip25ReactionsHandle",
             ][..],
+        ),
+        (
+            "crates/nmp-native-runtime/src/app_struct.rs",
+            &["reaction_read_sessions"][..],
         ),
         (
             "crates/nmp-native-runtime/src/group_feed/mod.rs",
