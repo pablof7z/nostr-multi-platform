@@ -1,0 +1,23 @@
+{
+  "schema": "nmp.concept-reads/1",
+  "facade": {
+    "rust_type": "GalleryApp",
+    "runtime_accessor": "runtime",
+    "error_type": "GalleryReadError",
+    "invalid_target_variant": "InvalidTarget",
+    "open_failed_variant": "OpenFailed"
+  },
+  "reads": [
+    {
+      "concept": "replies",
+      "opened_record": "GalleryOpenedReplies"
+    }
+  ],
+  "outputs": {
+    "rust": "crates/nmp-app-gallery/src/concept_reads_replies.rs",
+    "rust_test_module": "concept_reads_replies_tests.rs"
+  },
+  "drift_checks": [
+    "cargo run -p nmp-codegen -- gen concept-reads --registry concept-reads.json --platform rust --check"
+  ]
+}
