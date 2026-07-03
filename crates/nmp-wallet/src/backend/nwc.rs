@@ -44,9 +44,10 @@
 //!
 //! Constructing a live [`NwcWalletBackend`] additionally needs a
 //! [`WalletStatusSlot`] clone bound to the same runtime `nmp_nip47::register`
-//! wires up — `register`'s returned `Handles` does not expose one today (only
-//! `Handles::wallet`). Wiring that through end to end is composition-root
-//! work, not this adapter's.
+//! wires up — `register`'s returned `Handles` now exposes one as
+//! `Handles::status` (#2894). Threading that clone into a live
+//! `NwcWalletBackend` end to end is still composition-root work, not this
+//! adapter's.
 
 use nmp_nip47::{
     NwcConnectionState, WalletPayInvoiceCommand, WalletRuntimeHandle, WalletStatus,
