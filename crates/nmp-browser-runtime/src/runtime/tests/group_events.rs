@@ -1,8 +1,10 @@
 use nmp_core::substrate::KernelEvent;
-use nmp_nip29::decode_group_events_snapshot;
+use nmp_nip29::{
+    close_nip29_group_events_session, decode_group_events_snapshot,
+    open_nip29_group_events_session, GroupId, Nip29GroupEventsSession, GROUP_EVENTS_KEY,
+};
 
 use super::started_handle;
-use crate::runtime::BrowserGroupEventsSessionDescriptor;
 
 const RELAY: &str = "wss://groups.example";
 const GROUP_ID: &str = "nmp-builders";
@@ -11,15 +13,11 @@ const GROUP_ID: &str = "nmp-builders";
 fn browser_group_events_emits_ngev_rows_from_h_tagged_relay_hits() {
     let mut handle = started_handle();
     // Chat view: the consumer declares kinds [9, 11] (issue #2187).
-    let session = handle
-        .open_nip29_group_events_session(BrowserGroupEventsSessionDescriptor {
-            relay_url: RELAY.to_string(),
-            group_id: GROUP_ID.to_string(),
-            kinds: vec![9, 11],
-            session_id: "g1".to_string(),
-        })
-        .expect("valid group events");
-    assert_eq!(session.projection_key(), "nmp.nip29.group_events");
+    let session = open_nip29_group_events_session(
+        &handle,
+        Nip29GroupEventsSession::new(GroupId::new(RELAY, GROUP_ID), vec![9, 11]),
+    );
+    assert_eq!(session.key(), GROUP_EVENTS_KEY);
 
     let opened = handle.pump();
     let outbound = opened
@@ -61,44 +59,34 @@ fn browser_group_events_emits_ngev_rows_from_h_tagged_relay_hits() {
 
 #[test]
 fn browser_group_events_replaces_prior_session_and_close_is_idempotent() {
-    let mut handle = started_handle();
-    let first = handle
-        .open_nip29_group_events_session(BrowserGroupEventsSessionDescriptor {
-            relay_url: RELAY.to_string(),
-            group_id: "first-room".to_string(),
-            kinds: vec![9],
-            session_id: "first".to_string(),
-        })
-        .expect("first group-events session");
-    assert_eq!(handle.group_events_sessions.len(), 1);
-
-    let second = handle
-        .open_nip29_group_events_session(BrowserGroupEventsSessionDescriptor {
-            relay_url: RELAY.to_string(),
-            group_id: "second-room".to_string(),
-            kinds: vec![11],
-            session_id: "second".to_string(),
-        })
-        .expect("replacement group-events session");
-    assert_eq!(
-        handle.group_events_sessions.len(),
-        1,
-        "singleton replacement must remove the stale session bookkeeping"
+    let handle = started_handle();
+    let first = open_nip29_group_events_session(
+        &handle,
+        Nip29GroupEventsSession::new(GroupId::new(RELAY, "first-room"), vec![9]),
     );
-    assert!(!handle.group_events_sessions.contains_key("first"));
-    assert!(handle.group_events_sessions.contains_key("second"));
+    assert_eq!(handle.feed_sessions.live_count(), 1);
 
-    handle.close_nip29_group_events_session(first);
+    let second = open_nip29_group_events_session(
+        &handle,
+        Nip29GroupEventsSession::new(GroupId::new(RELAY, "second-room"), vec![11]),
+    );
     assert_eq!(
-        handle.group_events_sessions.len(),
+        handle.feed_sessions.live_count(),
+        1,
+        "singleton replacement must remove the stale read lifecycle"
+    );
+
+    assert!(!close_nip29_group_events_session(&handle, first));
+    assert_eq!(
+        handle.feed_sessions.live_count(),
         1,
         "closing a replaced handle is idempotent and must not tear down the replacement"
     );
 
-    handle.close_nip29_group_events_session(second.clone());
-    assert!(handle.group_events_sessions.is_empty());
-    handle.close_nip29_group_events_session(second);
-    assert!(handle.group_events_sessions.is_empty());
+    assert!(close_nip29_group_events_session(&handle, second.clone()));
+    assert_eq!(handle.feed_sessions.live_count(), 0);
+    assert!(!close_nip29_group_events_session(&handle, second));
+    assert_eq!(handle.feed_sessions.live_count(), 0);
 }
 
 fn timeline_payload(handle: &mut crate::BrowserRuntimeHandle, key: &str) -> Vec<u8> {

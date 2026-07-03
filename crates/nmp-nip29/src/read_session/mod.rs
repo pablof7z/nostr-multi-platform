@@ -112,6 +112,12 @@ pub fn close_nip29_group_events_session(
     close_read(host, &handle.0)
 }
 
+/// Close the singleton NIP-29 group-events read by its concept-owned output key.
+#[must_use]
+pub fn close_nip29_group_events_read_by_key(host: &dyn ReadHost) -> bool {
+    host.close_read_session_by_projection_key(GROUP_EVENTS_KEY)
+}
+
 #[must_use]
 pub fn open_nip29_group_discovery_session(
     host: &dyn ReadHost,
@@ -164,6 +170,12 @@ pub fn close_nip29_group_discovery_session(
     handle: Nip29GroupDiscoveryHandle,
 ) -> bool {
     close_read(host, &handle.0)
+}
+
+/// Close the singleton NIP-29 group-discovery read by its concept-owned output key.
+#[must_use]
+pub fn close_nip29_group_discovery_read_by_key(host: &dyn ReadHost) -> bool {
+    host.close_read_session_by_projection_key(DISCOVERED_GROUPS_KEY)
 }
 
 #[must_use]

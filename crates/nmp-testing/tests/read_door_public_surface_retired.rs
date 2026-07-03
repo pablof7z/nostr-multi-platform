@@ -26,7 +26,11 @@ fn code_only(line: &str) -> &str {
 #[test]
 fn retired_app_visible_read_doors_are_not_public_defs() {
     let root = repo_root();
-    let absent_files = ["crates/nmp-native-runtime/src/group_feed/roster.rs"];
+    let absent_files = [
+        "crates/nmp-native-runtime/src/group_feed/roster.rs",
+        "crates/nmp-browser-runtime/src/runtime/group_events.rs",
+        "crates/nmp-browser-runtime/src/runtime/group_discovery.rs",
+    ];
     let checks = [
         (
             "crates/nmp-native-runtime/src/search.rs",
@@ -59,6 +63,28 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
             &[
                 "BrowserSearchSessionDescriptor",
                 "BrowserSearchSessionHandle",
+                "BrowserGroupEventsSession",
+                "BrowserGroupEventsSessionDescriptor",
+                "BrowserGroupEventsSessionHandle",
+                "BrowserGroupDiscoverySession",
+                "BrowserGroupDiscoverySessionDescriptor",
+                "BrowserGroupDiscoverySessionHandle",
+            ][..],
+        ),
+        (
+            "crates/nmp-browser-runtime/src/runtime/handle.rs",
+            &[
+                "BrowserGroupEventsSession",
+                "BrowserGroupDiscoverySession",
+                "group_events_sessions",
+                "group_discovery_sessions",
+            ][..],
+        ),
+        (
+            "crates/nmp-browser-runtime/src/lib.rs",
+            &[
+                "BrowserGroupEventsSessionHandle",
+                "BrowserGroupDiscoverySessionHandle",
             ][..],
         ),
         (
@@ -135,9 +161,7 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
     for relative in absent_files {
         let path = root.join(relative);
         if path.exists() {
-            violations.push(format!(
-                "{relative}: retired native NIP-29 roster door file reappeared"
-            ));
+            violations.push(format!("{relative}: retired read-door file reappeared"));
         }
     }
     for (relative, needles) in checks {

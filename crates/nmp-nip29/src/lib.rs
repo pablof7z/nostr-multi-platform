@@ -65,7 +65,8 @@ pub use projection::{
     JoinedGroupsSnapshot,
 };
 pub use read_session::{
-    close_nip29_group_discovery_session, close_nip29_group_events_session,
+    close_nip29_group_discovery_read_by_key, close_nip29_group_discovery_session,
+    close_nip29_group_events_read_by_key, close_nip29_group_events_session,
     close_nip29_group_roster_session, close_nip29_joined_groups_session,
     open_nip29_group_discovery_session, open_nip29_group_discovery_session_with_reader,
     open_nip29_group_events_session, open_nip29_group_events_session_with_reader,
