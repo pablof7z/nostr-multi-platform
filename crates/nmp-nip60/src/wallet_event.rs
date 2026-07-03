@@ -4,9 +4,12 @@
 //! mint URLs. It is encrypted with NIP-44 keyed to the owner's pubkey (so
 //! only the owner can read it).
 //!
-//! The wallet event may include `relay` tags listing which relays to use
-//! for wallet-related events. If no relay tags are present, the caller
-//! should fall back to the user's NIP-65 relays.
+//! The wallet event may include `relay` tags. These are legacy design
+//! residue, not authoritative relay selection — the active user's kind:10019
+//! `relay` tags, with NIP-65 fallback, are the source of truth for wallet
+//! relay scoping (see `docs/architecture/nip60-nip61-wallet-design.md`,
+//! Relay Acquisition). This crate surfaces the kind:17375 `relay` tags only
+//! as a non-authoritative compatibility hint.
 
 use nostr::nips::nip44;
 use nostr::{EventBuilder, EventId, Keys, Kind, PublicKey, SecretKey, Tag, TagKind};
@@ -25,22 +28,23 @@ pub struct WalletConfig {
     pub mints: Vec<String>,
     /// Human-readable wallet name (optional).
     pub name: Option<String>,
-    /// Single relay URLs extracted from the event `relay` tags.
-    pub relays: Vec<String>,
+    /// Relay URLs extracted from the event's `relay` tags — a
+    /// non-authoritative compatibility hint only (see module docs).
+    pub legacy_relay_hint: Vec<String>,
     /// The event id of the wallet event that was decoded (for deletion/updates).
     pub event_id: Option<EventId>,
 }
 
 impl WalletConfig {
     /// Create a new wallet config with a freshly generated Cashu private key.
-    pub fn generate(mint_urls: Vec<String>, relays: Vec<String>) -> Self {
+    pub fn generate(mint_urls: Vec<String>, legacy_relay_hint: Vec<String>) -> Self {
         let privkey =
             nostr::secp256k1::SecretKey::new(&mut nostr::secp256k1::rand::thread_rng());
         Self {
             privkey_hex: hex::encode(privkey.secret_bytes()),
             mints: mint_urls,
             name: None,
-            relays,
+            legacy_relay_hint,
             event_id: None,
         }
     }
@@ -79,9 +83,9 @@ pub fn build_wallet_event(
         nip44::encrypt(keys.secret_key(), &keys.public_key(), json, nip44::Version::V2)
             .map_err(|e| Nip60Error::Nip44(format!("{e}")))?;
 
-    // Tags: `relay` tags for wallet-related events.
+    // Tags: legacy `relay` compatibility hint (see module docs).
     let mut tags = Vec::new();
-    for relay in &config.relays {
+    for relay in &config.legacy_relay_hint {
         tags.push(Tag::custom(TagKind::custom("relay"), [relay.as_str()]));
     }
 
@@ -124,8 +128,8 @@ pub fn decode_wallet_event(
         return Err(Nip60Error::Event("wallet event has no mints".into()));
     }
 
-    // Extract relay tags.
-    let relays: Vec<String> = event
+    // Extract the legacy relay compatibility hint (non-authoritative).
+    let legacy_relay_hint: Vec<String> = event
         .tags
         .iter()
         .filter(|t| t.kind() == TagKind::custom("relay"))
@@ -136,7 +140,7 @@ pub fn decode_wallet_event(
         privkey_hex,
         mints,
         name,
-        relays,
+        legacy_relay_hint,
         event_id: Some(event.id),
     })
 }
@@ -161,6 +165,6 @@ mod tests {
             .expect("decode");
         assert_eq!(decoded.mints, config.mints);
         assert_eq!(decoded.privkey_hex, config.privkey_hex);
-        assert_eq!(decoded.relays, config.relays);
+        assert_eq!(decoded.legacy_relay_hint, config.legacy_relay_hint);
     }
 }

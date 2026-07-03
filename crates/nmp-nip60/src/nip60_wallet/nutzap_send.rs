@@ -71,11 +71,17 @@ impl Nip60WalletHandle {
 
     /// Build the user's kind:10019 NutZap info event and queue it in the
     /// outbox for the kernel to publish. Returns the queued event id.
+    ///
+    /// The published `relay` tags default to [`Self::legacy_relay_hint`] (the
+    /// relays this handle was constructed or decoded with). Callers that have
+    /// resolved the active user's real relay set (kind:10019 / NIP-65) should
+    /// prefer publishing that set instead — this default exists only so a
+    /// freshly created wallet has *some* relay tags on its first kind:10019.
     pub fn publish_nutzap_info(&self) -> Result<EventId, Nip60Error> {
         let config = self.config.lock().unwrap().clone();
         let cashu_pubkey = config.pubkey_hex()?;
         let info = NutZapInfo {
-            relays: self.relays.clone(),
+            relays: self.legacy_relay_hint.clone(),
             mints: config.mints.clone(),
             cashu_pubkey: Some(cashu_pubkey),
         };
@@ -90,8 +96,7 @@ impl Nip60WalletHandle {
 
     /// Select proofs to cover `amount_sats`, swap them at the mint for
     /// P2PK-locked output proofs, and queue the token bookkeeping (spent
-    /// deletions + change) that results. Shared by [`Self::send_nutzap`] and
-    /// the [`crate::backend::WalletBackend`] adapter.
+    /// deletions + change) that results. Used by [`Self::send_nutzap`].
     pub(super) fn create_p2pk_proofs(
         &self,
         amount_sats: u64,

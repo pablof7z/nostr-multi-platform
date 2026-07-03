@@ -1,34 +1,21 @@
-# PARKED — post-v1 (Cashu / nutzaps, issue #1001). Not a member of the default
-# workspace build (see top-level Cargo.toml [workspace] exclude). Compile on
-# demand: `cargo build --manifest-path crates/nmp-nip60/Cargo.toml`.
-# Remove from exclude and add back to [workspace] members when #1001 enters scope.
-#
-# This empty `[workspace]` table makes the parked crate its OWN workspace root.
-# Without it, Cargo's workspace auto-discovery walks UP the directory tree from a
-# standalone or path-dep build and binds this crate to the monorepo root manifest
-# — which `exclude`s it — producing `current package believes it's in a workspace
-# when it's not` and breaking field inheritance for path-dep consumers (e.g. hl).
-# Declaring an empty workspace stops the upward walk so the crate resolves on its
-# own while its `path = "../nmp-core"` deps still point at the same monorepo crates.
-[workspace]
-
 [package]
 name = "nmp-nip60"
-version = "0.7.1"
-edition = "2021"
-license = "MIT"
-repository = "https://github.com/pablof7z/nostr-multi-platform"
-description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery. Provides a WalletBackend trait that is transparent to apps whether the user has a NIP-60 ecash wallet or a NWC-connected Lightning wallet. PARKED: post-v1 (Cashu / #1001)."
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only — backend selection, the wallet operation journal, and the WalletBackend seam live in nmp-wallet."
 
 [dependencies]
 # nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind
 # integers. NIP-60/61/88 kind constants live there so this crate declares zero
 # kind literals (the #1493 fragmentation finding eliminated the local u16 copy).
 nmp-kinds = { path = "../nmp-kinds" }
+nmp-ownership = { workspace = true }
 # nostr: NIP-44 encryption for wallet events, NIP-60 event types, key ops.
 nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 # sha2: Cashu hash_to_curve (SHA-256 try-and-increment).
 sha2 = "0.10"
 # ureq: synchronous HTTP client for Cashu mint API calls.

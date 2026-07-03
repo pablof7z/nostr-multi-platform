@@ -1,8 +1,11 @@
-//! `nmp-nip60` — Cashu wallet + NutZap + mint discovery for NMP apps.
+//! `nmp-nip60` — NIP-60 Cashu wallet + NIP-61 NutZap mechanics for NMP apps.
 //!
-//! Provides a [WalletBackend] trait that is completely transparent to apps:
-//! they don't care whether the user is running a NIP-60 ecash wallet or a
-//! NWC-connected Lightning wallet. Both expose the same interface.
+//! Owns reusable NIP-60/NIP-61 protocol mechanics only: event codecs, Cashu
+//! proof/DLEQ/P2PK/rollover types, and pure shape validation. It does not own
+//! backend selection, a unified wallet interface, product policy, or a
+//! private operation queue — those belong to the `nmp-wallet` composition
+//! crate (see `docs/architecture/nip60-nip61-wallet-design.md`), which
+//! consumes this crate as its Cashu backend adapter.
 //!
 //! # Supported NIPs
 //!
@@ -18,9 +21,12 @@
 //! The kernel fetches the wallet's events through its `EventStore` / interest
 //! pipeline and feeds them in via `Nip60WalletHandle::ingest_*`; events to
 //! publish are queued in the handle's outbox and drained by the kernel through
-//! its `ActorCommand::Publish*` chokepoint. The `relay` tags on the kind:17375
-//! config are surfaced as wallet metadata (`Nip60WalletHandle::relays`) so the
-//! kernel can scope its interests and publishes.
+//! its `ActorCommand::Publish*` chokepoint. The legacy `relay` tags on the
+//! kind:17375 config are surfaced only as a non-authoritative compatibility
+//! hint (`Nip60WalletHandle::legacy_relay_hint`) — they must never be treated
+//! as the relay-selection source of truth. The authoritative relay set is the
+//! active user's kind:10019 `relay` tags, with NIP-65 fallback; that
+//! resolution policy is owned by `nmp-wallet`, not this crate.
 //!
 //! # Cashu cryptography
 //!
@@ -51,7 +57,6 @@
 //! println!("Minted {minted} sat");
 //! ```
 
-pub mod backend;
 pub mod cashu;
 pub mod error;
 pub mod history_event;
@@ -59,10 +64,10 @@ pub mod kinds;
 pub mod mint_announce;
 pub mod nip60_wallet;
 pub mod nutzap;
+pub mod ownership;
 pub mod token_event;
 pub mod wallet_event;
 
-pub use backend::{PayResult, WalletBackend, WalletError};
 pub use error::Nip60Error;
 pub use kinds::*;
 pub use mint_announce::{

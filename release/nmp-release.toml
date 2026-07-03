@@ -240,12 +240,12 @@ path = "crates/nmp-nip68"
 name = "nmp-blossom"
 path = "crates/nmp-blossom"
 
-# nmp-nip60 is PARKED — excluded from the default workspace (see top-level
-# Cargo.toml [workspace] exclude, issue #1250). It is not a workspace member,
-# so it must NOT appear here: this manifest is the release-readiness source of
-# truth and the dry-run runs `cargo package -p` over every public_crate. Re-add
-# when the milestone enters scope:
-#   nmp-nip60 → Cashu / nutzaps (#1001)
+# nmp-nip60 was un-parked in #2865 (Phase 0 of the wallet epic #2864, per
+# docs/architecture/nip60-nip61-wallet-design.md) and is now a v1 workspace
+# member, so it is classified here as a public crate.
+[[public_crates]]
+name = "nmp-nip60"
+path = "crates/nmp-nip60"
 
 [[public_crates]]
 name = "nmp-nip59"
