@@ -330,6 +330,11 @@ path = "crates/nmp-browser-runtime-conformance"
 reason = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-runtime (#1007 PR-9); a wasm-bindgen cdylib test harness driving hydration/reload + offline-publish-queue survival, never published"
 
 [[private_packages]]
+name = "nmp-devtools"
+path = "crates/nmp-devtools"
+reason = "Dev-only X-Ray diagnostic receipt sidecar (#2858); not linked by runtime/app crates and not part of the public v1 release train"
+
+[[private_packages]]
 name = "nmp-nip47"
 path = "crates/nmp-nip47"
 reason = "Post-v1 Nostr Wallet Connect protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"

@@ -1,0 +1,15 @@
+[package]
+name = "nmp-devtools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Dev-only NMP diagnostic receipt surface."
+
+[dependencies]
+nmp-ownership = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+trellis-core = "0.2.1"
+
+[dev-dependencies]
+serde_json = { workspace = true }
