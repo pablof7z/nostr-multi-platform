@@ -52,15 +52,17 @@ deleted.
 ### New Wallet Composition Crate
 
 Add a reusable Layer-4 composition crate, `nmp-wallet`. Per
-[`crate-boundaries.md`](crate-boundaries.md) §2, "composition root" names only
-the Layer-5 `nmp-substrate`/app-runtime tier; `nmp-wallet` is a Layer-4
-composition crate that assembles lower-level protocol crates, the same way
-`nmp-note-feed` composes `nmp-nip01`, `nmp-nip18`, `nmp-content`, and `nmp-feed`
-into one reusable feed surface (crate-boundaries §8). Its scope is bounded to
-wallet backend selection and journaling, not an open-ended "everything wallet"
-bucket — the same distinction crate-boundaries §8 draws between a legitimate
-composition crate and the forbidden central-relations "reusable framework
-bucket".
+[`crate-boundaries.md`](crate-boundaries.md) §9/§10a, "composition root" names
+an app/runtime installer that wires the substrate and protocol crates a
+running app needs (`nmp-substrate`, app/runtime builders, and the
+`nmp-browser-runtime` platform-adapter exception) — not a Layer-4
+protocol/product crate. `nmp-wallet` is a Layer-4 composition crate that
+assembles lower-level protocol crates, the same way `nmp-note-feed` composes
+`nmp-nip01`, `nmp-nip18`, `nmp-content`, and `nmp-feed` into one reusable feed
+surface (crate-boundaries §8). Its scope is bounded to wallet backend
+selection and journaling, not an open-ended "everything wallet" bucket — the
+same distinction crate-boundaries §8 draws between a legitimate composition
+crate and the forbidden central-relations "reusable framework bucket".
 
 `nmp-wallet` owns:
 
@@ -77,9 +79,11 @@ bucket".
 `nmp-wallet` may depend on `nmp-nip47`, `nmp-nip60`, `nmp-nip57` only through
 the explicit composition surfaces it needs. The `nmp-nip57` dependency is
 concrete, not speculative: at composition time `nmp-wallet` calls
-`nmp_nip57::Config::with_payment_port` with the selected `WalletPaymentPort`
-backend to wire NIP-57 zaps to the active wallet. `nmp-core` must not learn
-Cashu, nutzap, NWC, NIP-60, NIP-61, or mint nouns.
+`nmp_nip57::Config::with_payment_port` with an `Arc<dyn PaymentPort>` for the
+selected backend (`nmp-nip47`'s `WalletPaymentPort` today; a future Cashu-melt
+implementation once `pay_bolt11` is proven) to wire NIP-57 zaps to the active
+wallet. `nmp-core` must not learn Cashu, nutzap, NWC, NIP-60, NIP-61, or mint
+nouns.
 
 ### Existing NIP Crates
 
@@ -108,8 +112,8 @@ removes that compatibility path.
 
 `nmp-nip57` remains wallet-agnostic. It emits `PaymentIntent` through the
 substrate `PaymentPort`; it does not depend on `nmp-nip47` or `nmp-nip60`.
-`nmp-wallet` supplies the selected backend's `WalletPaymentPort` to
-`nmp-nip57`'s composition entry point.
+`nmp-wallet` supplies the selected backend's `Arc<dyn PaymentPort>`
+implementation to `nmp-nip57`'s composition entry point.
 
 ### Runtime And Shell
 
@@ -459,7 +463,8 @@ The wallet runtime treats Cashu proofs and private keys as secret material.
 
 Activation requires:
 
-- `cargo test -p nmp-nip60` after the crate returns to workspace membership;
+- `cargo test -p nmp-nip60` clean for any `nmp-nip60` change (the crate is an
+  active workspace/CI member as of Phase 0, #2866);
 - `cargo test -p nmp-wallet` for backend selection, journal transitions,
   projection bounds, and compatibility aliases;
 - NIP-60 event tests for wallet, token, history, quote, NIP-09 delete tags, and
