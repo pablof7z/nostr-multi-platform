@@ -46,7 +46,6 @@ nmp-note-feed = { path = "../nmp-note-feed" }
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip05 = { path = "../nmp-nip05" }
 nmp-nip18 = { path = "../nmp-nip18" }
-nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip46 = { path = "../nmp-nip46", optional = true }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true }
 nmp-nip47 = { path = "../nmp-nip47" }
@@ -66,3 +65,4 @@ zeroize = { workspace = true }
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 nmp-nip23 = { path = "../nmp-nip23" }
+nmp-nip29 = { path = "../nmp-nip29" }
