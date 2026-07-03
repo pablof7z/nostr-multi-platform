@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{WalletCapabilities, WalletProjection};
 
+pub mod cashu;
 pub mod nwc;
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -54,8 +55,21 @@ pub enum WalletIntent {
     RedeemNutzap {
         event_id: String,
     },
-    DepositCashu {
+    /// Request a NUT-04 mint quote (a bolt11 invoice) from an already-accepted
+    /// mint. Split from the old single-shot `DepositCashu` (#2895 W2) because
+    /// the two mint HTTP calls happen at different times: getting a quote
+    /// never moves value, so it can complete before any invoice is paid.
+    DepositQuote {
+        mint: String,
         amount_sats: u64,
+    },
+    /// Finish a deposit started by [`Self::DepositQuote`]: check the quote's
+    /// paid state, then mint tokens (the value-moving NUT-04 call) and write
+    /// the resulting kind:7375 token event. `quote_id` identifies the pending
+    /// quote (see `WalletBackendSnapshot`/action-result surfacing — never the
+    /// bounded projection, which carries no quote ids).
+    CompleteDeposit {
+        quote_id: String,
     },
     MeltCashu {
         bolt11: String,
@@ -79,6 +93,13 @@ pub enum MintResultStatus {
 pub struct WalletBackendContext<'a> {
     pub now_secs: u64,
     pub selected_backend: Option<&'a WalletBackendId>,
+    /// The active account's Nostr pubkey (lowercase hex) — read-only identity
+    /// context, NEVER signer secrets (D13). Added for #2895 W2: the Cashu
+    /// backend's `start_intent` needs to know WHO would sign/self-encrypt an
+    /// operation before dispatching it (fail closed immediately when no
+    /// account is active, rather than build a `ProtocolCommand` that would
+    /// fail closed one hop later). `None` when no account is active.
+    pub account_pubkey: Option<&'a str>,
 }
 
 pub trait WalletBackend: Send + Sync {

@@ -66,6 +66,22 @@ impl WalletCapabilities {
         }
     }
 
+    /// W2 (#2895) — the Cashu `WalletBackend` adapter's actual scope: create a
+    /// wallet and deposit into it. Nutzap send/receive/publish-info and
+    /// mint-probe observation are separate epic #2864 waves this adapter does
+    /// not implement yet; bundling them into `cashu_nutzaps()` would advertise
+    /// capabilities the backend cannot execute (`start_intent` would silently
+    /// no-op them — the opposite of "absent capability means absent user
+    /// action").
+    #[must_use]
+    pub const fn cashu_wallet_and_deposit() -> Self {
+        Self {
+            create_cashu_wallet: true,
+            deposit_cashu: true,
+            ..Self::none()
+        }
+    }
+
     #[must_use]
     pub fn supports(self, capability: WalletCapability) -> bool {
         match capability {
@@ -130,5 +146,26 @@ mod tests {
         assert!(actions.contains(&ACTION_NUTZAP_SEND));
         assert!(actions.contains(&ACTION_NUTZAP_REDEEM));
         assert!(!actions.contains(&ACTION_PAY_INVOICE));
+    }
+
+    /// W2 (#2895) — the Cashu backend advertises exactly create+deposit, not
+    /// the full nutzap bundle it doesn't implement yet.
+    #[test]
+    fn cashu_wallet_and_deposit_advertises_only_create_and_deposit() {
+        let caps = WalletCapabilities::cashu_wallet_and_deposit();
+        assert!(caps.create_cashu_wallet);
+        assert!(caps.deposit_cashu);
+        assert!(!caps.pay_bolt11);
+        assert!(!caps.publish_nutzap_info);
+        assert!(!caps.send_nutzap);
+        assert!(!caps.redeem_nutzap);
+        assert!(!caps.melt_cashu);
+        assert!(!caps.observe_nutzap_receipts);
+
+        let actions = caps.action_namespaces();
+        assert!(actions.contains(&ACTION_CASHU_CREATE));
+        assert!(actions.contains(&ACTION_CASHU_DEPOSIT_QUOTE));
+        assert!(actions.contains(&ACTION_CASHU_COMPLETE_DEPOSIT));
+        assert!(!actions.contains(&ACTION_NUTZAP_SEND));
     }
 }

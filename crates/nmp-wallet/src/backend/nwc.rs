@@ -151,7 +151,8 @@ impl WalletBackend for NwcWalletBackend {
             | WalletIntent::PublishNutzapInfo
             | WalletIntent::SendNutzap { .. }
             | WalletIntent::RedeemNutzap { .. }
-            | WalletIntent::DepositCashu { .. }
+            | WalletIntent::DepositQuote { .. }
+            | WalletIntent::CompleteDeposit { .. }
             | WalletIntent::MeltCashu { .. } => Vec::new(),
         }
     }
@@ -223,6 +224,7 @@ mod tests {
         WalletBackendContext {
             now_secs: 0,
             selected_backend: None,
+            account_pubkey: None,
         }
     }
 
@@ -303,7 +305,13 @@ mod tests {
             WalletIntent::RedeemNutzap {
                 event_id: "c".repeat(64),
             },
-            WalletIntent::DepositCashu { amount_sats: 21 },
+            WalletIntent::DepositQuote {
+                mint: "https://mint.example.com".to_string(),
+                amount_sats: 21,
+            },
+            WalletIntent::CompleteDeposit {
+                quote_id: "quote-1".to_string(),
+            },
             WalletIntent::MeltCashu {
                 bolt11: "lnbc100n1p0fake".to_string(),
             },
