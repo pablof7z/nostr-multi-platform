@@ -1,7 +1,10 @@
 //! Money-safety: a `CompleteDepositCashu` retry after the encrypt/sign/publish
 //! chain fails must resume from already-minted proofs, never re-touch the
 //! mint (a Cashu mint permanently refuses to mint an already-`ISSUED` quote —
-//! see `PendingDeposit::minted_proofs`'s doc comment).
+//! see `PendingDeposit::minted_proofs`'s doc comment). This covers only
+//! in-process, still-running failures (a port hiccup, a dead-but-alive actor
+//! inbox) — `minted_proofs` is in-memory, so a hard process crash in that
+//! window is a separate, tracked follow-up, not something this test proves.
 
 use super::*;
 use nmp_core::actor::SignCommand;

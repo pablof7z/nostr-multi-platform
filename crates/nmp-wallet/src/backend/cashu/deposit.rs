@@ -180,10 +180,16 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
         std::thread::spawn(move || {
             // A quote already marked `ISSUED` by the mint can never be
             // minted again — if a prior attempt got real proofs back but
-            // failed somewhere in the encrypt/sign/publish chain after that
-            // (transient port error, dead actor inbox, process restart),
-            // those proofs are the ONLY way to recover this deposit. Resume
-            // from them instead of re-touching the mint at all.
+            // failed somewhere in the encrypt/sign/publish chain after that,
+            // while the process was still running (a transient port error,
+            // a dead-but-still-alive actor inbox), those proofs are the ONLY
+            // way to recover this deposit. Resume from them instead of
+            // re-touching the mint at all.
+            //
+            // `minted_proofs` is in-memory only (see its doc comment in
+            // `state.rs`): a hard crash between `mint_tokens` succeeding and
+            // reaching this point still loses the proofs — that durable gap
+            // is a separate, tracked follow-up, not closed here.
             let already_minted = {
                 let guard = lock_state(&state);
                 guard

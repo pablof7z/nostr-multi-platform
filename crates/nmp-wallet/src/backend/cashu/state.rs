@@ -35,12 +35,20 @@ pub(super) struct PendingDeposit {
     /// Set once NUT-04 `mint_tokens` has actually returned these proofs. A
     /// Cashu mint marks a quote `ISSUED` the moment it hands out proofs for
     /// it and permanently refuses to mint that quote again — so if the
-    /// encrypt/sign/publish chain that follows fails (transient port error,
-    /// dead actor inbox, process restart), re-running `mint_tokens` on retry
-    /// would either be rejected outright or silently forfeit these
-    /// already-real proofs. `CashuCompleteDepositCommand` checks this FIRST,
-    /// before touching the mint again, and resumes the chain with these same
-    /// proofs when set (see `deposit.rs`'s module docs).
+    /// encrypt/sign/publish chain that follows fails while the process is
+    /// still running (a transient port error, a dead-but-still-alive actor
+    /// inbox), re-running `mint_tokens` on retry would either be rejected
+    /// outright or silently forfeit these already-real proofs.
+    /// `CashuCompleteDepositCommand` checks this FIRST, before touching the
+    /// mint again, and resumes the chain with these same proofs when set
+    /// (see `deposit.rs`'s module docs).
+    ///
+    /// This field is in-memory only — it does NOT survive a process crash or
+    /// restart. A hard crash in the window between `mint_tokens` returning
+    /// `Ok` and the kind:7375 event publishing loses these proofs for real;
+    /// closing that window needs a durable write-ahead record, tracked as a
+    /// separate follow-up (not this ticket's scope — real-sats gate, not a
+    /// testnut/merge gate).
     pub(super) minted_proofs: Option<Vec<Proof>>,
 }
 
