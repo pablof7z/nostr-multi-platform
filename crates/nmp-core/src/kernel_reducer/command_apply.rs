@@ -116,6 +116,7 @@ impl super::KernelReducer {
                 scope,
                 relay_pin,
                 is_indexer_discovery,
+                lifecycle,
                 observer_id,
                 replay_shapes,
                 replay_limit,
@@ -127,6 +128,7 @@ impl super::KernelReducer {
                         scope,
                         relay_pin.as_deref(),
                         is_indexer_discovery,
+                        lifecycle,
                     )
                 {
                     let replay = crate::kernel::ObserverReplayRequest {
@@ -156,6 +158,7 @@ impl super::KernelReducer {
                 relay_pin,
                 is_indexer_discovery,
             }) => {
+                // Close is identity-only; lifecycle is not part of the key.
                 if let Some((identity, _interest)) =
                     crate::subs::interest_builder::build_interest_pair(
                         &filter_json,
@@ -163,6 +166,7 @@ impl super::KernelReducer {
                         scope,
                         relay_pin.as_deref(),
                         is_indexer_discovery,
+                        crate::planner::InterestLifecycle::Tailing,
                     )
                 {
                     let _ = self.kernel.close_interest_sub(&identity);

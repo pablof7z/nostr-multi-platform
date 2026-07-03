@@ -19,7 +19,7 @@ use std::sync::Arc;
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestLifecycle, InterestShape};
 
 use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 
@@ -113,6 +113,13 @@ pub struct ReadDemand {
     /// Whether sparse author-unknown/account discovery demand should use the
     /// planner's indexer-discovery routing lane.
     pub is_indexer_discovery: bool,
+    /// #2948 — close semantics for this demand's compiled REQ.
+    /// [`InterestLifecycle::Tailing`] (the default for every live read) keeps
+    /// the sub open after EOSE; [`InterestLifecycle::OneShot`] CLOSEs on EOSE so
+    /// a pinned collection read completes. The kernel/wire path already honours
+    /// both; this field is the only thing that was missing from the delivery
+    /// seam.
+    pub lifecycle: InterestLifecycle,
     /// Maximum number of cached events to replay before activation.
     pub replay_limit: usize,
     /// Whether this demand uses structural replay or a concept-supplied seed.

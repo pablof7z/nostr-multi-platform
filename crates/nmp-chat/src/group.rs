@@ -6,7 +6,8 @@ use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_nip29::GroupId;
 use nmp_ownership::FrameworkProjectionKey;
 use nmp_read_session::{
-    close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
+    close_read, open_read, InterestLifecycle, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder,
+    ReadReplayPolicy,
     ReadSpec,
 };
 
@@ -160,6 +161,7 @@ pub fn open_chat_presence_session_with_reader(
                 scope: SCOPE_GLOBAL,
                 relay_pin,
                 is_indexer_discovery: false,
+                lifecycle: InterestLifecycle::Tailing,
                 replay_limit: CHAT_PRESENCE_REPLAY_LIMIT,
                 replay: ReadReplayPolicy::Structural,
             }],

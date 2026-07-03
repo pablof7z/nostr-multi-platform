@@ -137,6 +137,7 @@ impl super::KernelReducer {
             decl.scope,
             decl.relay_pin.as_deref(),
             decl.is_indexer_discovery,
+            decl.lifecycle.clone(),
         ) else {
             unregister_observer_internal(&self.observer_slot, observer_id);
             return ObservedProjectionId(0);
@@ -174,12 +175,14 @@ impl super::KernelReducer {
         else {
             return;
         };
+        // Close is identity-only; lifecycle is not part of the registry key.
         if let Some((identity, _interest)) = crate::subs::interest_builder::build_interest_pair(
             &filter_json,
             &consumer_id,
             scope,
             relay_pin.as_deref(),
             is_indexer_discovery,
+            crate::planner::InterestLifecycle::Tailing,
         ) {
             let _ = self.kernel.close_interest_sub(&identity);
         }

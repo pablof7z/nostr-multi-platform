@@ -16,7 +16,8 @@ use nmp_nip25::{
 use nmp_nip29::GroupId;
 use nmp_ownership::DeclaredProjectionKey;
 use nmp_read_session::{
-    close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
+    close_read, open_read, InterestLifecycle, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder,
+    ReadReplayPolicy,
     ReadSpec,
 };
 
@@ -118,6 +119,7 @@ pub fn open_nip25_group_reactions_session_with_reader(
                 scope: SCOPE_GLOBAL,
                 relay_pin,
                 is_indexer_discovery: false,
+                lifecycle: InterestLifecycle::Tailing,
                 replay_limit: GROUP_REACTIONS_REPLAY_LIMIT,
                 replay: ReadReplayPolicy::Structural,
             }],

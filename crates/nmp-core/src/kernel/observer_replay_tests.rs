@@ -132,6 +132,7 @@ fn sub_identity(filter_json: &str, consumer_id: &str, scope: u32) -> SubIdentity
         scope,
         None,
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
         .map(|(id, _)| id)
         .expect("valid filter → identity")
@@ -145,6 +146,7 @@ fn logical_interest(filter_json: &str, consumer_id: &str, scope: u32) -> Logical
         scope,
         None,
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
         .map(|(_, interest)| interest)
         .expect("valid filter → interest")
@@ -162,6 +164,7 @@ fn logical_interest_pinned(
         scope,
         Some(relay_pin),
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
     .map(|(_, interest)| interest)
     .expect("valid pinned filter → interest")
@@ -335,6 +338,7 @@ fn replay_honors_relay_pinned_shape() {
         1,
         Some("wss://relay-a.example"),
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
     .map(|(id, _)| id)
     .expect("valid pinned identity");

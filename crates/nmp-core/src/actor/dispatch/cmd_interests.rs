@@ -124,9 +124,14 @@ pub(super) fn open_interest(
     // ensure_sub + CompileTrigger body as the `EnsureInterest` arm.
     // D6: a malformed filter is a silent no-op (the FFI shim already
     // surfaced a toast before sending — see `nmp_app_open_interest`).
-    if let Some((identity, interest)) =
-        build_open_interest(&filter_json, &consumer_id, scope, None, false)
-    {
+    if let Some((identity, interest)) = build_open_interest(
+        &filter_json,
+        &consumer_id,
+        scope,
+        None,
+        false,
+        crate::planner::InterestLifecycle::Tailing,
+    ) {
         let _ = ports.kernel.open_interest_sub(identity, interest);
     }
     maybe_emit_after_dispatch(
@@ -140,12 +145,14 @@ pub(super) fn open_interest(
 }
 
 /// Dispatch `ActorCommand::OpenObservedInterest`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn open_observed_interest(
     filter_json: String,
     consumer_id: String,
     scope: u32,
     relay_pin: Option<String>,
     is_indexer_discovery: bool,
+    lifecycle: crate::planner::InterestLifecycle,
     observer_id: ObservedProjectionId,
     replay_shapes: Vec<crate::planner::InterestShape>,
     replay_limit: usize,
@@ -153,13 +160,15 @@ pub(super) fn open_observed_interest(
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // ADR-0070 — open interest + catch-up replay to a single muted observer,
-    // then activate it. D6: a malformed filter is a silent no-op.
+    // then activate it. D6: a malformed filter is a silent no-op. #2948: the
+    // demand's lifecycle rides through so a OneShot read CLOSEs on EOSE.
     if let Some((identity, interest)) = build_open_interest(
         &filter_json,
         &consumer_id,
         scope,
         relay_pin.as_deref(),
         is_indexer_discovery,
+        lifecycle,
     ) {
         let replay = crate::kernel::ObserverReplayRequest {
             observer_id,
@@ -197,12 +206,16 @@ pub(super) fn close_interest(
     // leave. The `(owner, key, scope)` identity is reconstructed from
     // the SAME filter + consumer + scope + relay_pin the open used, so
     // the InterestShape hash lands on the same registry slot.
+    // Lifecycle does not participate in the registry key, so a close only needs
+    // to reconstruct the same (shape, scope, pin, indexer) identity — pass
+    // `Tailing` as the identity-only placeholder.
     if let Some((identity, _interest)) = build_open_interest(
         &filter_json,
         &consumer_id,
         scope,
         relay_pin.as_deref(),
         is_indexer_discovery,
+        crate::planner::InterestLifecycle::Tailing,
     ) {
         let _ = ports.kernel.close_interest_sub(&identity);
     }
@@ -345,6 +358,7 @@ pub(super) fn dispatch(
             scope,
             relay_pin,
             is_indexer_discovery,
+            lifecycle,
             observer_id,
             replay_shapes,
             replay_limit,
@@ -354,6 +368,7 @@ pub(super) fn dispatch(
             scope,
             relay_pin,
             is_indexer_discovery,
+            lifecycle,
             observer_id,
             replay_shapes,
             replay_limit,

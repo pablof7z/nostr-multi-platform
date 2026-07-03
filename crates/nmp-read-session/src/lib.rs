@@ -58,4 +58,7 @@ pub use host::{
     ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHandle, ReadHost,
     ReadInterestController, ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
+// #2948 — `ReadDemand.lifecycle` is public API; re-export the type so concept
+// crates naming a demand's close semantics don't take a direct nmp-planner dep.
+pub use nmp_planner::InterestLifecycle;
 pub use registry::{ReadSessionBuild, ReadSessionId, ReadSessionRegistry, TeardownAction};

@@ -123,6 +123,12 @@ pub enum InterestsCommand {
         /// When true, route this sparse global interest through the planner's
         /// indexer-discovery relay lane.
         is_indexer_discovery: bool,
+        /// #2948 — close semantics for the compiled REQ. `Tailing` (the read
+        /// default) keeps the sub live after EOSE; `OneShot` CLOSEs on EOSE so a
+        /// pinned collection read completes and tears down. Does NOT participate
+        /// in the subscription identity (the matching [`Self::CloseInterest`]
+        /// needs no lifecycle).
+        lifecycle: crate::planner::InterestLifecycle,
         /// The muted observer id to replay events to and then activate.
         observer_id: ObservedProjectionId,
         /// `InterestShape`s used to match events in the read-cache during

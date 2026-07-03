@@ -12,8 +12,8 @@ use nmp_core::substrate::{KernelEvent, PreferredRelaySource};
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::FrameworkProjectionKey;
 use nmp_read_session::{
-    close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
-    ReadSpec,
+    close_read, open_read, InterestLifecycle, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder,
+    ReadReplayPolicy, ReadSpec,
 };
 use nmp_store::EventStore;
 
@@ -230,6 +230,9 @@ pub fn open_search_read(
             scope: SEARCH_READ_SCOPE_GLOBAL,
             relay_pin: Some(pinned.relay),
             is_indexer_discovery: false,
+            // Search is a live tailing read: results keep arriving while the
+            // session is open. (Contrast NIP-AD's OneShot collection door.)
+            lifecycle: InterestLifecycle::Tailing,
             replay_limit: 0,
             replay: ReadReplayPolicy::LiveOnly,
         })

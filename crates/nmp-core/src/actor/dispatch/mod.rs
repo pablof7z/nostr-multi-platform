@@ -63,6 +63,7 @@ pub(crate) fn build_open_interest(
     scope: u32,
     relay_pin: Option<&str>,
     is_indexer_discovery: bool,
+    lifecycle: crate::planner::InterestLifecycle,
 ) -> Option<(crate::subs::SubIdentity, crate::planner::LogicalInterest)> {
     crate::subs::interest_builder::build_interest_pair(
         filter_json,
@@ -70,6 +71,7 @@ pub(crate) fn build_open_interest(
         scope,
         relay_pin,
         is_indexer_discovery,
+        lifecycle,
     )
 }
 
