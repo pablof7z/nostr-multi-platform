@@ -56,43 +56,34 @@ impl NmpApp {
         ));
         let projection_reader = Arc::clone(&projection);
 
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_ROSTER_PROJECTION_TOKEN, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: GROUP_ROSTER_KEY.to_string(),
-                    schema_id: GROUP_ROSTER_SCHEMA_ID.to_string(),
-                    schema_version: GROUP_ROSTER_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(GROUP_ROSTER_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_group_roster_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
+        let projection_for_output = Arc::clone(&projection);
+        let output_encoder: nmp_read_session::ReadOutputEncoder = Box::new(move || {
+            let snapshot = projection_for_output.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: GROUP_ROSTER_KEY.to_string(),
+                schema_id: GROUP_ROSTER_SCHEMA_ID.to_string(),
+                schema_version: GROUP_ROSTER_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(GROUP_ROSTER_FILE_IDENTIFIER).into_owned(),
+                payload: encode_group_roster_snapshot(&snapshot),
+                ..Default::default()
+            })
+        });
 
-        let handle_id = self.open_group_feed(
-            GROUP_ROSTER_KEY,
+        let read_handle = self.open_group_feed(
+            GROUP_ROSTER_PROJECTION_TOKEN,
             GROUP_ROSTER_CONSUMER,
             SCOPE_GLOBAL,
             relay_pin,
             filter_json,
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
+            output_encoder,
         );
-        (
-            Nip29GroupRosterHandle {
-                key: GROUP_ROSTER_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        )
+        (Nip29GroupRosterHandle { read_handle }, projection_reader)
     }
 
     /// Close the group-roster typed read session represented by `handle`.
     /// Idempotent (D6).
     pub fn close_nip29_group_roster_session(&self, handle: Nip29GroupRosterHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
+        self.close_group_feed_handle(&handle.read_handle);
     }
 }
