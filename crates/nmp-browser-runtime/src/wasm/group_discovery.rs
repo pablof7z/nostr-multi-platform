@@ -3,10 +3,12 @@
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 use super::core::NmpRuntimeCore;
+#[cfg(feature = "groups")]
 use super::dispatch_support::not_started_error;
 use super::protocol::{GroupDiscoveryClose, GroupDiscoveryOpen, WorkerEvent};
 
 impl NmpRuntimeCore {
+    #[cfg(feature = "groups")]
     pub(super) fn handle_group_discovery_open(
         &mut self,
         req: GroupDiscoveryOpen,
@@ -33,6 +35,19 @@ impl NmpRuntimeCore {
         }]
     }
 
+    #[cfg(not(feature = "groups"))]
+    pub(super) fn handle_group_discovery_open(
+        &mut self,
+        req: GroupDiscoveryOpen,
+    ) -> Vec<WorkerEvent> {
+        vec![WorkerEvent::CapabilityFailure {
+            capability: "nmp.nip29.group_discovery.open".to_string(),
+            correlation_id: req.correlation_id,
+            reason: "feature_disabled:nmp.nip29.groups".to_string(),
+        }]
+    }
+
+    #[cfg(feature = "groups")]
     pub(super) fn handle_group_discovery_close(
         &mut self,
         req: GroupDiscoveryClose,
@@ -46,5 +61,42 @@ impl NmpRuntimeCore {
             action_type: "nmp.nip29.group_discovery.close".to_string(),
             correlation_id: req.correlation_id,
         }]
+    }
+
+    #[cfg(not(feature = "groups"))]
+    pub(super) fn handle_group_discovery_close(
+        &mut self,
+        req: GroupDiscoveryClose,
+    ) -> Vec<WorkerEvent> {
+        vec![WorkerEvent::CapabilityFailure {
+            capability: "nmp.nip29.group_discovery.close".to_string(),
+            correlation_id: req.correlation_id,
+            reason: "feature_disabled:nmp.nip29.groups".to_string(),
+        }]
+    }
+}
+
+#[cfg(all(test, not(feature = "groups")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn group_discovery_open_fails_closed_when_feature_disabled() {
+        let mut core = NmpRuntimeCore::new();
+        let events = core.handle_group_discovery_open(GroupDiscoveryOpen {
+            session_id: "discovery".to_string(),
+            relay_url: "wss://groups.example".to_string(),
+            correlation_id: "groups-1".to_string(),
+        });
+
+        match events.as_slice() {
+            [WorkerEvent::CapabilityFailure {
+                capability, reason, ..
+            }] => {
+                assert_eq!(capability, "nmp.nip29.group_discovery.open");
+                assert_eq!(reason, "feature_disabled:nmp.nip29.groups");
+            }
+            other => panic!("expected feature-disabled failure, got {other:?}"),
+        }
     }
 }

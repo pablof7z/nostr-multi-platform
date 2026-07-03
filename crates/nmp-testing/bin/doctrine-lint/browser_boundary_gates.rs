@@ -158,14 +158,14 @@ fn browser_production_composition_names_owner_installers() {
 }
 
 #[test]
-fn browser_runtime_search_concept_is_feature_gated() {
-    let findings = browser_runtime_non_optional_dependency_findings(&["nmp-nip50"]);
+fn browser_runtime_read_concepts_are_feature_gated() {
+    let findings = browser_runtime_non_optional_dependency_findings(&["nmp-nip50", "nmp-nip29"]);
 
     assert!(
         findings.is_empty(),
-        "#2797: NIP-50 search is concept-owned composition. Keep the browser \
-         runtime SearchHost implementation and worker search dispatch behind \
-         the nmp-browser-runtime `search` feature:\n{}",
+        "#2797: read concepts are concept-owned composition. Keep browser \
+         runtime concept hosts and worker dispatch behind off-by-default \
+         nmp-browser-runtime features:\n{}",
         findings.join("\n")
     );
 }
