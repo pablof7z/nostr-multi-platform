@@ -3,7 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{
-    new_indexer_relays_slot, ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+    new_indexer_relays_slot, ActiveAccountSlot, ContactListReader, IndexerRelaysSlot,
+    LocalWriteRelaysSlot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
@@ -72,6 +73,8 @@ impl KernelReaderRegistrar for CapturingHost {
             .lock()
             .expect("mailbox cache reader slot") = Some(cache);
     }
+
+    fn set_contact_list_reader(&self, _reader: Arc<dyn ContactListReader>) {}
 }
 
 impl BlockedRelayLookupRegistrar for CapturingHost {

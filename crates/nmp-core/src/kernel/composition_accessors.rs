@@ -11,6 +11,18 @@ impl Kernel {
         self.dm_inbox_relays = lookup;
     }
 
+    /// Inject the protocol-owned contact-list reader (composition seam, #2788).
+    pub(crate) fn set_contact_list_reader(
+        &mut self,
+        reader: Arc<dyn crate::slots::ContactListReader>,
+    ) {
+        self.contact_list_reader = reader;
+    }
+
+    pub(crate) fn contact_list_reader(&self) -> &dyn crate::slots::ContactListReader {
+        &*self.contact_list_reader
+    }
+
     /// Inject the kind:0 profile lookup (composition seam, ADR-0070 PR 2).
     /// The cache is an independent store, not a write-through pair, so late
     /// swaps would lose already-ingested entries.

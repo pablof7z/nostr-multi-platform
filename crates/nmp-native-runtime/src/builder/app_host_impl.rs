@@ -196,6 +196,11 @@ impl<S> KernelReaderRegistrar for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_mailbox_cache_reader(cache);
     }
+
+    fn set_contact_list_reader(&self, reader: Arc<dyn nmp_core::slots::ContactListReader>) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.set_contact_list_reader(reader);
+    }
 }
 
 impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {

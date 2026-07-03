@@ -52,7 +52,8 @@ use nmp_core::actor::InterestsCommand;
 #[cfg_attr(not(test), allow(unused_imports))]
 use nmp_core::substrate::ActionModule;
 use nmp_core::substrate::{
-    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, SnapshotProjectionRegistrar,
+    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, KernelReaderRegistrar,
+    SnapshotProjectionRegistrar,
 };
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +61,7 @@ use serde::{Deserialize, Serialize};
 // file under the 500-LOC ceiling after the S3 typed-payload overrides).
 mod action_modules;
 pub mod active_follow_set;
+mod contact_tags;
 mod latest_kind3;
 pub mod projection;
 pub mod wire;
@@ -82,6 +84,7 @@ pub fn register(
     app: &mut (impl ActionRegistrar
               + HostCapabilities
               + IdentityChangeRegistrar
+              + KernelReaderRegistrar
               + SnapshotProjectionRegistrar),
     _config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
@@ -229,12 +232,16 @@ pub(crate) fn register_follow_actions(app: &mut impl ActionRegistrar) {
 /// active-pubkey argument is needed to seed a local slot; the projection
 /// reads the kernel's canonical active-account slot via `app.active_pubkey()`.
 pub(crate) fn register_follow_state_runtime(
-    app: &(impl HostCapabilities + IdentityChangeRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl HostCapabilities
+          + IdentityChangeRegistrar
+          + KernelReaderRegistrar
+          + SnapshotProjectionRegistrar),
 ) {
     use crate::wire::typed_fb;
 
     let active_pubkey = app.active_pubkey();
     let latest_kind3 = LatestKind3FollowSet::new(app.event_store_handle());
+    app.set_contact_list_reader(Arc::new(latest_kind3.clone()));
     let tx = app.actor_sender();
 
     let projection = Arc::new(crate::projection::FollowListProjection::new(

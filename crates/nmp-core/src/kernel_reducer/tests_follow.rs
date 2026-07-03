@@ -1,7 +1,7 @@
 //! Tests for [`KernelReducer::try_current_follows`].
 //!
 //! `try_current_follows` is the PR-6b wasm write-path seam: it reads the
-//! active account's kind:3 contact list from the store, distinguishing
+//! active account's contact list from the registered reader, distinguishing
 //! "not loaded" (`None`) from "loaded but empty" (`Some([])`). These tests
 //! verify all three states: not-loaded, loaded-empty, and loaded-non-empty.
 
@@ -144,7 +144,7 @@ fn rich_kind3_tags() -> Vec<Vec<String>> {
 }
 
 #[test]
-fn try_current_kind3_event_returns_full_tags_and_content() {
+fn try_current_contact_list_event_returns_full_tags_and_content() {
     // The seam must hand back EVERY tag verbatim (non-`p`, relay hints,
     // petnames) plus the original content — not the pubkey-only projection.
     let mut r = KernelReducer::new();
@@ -152,7 +152,7 @@ fn try_current_kind3_event_returns_full_tags_and_content() {
     seed_kind3_raw(&r, ACCOUNT_PK, rich_kind3_tags(), "legacy relay json");
 
     let (tags, content) = r
-        .try_current_kind3_event()
+        .try_current_contact_list_event()
         .expect("kind:3 loaded → must return Some");
     assert_eq!(tags, rich_kind3_tags(), "every tag must survive verbatim");
     assert_eq!(
@@ -162,12 +162,12 @@ fn try_current_kind3_event_returns_full_tags_and_content() {
 }
 
 #[test]
-fn try_current_kind3_event_fails_closed_when_not_loaded() {
+fn try_current_contact_list_event_fails_closed_when_not_loaded() {
     // No kind:3 ingested → None (fail closed), never an empty event.
     let mut r = KernelReducer::new();
     set_active_account(&mut r, ACCOUNT_PK);
     assert!(
-        r.try_current_kind3_event().is_none(),
+        r.try_current_contact_list_event().is_none(),
         "kind:3 not loaded must return None, not an empty event"
     );
 }
@@ -181,7 +181,7 @@ fn kind3_edit_add_preserves_relay_hints_petnames_non_p_and_content() {
     set_active_account(&mut r, ACCOUNT_PK);
     seed_kind3_raw(&r, ACCOUNT_PK, rich_kind3_tags(), "legacy relay json");
 
-    let (tags, content) = r.try_current_kind3_event().expect("loaded");
+    let (tags, content) = r.try_current_contact_list_event().expect("loaded");
     let new_target = "f".repeat(64);
     let edited = crate::tags::kind3_tags_after_add(&tags, &new_target);
 
@@ -221,7 +221,7 @@ fn kind3_edit_remove_preserves_relay_hints_petnames_non_p_and_content() {
     set_active_account(&mut r, ACCOUNT_PK);
     seed_kind3_raw(&r, ACCOUNT_PK, rich_kind3_tags(), "legacy relay json");
 
-    let (tags, content) = r.try_current_kind3_event().expect("loaded");
+    let (tags, content) = r.try_current_contact_list_event().expect("loaded");
     // Remove the bare follow B; A (relay-hinted + petnamed) must remain.
     let edited = crate::tags::kind3_tags_after_remove(&tags, FOLLOW_B);
 

@@ -14,8 +14,8 @@ use nmp_core::__ffi_internal::{
     ActorRuntimeSlots,
 };
 use nmp_core::slots::{
-    new_active_account_slot, new_active_local_keys_slot, new_event_store_slot,
-    new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
+    new_active_account_slot, new_active_local_keys_slot, new_contact_list_reader_slot,
+    new_event_store_slot, new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
     new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot, new_publish_resolver_slot,
     new_pull_cursor_registry_handle_slot, new_routing_substrate_slot, new_routing_trace_slot,
     new_storage_path_slot,
@@ -162,6 +162,9 @@ pub fn new_app() -> NmpApp {
             nmp_core::substrate::empty_dm_inbox_relay_lookup(),
         ));
     let actor_dm_inbox_relays = Arc::clone(&dm_inbox_relays_slot);
+    // #2788 — protocol-owned contact-list reader slot.
+    let contact_list_reader_slot = new_contact_list_reader_slot();
+    let actor_contact_list_reader = Arc::clone(&contact_list_reader_slot);
     // ADR-0070 PR 2 — substrate `ProfileLookup` slot.
     let profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_profile_lookup()));
@@ -225,6 +228,7 @@ pub fn new_app() -> NmpApp {
             ingest_dispatcher: actor_ingest_dispatcher,
             search_scope_registry: actor_search_scope_registry,
             dm_inbox_relays: actor_dm_inbox_relays,
+            contact_list_reader: actor_contact_list_reader,
             profile_lookup: actor_profile_lookup,
             blocked_relays: actor_blocked_relays,
             bootstrap_self_kinds: actor_bootstrap_self_kinds,
@@ -355,6 +359,7 @@ pub fn new_app() -> NmpApp {
             publish_resolver,
             bootstrap_self_kinds,
             dm_inbox_relays_slot,
+            contact_list_reader_slot,
             profile_lookup_slot,
             blocked_relays_slot,
             mailbox_cache_reader: Mutex::new(None),

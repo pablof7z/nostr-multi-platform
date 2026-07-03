@@ -60,6 +60,7 @@ pub fn spawn_test_actor(
         ingest_dispatcher: Arc::new(RwLock::new(dispatcher)),
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
         dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
+        contact_list_reader: crate::slots::new_contact_list_reader_slot(),
         profile_lookup: Arc::new(Mutex::new(profile_lookup)),
         blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
         bootstrap_self_kinds: Arc::new(Mutex::new(None)),

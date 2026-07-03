@@ -16,7 +16,7 @@ impl Kernel {
         &mut self,
         verified: &crate::store::VerifiedEvent,
     ) {
-        self.project_accepted_event_from(verified, None);
+        self.project_accepted_event_from(verified, None, None);
     }
 
     /// Source-aware variant for live relay ingest. Cache replay and local
@@ -26,6 +26,7 @@ impl Kernel {
         &mut self,
         verified: &crate::store::VerifiedEvent,
         source_relay_url: Option<&str>,
+        active_contacts_before: Option<Option<Vec<String>>>,
     ) {
         let raw = verified.raw();
         let author = raw.pubkey.clone();
@@ -74,11 +75,13 @@ impl Kernel {
         if dm_before != dm_after {
             self.on_dm_relays_changed(&author, created_at_for_trigger);
         }
-        if raw.kind == crate::kinds::KIND_CONTACT_LIST
-            && self.active_account.as_deref() == Some(author.as_str())
-        {
-            let follows = crate::tags::contact_follows(&raw.tags);
-            self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
+        if let Some(active_contacts_before) = active_contacts_before {
+            let active_contacts_after = self.contact_list_reader().follows(&author);
+            if active_contacts_before != active_contacts_after {
+                if let Some(follows) = active_contacts_after {
+                    self.on_active_contacts_changed(&author, follows, created_at_for_trigger);
+                }
+            }
         }
         // GAP-3: detect blocked-relay-set change. Kind:10006 is the wire shape,
         // but the transition detector is kind-agnostic (mirrors the contacts
@@ -98,6 +101,14 @@ impl Kernel {
         let mut kernel_event = helpers::kernel_event_from_verified(verified);
         kernel_event.created_at = kernel_event.created_at.min(now_secs);
         self.notify_event_observers(&kernel_event);
+    }
+
+    pub(in crate::kernel) fn active_contacts_snapshot_for_author(
+        &self,
+        author: &str,
+    ) -> Option<Option<Vec<String>>> {
+        (self.active_account.as_deref() == Some(author))
+            .then(|| self.contact_list_reader().follows(author))
     }
 
     /// Wall-clock arrival timestamp (unix millis) for a store insert.

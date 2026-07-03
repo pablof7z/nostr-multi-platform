@@ -106,7 +106,7 @@ fn local_kind3_publish_updates_contacts_set() {
     // Before publishing kind:3, FOLLOWED is not in the latest stored kind:3 for
     // this author.
     assert!(
-        crate::slots::latest_kind3_follows_from_arc(&kernel.store, &author)
+        kernel.contact_list_reader().follows(&author)
             .map_or(true, |follows| !follows.contains(&FOLLOWED.to_string())),
         "precondition: FOLLOWED must not be in the stored kind:3 before publish"
     );
@@ -117,7 +117,7 @@ fn local_kind3_publish_updates_contacts_set() {
     // After publishing kind:3 with FOLLOWED in the p-tags, the local
     // read-your-writes path persists it before projection.
     assert!(
-        crate::slots::latest_kind3_follows_from_arc(&kernel.store, &author)
+        kernel.contact_list_reader().follows(&author)
             .map_or(false, |follows| follows.contains(&FOLLOWED.to_string())),
         "FOLLOWED must be in the stored kind:3 for author after publish"
     );

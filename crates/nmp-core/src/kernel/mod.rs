@@ -169,6 +169,7 @@ use nostr::now_hms;
 pub use nostr::{is_hex_id, is_hex_pubkey};
 use nostr::{ratio, short_hex, truncate, NostrEvent};
 
+use crate::slots::ContactListReader;
 use crate::store::EventStore;
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 #[cfg(not(any(test, feature = "test-support")))]
@@ -275,6 +276,8 @@ pub struct Kernel {
     routing_trace: Arc<routing_trace::RoutingTraceProjection>,
     /// NIP-17 DM-inbox relay lookup substrate (D0, V-40).
     dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
+    /// Protocol-owned contact-list reader (D0, #2788).
+    contact_list_reader: Arc<dyn ContactListReader>,
     /// Blocked-relay lookup substrate (D0, V-40).
     blocked_relays: Arc<dyn BlockedRelayLookup>,
     /// Per-app override for the active-account bootstrap self-kinds list.

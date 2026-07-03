@@ -4,10 +4,9 @@
 //! from applesauce, refactored into NMP idiom. It is a sibling protocol codec
 //! to the dedicated [`nmp_nostr_id`] crate (NIP-19 codec + NIP-21
 //! `nmp_nostr_id::nip21` URI surface): like them it is a **protocol codec**,
-//! not a per-kind decoder or a domain noun. (The NIP-19 bech32 entity codec and
-//! the NIP-21 `nostr:` URI surface were carved out of `nmp-core` into the
-//! Layer-0 `nmp-nostr-id` identifier-vocabulary crate per issue #2515; NIP-10
-//! tags stay here as foundational substrate vocabulary.)
+//! not a per-kind decoder or a domain noun. The NIP-19 bech32 entity codec and
+//! the NIP-21 `nostr:` URI surface live in the Layer-0 `nmp-nostr-id`
+//! identifier-vocabulary crate; per-kind decoders stay in their protocol crates.
 //! D0 (`docs/design/kind-wrappers.md`) forbids the kernel knowing
 //! "kind 30023 == article"; nothing here encodes any kind semantics — every
 //! function is a pure transform over `&[Vec<String>]`. Per-kind decoders
@@ -95,36 +94,6 @@ pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
         .collect()
 }
 
-/// Derive the active account's full follow set from a kind:3 contact list's
-/// tags — the **single source of truth** for "which follows count".
-///
-/// Uncapped (#1497 amendment 6): the follow-feed collapsed to ONE multi-author
-/// interest with no per-author limit, so there is no wire-subscription bound to
-/// mirror — every valid follow is subscribed. Semantics:
-/// 1. Keep `["p", <value>, …]` tags whose value is a valid 64-hex pubkey
-///    ([`crate::kernel::is_hex_pubkey`]) — malformed `p` entries are skipped.
-/// 2. Preserve **document order**; do **not** dedup and do **not** sort
-///    (the kernel collects into a `Vec`, so a duplicate `p` tag occupies a
-///    slot exactly as it does on the wire).
-///
-/// Returns owned `String`s so callers (kernel ingest and the two `nmp-nip02`
-/// `ObservedProjectionSink`s) all consume an identical set without re-implementing —
-/// and therefore re-diverging — the recipe.
-#[must_use]
-pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
-    tags.iter()
-        .filter_map(|tag| {
-            if tag.first().map(String::as_str) == Some("p") {
-                tag.get(1)
-                    .filter(|value| crate::kernel::is_hex_pubkey(value))
-                    .cloned()
-            } else {
-                None
-            }
-        })
-        .collect()
-}
-
 // ─── NIP-02 kind:3 contact-list edit builders ────────────────────────────────
 
 /// Return the FULL kind:3 tag set that results from adding a follow on `target`
@@ -133,8 +102,8 @@ pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
 ///
 /// `current` is the active account's existing kind:3 tag set
 /// (`Vec<Vec<String>>`), obtained from a confirmed-loaded kind:3 via
-/// [`crate::kernel_reducer::KernelReducer::try_current_kind3_event`] (or the
-/// native `Kernel::try_current_kind3_event`). Callers MUST confirm the kind:3
+/// [`crate::kernel_reducer::KernelReducer::try_current_contact_list_event`] (or
+/// the native kernel contact-list edit gate). Callers MUST confirm the kind:3
 /// is loaded first — editing a not-yet-loaded list and re-publishing would
 /// silently wipe the user's contacts.
 ///
@@ -423,8 +392,8 @@ pub fn parse_nip10(tags: &[Vec<String>]) -> Nip10Refs {
 
 // Unit tests live in sibling files to keep this module under the 500-line
 // ceiling. `use super::*` in each provides the same namespace access an inline
-// `mod tests` would. `tags_tests.rs` covers the constructors, readers, NIP-10
-// parser, and the `contact_follows` follow-set extraction; `tags_reply_tests.rs`
+// `mod tests` would. `tags_tests.rs` covers the constructors, readers, and
+// NIP-10 parser; `tags_reply_tests.rs`
 // covers `reply_tags`.
 #[cfg(test)]
 #[path = "tags_tests.rs"]

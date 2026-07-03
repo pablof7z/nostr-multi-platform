@@ -220,6 +220,10 @@ impl Kernel {
         // parser/cache semantics live in nmp-nip01; core only needs a reader seam.
         #[cfg(any(test, feature = "test-support"))]
         let test_profile_lookup = Arc::new(crate::substrate::TestProfileLookup::new());
+        #[cfg(any(test, feature = "test-support"))]
+        let test_contact_list_reader = Arc::new(test_support::TestStoreContactListReader::new(
+            Arc::clone(&store),
+        )) as Arc<dyn crate::slots::ContactListReader>;
 
         let mut kernel = Self {
             store,
@@ -266,6 +270,10 @@ impl Kernel {
             content_parser,
             routing_trace,
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),
+            #[cfg(any(test, feature = "test-support"))]
+            contact_list_reader: test_contact_list_reader,
+            #[cfg(not(any(test, feature = "test-support")))]
+            contact_list_reader: crate::slots::empty_contact_list_reader(),
             blocked_relays: empty_blocked_relay_lookup(),
             bootstrap_self_kinds_override: None,
             outbound_public_tags: Vec::new(),

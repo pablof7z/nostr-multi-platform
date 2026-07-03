@@ -91,6 +91,9 @@ impl BrowserRuntimeHandle {
         if let Some(l) = inner.profile_lookup.take() {
             inner.reducer.set_profile_lookup(l);
         }
+        if let Some(l) = inner.contact_list_reader.take() {
+            inner.reducer.set_contact_list_reader(l);
+        }
         if let Some(l) = inner.dm_inbox_relay_lookup.take() {
             inner.reducer.set_dm_inbox_relay_lookup(l);
         }

@@ -102,6 +102,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             dm_inbox_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),
+            contact_list_reader: crate::slots::new_contact_list_reader_slot(),
             profile_lookup: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_profile_lookup(),
             )),

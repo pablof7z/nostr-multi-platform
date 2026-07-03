@@ -37,7 +37,9 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
     // projection. The kernel reacts to a transition ONLY for the active account.
     kernel.inject_contacts(event);
 
-    let follows = crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+    let follows = kernel
+        .contact_list_reader()
+        .follows(AUTHOR)
         .expect("a kind:3 must be stored under the author pubkey");
     assert_eq!(
         follows,
@@ -79,7 +81,7 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     );
     kernel.inject_contacts(seed);
     assert_eq!(
-        crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR).map(|f| f.len()),
+        kernel.contact_list_reader().follows(AUTHOR).map(|f| f.len()),
         Some(2),
         "precondition: the seed contact list holds two follows",
     );
@@ -97,7 +99,9 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     // The event is PRESENT but derived empty — an empty `p`-tag set yields
     // `Some(vec![])`, NOT `None` (a cleared follow set is distinct from
     // "no kind:3 stored").
-    let follows = crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+    let follows = kernel
+        .contact_list_reader()
+        .follows(AUTHOR)
         .expect("an empty kind:3 must still leave a stored contact-list event");
     assert!(
         follows.is_empty(),
@@ -124,7 +128,9 @@ fn ingest_contacts_for_active_account_enqueues_source_recompile() {
     kernel.inject_contacts(event);
 
     assert!(
-        crate::slots::latest_kind3_follows_from_arc(&kernel.store, AUTHOR)
+        kernel
+            .contact_list_reader()
+            .follows(AUTHOR)
             .expect("active kind:3 must be stored")
             .contains(&FOLLOW_A.to_string()),
         "active-account kind:3 must update the stored latest contact list",

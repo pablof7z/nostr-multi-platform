@@ -91,8 +91,8 @@
 //!   amendment 6). The kernel fans the *raw* kind:3 event (all `p` tags) to
 //!   every `ObservedProjectionSink`, so this observer derives membership itself.
 //!   It does so by routing the event's tags through the one shared pure function
-//!   [`nmp_core::tags::contact_follows`] — the IDENTICAL recipe
-//!   `Kernel::ingest_contacts` uses (every valid-hex-`p`-tag in document
+//!   [`crate::contact_tags::contact_follows`] — the IDENTICAL recipe
+//!   the NIP-02 reader uses (every valid-hex-`p`-tag in document
 //!   order). This is the single source of truth for membership; the sibling
 //!   [`crate::projection::FollowListProjection`] applies the very same function
 //!   so the predicate producer and the snapshot can never disagree on which
@@ -129,9 +129,9 @@ use std::sync::{Arc, Mutex, RwLock};
 use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
-use nmp_core::tags::contact_follows;
 use nmp_core::ObservedProjectionSink;
 
+use crate::contact_tags::contact_follows;
 use crate::LatestKind3FollowSet;
 
 mod reactive_graph;
@@ -384,7 +384,7 @@ impl ObservedProjectionSink for ActiveFollowSet {
 
         // Derive the follow set through the one shared pure function
         // (`contact_follows`): every valid-hex `p`-tag in document order — the
-        // IDENTICAL set the router subscribes to in `Kernel::ingest_contacts`.
+        // IDENTICAL set the contacts reader exposes to the kernel.
         // The follow set is uncapped (#1497 amendment 6): the follow-feed is one
         // multi-author interest covering every follow, so the predicate and the
         // wire subscription cover the same authors. The shared function dedups

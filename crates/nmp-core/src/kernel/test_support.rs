@@ -43,6 +43,58 @@ impl crate::substrate::IngestParser for ProfileViewSeedParser {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+pub(crate) struct TestStoreContactListReader {
+    store: std::sync::Arc<dyn crate::store::EventStore>,
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl TestStoreContactListReader {
+    pub(crate) fn new(store: std::sync::Arc<dyn crate::store::EventStore>) -> Self {
+        Self { store }
+    }
+
+    fn latest_event(&self, author_hex: &str) -> Option<crate::slots::ContactListEvent> {
+        let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
+        let mut iter = self
+            .store
+            .scan_by_author_kind(&author, &[crate::kinds::KIND_CONTACT_LIST], None, None, 1)
+            .ok()?;
+        iter.next()?.ok().map(|stored| crate::slots::ContactListEvent {
+                tags: stored.raw.tags.clone(),
+                content: stored.raw.content.clone(),
+                created_at: stored.raw.created_at,
+        })
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+impl crate::slots::ContactListReader for TestStoreContactListReader {
+    fn follows(&self, author_hex: &str) -> Option<Vec<String>> {
+        self.latest_event(author_hex)
+            .map(|event| test_contact_follows(&event.tags))
+    }
+
+    fn event_for_edit(&self, author_hex: &str) -> Option<crate::slots::ContactListEvent> {
+        self.latest_event(author_hex)
+    }
+}
+
+#[cfg(any(test, feature = "test-support"))]
+fn test_contact_follows(tags: &[Vec<String>]) -> Vec<String> {
+    tags.iter()
+        .filter_map(|tag| {
+            if tag.first().map(String::as_str) == Some("p") {
+                tag.get(1)
+                    .filter(|value| crate::kernel::is_hex_pubkey(value))
+                    .cloned()
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 impl Kernel {
     /// Test-support constructor for downstream protocol crates.
     #[must_use]
@@ -96,6 +148,7 @@ impl Kernel {
             sig: "a".repeat(128),
         };
         let verified = VerifiedEvent::from_raw_unchecked(raw);
+        let active_contacts_before = self.active_contacts_snapshot_for_author(pubkey);
         let outcome = match self
             .store
             .insert(verified.clone(), &relay_url.to_string(), received_at_ms)
@@ -107,7 +160,7 @@ impl Kernel {
             outcome,
             InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
         ) {
-            self.project_accepted_event(&verified);
+            self.project_accepted_event_from(&verified, None, active_contacts_before);
         }
         Some(outcome)
     }
@@ -223,12 +276,14 @@ impl Kernel {
             content: String::new(),
             sig: "a".repeat(128),
         });
+        let active_contacts_before =
+            self.active_contacts_snapshot_for_author(&author_pubkey.to_string());
         let _ = self.store.insert(
             verified.clone(),
             &"wss://seed".to_string(),
             1_700_000_000_000,
         );
-        self.project_accepted_event(&verified);
+        self.project_accepted_event_from(&verified, None, active_contacts_before);
         if mailbox_before != mailbox_after {
             self.on_mailbox_changed(author_pubkey, &event_id, created_at);
         }
@@ -263,6 +318,7 @@ impl Kernel {
                 event.sig.clone()
             },
         });
+        let active_contacts_before = self.active_contacts_snapshot_for_author(&event.pubkey);
         let outcome = self.store.insert(
             verified.clone(),
             &"wss://test.invalid/".to_string(),
@@ -274,7 +330,7 @@ impl Kernel {
                 | Ok(crate::store::InsertOutcome::Replaced { .. })
                 | Ok(crate::store::InsertOutcome::Ephemeral { .. })
         ) {
-            self.project_accepted_event(&verified);
+            self.project_accepted_event_from(&verified, None, active_contacts_before);
         }
     }
 
