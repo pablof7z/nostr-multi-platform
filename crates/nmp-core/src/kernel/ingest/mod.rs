@@ -25,15 +25,15 @@
 //!   ([`Kernel::feed_served_event`]), so the two paths cannot diverge.
 //! - **Projection / relevance** = read-time only. The kernel-owned post-store
 //!   read-cache is gated by the timeline author projection and by active
-//!   generic interests. Profiles (kind:0) are parser-fed into the profile cache.
-//!   Contacts (kind:3) are store-derived; for the active account the kernel
-//!   reacts to the accepted event by enqueueing a source recompile trigger. The
-//!   reduced feed-source compiler owns author-set expansion and generic interest
-//!   replacement.
+//!   generic interests. Profiles are parser-fed into the profile cache.
+//!   Contacts are read through a protocol-owned reader; for the active account
+//!   the kernel reacts to contact-list transitions by enqueueing a source
+//!   recompile trigger. The reduced feed-source compiler owns author-set
+//!   expansion and generic interest replacement.
 //!   Substrate `MailboxCache` / `DmInboxRelayLookup` transitions are likewise
 //!   detected kind-agnostically by bracketing the chokepoint with before/after
 //!   snapshots (the kernel only knows "this author's mailbox / contacts
-//!   changed", never "a kind:10002 / kind:3 arrived" — the same kind-agnostic
+//!   changed", never which wire kind arrived — the same kind-agnostic
 //!   substrate discipline `docs/architecture/crate-boundaries.md` §3 requires
 //!   of `nmp-core`).
 //!
@@ -42,9 +42,9 @@
 //! keeps its ADR-0070 path (`cache_serve/continuation.rs::feed_served_event`).
 //!
 //! ADR-0070 PR 3 is the full D0 finish-line: the kernel ingest path now names
-//! ZERO NIP kind literals. kind:0 (profiles) moved in PR 2, kind:3 (contacts)
-//! moved here, and feed acquisition flows through generic interests rather
-//! than a hard-coded follow-feed branch.
+//! ZERO NIP kind literals. Profiles and contacts now cross the kernel through
+//! registered reader seams, and feed acquisition flows through generic interests
+//! rather than a hard-coded follow-feed branch.
 
 mod accepted;
 mod auth_handlers;

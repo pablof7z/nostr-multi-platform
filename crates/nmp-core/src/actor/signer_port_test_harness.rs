@@ -88,6 +88,7 @@ pub(super) fn dispatch_one_with_relays(
         ingest_dispatcher: ingest_dispatcher_slot,
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
         dm_inbox_relays: dm_inbox_relays_slot,
+        contact_list_reader: crate::slots::new_contact_list_reader_slot(),
         profile_lookup: profile_lookup_slot,
         blocked_relays: blocked_relays_slot,
         bootstrap_self_kinds: bootstrap_self_kinds_slot,

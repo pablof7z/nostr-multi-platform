@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel::Kernel;
 use crate::slots::{
-    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicyFactory,
-    ExternalEventSinkPolicySlot, KernelClockSlot, MlsLocalNsecSlot, PublishResolverFactory,
-    PublishResolverSlot, PullCursorRegistryHandleSlot, RoutingSubstrateFactory,
-    RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, ContactListReader, ContactListReaderSlot,
+    EventStoreSlot, ExternalEventSinkPolicyFactory, ExternalEventSinkPolicySlot, KernelClockSlot,
+    MlsLocalNsecSlot, PublishResolverFactory, PublishResolverSlot, PullCursorRegistryHandleSlot,
+    RoutingSubstrateFactory, RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
@@ -65,6 +65,7 @@ pub struct ActorConfigSources {
     /// consumed once at composition.
     pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<Mutex<Arc<dyn DmInboxRelayLookup>>>,
+    pub contact_list_reader: ContactListReaderSlot,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
     pub blocked_relays: Arc<Mutex<Arc<dyn BlockedRelayLookup>>>,
     pub bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
@@ -124,6 +125,11 @@ impl ActorConfigSources {
                 .lock()
                 .map(|guard| Arc::clone(&*guard))
                 .unwrap_or_else(|_| crate::substrate::empty_dm_inbox_relay_lookup()),
+            contact_list_reader: self
+                .contact_list_reader
+                .lock()
+                .map(|guard| Arc::clone(&*guard))
+                .unwrap_or_else(|_| crate::slots::empty_contact_list_reader()),
             profile_lookup: self
                 .profile_lookup
                 .lock()
@@ -183,6 +189,7 @@ pub struct ActorConfig {
     /// the kernel store at `apply_to_kernel`).
     pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
+    pub contact_list_reader: Arc<dyn ContactListReader>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
     pub blocked_relays: Arc<dyn BlockedRelayLookup>,
     pub bootstrap_self_kinds: Option<Vec<u32>>,
@@ -257,6 +264,7 @@ impl ActorConfig {
         self.search_scope_registry
             .install_into(&*kernel.event_store_handle());
         kernel.set_dm_inbox_relay_lookup(Arc::clone(&self.dm_inbox_relays));
+        kernel.set_contact_list_reader(Arc::clone(&self.contact_list_reader));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));
         kernel.set_blocked_relay_lookup(Arc::clone(&self.blocked_relays));
         kernel.set_bootstrap_self_kinds_override(self.bootstrap_self_kinds.clone());

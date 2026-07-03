@@ -169,6 +169,10 @@ impl KernelReaderRegistrar for NmpApp {
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
         NmpApp::set_mailbox_cache_reader(self, cache);
     }
+
+    fn set_contact_list_reader(&self, reader: Arc<dyn nmp_core::slots::ContactListReader>) {
+        NmpApp::set_contact_list_reader(self, reader);
+    }
 }
 
 impl RoutingFactoryRegistrar for NmpApp {

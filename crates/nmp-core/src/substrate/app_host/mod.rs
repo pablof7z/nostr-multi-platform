@@ -27,7 +27,9 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::publish::OutboxResolver;
-use crate::slots::{ActiveAccountSlot, EventStoreSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
+use crate::slots::{
+    ActiveAccountSlot, ContactListReader, EventStoreSlot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+};
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
 use crate::AppRelaySlot;
@@ -193,6 +195,13 @@ pub trait KernelReaderRegistrar {
     /// over a bare `npub` using the hints the parser writes on ingest.
     /// Read-only, synchronous — no network, no actor round-trip.
     fn set_mailbox_cache_reader(&self, cache: Arc<dyn MailboxCache>);
+
+    /// Install the protocol-owned contact-list reader.
+    ///
+    /// The NIP-02 crate owns the store scan and follow-tag parser; the kernel
+    /// uses only this contact/follow fact for active-account recompile triggers
+    /// and follow-edit safety gates.
+    fn set_contact_list_reader(&self, reader: Arc<dyn ContactListReader>);
 }
 
 /// Install the DM-inbox relay-list lookup (NIP-17 kind:10050) — separate from

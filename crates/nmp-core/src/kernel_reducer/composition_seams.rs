@@ -345,6 +345,11 @@ impl super::KernelReducer {
         self.kernel.set_profile_lookup(lookup);
     }
 
+    /// Install the protocol-owned contact-list reader.
+    pub fn set_contact_list_reader(&mut self, reader: Arc<dyn crate::slots::ContactListReader>) {
+        self.kernel.set_contact_list_reader(reader);
+    }
+
     /// Register a post-store ingest parser against the wrapped kernel.
     ///
     /// Mirrors `NmpApp::register_ingest_parser` for reducer-owned wasm

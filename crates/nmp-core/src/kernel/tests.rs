@@ -148,7 +148,9 @@ fn kind3_stale_redelivery_does_not_overwrite_latest_follow_set() {
         matches!(o2, InsertOutcome::Inserted { .. }),
         "v2 must be freshly inserted, got {o2:?}"
     );
-    let contacts_after_v2 = crate::slots::latest_kind3_follows_from_arc(&kernel.store, PK_A)
+    let contacts_after_v2 = kernel
+        .contact_list_reader()
+        .follows(PK_A)
         .expect("contacts must be populated after v2");
     assert_eq!(
         contacts_after_v2.len(),
@@ -168,7 +170,9 @@ fn kind3_stale_redelivery_does_not_overwrite_latest_follow_set() {
 
     // Derived latest must still reflect v2 — the stale v1 must not have
     // overwritten it.
-    let contacts_after_v1 = crate::slots::latest_kind3_follows_from_arc(&kernel.store, PK_A)
+    let contacts_after_v1 = kernel
+        .contact_list_reader()
+        .follows(PK_A)
         .expect("contacts must still be populated");
     assert_eq!(
         contacts_after_v1.len(),

@@ -271,6 +271,11 @@ impl<S> KernelReaderRegistrar for BrowserAppBuilder<S> {
         let Ok(mut g) = self.inner.lock() else { return };
         g.mailbox_cache_reader = Some(cache);
     }
+
+    fn set_contact_list_reader(&self, reader: Arc<dyn nmp_core::slots::ContactListReader>) {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.contact_list_reader = Some(reader);
+    }
 }
 
 // ── DmInboxRelayRegistrar ────────────────────────────────────────────────────

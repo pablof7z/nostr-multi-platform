@@ -18,6 +18,48 @@ use std::sync::{Arc, Mutex};
 
 use zeroize::Zeroizing;
 
+/// Store-derived contact-list row exposed by the protocol-owned reader.
+///
+/// The kernel needs the loaded baseline for follow-list edits, but it must not
+/// know the wire kind or parsing rules. Protocol crates provide this raw row
+/// through [`ContactListReader`]; the kernel treats it as opaque tags/content
+/// plus a replacement timestamp.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContactListEvent {
+    pub tags: Vec<Vec<String>>,
+    pub content: String,
+    pub created_at: u64,
+}
+
+/// Protocol-owned reader for an account's contact/follow state.
+///
+/// `nmp-core` owns the lifecycle reaction ("the active account's contacts
+/// changed") and follow-edit safety gate, but the protocol crate owns how that
+/// fact is derived from stored events. `None` means no loaded contact-list row.
+pub trait ContactListReader: Send + Sync {
+    fn follows(&self, author_hex: &str) -> Option<Vec<String>>;
+
+    fn event_for_edit(&self, author_hex: &str) -> Option<ContactListEvent>;
+}
+
+#[derive(Debug, Default)]
+pub struct EmptyContactListReader;
+
+impl ContactListReader for EmptyContactListReader {
+    fn follows(&self, _author_hex: &str) -> Option<Vec<String>> {
+        None
+    }
+
+    fn event_for_edit(&self, _author_hex: &str) -> Option<ContactListEvent> {
+        None
+    }
+}
+
+#[must_use]
+pub fn empty_contact_list_reader() -> Arc<dyn ContactListReader> {
+    Arc::new(EmptyContactListReader)
+}
+
 /// Typed slot for the active account's MLS nsec (bech32, zeroized on overwrite).
 ///
 /// The actor is the sole writer (D4); per-app crates read via
@@ -66,6 +108,14 @@ pub type RoutingTraceSlot =
 /// observes a torn write. Substrate-generic: an event id maps to a
 /// [`KernelEvent`] with no NIP noun (D0 stays clean).
 pub type EventStoreSlot = Arc<Mutex<Option<Arc<dyn crate::store::EventStore>>>>;
+
+/// Pre-start slot for the protocol-owned contact-list reader.
+///
+/// The native/browser composition roots fill this by calling the NIP-02
+/// installer; the actor snapshots it into the kernel at start/reset. The slot
+/// shape mirrors the other pre-start kernel-reader handles, but carries the
+/// contact-list reader's narrower trait instead of the raw event store.
+pub type ContactListReaderSlot = Arc<Mutex<Arc<dyn ContactListReader>>>;
 
 /// ADR-0072 step 3b — typed slot the actor publishes the kernel's pull-cursor
 /// registry handle into, right after kernel construction (and re-publishes on
@@ -128,6 +178,12 @@ pub fn new_event_store_slot() -> EventStoreSlot {
     Arc::new(Mutex::new(None))
 }
 
+/// Construct a fresh [`ContactListReaderSlot`] with the graceful-empty reader.
+#[must_use]
+pub fn new_contact_list_reader_slot() -> ContactListReaderSlot {
+    Arc::new(Mutex::new(empty_contact_list_reader()))
+}
+
 /// Construct a fresh, empty [`PullCursorRegistryHandleSlot`].
 #[must_use]
 pub fn new_pull_cursor_registry_handle_slot() -> PullCursorRegistryHandleSlot {
@@ -171,68 +227,6 @@ pub fn event_by_id_from_store(
         content: raw.content.clone(),
         relay_provenance: relay_provenance_for_key(store.as_ref(), &key),
     })
-}
-
-/// Count the distinct follows in `author_hex`'s latest kind:3 in the kernel's
-/// published [`EventStoreSlot`].
-///
-/// Reads the newest kind:3 for the author from the local store and counts its
-/// distinct, hex-valid `p` tags. Because every locally-published event is
-/// ingested into this same store before its observer fan-out (read-your-writes,
-/// `kernel/ingest/timeline.rs` / ADR-0070), a kind:3 just published by a
-/// `follow` / `follow_many` write is visible here synchronously — no relay
-/// round-trip is required for the count to reflect it.
-///
-/// Returns:
-/// - `Some(n)` — the author HAS a kind:3 in the store with `n` distinct follows
-///   (including `Some(0)` for an explicit empty list).
-/// - `None` — `author_hex` is malformed, the slot has not been published yet
-///   (pre-`nmp_app_start`), a lock is poisoned, or no kind:3 exists for the
-///   author yet (brand-new account that has published none). Hosts render
-///   `None` as `0` for display; the distinction (`None` vs `Some(0)`) is kept
-///   so a caller can tell "no list yet" from "loaded, empty".
-#[must_use]
-pub fn following_count_from_store(slot: &EventStoreSlot, author_hex: &str) -> Option<usize> {
-    let store = slot.lock().ok()?.clone()?;
-    let follows = latest_kind3_follows_from_arc(&store, author_hex)?;
-    let mut seen = std::collections::HashSet::new();
-    let count = follows
-        .into_iter()
-        .filter(|pk| seen.insert(pk.clone()))
-        .count();
-    Some(count)
-}
-
-/// Resolve `author_hex`'s latest kind:3 follow set from the kernel-published
-/// event store slot.
-///
-/// `None` means malformed author, no store, store read failure, or no kind:3.
-/// `Some(vec![])` means the latest kind:3 exists and explicitly follows nobody.
-#[must_use]
-pub fn latest_kind3_follows_from_store(
-    slot: &EventStoreSlot,
-    author_hex: &str,
-) -> Option<Vec<String>> {
-    let store = slot.lock().ok()?.clone()?;
-    latest_kind3_follows_from_arc(&store, author_hex)
-}
-
-/// Resolve `author_hex`'s latest kind:3 follow set from a direct store handle.
-///
-/// This is the canonical derived read for contact-list follows. It does not
-/// cache or own contact-list state; it re-reads the latest replaceable event and
-/// parses the tags each time.
-#[must_use]
-pub fn latest_kind3_follows_from_arc(
-    store: &std::sync::Arc<dyn crate::store::EventStore>,
-    author_hex: &str,
-) -> Option<Vec<String>> {
-    let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
-    let mut iter = store
-        .scan_by_author_kind(&author, &[crate::kinds::KIND_CONTACT_LIST], None, None, 1)
-        .ok()?;
-    let stored = iter.next()?.ok()?;
-    Some(crate::tags::contact_follows(&stored.raw.tags))
 }
 
 /// Synchronous event-by-id read over a directly-held [`Arc<dyn EventStore>`].
@@ -464,6 +458,3 @@ pub type ExternalEventSinkPolicySlot = Arc<Mutex<Option<Arc<ExternalEventSinkPol
 pub fn new_external_event_sink_policy_slot() -> ExternalEventSinkPolicySlot {
     Arc::new(Mutex::new(None))
 }
-
-#[cfg(test)]
-mod following_count_tests;

@@ -29,11 +29,11 @@ impl Kernel {
     ///    is `should_store_event` (which no longer has any power over
     ///    persistence).
     ///
-    /// Profiles (kind:0) are parser-fed into the profile cache. Contacts
-    /// (kind:3) are store-derived: [`Self::project_accepted_event`] derives the
-    /// active-account transition from the accepted event and enqueues the source
-    /// recompile trigger. Gift-wrap is excluded via the parser registry, not a
-    /// literal.
+    /// Profiles are parser-fed into the profile cache. Contacts are read
+    /// through the protocol-owned contact-list reader:
+    /// [`Self::project_accepted_event`] derives the active-account transition
+    /// from that registered reader and enqueues the source recompile trigger.
+    /// Gift-wrap is excluded via the parser registry, not a literal.
     ///
     /// Returns the store outcome so a source wrapper can apply source-specific
     /// post-processing (e.g. the relay path's claim-hit scoring).
@@ -46,6 +46,7 @@ impl Kernel {
 
         let provenance = source.provenance();
         let sub_id = source.sub_id();
+        let active_contacts_before = self.active_contacts_snapshot_for_author(&event.pubkey);
 
         // Persistence ONLY: sig-verify -> store.insert -> raw-tap -> provenance
         // accounting -> TTL stamping (ADR-0070). Returns the verified clone so
@@ -64,7 +65,11 @@ impl Kernel {
                 | InsertOutcome::Ephemeral { .. }
         );
         if canonical {
-            self.project_accepted_event_from(&verified, source.parser_source_relay_url());
+            self.project_accepted_event_from(
+                &verified,
+                source.parser_source_relay_url(),
+                active_contacts_before,
+            );
             // Keep the read-cache (`self.events` / `self.timeline`) consistent with
             // the store's current head when a replaceable event is replaced live.
             // Without this, a stale predecessor that cache-serve previously served

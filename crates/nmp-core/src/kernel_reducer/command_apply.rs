@@ -414,7 +414,7 @@ impl super::KernelReducer {
             };
         };
         let Some((current_tags, content, baseline_created_at)) =
-            self.kernel.try_current_kind3_event_for_edit()
+            self.kernel.try_current_contact_list_event_for_edit()
         else {
             return Unsupported {
                 reason: "follow_list_not_loaded".to_string(),

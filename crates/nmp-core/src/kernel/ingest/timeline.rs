@@ -100,8 +100,8 @@ impl Kernel {
         // Read-time relevance predicate (ADR-0070): "does this event belong in
         // MY timeline VIEW?". It NO LONGER gates persistence — the event is
         // already in the authoritative store. A non-relevant event is simply
-        // absent from the timeline read-cache; a later follow (kind:3) that adds
-        // the author surfaces the event from the store on the next cache-serve
+        // absent from the timeline read-cache; a later contact-list change that
+        // adds the author surfaces the event from the store on the next cache-serve
         // (the deleted `pre_kind3_buffer` is obsolete now admission ≠
         // persistence — there is no event to "park", it is already persisted).
         if !self.should_store_event(sub_id, event) {
@@ -288,13 +288,13 @@ impl Kernel {
             return false;
         }
 
-        // Read the active account's contact-list presence from the event store.
-        // `Some(_)` (including `Some(vec![])`) means a kind:3 has arrived for
-        // the active account, so the timeline can open.
+        // Read the active account's contact-list presence through the
+        // protocol-owned reader. `Some(_)` (including `Some(vec![])`) means the
+        // active account's contact list has loaded, so the timeline can open.
         let has_active_contacts = self
             .active_account
             .as_deref()
-            .map(|pk| crate::slots::latest_kind3_follows_from_arc(&self.store, pk).is_some())
+            .map(|pk| self.contact_list_reader().follows(pk).is_some())
             .unwrap_or(false);
         has_active_contacts
             || self

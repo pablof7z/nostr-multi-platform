@@ -68,6 +68,8 @@ pub(crate) struct CompositionConfig {
     pub(crate) bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot.
     pub(crate) dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
+    /// #2788 — shared protocol-owned contact-list reader slot.
+    pub(crate) contact_list_reader_slot: nmp_core::slots::ContactListReaderSlot,
     /// ADR-0070 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
     pub(crate) profile_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ProfileLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.

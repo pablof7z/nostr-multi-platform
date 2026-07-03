@@ -168,6 +168,32 @@ impl NmpApp {
         }
     }
 
+    /// #2788 — install the protocol-owned contact-list reader that the kernel
+    /// uses for active-contact transition detection and follow-edit gates.
+    ///
+    /// MUST be called before `nmp_app_start` so the actor snapshots the reader
+    /// into every constructed kernel. The concrete implementation lives in
+    /// `nmp-nip02`; native runtime only stores the opaque reader handle.
+    pub fn set_contact_list_reader(
+        &self,
+        reader: std::sync::Arc<dyn nmp_core::slots::ContactListReader>,
+    ) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "contact_list_reader",
+            "contact_list_reader",
+            "contact_list_reader",
+        ) {
+            return status;
+        }
+        if let Ok(mut slot) = self.composition.contact_list_reader_slot.lock() {
+            self.record_slot_decision("contact_list_reader", "contact_list_reader", true);
+            *slot = reader;
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
+
     /// Install the kernel's [`nmp_core::substrate::BlockedRelayLookup`]
     /// handle. Mirrors [`Self::set_dm_inbox_relay_lookup`]: the per-app
     /// crate hands in a concrete `Arc<InMemoryBlockedRelayCache>` (from

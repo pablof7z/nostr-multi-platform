@@ -88,6 +88,7 @@ pub(crate) struct BrowserBuilderInner {
     // ── Deferred &mut-kernel settings (applied in start()) ───────────────────
     pub(crate) coverage_hook: Option<PlanCoverageHook>,
     pub(crate) req_frame_interceptor: Option<Arc<dyn ReqFrameInterceptor>>,
+    pub(crate) contact_list_reader: Option<Arc<dyn nmp_core::slots::ContactListReader>>,
     pub(crate) profile_lookup: Option<Arc<dyn ProfileLookup>>,
     pub(crate) dm_inbox_relay_lookup: Option<Arc<dyn DmInboxRelayLookup>>,
     pub(crate) blocked_relay_lookup: Option<Arc<dyn BlockedRelayLookup>>,
@@ -178,6 +179,7 @@ impl BrowserBuilderInner {
             observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
             coverage_hook: None,
             req_frame_interceptor: None,
+            contact_list_reader: None,
             profile_lookup: None,
             dm_inbox_relay_lookup: None,
             blocked_relay_lookup: None,

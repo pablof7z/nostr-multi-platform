@@ -34,7 +34,7 @@ pub(crate) fn follow(
         );
     }
     let Some((current_tags, current_content, baseline_created_at)) =
-        kernel.try_current_kind3_event_for_edit()
+        kernel.try_current_contact_list_event_for_edit()
     else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
@@ -67,7 +67,7 @@ pub(crate) fn follow_many(
         return toast_no_account(kernel, "follow_many", correlation_id);
     };
     let Some((current_tags, current_content, baseline_created_at)) =
-        kernel.try_current_kind3_event_for_edit()
+        kernel.try_current_contact_list_event_for_edit()
     else {
         return fail_publish(kernel, "follow_list_not_loaded".to_string(), correlation_id);
     };
