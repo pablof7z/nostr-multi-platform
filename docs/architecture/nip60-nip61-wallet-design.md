@@ -250,6 +250,95 @@ Reducers do not await mint HTTP. They emit commands, and mint workers return
 raw results. Rust maps those results into wallet state, action stages, and
 publish commands.
 
+## Three Wallet-State Concerns
+
+Wallet state is chaotic to reason about: NIP-09 deletions arrive, mint
+reconciliation probes report that a proof was already spent, new `kind:7375`
+token events land, nutzaps are redeemed — all interleaved and out of order. To
+keep this tractable, `nmp-wallet` separates three concerns that must never be
+conflated. They are distinguished by their **write moment**, not their lifetime.
+
+| Concern | Write moment | Question it answers | Storage |
+|---|---|---|---|
+| Money-safety saga | pre-effect | "did my mint spend happen before I crashed?" | durable, persisted, at-most-once |
+| Derived state | fold result | "what is my proof set / balance right now?" | in-memory, rebuildable |
+| Causal trail | post-observation | "why is the state the shape it is right now?" | in-memory ring, over a durable `kind:7376` tier |
+
+The saga (the state machine above) writes **pre-effect** — "about to consume
+proofs A,B for a mint spend." That pre-record *is* the at-most-once mechanism.
+The causal trail writes **post-observation** — facts about what arrived,
+settled, or reconciled. Derived state is the fold over post-observation facts.
+
+The trail cannot be read out of the saga: the saga only knows *locally
+initiated* operations, while most of what makes wallet state chaotic — inbound
+token arrivals, NIP-09 deletions from the user's *other* devices, incoming
+nutzaps — never touches the saga. The relationship is **producer/consumer**: the
+saga emits facts into the trail (`MintSettled`, `Unknown → reconciled`,
+`Failed`) so the trail can also explain locally caused shape changes. Their
+schemas never merge — money-critical pre-effect records must not live in a
+diagnostic log with bounded eviction.
+
+## Event-Sourced Reducer And Causal Trail
+
+`nmp-wallet` computes wallet state as a fold over an ordered stream of typed
+`WalletFact`s, each carrying its cause and provenance:
+
+```rust
+enum WalletFact {
+    TokenAdded     { token_event: EventId, amount: Msat, mint: MintUrl, via: Provenance },
+    TokenDeleted   { token_event: EventId, cause: DeleteCause },   // NIP-09 in, or local rollover
+    MintProbed     { proof: ProofRef, verdict: ProofVerdict },     // Spent / Unspent / Unknown
+    NutzapRedeemed { nutzap: EventId, amount: Msat, sender: PubkeyRef },
+    SagaTransition { op: CorrelationId, from: OpState, to: OpState }, // producer wiring from the saga
+    StateRebuilt   { from: Vec<EventId> },                          // genesis fact after restart
+}
+
+enum Provenance  { Relay(RelayRef), Saga(CorrelationId), MintRollover }
+enum DeleteCause { Nip09Delete { by: EventId }, LocalRollover { op: CorrelationId } }
+```
+
+Two views are maintained over the same fact stream:
+
+- a **time-ordered bounded delta ring** — answers "what sequence of events
+  produced this shape?";
+- a **per-atom last-cause index** (`token_event_id → last WalletFact that
+  touched it`) — answers "why is *this specific* proof/token here?". This index
+  is `O(current state)`, not `O(traffic)`, so a nutzap flood cannot evict the
+  cause of a token the user still holds.
+
+Four invariants keep the reducer honest:
+
+1. **Confluence.** The reducer's terminal state must be order-insensitive even
+   though the trail is order-sensitive. A NIP-09 delete arriving before the
+   `kind:7375` it deletes must tombstone, not no-op; otherwise two devices show
+   different balances and the trail "explains" a state that should not exist.
+2. **The ring is never a rebuild authority.** Restart rebuilds state from Nostr
+   events plus saga reconciliation, entering the trail as a `StateRebuilt`
+   genesis fact — named explicitly so restart is never later "optimized" into
+   ring replay.
+3. **Derived state rides Trellis only at the acquisition layer** (which
+   relays/filters/interests, per the `kind:10019` relay rules). Proof-set
+   derivation is Nostr/product meaning and stays actor-owned in `nmp-wallet`,
+   never in Trellis core (ADR-0075 Ownership). A causal timeline is a different
+   primitive from Trellis's dependency graph, and ADR-0075 confines Trellis
+   trace to dev-only tooling — so the trail is `nmp-wallet`'s own construct.
+4. **Privacy at the type level.** `WalletFact` payloads carry only event ids, op
+   ids, amounts-by-unit, and canonical mint URLs (and the latter only when the
+   URL is already public via `kind:10019`) — never proofs, proof secrets, or
+   keys. This is a property of the types, not a display-edge filter.
+
+### Durable Tier: `kind:7376`, Not A Local Trail
+
+The causal trail does not get its own durable local store. The durable causal
+record is the protocol's own: NIP-60 `kind:7376` history events (already
+required by this design for every balance-changing operation; codec in
+`crates/nmp-nip60/src/history_event.rs`) plus the `del` field on token events.
+On restart, the wallet folds `kind:7376` into coarse pre-session facts, and the
+in-memory ring then accumulates fine-grained facts from there — two resolutions
+in one timeline. The in-memory ring is only the session-local high-resolution
+overlay (mint-probe verdicts, arrival provenance, saga correlation ids) too
+transient or too fine for `kind:7376`.
+
 ## NIP-60 Event Rules
 
 Wallet configuration:
