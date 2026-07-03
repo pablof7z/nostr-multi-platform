@@ -4,7 +4,6 @@
 //! projections into the kernel without depending on `NmpApp` (which lives in
 //! `nmp-ffi`, not available on wasm32) or the native actor thread:
 //!
-//! * `open_observed_projection` — wire a declared scoped read-model sink.
 //! * `register_typed_snapshot_projection` — wire a typed FlatBuffers projection.
 //! * `register_feed_author_provider` — wire a feed's rendered-author provider.
 //! * `active_account_handle` — read the active-account pubkey slot.
@@ -13,7 +12,10 @@
 //!   slots shared with the publish resolver.
 //!
 //! PR-B (#2046) AppHost-surface seams are in `composition_seams_browser.rs`
-//! (factored out to stay under the 500-LOC ceiling).
+//! and the observed-projection seam (`open_observed_projection` /
+//! `close_observed_projection` / `observed_projection_command_handle`) is in
+//! `composition_seams_observed.rs` — both factored out to stay under the
+//! 500-LOC ceiling.
 //!
 //! All methods delegate either to `self.kernel` (for slot handles that are
 //! already `pub` there) or to `self.observer_slot` / `self.snapshot_slot`
@@ -111,95 +113,6 @@ impl super::KernelReducer {
     #[cfg(any(test, feature = "test-support"))]
     pub fn store_open_failure(&self) -> Option<String> {
         self.kernel.store_open_failure().map(str::to_owned)
-    }
-
-    // ── Observed-projection seam ─────────────────────────────────────────
-
-    /// Open a declared observed projection on the reducer/browser path.
-    ///
-    /// Mirrors `NmpApp::open_observed_projection`: register the sink muted,
-    /// open the declared interest, replay matching cached rows, then activate
-    /// future delivery scoped to the declaration's replay shapes.
-    pub fn open_observed_projection(
-        &mut self,
-        decl: crate::substrate::ObservedProjection,
-    ) -> ObservedProjectionId {
-        if !decl.has_declared_shape() {
-            return ObservedProjectionId(0);
-        }
-        let observer_id = register_rust_observer_muted(&self.observer_slot, decl.observer);
-        if observer_id.0 == 0 {
-            return observer_id;
-        }
-        let Some((identity, interest)) = crate::subs::interest_builder::build_interest_pair(
-            &decl.filter_json,
-            &decl.consumer_id,
-            decl.scope,
-            decl.relay_pin.as_deref(),
-            decl.is_indexer_discovery,
-            decl.lifecycle.clone(),
-        ) else {
-            unregister_observer_internal(&self.observer_slot, observer_id);
-            return ObservedProjectionId(0);
-        };
-        self.observed_projection_sessions.insert(
-            observer_id,
-            (
-                decl.filter_json.clone(),
-                decl.consumer_id.clone(),
-                decl.scope,
-                decl.relay_pin.clone(),
-                decl.is_indexer_discovery,
-            ),
-        );
-        let replay = crate::kernel::ObserverReplayRequest {
-            observer_id,
-            shapes: decl.replay_shapes,
-            limit: decl.replay_limit,
-        };
-        let _ = self.kernel.open_interest_with_observer_replay(
-            identity,
-            interest,
-            replay,
-            "open-observed-projection",
-        );
-        let outbound = self.kernel.drain_lifecycle_outbound();
-        let _ = self.kernel.partition_auth_paused(outbound);
-        observer_id
-    }
-
-    /// Close a reducer/browser observed projection by id.
-    pub fn close_observed_projection(&mut self, id: ObservedProjectionId) {
-        let Some((filter_json, consumer_id, scope, relay_pin, is_indexer_discovery)) =
-            self.observed_projection_sessions.remove(&id)
-        else {
-            return;
-        };
-        // Close is identity-only; lifecycle is not part of the registry key.
-        if let Some((identity, _interest)) = crate::subs::interest_builder::build_interest_pair(
-            &filter_json,
-            &consumer_id,
-            scope,
-            relay_pin.as_deref(),
-            is_indexer_discovery,
-            crate::planner::InterestLifecycle::Tailing,
-        ) {
-            let _ = self.kernel.close_interest_sub(&identity);
-        }
-        unregister_observer_internal(&self.observer_slot, id);
-        let outbound = self.kernel.drain_lifecycle_outbound();
-        let _ = self.kernel.partition_auth_paused(outbound);
-    }
-
-    /// Build a cloneable command-backed observed-projection registrar for
-    /// post-start runtime controllers.
-    #[must_use]
-    pub fn observed_projection_command_handle(
-        &self,
-        sessions: ObservedProjectionSessionMap,
-        sender: crate::CommandSender,
-    ) -> ObservedProjectionCommandHandle {
-        ObservedProjectionCommandHandle::new(Arc::clone(&self.observer_slot), sessions, sender)
     }
 
     // ── Typed snapshot-projection seam ───────────────────────────────────

@@ -277,6 +277,7 @@ mod command_apply_publish;
 pub use command_apply::CommandApplyOutcome;
 mod composition_seams;
 mod composition_seams_browser; // PR-B (#2046) AppHost seams factored out for LOC ceiling
+mod composition_seams_observed; // observed-projection seam factored out for LOC ceiling (#2948)
 #[cfg(any(test, feature = "test-support"))]
 mod composition_seams_test_support;
 mod feed_verbs;
@@ -326,6 +327,10 @@ mod tests_follow;
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_tests.rs"]
 mod command_apply_tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/command_apply_lifecycle_tests.rs"]
+mod command_apply_lifecycle_tests;
 
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_publish_tests.rs"]
