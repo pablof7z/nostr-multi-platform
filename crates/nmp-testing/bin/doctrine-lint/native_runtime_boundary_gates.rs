@@ -232,49 +232,6 @@ fn nmp_native_runtime_does_not_reexport_raw_observed_projection_doors() {
     );
 }
 
-#[test]
-fn nmp_native_runtime_does_not_bundle_nip29_as_production_dependency() {
-    let metadata = cargo_metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("cargo metadata packages must be an array");
-    let runtime = packages
-        .iter()
-        .find(|pkg| pkg["name"] == "nmp-native-runtime")
-        .expect("nmp-native-runtime package must be in cargo metadata");
-    let dependencies = runtime["dependencies"]
-        .as_array()
-        .expect("package dependencies must be an array");
-
-    let mut dev_dependency_present = false;
-    let mut production_findings = Vec::new();
-    for dependency in dependencies {
-        if dependency["name"] != "nmp-nip29" {
-            continue;
-        }
-        let kind = dependency["kind"].as_str().unwrap_or("normal");
-        let optional = dependency["optional"].as_bool().unwrap_or(false);
-        if kind == "dev" {
-            dev_dependency_present = true;
-        } else if !optional {
-            production_findings.push(format!("nmp-native-runtime -> nmp-nip29 ({kind})"));
-        }
-    }
-
-    assert!(
-        production_findings.is_empty(),
-        "#2797: nmp-native-runtime must not bundle the NIP-29 group concept as \
-         a production dependency; concept doorways live in nmp-nip29 and native \
-         runtime tests may use it only as a dev-dependency:\n{}",
-        production_findings.join("\n")
-    );
-    assert!(
-        dev_dependency_present,
-        "nmp-native-runtime still keeps NIP-29 host-seam tests; if those tests \
-         move elsewhere, remove this dev-dependency expectation with the tests."
-    );
-}
-
 fn native_runtime_non_optional_dependency_findings(names: &[&str]) -> Vec<String> {
     let metadata = cargo_metadata();
     let packages = metadata["packages"]
@@ -300,6 +257,42 @@ fn native_runtime_non_optional_dependency_findings(names: &[&str]) -> Vec<String
             (!optional && kind != "dev").then(|| format!("nmp-native-runtime -> {name} ({kind})"))
         })
         .collect()
+}
+
+#[test]
+fn nmp_native_runtime_nip_production_deps_are_feature_gated() {
+    let metadata = cargo_metadata();
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages must be an array");
+    let runtime = packages
+        .iter()
+        .find(|pkg| pkg["name"] == "nmp-native-runtime")
+        .expect("nmp-native-runtime package must be in cargo metadata");
+    let dependencies = runtime["dependencies"]
+        .as_array()
+        .expect("package dependencies must be an array");
+
+    let findings: Vec<_> = dependencies
+        .iter()
+        .filter_map(|dependency| {
+            let name = dependency["name"].as_str().unwrap_or_default();
+            if !name.starts_with("nmp-nip") {
+                return None;
+            }
+            let kind = dependency["kind"].as_str().unwrap_or("normal");
+            let optional = dependency["optional"].as_bool().unwrap_or(false);
+            (!optional && kind != "dev").then(|| format!("nmp-native-runtime -> {name} ({kind})"))
+        })
+        .collect();
+
+    assert!(
+        findings.is_empty(),
+        "#2797: native runtime may host generic seams and test concept \
+         behavior through dev-dependencies, but production nmp-nip* concept \
+         crates must be selected by explicit opt-in features:\n{}",
+        findings.join("\n")
+    );
 }
 
 #[test]

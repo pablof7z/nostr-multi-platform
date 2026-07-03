@@ -7,7 +7,20 @@ use nmp_core::__ffi_internal::{
     new_signer_state_slot, run_actor_with_observers, ActorChannels, ActorConfigSources,
     ActorRuntimeSlots,
 };
-use nmp_core::substrate::{EventIngestDispatcher, IngestParser, ProfileLookup};
+use nmp_core::substrate::{
+    DraftBuilder, DraftBuilderRegistrar, DraftBuilderRegistry, DraftIntentKind,
+    EventIngestDispatcher, IngestParser, ProfileLookup,
+};
+
+struct DraftRegistrar {
+    registry: Arc<DraftBuilderRegistry>,
+}
+
+impl DraftBuilderRegistrar for DraftRegistrar {
+    fn register_draft_builder(&self, kind: DraftIntentKind, builder: Arc<dyn DraftBuilder>) {
+        self.registry.register(kind, builder);
+    }
+}
 
 pub fn spawn_actor_with_nip01_profile_cache() -> (
     nmp_core::CommandSender,
@@ -19,6 +32,10 @@ pub fn spawn_actor_with_nip01_profile_cache() -> (
         Arc::new(nmp_nip01::Kind0Parser::new(Arc::clone(&profile_cache)));
     dispatcher.register_kind(0, parser);
     let profile_lookup: Arc<dyn ProfileLookup> = profile_cache;
+    let draft_builders = Arc::new(DraftBuilderRegistry::new());
+    nmp_nip01::register_draft_builders(&DraftRegistrar {
+        registry: Arc::clone(&draft_builders),
+    });
 
     let (command_tx, command_rx) = nmp_core::CommandSender::bounded_channel();
     let (update_tx, update_rx) = mpsc::channel();
@@ -54,7 +71,7 @@ pub fn spawn_actor_with_nip01_profile_cache() -> (
             relay_connected_hook: nmp_core::substrate::new_relay_connected_hook_slot(),
             ingest_dispatcher: Arc::new(RwLock::new(dispatcher)),
             search_scope_registry: Arc::new(nmp_core::substrate::SearchScopeRegistry::new()),
-            draft_builders: Arc::new(nmp_core::substrate::DraftBuilderRegistry::new()),
+            draft_builders,
             dm_inbox_relays: Arc::new(Mutex::new(
                 nmp_core::substrate::empty_dm_inbox_relay_lookup(),
             )),
