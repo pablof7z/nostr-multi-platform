@@ -142,19 +142,20 @@ pub fn p2pk_secret_pubkey(secret: &str) -> Option<String> {
 /// Sign a P2PK proof (produce the witness signature).
 ///
 /// The Schnorr signature is over the serialised proof secret using the
-/// recipient's Cashu private key.
+/// recipient's Cashu private key — routed through the audited `cashu`
+/// crate's `SecretKey::sign`, which does exactly this sequence internally
+/// (`SHA256(msg)` then `secp256k1::sign_schnorr`), rather than hand-rolling
+/// it. NUT-11 specifies Schnorr, and that's what Cashu's reference
+/// implementation (Python `nutshell`) actually verifies.
 pub fn sign_p2pk_proof(
     proof: &Proof,
     cashu_sk: &nostr::secp256k1::SecretKey,
 ) -> Result<Proof, Nip60Error> {
-    let secp = nostr::secp256k1::Secp256k1::new();
-    let msg_bytes = sha2_hash(proof.secret.as_bytes());
-    let msg = nostr::secp256k1::Message::from_digest(msg_bytes);
-    // Use ECDSA — NUT-11 specifies Schnorr but many implementations accept ECDSA.
-    // For compatibility with Cashu's reference implementation (Python nutshell)
-    // which uses secp256k1 Schnorr, we use the schnorr signing path.
-    let keypair = nostr::secp256k1::Keypair::from_secret_key(&secp, cashu_sk);
-    let sig = secp.sign_schnorr(&msg, &keypair);
+    let cashu_sk = cashu::SecretKey::from_slice(&cashu_sk.secret_bytes())
+        .map_err(|e| Nip60Error::Crypto(format!("P2PK secret key → cashu: {e}")))?;
+    let sig = cashu_sk
+        .sign(proof.secret.as_bytes())
+        .map_err(|e| Nip60Error::Crypto(format!("P2PK schnorr sign: {e}")))?;
     // Nutshell expects `witness` to be a JSON-encoded *string*, not a nested object.
     let witness_obj = serde_json::json!({ "signatures": [hex::encode(sig.serialize())] });
     let witness_str = serde_json::to_string(&witness_obj)
@@ -162,11 +163,6 @@ pub fn sign_p2pk_proof(
     let mut signed = proof.clone();
     signed.witness = Some(serde_json::Value::String(witness_str));
     Ok(signed)
-}
-
-fn sha2_hash(data: &[u8]) -> [u8; 32] {
-    use sha2::{Digest, Sha256};
-    Sha256::digest(data).into()
 }
 
 // ─── NutZap event (kind:9321) ─────────────────────────────────────────────
@@ -362,6 +358,13 @@ pub fn verify_nutzap_dleq(nutzap: &ReceivedNutZap) -> Result<(), Nip60Error> {
 /// no blinding factor `r`, without which B'/C' cannot be reconstructed) used
 /// to let it pass unverified; the design doc's "verify DLEQ before counting"
 /// invariant means missing evidence must count as failed evidence.
+///
+/// Gated to `native`-or-test builds: its only production caller is the
+/// `#[cfg(feature = "native")]` [`verify_nutzap_dleq`] wrapper (nutzap DLEQ
+/// verification needs the mint's keyset over HTTP), and its unit tests run
+/// with the default `native` feature on. Without this gate it would be dead
+/// code on the wasm32 / `--no-default-features` pure-codec build.
+#[cfg(any(feature = "native", test))]
 pub(crate) fn verify_nutzap_dleq_against_keyset(
     nutzap: &ReceivedNutZap,
     keyset: &crate::cashu::types::KeySet,
@@ -427,7 +430,15 @@ pub(crate) fn verify_nutzap_dleq_against_keyset(
         e.copy_from_slice(&e_bytes);
         s.copy_from_slice(&s_bytes);
 
-        verify_dleq(&DleqProof { e, s }, &b_prime, &c_prime, mint_pk, &secp)?;
+        verify_dleq(
+            &DleqProof { e, s },
+            &b_prime,
+            &c_prime,
+            mint_pk,
+            proof.amount,
+            &proof.id,
+            &secp,
+        )?;
     }
     Ok(())
 }

@@ -55,6 +55,11 @@ allow = [
     # Font licenses used by iced / egui default embedded fonts.
     "OFL-1.1",
     "LicenseRef-UFL-1.0",
+    # MIT + "no false attribs" clause — functionally as permissive as MIT for
+    # our purposes (forbids misrepresenting authorship, nothing else added).
+    # Pulled in by `hex_lit` via `bitcoin` (the `cashu` crate's dependency,
+    # #2864 cashu-crate primitive swap).
+    "MITNFA",
 ]
 confidence-threshold = 0.8
 
