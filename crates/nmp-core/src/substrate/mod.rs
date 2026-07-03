@@ -60,6 +60,7 @@ mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
+mod outbound_http;
 mod payment;
 pub mod placeholder;
 mod profile_lookup;
@@ -149,6 +150,10 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use nmp_store::{DomainMigration, MigrationTx};
+pub use outbound_http::{
+    OutboundHttpCapability, OutboundHttpHeader, OutboundHttpMethod, OutboundHttpRequest,
+    OutboundHttpResult,
+};
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,

@@ -7,7 +7,8 @@
 
 use tracing::info;
 
-use crate::cashu::client::{self as cashu_client, split_amount, MintClient};
+use crate::cashu::client::{self as cashu_client, MintClient};
+use crate::cashu::split_amount;
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
 use crate::history_event::{build_history_event, HistoryRecord};
@@ -19,10 +20,7 @@ impl Nip60WalletHandle {
     /// Redeem a received nutzap: swap the P2PK proofs for fresh proofs and
     /// queue a kind:7375 token event plus a kind:7376 history event marking it
     /// redeemed. Queued events are published by the kernel.
-    pub fn redeem_nutzap(
-        &self,
-        nutzap: &crate::nutzap::ReceivedNutZap,
-    ) -> Result<u64, Nip60Error> {
+    pub fn redeem_nutzap(&self, nutzap: &crate::nutzap::ReceivedNutZap) -> Result<u64, Nip60Error> {
         if self.has_redeemed_nutzap(nutzap.event_id) {
             return Err(Nip60Error::AlreadyRedeemed(nutzap.event_id));
         }
@@ -54,7 +52,8 @@ impl Nip60WalletHandle {
 
         let client = MintClient::new(&nutzap.mint_url);
         let keyset = client.get_sat_keyset()?;
-        let fee = cashu_client::MintClient::compute_fee(input_proofs.len() as u64, keyset.input_fee_ppk);
+        let fee =
+            cashu_client::MintClient::compute_fee(input_proofs.len() as u64, keyset.input_fee_ppk);
         let net_total = total.saturating_sub(fee);
         let output_amounts = split_amount(net_total);
 
@@ -85,7 +84,10 @@ impl Nip60WalletHandle {
         }
         self.mark_redeemed_nutzap(nutzap.event_id);
 
-        info!("redeemed nutzap: {total} sat from {}", nutzap.sender_pubkey.to_hex());
+        info!(
+            "redeemed nutzap: {total} sat from {}",
+            nutzap.sender_pubkey.to_hex()
+        );
         Ok(total)
     }
 }

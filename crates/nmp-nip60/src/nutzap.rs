@@ -44,7 +44,10 @@ pub struct NutZapInfo {
 }
 
 /// Build a kind:10019 NutZap info event.
-pub fn build_nutzap_info_event(info: &NutZapInfo, _keys: &Keys) -> Result<EventBuilder, Nip60Error> {
+pub fn build_nutzap_info_event(
+    info: &NutZapInfo,
+    _keys: &Keys,
+) -> Result<EventBuilder, Nip60Error> {
     let mut tags: Vec<Tag> = Vec::new();
     for relay in &info.relays {
         tags.push(Tag::custom(TagKind::custom("relay"), [relay.as_str()]));
@@ -113,7 +116,10 @@ pub fn p2pk_secret(recipient_pubkey_hex: &str) -> String {
 ///
 /// The Schnorr signature is over the serialised proof secret using the
 /// recipient's Cashu private key.
-pub fn sign_p2pk_proof(proof: &Proof, cashu_sk: &nostr::secp256k1::SecretKey) -> Result<Proof, Nip60Error> {
+pub fn sign_p2pk_proof(
+    proof: &Proof,
+    cashu_sk: &nostr::secp256k1::SecretKey,
+) -> Result<Proof, Nip60Error> {
     let secp = nostr::secp256k1::Secp256k1::new();
     let msg_bytes = sha2_hash(proof.secret.as_bytes());
     let msg = nostr::secp256k1::Message::from_digest(msg_bytes);
@@ -139,15 +145,28 @@ fn sha2_hash(data: &[u8]) -> [u8; 32] {
 // ─── NutZap event (kind:9321) ─────────────────────────────────────────────
 
 /// A single proof embedded in a nutzap event (wire format).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NutZapProof {
     pub amount: u64,
     pub id: String,
+    /// The proof secret — spendable ecash; never printed in `Debug`.
     pub secret: String,
     #[serde(rename = "C")]
     pub c: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dleq: Option<crate::cashu::types::DleqProofWire>,
+}
+
+impl std::fmt::Debug for NutZapProof {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("NutZapProof")
+            .field("amount", &self.amount)
+            .field("id", &self.id)
+            .field("secret", &"<redacted>")
+            .field("c", &self.c)
+            .field("dleq", &self.dleq)
+            .finish()
+    }
 }
 
 impl From<Proof> for NutZapProof {
@@ -241,7 +260,8 @@ pub fn decode_nutzap_event(event: &nostr::Event) -> Result<ReceivedNutZap, Nip60
         }
     }
 
-    let mint_url = mint_url.ok_or_else(|| Nip60Error::Event("nutzap missing u (mint) tag".into()))?;
+    let mint_url =
+        mint_url.ok_or_else(|| Nip60Error::Event("nutzap missing u (mint) tag".into()))?;
     if proofs.is_empty() {
         return Err(Nip60Error::Event("nutzap has no proof tags".into()));
     }
@@ -267,11 +287,9 @@ pub fn decode_nutzap_event(event: &nostr::Event) -> Result<ReceivedNutZap, Nip60
 /// Requires the `native` feature — it round-trips to the mint over HTTP
 /// (`crate::cashu::client`) to fetch the keyset.
 #[cfg(feature = "native")]
-pub fn verify_nutzap_dleq(
-    nutzap: &ReceivedNutZap,
-) -> Result<(), Nip60Error> {
-    use crate::cashu::client::build_pubkey_map;
+pub fn verify_nutzap_dleq(nutzap: &ReceivedNutZap) -> Result<(), Nip60Error> {
     use crate::cashu::crypto::{hash_to_curve, verify_dleq, DleqProof};
+    use crate::cashu::http::build_pubkey_map;
     use nostr::secp256k1::{PublicKey, Scalar, SecretKey};
 
     let client = crate::cashu::client::MintClient::new(&nutzap.mint_url);
@@ -296,8 +314,8 @@ pub fn verify_nutzap_dleq(
         // This applies regardless of whether the secret is a hex string, JSON object,
         // or JSON array spending condition (NUT-11).
         let y = hash_to_curve(proof.secret.as_bytes())?;
-        let r_bytes = hex::decode(r_hex)
-            .map_err(|e| Nip60Error::Crypto(format!("DLEQ r hex: {e}")))?;
+        let r_bytes =
+            hex::decode(r_hex).map_err(|e| Nip60Error::Crypto(format!("DLEQ r hex: {e}")))?;
         let r_sk = SecretKey::from_slice(&r_bytes)
             .map_err(|e| Nip60Error::Crypto(format!("DLEQ r parse: {e}")))?;
         let r_g = PublicKey::from_secret_key(&secp, &r_sk);
@@ -305,8 +323,8 @@ pub fn verify_nutzap_dleq(
             .map_err(|e| Nip60Error::Crypto(format!("B' combine: {e}")))?;
 
         // Reconstruct C' = C + r*K  (since C = C' - r*K).
-        let c_bytes = hex::decode(&proof.c)
-            .map_err(|e| Nip60Error::Crypto(format!("proof C hex: {e}")))?;
+        let c_bytes =
+            hex::decode(&proof.c).map_err(|e| Nip60Error::Crypto(format!("proof C hex: {e}")))?;
         let c_pt = PublicKey::from_slice(&c_bytes)
             .map_err(|e| Nip60Error::Crypto(format!("proof C parse: {e}")))?;
         let r_k = mint_pk
