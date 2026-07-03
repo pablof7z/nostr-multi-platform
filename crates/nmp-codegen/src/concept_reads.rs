@@ -15,6 +15,11 @@ pub mod kotlin;
 pub mod registry;
 pub mod rust;
 pub mod swift;
+// #2899 Part D — fail-closed wire-identity drift gate. Reads each concept
+// crate's summary.rs consts and asserts they agree with both this gate's
+// hardcoded expectations and the CONCEPT_READS registry, so a schema bump can
+// never silently desync the codegen table from the concept-crate source.
+pub mod wire_identity_gate;
 
 pub use app_registry::{
     load_app_concept_read_registry, parse_app_concept_read_registry, AppConceptRead,
@@ -23,6 +28,7 @@ pub use app_registry::{
 pub use registry::{
     concept_read_for, ConceptRead, SummaryOutput, SummaryShape, TargetInput, CONCEPT_READS,
 };
+pub use wire_identity_gate::{check_all_wire_identities, WireIdentityCheckOutcome};
 
 /// Which host language to emit for concept-read facades.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
