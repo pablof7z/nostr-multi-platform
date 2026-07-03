@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::app_registry::{AppConceptRead, LoadedAppConceptReadRegistry};
-use super::registry::TargetInput;
+use super::registry::{SummaryShape, TargetInput};
 
 /// Render the Rust facade slice for an app-local concept-read registry.
 #[must_use]
@@ -32,6 +32,7 @@ fn render_imports(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
     for read in &registry.reads {
         let symbols = imports.entry(read.concept.rust_crate).or_default();
         symbols.insert(read.concept.close_fn);
+        symbols.insert(read.concept.summary.decoder_fn);
         symbols.insert(read.concept.open_fn);
         symbols.insert(read.concept.handle_type);
         if let TargetInput::Json { decoder_fn, .. } = read.concept.target_input {
@@ -42,7 +43,9 @@ fn render_imports(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
         let mut symbols = symbols.into_iter().collect::<Vec<_>>();
         symbols.sort_by_key(|symbol| symbol.to_ascii_lowercase());
         out.push_str(&format!("use {rust_crate}::{{\n"));
-        out.push_str(&format!("    {},\n", symbols.join(", ")));
+        for symbol in symbols {
+            out.push_str(&format!("    {symbol},\n"));
+        }
         out.push_str("};\n\n");
     }
     out.push_str(&format!(
@@ -60,6 +63,73 @@ fn render_records(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
         out.push_str("    pub projection_key: String,\n");
         out.push_str("    pub handle_id: u64,\n");
         out.push_str("}\n\n");
+        render_summary_record(read, out);
+    }
+}
+
+fn render_summary_record(read: &AppConceptRead, out: &mut String) {
+    match read.concept.summary.shape {
+        SummaryShape::Reply => {
+            out.push_str("/// Typed reply-summary output decoded by the generated facade.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {} {{\n", read.summary.record));
+            out.push_str("    pub target_id: String,\n");
+            out.push_str("    pub count: u64,\n");
+            out.push_str("    pub reply_event_ids: Vec<String>,\n");
+            out.push_str("}\n\n");
+        }
+        SummaryShape::Reaction => {
+            let group = read
+                .summary
+                .group_record
+                .as_deref()
+                .expect("registry validates reaction group record");
+            out.push_str("/// One reaction content-token group in a generated reaction summary.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {group} {{\n"));
+            out.push_str("    pub token: String,\n");
+            out.push_str("    pub count: u64,\n");
+            out.push_str("    pub reactor_pubkeys: Vec<String>,\n");
+            out.push_str("}\n\n");
+            out.push_str("/// Typed reaction-summary output decoded by the generated facade.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {} {{\n", read.summary.record));
+            out.push_str("    pub target_id: String,\n");
+            out.push_str("    pub total: u64,\n");
+            out.push_str(&format!("    pub groups: Vec<{group}>,\n"));
+            out.push_str("}\n\n");
+        }
+        SummaryShape::Repost => {
+            out.push_str("/// Typed repost-summary output decoded by the generated facade.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {} {{\n", read.summary.record));
+            out.push_str("    pub target_id: String,\n");
+            out.push_str("    pub count: u64,\n");
+            out.push_str("    pub reposter_pubkeys: Vec<String>,\n");
+            out.push_str("}\n\n");
+        }
+        SummaryShape::Zap => {
+            let zapper = read
+                .summary
+                .zapper_record
+                .as_deref()
+                .expect("registry validates zapper record");
+            out.push_str("/// One zapper aggregate in a generated zap summary.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {zapper} {{\n"));
+            out.push_str("    pub pubkey: Option<String>,\n");
+            out.push_str("    pub total_msats: u64,\n");
+            out.push_str("    pub zap_count: u32,\n");
+            out.push_str("}\n\n");
+            out.push_str("/// Typed zap-summary output decoded by the generated facade.\n");
+            out.push_str("#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]\n");
+            out.push_str(&format!("pub struct {} {{\n", read.summary.record));
+            out.push_str("    pub target_id: String,\n");
+            out.push_str("    pub total_msats: u64,\n");
+            out.push_str("    pub zap_count: u64,\n");
+            out.push_str(&format!("    pub zappers: Vec<{zapper}>,\n"));
+            out.push_str("}\n\n");
+        }
     }
 }
 
@@ -67,6 +137,7 @@ fn render_error(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
     let error = &registry.facade.error_type;
     let invalid = &registry.facade.invalid_target_variant;
     let open_failed = &registry.facade.open_failed_variant;
+    let decode_failed = &registry.facade.decode_failed_variant;
     out.push_str("/// Facade-local concept-read error surface for generated read doors.\n");
     out.push_str("#[derive(uniffi::Error, Debug, Clone, Copy, PartialEq, Eq)]\n");
     out.push_str(&format!("pub enum {error} {{\n"));
@@ -74,6 +145,8 @@ fn render_error(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
     out.push_str(&format!("    {invalid},\n"));
     out.push_str("    /// The concept crate rejected the compiled read plan.\n");
     out.push_str(&format!("    {open_failed},\n"));
+    out.push_str("    /// The typed summary payload could not be decoded.\n");
+    out.push_str(&format!("    {decode_failed},\n"));
     out.push_str("}\n\n");
     out.push_str(&format!("impl core::fmt::Display for {error} {{\n"));
     out.push_str("    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n");
@@ -83,6 +156,9 @@ fn render_error(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
     ));
     out.push_str(&format!(
         "            Self::{open_failed} => write!(f, \"concept read open rejected the read plan\"),\n"
+    ));
+    out.push_str(&format!(
+        "            Self::{decode_failed} => write!(f, \"invalid concept-read summary payload\"),\n"
     ));
     out.push_str("        }\n");
     out.push_str("    }\n");
@@ -96,6 +172,7 @@ fn render_impl(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
     for (index, read) in registry.reads.iter().enumerate() {
         render_open_method(read, registry, out);
         render_close_method(read, registry, out);
+        render_decode_method(read, registry, out);
         if index + 1 < registry.reads.len() {
             out.push('\n');
         }
@@ -166,4 +243,89 @@ fn render_close_method(
     ));
     out.push_str(&format!("        {close_fn}(self.{runtime}(), handle)\n"));
     out.push_str("    }\n");
+}
+
+fn render_decode_method(
+    read: &AppConceptRead,
+    registry: &LoadedAppConceptReadRegistry,
+    out: &mut String,
+) {
+    let decode_fn = read.concept.summary.decoder_fn;
+    let facade_decode_fn = read.concept.summary.facade_decode_fn;
+    let record = &read.summary.record;
+    let error = &registry.facade.error_type;
+    let decode_failed = &registry.facade.decode_failed_variant;
+    out.push('\n');
+    out.push_str("    /// Decode a typed concept-read summary payload emitted by the kernel.\n");
+    out.push_str(&format!("    pub fn {facade_decode_fn}(\n"));
+    out.push_str("        &self,\n");
+    out.push_str("        payload: Vec<u8>,\n");
+    out.push_str(&format!("    ) -> Result<{record}, {error}> {{\n"));
+    out.push_str(&format!(
+        "        let snapshot = {decode_fn}(&payload)\n            .map_err(|_| {error}::{decode_failed})?;\n"
+    ));
+    render_summary_conversion(read, out);
+    out.push_str("    }\n");
+}
+
+fn render_summary_conversion(read: &AppConceptRead, out: &mut String) {
+    match read.concept.summary.shape {
+        SummaryShape::Reply => {
+            out.push_str(&format!("        Ok({} {{\n", read.summary.record));
+            out.push_str("            target_id: snapshot.target_id,\n");
+            out.push_str("            count: snapshot.count,\n");
+            out.push_str("            reply_event_ids: snapshot.reply_event_ids,\n");
+            out.push_str("        })\n");
+        }
+        SummaryShape::Reaction => {
+            let group = read
+                .summary
+                .group_record
+                .as_deref()
+                .expect("registry validates reaction group record");
+            out.push_str("        let groups = snapshot\n");
+            out.push_str("            .groups\n");
+            out.push_str("            .into_iter()\n");
+            out.push_str(&format!("            .map(|group| {group} {{\n"));
+            out.push_str("                token: group.token,\n");
+            out.push_str("                count: group.count,\n");
+            out.push_str("                reactor_pubkeys: group.reactor_pubkeys,\n");
+            out.push_str("            })\n");
+            out.push_str("            .collect();\n");
+            out.push_str(&format!("        Ok({} {{\n", read.summary.record));
+            out.push_str("            target_id: snapshot.target_id,\n");
+            out.push_str("            total: snapshot.total,\n");
+            out.push_str("            groups,\n");
+            out.push_str("        })\n");
+        }
+        SummaryShape::Repost => {
+            out.push_str(&format!("        Ok({} {{\n", read.summary.record));
+            out.push_str("            target_id: snapshot.target_id,\n");
+            out.push_str("            count: snapshot.count,\n");
+            out.push_str("            reposter_pubkeys: snapshot.reposter_pubkeys,\n");
+            out.push_str("        })\n");
+        }
+        SummaryShape::Zap => {
+            let zapper = read
+                .summary
+                .zapper_record
+                .as_deref()
+                .expect("registry validates zapper record");
+            out.push_str("        let zappers = snapshot\n");
+            out.push_str("            .zappers\n");
+            out.push_str("            .into_iter()\n");
+            out.push_str(&format!("            .map(|zapper| {zapper} {{\n"));
+            out.push_str("                pubkey: zapper.pubkey,\n");
+            out.push_str("                total_msats: zapper.total_msats,\n");
+            out.push_str("                zap_count: zapper.zap_count,\n");
+            out.push_str("            })\n");
+            out.push_str("            .collect();\n");
+            out.push_str(&format!("        Ok({} {{\n", read.summary.record));
+            out.push_str("            target_id: snapshot.target_id,\n");
+            out.push_str("            total_msats: snapshot.total_msats,\n");
+            out.push_str("            zap_count: snapshot.zap_count,\n");
+            out.push_str("            zappers,\n");
+            out.push_str("        })\n");
+        }
+    }
 }

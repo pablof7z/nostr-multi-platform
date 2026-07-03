@@ -22,6 +22,7 @@ pub(super) struct FacadeRow {
     pub error_type: String,
     pub invalid_target_variant: String,
     pub open_failed_variant: String,
+    pub decode_failed_variant: String,
 }
 
 #[derive(Deserialize)]
@@ -29,6 +30,15 @@ pub(super) struct FacadeRow {
 pub(super) struct ConceptReadRow {
     pub concept: String,
     pub opened_record: String,
+    pub summary: SummaryRow,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct SummaryRow {
+    pub record: String,
+    pub group_record: Option<String>,
+    pub zapper_record: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -36,4 +46,8 @@ pub(super) struct ConceptReadRow {
 pub(super) struct OutputsRow {
     pub rust: PathBuf,
     pub rust_test_module: Option<String>,
+    pub swift: Option<PathBuf>,
+    pub kotlin: Option<PathBuf>,
+    pub kotlin_package: Option<String>,
+    pub kotlin_uniffi_package: Option<String>,
 }

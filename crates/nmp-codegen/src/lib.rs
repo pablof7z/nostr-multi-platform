@@ -176,8 +176,9 @@ pub use concept_reads::{
     generate_concept_reads_from_registry, load_app_concept_read_registry,
     parse_app_concept_read_registry, render_from_registry as render_concept_reads_from_registry,
     AppConceptRead, AppConceptReadOutputCheck, AppConceptReadOutputs,
-    AppConceptReadRegistryCheckOutcome, ConceptRead, ConceptReadFacade, ConceptReadsCheckOutcome,
-    LoadedAppConceptReadRegistry, Platform as ConceptReadPlatform, TargetInput, CONCEPT_READS,
+    AppConceptReadRegistryCheckOutcome, AppConceptReadSummary, ConceptRead, ConceptReadFacade,
+    ConceptReadsCheckOutcome, LoadedAppConceptReadRegistry, Platform as ConceptReadPlatform,
+    SummaryOutput, SummaryShape, TargetInput, CONCEPT_READS,
 };
 /// #1626 — generated app-facing native feed helpers over the canonical
 /// `FeedParams` JSON doorway. These emit Swift/Kotlin/TS convenience helpers;

@@ -172,3 +172,30 @@ fn close_replies_on_an_unknown_handle_is_a_safe_noop() {
     assert!(!app.close_replies(unknown));
     app.stop();
 }
+
+#[test]
+fn decode_reply_summary_maps_payload_to_facade_record() {
+    let app = GalleryApp::new();
+    let payload = nmp_replies::encode_reply_summary_snapshot(&nmp_replies::ReplySummarySnapshot {
+        target_id: TARGET_EVENT_ID.to_string(),
+        count: 1,
+        reply_event_ids: vec![REPLY_ID.to_string()],
+    });
+
+    let decoded = app
+        .decode_reply_summary(payload)
+        .expect("valid reply-summary payload decodes through the facade");
+    assert_eq!(
+        decoded,
+        GalleryReplySummary {
+            target_id: TARGET_EVENT_ID.to_string(),
+            count: 1,
+            reply_event_ids: vec![REPLY_ID.to_string()],
+        }
+    );
+
+    let err = app
+        .decode_reply_summary(vec![0, 1, 2, 3])
+        .expect_err("malformed summary payload must fail closed");
+    assert_eq!(err, GalleryReadError::DecodeFailed);
+}
