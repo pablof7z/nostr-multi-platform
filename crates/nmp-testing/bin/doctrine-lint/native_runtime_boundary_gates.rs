@@ -312,6 +312,41 @@ fn nmp_native_runtime_wallet_nips_are_feature_gated() {
 }
 
 #[test]
+fn nmp_native_runtime_search_concept_is_feature_gated() {
+    let metadata = cargo_metadata();
+    let packages = metadata["packages"]
+        .as_array()
+        .expect("cargo metadata packages must be an array");
+    let runtime = packages
+        .iter()
+        .find(|pkg| pkg["name"] == "nmp-native-runtime")
+        .expect("nmp-native-runtime package must be in cargo metadata");
+    let dependencies = runtime["dependencies"]
+        .as_array()
+        .expect("package dependencies must be an array");
+
+    let mut findings = Vec::new();
+    for dependency in dependencies {
+        if dependency["name"] != "nmp-nip50" {
+            continue;
+        }
+        let kind = dependency["kind"].as_str().unwrap_or("normal");
+        let optional = dependency["optional"].as_bool().unwrap_or(false);
+        if kind != "dev" && !optional {
+            findings.push(format!("nmp-native-runtime -> nmp-nip50 ({kind})"));
+        }
+    }
+
+    assert!(
+        findings.is_empty(),
+        "#2797: NIP-50 search is concept-owned composition. Keep the native \
+         runtime SearchHost implementation and text-query dispatch behind the \
+         nmp-native-runtime `search` feature:\n{}",
+        findings.join("\n")
+    );
+}
+
+#[test]
 fn nmp_native_runtime_op_feed_concepts_are_feature_gated() {
     let metadata = cargo_metadata();
     let packages = metadata["packages"]
