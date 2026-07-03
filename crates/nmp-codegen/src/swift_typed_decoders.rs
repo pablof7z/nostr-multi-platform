@@ -62,6 +62,14 @@ use std::path::Path;
 
 use crate::swift_projections_registry::{SnapshotProjectionEntry, SNAPSHOT_PROJECTIONS};
 
+/// Neutral wire facts needed by generated typed projection decoders.
+#[derive(Clone, Copy)]
+pub struct ProjectionDecoderContract<'a> {
+    pub key: &'a str,
+    pub schema_id: &'a str,
+    pub file_identifier: &'a str,
+}
+
 /// Header comment emitted at the top of the generated file. Keep the
 /// regeneration command accurate — the `--check` gate fails on a stale file
 /// and anyone hitting the failure needs the exact command to reproduce.
@@ -104,7 +112,67 @@ import Foundation
 /// filesystem).
 #[must_use]
 pub fn render_typed_decoders(entries: &[SnapshotProjectionEntry]) -> String {
-    let mut out = String::from(HEADER);
+    render_typed_decoders_with_contracts(entries, HEADER.to_string(), |key| {
+        let contract = crate::projection_contract::contract_for(key);
+        Some(ProjectionDecoderContract {
+            key: contract.key,
+            schema_id: contract.schema_id,
+            file_identifier: contract.file_identifier,
+        })
+    })
+    .expect("built-in projection registry keys must have projection contract rows")
+}
+
+/// Render typed decoders from an app-local projection registry.
+///
+/// # Errors
+/// Returned when a projection entry with a Swift reader lacks a matching schema
+/// contract row.
+pub fn render_typed_decoders_from_contracts<'a>(
+    entries: &[SnapshotProjectionEntry],
+    contracts: &[ProjectionDecoderContract<'a>],
+    source_label: &str,
+) -> Result<String, String> {
+    render_typed_decoders_with_contracts(entries, app_header(source_label), |key| {
+        contracts
+            .iter()
+            .copied()
+            .find(|contract| contract.key == key)
+    })
+}
+
+fn app_header(source_label: &str) -> String {
+    format!(
+        "\
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen read-projections --registry {source_label} \\
+//       --platform swift-typed-decoders
+//
+// Source of truth: app-local read-projections registry `{source_label}`.
+// Each enum below is the generated mechanical half of one typed sidecar
+// decoder: key+schemaId lookup over [TypedProjectionEnvelope], unchecked
+// getRoot(byteBuffer:) into the flatc Swift reader, then hand-written
+// TypedProjectionGlue mapping into the app domain type.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import FlatBuffers
+import Foundation
+"
+    )
+}
+
+fn render_typed_decoders_with_contracts<'a, F>(
+    entries: &[SnapshotProjectionEntry],
+    header: String,
+    contract_for: F,
+) -> Result<String, String>
+where
+    F: Fn(&str) -> Option<ProjectionDecoderContract<'a>>,
+{
+    let mut out = header;
     out.push('\n');
 
     let emitted: Vec<&SnapshotProjectionEntry> = entries
@@ -119,11 +187,13 @@ pub fn render_typed_decoders(entries: &[SnapshotProjectionEntry]) -> String {
 
     if emitted.is_empty() {
         out.push_str("// No projection key has a checked-in `flatc --swift` reader binding yet.\n");
-        return out;
+        return Ok(out);
     }
 
     for entry in emitted {
-        render_one_decoder(entry, &mut out);
+        let contract = contract_for(entry.key)
+            .ok_or_else(|| format!("projection {:?} has no wire contract", entry.key))?;
+        render_one_decoder(entry, contract, &mut out);
         out.push('\n');
     }
     // Trim the trailing blank line so the file ends with exactly one newline,
@@ -131,7 +201,7 @@ pub fn render_typed_decoders(entries: &[SnapshotProjectionEntry]) -> String {
     while out.ends_with("\n\n") {
         out.pop();
     }
-    out
+    Ok(out)
 }
 
 /// Render one projection key's generated decoder enum.
@@ -140,7 +210,11 @@ pub fn render_typed_decoders(entries: &[SnapshotProjectionEntry]) -> String {
 /// the caller's filter. The glue function name is the projection's
 /// `swift_field` (lowerCamelCase, unique by registry invariant), so the
 /// generated decoder calls `TypedProjectionGlue.<swift_field>(reader)`.
-fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
+fn render_one_decoder(
+    entry: &SnapshotProjectionEntry,
+    contract: ProjectionDecoderContract<'_>,
+    out: &mut String,
+) {
     let sidecar = entry
         .typed_sidecar
         .as_ref()
@@ -148,12 +222,6 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
     let reader = sidecar
         .swift_reader_type
         .expect("caller filters to Some reader types");
-    // #1723: the neutral schema_id / file_identifier are SOURCED from the
-    // projection contract (the single source), not from the Swift registry — the
-    // `TypedSidecar` no longer redeclares them, nor the producer envelope `key`
-    // (the entry's own `key` IS the producer envelope key). Fail-closed: an entry
-    // whose key has no contract row panics here.
-    let contract = crate::projection_contract::contract_for(entry.key);
     let schema_id = contract.schema_id;
     let file_identifier = contract.file_identifier;
     let enum_name = decoder_enum_name(entry.swift_field);

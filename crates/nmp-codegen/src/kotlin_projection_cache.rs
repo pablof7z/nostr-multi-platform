@@ -75,6 +75,35 @@ private const val STATE_CLEARED: UByte = 1u
 
 ";
 
+fn app_header(source_label: &str) -> String {
+    format!(
+        "\
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-codegen -- gen read-projections --registry {source_label} \\
+//       --platform kotlin-projection-cache
+//
+// Source of truth: app-local read-projections registry `{source_label}`.
+// ADR-0070 R3-S4: NMP-owned rev-aware host apply layer (Android).
+// ─────────────────────────────────────────────────────────────────────────────
+
+@file:OptIn(ExperimentalUnsignedTypes::class)
+
+package org.nmp.android
+
+import android.util.Log
+
+private const val TAG = \"ProjectionMergeCache\"
+
+private const val STATE_CHANGED: UByte = 0u
+private const val STATE_CLEARED: UByte = 1u
+
+"
+    )
+}
+
 /// Outcome of a `--check` run.
 #[derive(Debug)]
 pub struct KotlinProjectionCacheCheckOutcome {
@@ -85,11 +114,27 @@ pub struct KotlinProjectionCacheCheckOutcome {
 /// Render the `ProjectionMergeCache` Kotlin source from the registry.
 #[must_use]
 pub fn render_kotlin_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
+    render_kotlin_projection_cache_with_header(entries, HEADER.to_string())
+}
+
+/// Render the app-local `ProjectionMergeCache` Kotlin source.
+#[must_use]
+pub fn render_kotlin_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+) -> String {
+    render_kotlin_projection_cache_with_header(entries, app_header(source_label))
+}
+
+fn render_kotlin_projection_cache_with_header(
+    entries: &[SnapshotProjectionEntry],
+    header: String,
+) -> String {
     // The entries slice is available for future per-key decode dispatch expansion,
     // but the current implementation uses a uniform bytes.isNotEmpty() guard (D3-4).
     let _ = entries;
 
-    let mut out = String::from(HEADER);
+    let mut out = header;
 
     // ── CacheEntry private data class ─────────────────────────────────────────
     out.push_str(
@@ -336,6 +381,49 @@ pub fn check_kotlin_projection_cache(
     out_path: &Path,
 ) -> std::io::Result<KotlinProjectionCacheCheckOutcome> {
     let rendered = render_kotlin_projection_cache(SNAPSHOT_PROJECTIONS);
+    let actual = match std::fs::read_to_string(out_path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(KotlinProjectionCacheCheckOutcome {
+                up_to_date: false,
+                first_diff_line: None,
+            });
+        }
+        Err(err) => return Err(err),
+    };
+    if actual == rendered {
+        return Ok(KotlinProjectionCacheCheckOutcome {
+            up_to_date: true,
+            first_diff_line: None,
+        });
+    }
+    let first_diff_line = crate::diff_report::first_diff_or_length(&actual, &rendered);
+    Ok(KotlinProjectionCacheCheckOutcome {
+        up_to_date: false,
+        first_diff_line,
+    })
+}
+
+/// Write an app-local `ProjectionCache.kt` to `out_path`.
+pub fn generate_kotlin_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+    out_path: &Path,
+) -> std::io::Result<()> {
+    let rendered = render_kotlin_projection_cache_for_app(entries, source_label);
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(out_path, rendered)
+}
+
+/// Diff an app-local `ProjectionCache.kt` against `out_path`.
+pub fn check_kotlin_projection_cache_for_app(
+    entries: &[SnapshotProjectionEntry],
+    source_label: &str,
+    out_path: &Path,
+) -> std::io::Result<KotlinProjectionCacheCheckOutcome> {
+    let rendered = render_kotlin_projection_cache_for_app(entries, source_label);
     let actual = match std::fs::read_to_string(out_path) {
         Ok(s) => s,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => {

@@ -21,6 +21,7 @@ pub mod projection_contract;
 // own exported snapshot surfaces; this owns durable internal materializations
 // such as mailbox/profile/DM-relay caches and their D4 writer/read API facts.
 pub mod read_model_contract;
+pub mod read_projections;
 // #1939 (epic #1921) — the neutral typed action contract manifest. The single
 // source for default typed action namespace / producer / payload schema /
 // schema-version / FlatBuffers file identifier / default tier / generated
@@ -129,6 +130,14 @@ pub use read_model_contract::{
     lookup as read_model_contract_lookup, ReadModelContract, ReadModelMutationMethod,
     READ_MODEL_CONTRACT,
 };
+pub use read_projections::{
+    check_app_read_projection_registry, check_read_projections_from_registry,
+    generate_read_projections_from_registry, load_app_read_projection_registry,
+    parse_app_read_projection_registry, validate_app_read_projection_schema_files,
+    AppReadProjectionCheckOutcome, AppReadProjectionOutputCheck, AppReadProjectionOutputs,
+    AppReadProjectionRegistryCheckOutcome, AppReadProjectionSchema,
+    LoadedAppReadProjectionRegistry, ReadProjectionPlatform,
+};
 pub use rust_builtin_keys::{
     check_builtin_deps, check_builtin_keys, check_presence_keys, generate_builtin_deps,
     generate_builtin_keys, generate_presence_keys, render_builtin_deps, render_builtin_keys,
@@ -139,11 +148,13 @@ pub use swift_keyed_cache::{
     KeyedRefCacheCheckOutcome,
 };
 pub use swift_projection_cache::{
-    check_projection_cache, generate_projection_cache, render_projection_cache,
+    check_projection_cache, check_projection_cache_for_app, generate_projection_cache,
+    generate_projection_cache_for_app, render_projection_cache, render_projection_cache_for_app,
     ProjectionCacheCheckOutcome,
 };
 pub use swift_typed_decoders::{
-    check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
+    check_typed_decoders, generate_typed_decoders, render_typed_decoders,
+    render_typed_decoders_from_contracts, ProjectionDecoderContract, TypedDecodersCheckOutcome,
 };
 pub use ts_keyed_cache::{
     check_ts_keyed_ref_cache, generate_ts_keyed_ref_cache, render_ts_keyed_ref_cache,

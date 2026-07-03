@@ -126,10 +126,7 @@ pub fn check_all_wire_identities(repo_root: &std::path::Path) -> Vec<WireIdentit
         .collect()
 }
 
-fn check_one(
-    repo_root: &std::path::Path,
-    e: &WireIdentityExpectation,
-) -> WireIdentityCheckOutcome {
+fn check_one(repo_root: &std::path::Path, e: &WireIdentityExpectation) -> WireIdentityCheckOutcome {
     let source = std::fs::read_to_string(repo_root.join(e.source_path)).ok();
     let source_schema_id_matches = source
         .as_deref()
@@ -278,7 +275,10 @@ mod tests {
     fn fails_closed_on_comment_or_wrong_type() {
         assert_eq!(parse_const_str(r#"// pub const X: &str = "y";"#, "X"), None);
         assert_eq!(parse_const_str(r#"pub const X: u32 = 1;"#, "X"), None);
-        assert_eq!(parse_byte_string_const(r#"pub const X: &str = "NRSM";"#, "X"), None);
+        assert_eq!(
+            parse_byte_string_const(r#"pub const X: &str = "NRSM";"#, "X"),
+            None
+        );
     }
 
     /// Every wire identity in the gate table has a matching codegen registry
