@@ -52,20 +52,32 @@ impl NmpAppBuilder<Unstarted> {
         // `self.app` is non-null (builder invariant) and not yet started, so a
         // shared borrow is sound.
         let storage_path = unsafe { &*self.app }.storage_path_for_start();
-        // `nmp_nip47::register` takes only the narrow registrar traits it uses; the
-        // builder implements `AppHost` (the composition supertrait over them), so
-        // it satisfies those bounds and wires every registration against its app.
-        // It returns the per-app `WalletRuntimeHandle` (ADR-0072 rung 5.2).
-        let wallet_handles = nmp_nip47::register(&mut self, nmp_nip47::Config::new(storage_path))?;
+        // `nmp_wallet::register` is the single wallet composition-root entry
+        // point (epic #2864 Wave C, #2908): it calls `nmp_nip47::register`
+        // itself (unchanged — NWC's connect/disconnect/pay_invoice actions,
+        // interceptor, and "wallet" projection keep registering exactly as
+        // before) to obtain the runtime handle needed to construct a live
+        // `NwcWalletBackend`, then registers the backend-selection layer,
+        // the canonical `select_backend`/`cashu.*`/`nutzap.*` actions, and
+        // the identity-reactive read-interest/observer wiring. It takes only
+        // the narrow registrar traits it uses; the builder implements
+        // `AppHost` (the composition supertrait over them), so it satisfies
+        // those bounds and wires every registration against its app.
+        let wallet_handles =
+            nmp_wallet::register(&mut self, nmp_wallet::Config::new(storage_path))?;
         // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
         // the app-path override of the port-less zap default `explicit owner composition`
         // installs (ADR-0069), so a zap pays through this builder's wallet. The
         // `nmp-nip57 → nmp-nip47` edge is gone — NIP-57 sees only the substrate
         // `PaymentPort` (#1728), and `explicit composition` (composition) wires the two.
+        // `Handles::nwc_wallet` is `nmp_wallet::register`'s pass-through of the
+        // exact `WalletRuntimeHandle` `nmp_nip47::register` installed
+        // internally — unchanged from what this line consumed before
+        // `nmp_wallet::register` existed.
         nmp_nip57::register(
             &mut self,
             nmp_nip57::Config::with_payment_port(nmp_nip47::wallet_payment_port(
-                wallet_handles.wallet,
+                wallet_handles.nwc_wallet,
             )),
         )?;
         Ok(self)

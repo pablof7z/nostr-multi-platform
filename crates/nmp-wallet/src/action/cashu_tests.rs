@@ -1,0 +1,172 @@
+use std::sync::Mutex;
+
+use super::*;
+use nmp_core::substrate::ActionContext;
+
+fn ctx() -> ActionContext {
+    ActionContext::default()
+}
+
+fn empty_selector() -> Arc<WalletBackendSelector> {
+    Arc::new(WalletBackendSelector::new(Vec::new()))
+}
+
+fn cashu_selector() -> Arc<WalletBackendSelector> {
+    Arc::new(WalletBackendSelector::new(vec![Arc::new(
+        crate::backend::cashu::CashuWalletBackend::new(),
+    )]))
+}
+
+fn active_pubkey(pubkey: Option<&str>) -> ActiveAccountSlot {
+    std::sync::Arc::new(Mutex::new(pubkey.map(str::to_string)))
+}
+
+const MINT: &str = "https://mint.example";
+const PK: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+// ── cashu.create ─────────────────────────────────────────────────────────────
+
+#[test]
+fn create_start_rejects_empty_mint() {
+    let module = CashuCreateModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuCreateAction {
+                mint: String::new(),
+            },
+        )
+        .expect_err("empty mint must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn create_start_fails_closed_with_no_capable_backend() {
+    let module = CashuCreateModule::new(empty_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuCreateAction {
+                mint: MINT.to_string(),
+            },
+        )
+        .expect_err("no registered backend must be rejected");
+    match err {
+        ActionRejection::InvalidCoded { code, .. } => {
+            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
+        }
+        other => panic!("expected InvalidCoded, got {other:?}"),
+    }
+}
+
+#[test]
+fn create_execute_reaches_the_cashu_backend_and_dispatches_a_command() {
+    let module = CashuCreateModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let dispatched = std::cell::Cell::new(0);
+    module
+        .execute(
+            &ctx(),
+            CashuCreateAction {
+                mint: MINT.to_string(),
+            },
+            "corr-1",
+            &|_cmd| dispatched.set(dispatched.get() + 1),
+        )
+        .expect("execute must succeed");
+    assert!(
+        dispatched.get() > 0,
+        "create must dispatch at least one command"
+    );
+}
+
+// ── cashu.recover ────────────────────────────────────────────────────────────
+
+#[test]
+fn recover_always_rejects_regardless_of_registered_backends() {
+    let module = CashuRecoverModule::new();
+    let err = module
+        .start(&mut ctx(), CashuRecoverAction {})
+        .expect_err("recover is never implemented today");
+    match err {
+        ActionRejection::InvalidCoded { code, .. } => {
+            assert_eq!(code, ui_codes::CASHU_RECOVER_NOT_IMPLEMENTED);
+        }
+        other => panic!("expected InvalidCoded, got {other:?}"),
+    }
+}
+
+// ── cashu.deposit_quote ──────────────────────────────────────────────────────
+
+#[test]
+fn deposit_quote_start_rejects_zero_amount() {
+    let module = CashuDepositQuoteModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuDepositQuoteAction {
+                mint: MINT.to_string(),
+                amount_sats: 0,
+            },
+        )
+        .expect_err("zero amount_sats must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn deposit_quote_start_fails_closed_with_no_capable_backend() {
+    let module = CashuDepositQuoteModule::new(empty_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuDepositQuoteAction {
+                mint: MINT.to_string(),
+                amount_sats: 1_000,
+            },
+        )
+        .expect_err("no registered backend must be rejected");
+    match err {
+        ActionRejection::InvalidCoded { code, .. } => {
+            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
+        }
+        other => panic!("expected InvalidCoded, got {other:?}"),
+    }
+}
+
+// ── cashu.complete_deposit ───────────────────────────────────────────────────
+
+#[test]
+fn complete_deposit_start_rejects_empty_quote_id() {
+    let module = CashuCompleteDepositModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuCompleteDepositAction {
+                quote_id: String::new(),
+            },
+        )
+        .expect_err("empty quote_id must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn complete_deposit_execute_fails_closed_for_an_unknown_quote() {
+    // No pending deposit has been started, so the backend's own fail-closed
+    // path (`ui_codes::UNKNOWN_QUOTE`) fires — proving `execute()` really
+    // reaches the backend rather than short-circuiting.
+    let module = CashuCompleteDepositModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let dispatched = std::cell::Cell::new(0);
+    module
+        .execute(
+            &ctx(),
+            CashuCompleteDepositAction {
+                quote_id: "unknown-quote".to_string(),
+            },
+            "corr-1",
+            &|_cmd| dispatched.set(dispatched.get() + 1),
+        )
+        .expect("execute must succeed (fail-closed commands still count as success)");
+    assert!(
+        dispatched.get() > 0,
+        "fail-closed path must still emit a command"
+    );
+}

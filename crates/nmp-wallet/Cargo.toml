@@ -15,6 +15,10 @@ nmp-nip47 = { path = "../nmp-nip47", version = "1.0.0-rc.1" }
 # see nip60's own module docs).
 nmp-nip60 = { path = "../nmp-nip60", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
+# W6 (#2908): `InterestShape` for the wallet's own read-interest shapes
+# (`interests.rs`) — the kind-numbered filters this crate builds for its
+# nutzap-receipt and self-authored NIP-60/NIP-61 observed projections.
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 # The flat `UnsignedEvent`/`SignedEvent` shape the `Nip44EncryptForAccount` /
 # `SignEventForAccount` ports carry — the same signer-transparent seam
 # `nmp-nip17`'s gift-wrap chain uses (mirrored here for kind:17375/7375).
