@@ -299,6 +299,26 @@ path = "crates/nmp-threading"
 name = "nmp-wot"
 path = "crates/nmp-wot"
 
+[[retired_crates]]
+name = "nmp-ffi"
+migration = "migrate native entrypoints to app-owned facade crates over nmp-native-runtime / nmp-uniffi-support"
+
+[[retired_crates]]
+name = "nmp-defaults"
+migration = "move product defaults into the app composition crate; NMP no longer ships a canonical preset crate"
+
+[[retired_crates]]
+name = "nmp-signer-broker"
+migration = "use nmp-nip46-runtime and app-owned signer composition instead of the retired broker crate"
+
+[[retired_crates]]
+name = "nmp-wasm"
+migration = "use nmp-browser-runtime for browser hosts; the monolithic nmp-wasm package is retired"
+
+[[retired_crates]]
+name = "nmp-uniffi"
+migration = "use app-owned UniFFI facade crates plus nmp-uniffi-support; the shared facade crate is retired"
+
 [[private_packages]]
 name = "nmp-sqlite-wasm-conformance"
 path = "crates/nmp-sqlite-wasm-conformance"

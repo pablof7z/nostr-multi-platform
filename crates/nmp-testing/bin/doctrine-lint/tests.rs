@@ -43,6 +43,8 @@ use std::process::Command;
 mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
 mod browser_boundary_gates; // Browser runtime + runtime-web boundary smoke gates.
 mod component_host_boundary_gates; // Component host package import/dependency gates.
+mod concept_doorway_gates; // Concept read doorways stay in owner crates.
+mod core_surface_gates; // nmp-core public surface / decoder ratchets.
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod deleted_defaults_tests; // Deleted nmp-defaults production/scaffold ratchet.
 mod doc_citation_truth_gates; // crate-boundaries.md §N.M / ADR-NNNN content-truth gate (#2768).
