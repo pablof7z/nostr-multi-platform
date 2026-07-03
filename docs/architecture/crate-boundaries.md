@@ -464,6 +464,33 @@ surface by #2763):
   gated against resurrection by `crates/nmp-testing/bin/doctrine-lint/wasm_abi_gates.rs`
   (same mechanism as the `nmp-wasm` retirement gate).
 
+**Concept-read binding surface (#2899).** The four concept-owned reads
+(`open_replies`/`open_reactions`/`open_reposts`/`open_zaps` — #2758, #2797)
+hit the same rule: a shared crate cannot own their `#[uniffi::export]` doors,
+records, or error enums, because UniFFI resolves every export to its owning
+facade namespace, not to the concept crate that defines the read. Hand-rolling
+that export (target marshaling, error mapping, scalar handle bookkeeping, typed
+summary decoding) four times per concept per app is the same drift-prone
+stamping this document rejects for action builders (#2411). `nmp gen
+concept-reads` (landed in #2905/#2909) is the same fix one layer down:
+`nmp-codegen` carries a built-in `CONCEPT_READS` table naming each concept
+crate's public symbols as **text** — `nmp-codegen` itself never depends on
+`nmp-replies`/`nmp-reactions`/`nmp-reposts`/`nmp-zaps` — and an app opts a read
+in by listing the concept id in its own `concept-reads.json`. The generator
+emits the app's `#[uniffi::export]` facade slice (plus Swift/Kotlin
+convenience wrappers over the resulting UniFFI bindings); the slice compiles
+inside the app facade crate, which already composes exactly those concepts, so
+a listed-but-not-composed concept fails to compile and an unlisted concept has
+zero symbols at every layer. Three doctrine-lint ratchets keep the surface
+honest (#2899 Part D): the binding/codegen layer (`nmp-uniffi-support`,
+`nmp-codegen`, `nmp-native-runtime`) links no concept-read crate; every
+checked-in `concept_reads_*.rs` slice carries the generator marker (so it can't
+be silently hand-edited into drift); and a fail-closed wire-identity gate
+asserts the `CONCEPT_READS` table's schema ids agree with the concept crates'
+real `*_SUMMARY_SCHEMA_ID`/`*_VERSION`/`*_FILE_IDENTIFIER` source consts. See
+[builder-guide 15](../builder-guide/15-codegen-and-ffi.md) for the registry
+JSON shape and CLI.
+
 `nmp-browser-runtime` is the browser composition-root delivery surface
 described in §10a. It owns the wasm-bindgen Worker export
 (`nmp-browser-runtime::wasm` is the sole browser ABI glue) and the serializable
