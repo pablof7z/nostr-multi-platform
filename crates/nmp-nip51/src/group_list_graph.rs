@@ -21,7 +21,7 @@ pub(super) enum SimpleGroupListGraphEffect {
 }
 
 pub(super) struct SimpleGroupListGraph {
-    graph: Graph<(), ()>,
+    graph: Graph<()>,
     active_account: InputNode<Option<String>>,
     raw_list: InputNode<SimpleGroupListGraphStore>,
     visible_groups: DerivedNode<BTreeSet<SimpleGroupRef>>,
@@ -29,7 +29,7 @@ pub(super) struct SimpleGroupListGraph {
 
 impl SimpleGroupListGraph {
     pub(super) fn new(active_account: Option<String>) -> Self {
-        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut graph = Graph::<()>::new_with_command_type();
         let mut tx = graph
             .begin_transaction()
             .expect("static simple-groups graph transaction opens");

@@ -32,7 +32,9 @@ mod ram_eviction;
 mod store_wakeup;
 /// ADR-0072 §D5 — `&mut Kernel` → narrow wallet/zap capability adapter.
 pub mod wallet_access; // ADR-0070 — observer-scoped read-model catch-up.
-pub use dependent_interests::DependentInterestChild;
+pub use dependent_interests::{
+    DependentInterestChild, DependentInterestDelta, DependentInterestDeltaCommand,
+};
 pub(crate) use observer_replay::ObserverReplayRequest;
 mod external_event_sink;
 mod identity_state;

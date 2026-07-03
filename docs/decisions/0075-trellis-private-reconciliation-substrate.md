@@ -24,7 +24,10 @@ feedback means.
 
 Typed sessions need explicit dependency tracking, collection diffs, resource
 ownership, scoped teardown, output clear/rebaseline sequencing, and deterministic
-replay tests. Trellis provides generic mechanics for those problems.
+replay tests. Trellis provides generic mechanics for those problems. Feed
+session acquisition now applies Trellis resource plans as the authoritative
+interest mutation source; the old full-recompute path remains only as a
+reverse-shadow test oracle.
 
 The risk is public leakage: Trellis must not become a second app lifecycle model
 beside NMP typed sessions or a place where Nostr/product meaning is defined.
@@ -43,8 +46,9 @@ integration.
 ## Consequences
 
 NMP can reuse mature reconciliation mechanics while keeping the public API and
-Nostr semantics stable. The first production use must prove equivalence against
-the existing path before deleting bespoke machinery.
+Nostr semantics stable. The first production use proved equivalence against the
+existing path before promotion; subsequent production adapters must keep a
+repo-local oracle or contract test until their bespoke machinery is retired.
 
 NMP must maintain explicit resource taxonomy and command types. Arbitrary
 Trellis keys at app call sites would move product meaning out of NMP and are not
@@ -75,7 +79,9 @@ app/native/web-facing NMP surfaces. Builder docs must continue to teach NMP
 typed sessions and handles.
 
 Equivalence tests must pass before bespoke NMP reconciliation machinery is
-deleted. Those tests cover source expansion, source shrink, empty-source
+deleted or demoted from authority. Feed-session's reverse-shadow tests apply
+Trellis deltas and compare the resulting authority state against the old full
+recompute. Those tests cover source expansion, source shrink, empty-source
 fail-closed behavior, scoped teardown, stale host feedback, output
 baseline/delta/rebaseline/clear, and replay.
 

@@ -37,7 +37,7 @@ fn scoped_teardown_then_stale_host_open_does_not_resurrect_demand() {
         .unwrap();
     tx.set_input(host_statuses, Vec::new()).unwrap();
     tx.attach_node_to_scope(requested, scope).unwrap();
-    tx.attach_node_to_scope(host_statuses, scope).unwrap();
+    // Host feedback is external process state; it may arrive after scoped demand is reclaimed.
 
     let demand_collection = tx
         .set_collection(

@@ -358,6 +358,7 @@ impl BrowserRuntime {
         all_outbound.extend(idle_outbound);
         all_outbound.extend(nip46_after_idle.0);
         all_outbound.extend(tick_outbound);
+        let all_outbound = pump::coalesce_transient_subscriptions(all_outbound);
 
         // ── 6. Fan outbound to relay drivers (wasm32: actual sends; native: no-op)
         let mut events: Vec<BrowserRuntimeEvent> = Vec::new();

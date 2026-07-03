@@ -10,9 +10,9 @@ use crate::trellis_adapter::{
     FeedSessionOutputFrameKind, FeedSessionResourceTraceKind, FeedSessionTrellisAdapter,
 };
 use crate::trellis_adapter_equivalence_support::{
-    assert_changed_step, assert_unchanged_step, command_receiver, drain_mark_changed,
-    drain_replacement_authors, expected_traces, extra_from_authors, remove_projection_action,
-    trace_delta, OldReplacementPath,
+    assert_changed_step, assert_unchanged_step, command_receiver, delta_close_authors,
+    drain_delta_commands, drain_mark_changed, expected_traces, extra_from_authors,
+    remove_projection_action, trace_delta, OldReplacementPath,
 };
 
 #[test]
@@ -107,12 +107,12 @@ fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {
     let trace_start = adapter.resource_traces_for_test().len();
     (adapter.close_action(remove_projection_action(Arc::clone(&remove_count))))();
     assert_eq!(remove_count.load(Ordering::SeqCst), 1);
+    let deltas = drain_delta_commands(&rx);
+    assert_eq!(deltas.len(), 1);
+    assert_eq!(deltas[0].1, "feed-session-acquisition-close");
     assert_eq!(
-        drain_replacement_authors(&rx),
-        vec![(
-            BTreeSet::new(),
-            "feed-session-acquisition-close".to_string()
-        )]
+        delta_close_authors(&deltas[0].0),
+        BTreeSet::from(["alice".to_string(), "dave".to_string()])
     );
     assert_eq!(
         trace_delta(&adapter, trace_start),
@@ -130,14 +130,14 @@ fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {
 
     let trace_start = adapter.resource_traces_for_test().len();
     assert!(!adapter.sync(&extra_from_authors(&["frank"]), "late-source-after-close"));
-    assert!(drain_replacement_authors(&rx).is_empty());
+    assert!(drain_delta_commands(&rx).is_empty());
     assert!(!adapter.rebaseline_output_if_changed(true));
     assert_eq!(drain_mark_changed(&rx), 0);
     assert!(trace_delta(&adapter, trace_start).is_empty());
 
     (adapter.close_action(remove_projection_action(Arc::clone(&remove_count))))();
     assert_eq!(remove_count.load(Ordering::SeqCst), 1);
-    assert!(drain_replacement_authors(&rx).is_empty());
+    assert!(drain_delta_commands(&rx).is_empty());
 }
 
 #[test]

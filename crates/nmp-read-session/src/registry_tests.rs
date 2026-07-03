@@ -25,7 +25,11 @@ fn open_mints_distinct_ids_and_records_projection_key() {
     let a = reg.open(build_with("app.feed.following", || {}));
     let b = reg.open(build_with("nmp.replies.summary.abc", || {}));
     assert_ne!(a, b, "each open mints a distinct id");
-    assert_ne!(a, ReadSessionId(0), "minted id is never the reserved sentinel");
+    assert_ne!(
+        a,
+        ReadSessionId(0),
+        "minted id is never the reserved sentinel"
+    );
     assert_eq!(
         reg.projection_key(&a),
         Some("app.feed.following".to_string())

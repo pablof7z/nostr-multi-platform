@@ -7562,15 +7562,15 @@ dependencies = [
 
 [[package]]
 name = "trellis-core"
-version = "0.1.2"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12bece120c366ff33197674ec32321ca7e011df6af10c92c74f6e32997a297ed"
+checksum = "6c39a1c94c713020d03f516f75d77fc5ddd9a23f64d8055f15b9549970b99ebf"
 
 [[package]]
 name = "trellis-testing"
-version = "0.1.1"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0916e1aed63a8b9ddee2e7e1ed7a0ece9365bfd5952033dedc1ddcc4a4500129"
+checksum = "2bd5d1c620f0cfe6486d0bec6daa40e7d0cae05e1a9723b5c7ad630a165c69f9"
 dependencies = [
  "trellis-core",
 ]

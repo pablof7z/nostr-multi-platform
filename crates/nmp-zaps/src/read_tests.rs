@@ -7,7 +7,12 @@ fn target() -> ZapTarget {
     ZapTarget::event(TARGET).expect("valid hex64 id")
 }
 
-fn receipt(id: &str, target_id: &str, sender: Option<&str>, amount_tag: Option<u64>) -> KernelEvent {
+fn receipt(
+    id: &str,
+    target_id: &str,
+    sender: Option<&str>,
+    amount_tag: Option<u64>,
+) -> KernelEvent {
     let description = amount_tag.map(|amount| {
         let sender_json = sender
             .map(|s| format!("\"pubkey\":\"{s}\",\"tags\":[[\"amount\",\"{amount}\"]]"))
@@ -69,6 +74,8 @@ fn rejects_a_non_receipt_kind() {
 fn accepts_an_anonymous_receipt_with_no_discoverable_sender() {
     let plan = ZapReadPlan::new(target());
     let event = receipt("Z1", TARGET, None, None);
-    let record = plan.accepts(&event).expect("anonymous receipt is still a valid zap");
+    let record = plan
+        .accepts(&event)
+        .expect("anonymous receipt is still a valid zap");
     assert_eq!(record.sender_pubkey, None);
 }

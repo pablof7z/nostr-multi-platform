@@ -15,7 +15,7 @@
 //! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
 //! * `reactivity_hooks` — closures that install the session's Trellis-backed
-//!   acquisition replacement and reset/rebaseline path on source-change
+//!   acquisition delta and reset/rebaseline path on source-change
 //!   signals. `ActiveUserFollows`, ordinary `ListMembers`, and session-local
 //!   observer sources all use this one lane.
 //!

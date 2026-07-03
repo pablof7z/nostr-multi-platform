@@ -12,6 +12,7 @@ use super::super::ObservedProjectionId;
 /// The kernel's subscription lifecycle registry is the single writer for live
 /// relay subscriptions (D4). Each variant either mutates the registry
 /// (`EnsureInterest` / `ReplaceDependentInterestSet` /
+/// `ApplyDependentInterestDelta` /
 /// `DropInterestOwner` / `OpenInterest` / `OpenObservedInterest` /
 /// `CloseInterest`) or the pull-cursor registry (`OpenPullCursor` /
 /// `AdvancePullCursor` / `UnregisterPullCursor`).
@@ -31,6 +32,15 @@ pub enum InterestsCommand {
     ReplaceDependentInterestSet {
         owner: crate::subs::SubOwnerKey,
         children: Vec<crate::kernel::DependentInterestChild>,
+        reason: String,
+    },
+    /// Apply exact child-interest open/replace/close commands for one reduced
+    /// source owner. Private reconcilers use this when their resource plan is
+    /// authoritative and a full set replacement would discard useful diff
+    /// precision.
+    ApplyDependentInterestDelta {
+        owner: crate::subs::SubOwnerKey,
+        delta: crate::kernel::DependentInterestDelta,
         reason: String,
     },
     /// Detach one owner from a logical interest registered through

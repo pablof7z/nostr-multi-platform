@@ -41,8 +41,8 @@ uniffi_core = "0.29"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
-trellis-core = "0.1.2"
-trellis-testing = "0.1.1"
+trellis-core = "0.2.1"
+trellis-testing = "0.2.1"
 # Direct dev dep on nmp-planner for InterestId / InterestLifecycle / etc. in
 # integration tests — nmp_core::planner compat facade deleted (#1608).
 nmp-planner = { path = "../nmp-planner" }

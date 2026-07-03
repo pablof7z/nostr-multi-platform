@@ -26,7 +26,7 @@ pub(super) enum PeopleListGraphEffect {
 }
 
 pub(super) struct PeopleListGraph {
-    graph: Graph<(), ()>,
+    graph: Graph<()>,
     active_account: InputNode<Option<String>>,
     raw_lists: InputNode<PeopleListGraphStore>,
     visible_lists: DerivedNode<BTreeMap<String, BTreeSet<String>>>,
@@ -34,7 +34,7 @@ pub(super) struct PeopleListGraph {
 
 impl PeopleListGraph {
     pub(super) fn new(active_account: Option<String>) -> Self {
-        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut graph = Graph::<()>::new_with_command_type();
         let mut tx = graph
             .begin_transaction()
             .expect("static people-list graph transaction opens");

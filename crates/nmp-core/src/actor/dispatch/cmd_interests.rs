@@ -1,7 +1,8 @@
 //! Interest, pull-cursor, and test-support dispatch arms.
 //!
-//! Covers: `EnsureInterest`, `ReplaceDependentInterestSet`, `DropInterestOwner`,
-//! `OpenPullCursor`, `AdvancePullCursor`, `UnregisterPullCursor`,
+//! Covers: `EnsureInterest`, `ReplaceDependentInterestSet`,
+//! `ApplyDependentInterestDelta`, `DropInterestOwner`, `OpenPullCursor`,
+//! `AdvancePullCursor`, `UnregisterPullCursor`,
 //! `OpenInterest`, `OpenObservedInterest`, `CloseInterest`, and the
 //! `#[cfg(test)]` ingest/GC arms.
 //!
@@ -41,6 +42,26 @@ pub(super) fn replace_dependent_interest_set(
     ports
         .kernel
         .replace_dependent_interest_set(owner, children, &reason);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
+    Some(Vec::new())
+}
+
+/// Dispatch `InterestsCommand::ApplyDependentInterestDelta`.
+pub(super) fn apply_dependent_interest_delta(
+    owner: crate::subs::SubOwnerKey,
+    delta: crate::kernel::DependentInterestDelta,
+    reason: String,
+    ports: &mut InterestsPorts<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    use crate::actor::tick::maybe_emit_after_dispatch;
+    ports
+        .kernel
+        .apply_dependent_interest_delta(owner, delta, &reason);
     maybe_emit_after_dispatch(
         ports.kernel,
         ports.running,
@@ -288,6 +309,11 @@ pub(super) fn dispatch(
             children,
             reason,
         } => replace_dependent_interest_set(owner, children, reason, ports),
+        InterestsCommand::ApplyDependentInterestDelta {
+            owner,
+            delta,
+            reason,
+        } => apply_dependent_interest_delta(owner, delta, reason, ports),
         InterestsCommand::DropInterestOwner(identity) => drop_interest_owner(identity, ports),
         InterestsCommand::OpenPullCursor { handle, spec } => open_pull_cursor(handle, spec, ports),
         InterestsCommand::AdvancePullCursor {

@@ -3,7 +3,7 @@
 //! This is the reusable source-graph half of a feed session without the generic
 //! note-feed row sidecar. It lets a Rust app crate attach an app-owned
 //! [`ObservedProjectionSink`] to the same `FeedScope` resolver, dependent
-//! acquisition replacement, source-effect reset, and handle-based teardown that
+//! acquisition delta, source-effect reset, and handle-based teardown that
 //! ordinary `open_feed` uses. Native shells still only render typed projections
 //! registered by the app crate.
 
