@@ -277,6 +277,8 @@ mod command_apply_publish;
 pub use command_apply::CommandApplyOutcome;
 mod composition_seams;
 mod composition_seams_browser; // PR-B (#2046) AppHost seams factored out for LOC ceiling
+#[cfg(any(test, feature = "test-support"))]
+mod composition_seams_test_support;
 mod feed_verbs;
 mod follow;
 mod protocol_apply;

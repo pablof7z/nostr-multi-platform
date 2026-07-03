@@ -6,6 +6,7 @@
 //! surface; they do not own runtime state.
 
 pub mod action_dispatch;
+mod app_config_external_event_sink;
 mod app_config_hooks;
 mod app_config_intent;
 mod app_config_search;

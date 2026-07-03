@@ -70,6 +70,7 @@ mod read_host;
 mod search;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
+mod bootstrap;
 pub mod diagnostics;
 mod handle;
 pub(crate) mod signer_state;

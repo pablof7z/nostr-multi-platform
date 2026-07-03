@@ -58,6 +58,7 @@ use crate::runtime::BrowserRuntimeHandle;
 mod state;
 pub(crate) use state::BrowserBuilderInner;
 
+mod action_registrar;
 mod app_host_impl;
 mod composition;
 pub(crate) use composition::install_browser_production_composition;

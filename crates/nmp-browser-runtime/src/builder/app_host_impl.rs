@@ -16,7 +16,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
+use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
     DmInboxRelayRegistrar, DraftBuilderRegistrar, ExternalIdValidatorRegistrar, HostCapabilities,
@@ -472,33 +472,5 @@ impl<S> BrowserAppBuilder<S> {
     ) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.capability_providers.extend(providers);
-    }
-}
-
-// ── ActionRegistrar ───────────────────────────────────────────────────────────
-//
-// Takes `&mut self` (by the trait contract) — the `Mutex` unlock + `&mut`
-// on the `ActionRegistry` is sound because the builder owns it exclusively
-// during the composition phase.
-
-impl<S> ActionRegistrar for BrowserAppBuilder<S> {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(
-        &mut self,
-        module: M,
-    ) -> Result<(), nmp_core::substrate::RegistrationError> {
-        let Ok(mut g) = self.inner.lock() else {
-            return Ok(());
-        };
-        g.action_registry.register_action(module)
-    }
-
-    fn register_default_action<M: nmp_core::substrate::ActionModule + 'static>(
-        &mut self,
-        module: M,
-    ) -> bool {
-        let Ok(mut g) = self.inner.lock() else {
-            return false;
-        };
-        g.action_registry.register_default_action(module)
     }
 }
