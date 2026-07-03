@@ -104,7 +104,7 @@ nmp_ownership::declare_crate_ownership! {
                 context: "",
             },
             owns: [
-                "Cashu proof/DLEQ/P2PK/rollover types and the Cashu backend adapter seam surface consumed by nmp-wallet",
+                "Cashu proof/DLEQ/P2PK/rollover types; the Cashu backend adapter for the nmp-wallet::WalletBackend seam",
             ],
         },
     ],

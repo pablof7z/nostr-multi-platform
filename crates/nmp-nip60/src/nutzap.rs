@@ -263,6 +263,10 @@ pub fn decode_nutzap_event(event: &nostr::Event) -> Result<ReceivedNutZap, Nip60
 /// Fetches the mint's keyset to get the signing public keys, then verifies
 /// each proof's DLEQ proof if present. Requires `dleq.r` (the blinding factor
 /// stored with the proof) to reconstruct B' and C' for verification.
+///
+/// Requires the `native` feature — it round-trips to the mint over HTTP
+/// (`crate::cashu::client`) to fetch the keyset.
+#[cfg(feature = "native")]
 pub fn verify_nutzap_dleq(
     nutzap: &ReceivedNutZap,
 ) -> Result<(), Nip60Error> {

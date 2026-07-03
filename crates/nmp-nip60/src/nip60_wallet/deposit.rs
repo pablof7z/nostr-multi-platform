@@ -1,5 +1,8 @@
 //! Deposit flow — mint kind:7375 token events from a paid Lightning invoice
 //! (Cashu NUT-04 mint-quote / NUT-23 BOLT11).
+//!
+//! Requires the `native` feature — every operation here round-trips to the
+//! mint over HTTP via [`crate::cashu::client`].
 
 use crate::cashu::client::MintClient;
 use crate::error::Nip60Error;
