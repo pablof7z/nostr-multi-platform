@@ -22,6 +22,12 @@ wallet = [
     "dep:nmp-nip57",
     "nmp-nip57/native",
 ]
+op-feed = [
+    "native",
+    "dep:nmp-nip02",
+    "dep:nmp-nip51",
+    "dep:nmp-note-feed",
+]
 signer-broker = [
     "native",
     "dep:nmp-nip46-runtime",
@@ -47,15 +53,15 @@ nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-read-session = { path = "../nmp-read-session" }
-nmp-note-feed = { path = "../nmp-note-feed" }
-nmp-nip02 = { path = "../nmp-nip02" }
+nmp-note-feed = { path = "../nmp-note-feed", optional = true }
+nmp-nip02 = { path = "../nmp-nip02", optional = true }
 nmp-nip05 = { path = "../nmp-nip05" }
 nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip46 = { path = "../nmp-nip46", optional = true }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true }
 nmp-nip47 = { path = "../nmp-nip47", optional = true }
 nmp-nip50 = { path = "../nmp-nip50" }
-nmp-nip51 = { path = "../nmp-nip51" }
+nmp-nip51 = { path = "../nmp-nip51", optional = true }
 nmp-nip57 = { path = "../nmp-nip57", optional = true, default-features = false }
 nmp-marmot = { path = "../nmp-marmot", optional = true }
 nmp-intent = { path = "../nmp-intent" }
