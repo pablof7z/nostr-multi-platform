@@ -32,10 +32,18 @@ nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# #2920 (epic #2864): typed FlatBuffers `ActionPayload` codecs for the eight
+# `nmp.wallet.*` action modules this crate owns (`wire.rs`) — the same
+# ADR-0071 wire-encode dependency `nmp-nip25`/`nmp-nip47` carry for their own
+# typed action payloads.
+flatbuffers = { workspace = true }
 
 [dev-dependencies]
 # `test-support` enables `nmp_core::ActorMail`/`ProtocolCommandContextParts`
 # capability adapters + noop singletons the Cashu backend's command tests
 # drive directly (mirrors nmp-nip17/nmp-nip57's own dev-dependency).
+# `native` pulls in the `__ffi_internal::ActionRegistry` seam the
+# dispatch_integration test drives through `start_bytes`/`execute_bytes`
+# (ADR-0071 / #1756, mirrors `nmp-nip47`'s own dev-dependency).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 serde_json = { workspace = true }

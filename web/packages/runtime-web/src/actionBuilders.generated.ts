@@ -814,6 +814,135 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip29.edit_metadata", payload);
   },
 
+  /** Select the preferred registered wallet backend by id. */
+  walletSelectBackend(
+    correlationId: string,
+    backendId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const backendIdOffset = fbb.createString(backendId);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, backendIdOffset, 0); // slot 1: backendId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWSB");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.select_backend", payload);
+  },
+
+  /** Create a Cashu wallet against the given mint. */
+  walletCashuCreate(
+    correlationId: string,
+    mint: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const mintOffset = fbb.createString(mint);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, mintOffset, 0); // slot 1: mint
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWCC");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.cashu.create", payload);
+  },
+
+  /** Recover a Cashu wallet (no backend implements this yet; always rejects). */
+  walletCashuRecover(
+    correlationId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    fbb.startObject(1);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWCR");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.cashu.recover", payload);
+  },
+
+  /** Request a Cashu deposit quote from a mint for an amount in satoshis. */
+  walletCashuDepositQuote(
+    correlationId: string,
+    mint: string,
+    amountSats: bigint,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const mintOffset = fbb.createString(mint);
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, mintOffset, 0); // slot 1: mint
+    fbb.addFieldInt64(2, amountSats, BigInt(0)); // slot 2: amountSats
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWDQ");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.cashu.deposit_quote", payload);
+  },
+
+  /** Complete a previously requested Cashu deposit by quote id. */
+  walletCashuCompleteDeposit(
+    correlationId: string,
+    quoteId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const quoteIdOffset = fbb.createString(quoteId);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, quoteIdOffset, 0); // slot 1: quoteId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWCD");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.cashu.complete_deposit", payload);
+  },
+
+  /** Publish this account's kind:10019 nutzap info event. */
+  walletNutzapPublishInfo(
+    correlationId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    fbb.startObject(1);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWPI");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.nutzap.publish_info", payload);
+  },
+
+  /** Send a nutzap to a recipient, optionally targeting a specific event. */
+  walletNutzapSend(
+    correlationId: string,
+    recipientPubkey: string,
+    amountSats: bigint,
+    targetEventId: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const targetEventIdOffset = targetEventId === null ? 0 : fbb.createString(targetEventId);
+    fbb.startObject(4);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldInt64(2, amountSats, BigInt(0)); // slot 2: amountSats
+    if (targetEventIdOffset !== 0) fbb.addFieldOffset(3, targetEventIdOffset, 0); // slot 3: targetEventId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWNS");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.nutzap.send", payload);
+  },
+
+  /** Redeem a kind:9321 nutzap event's proofs into this wallet. */
+  walletNutzapRedeem(
+    correlationId: string,
+    eventId: string,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const eventIdOffset = fbb.createString(eventId);
+    fbb.startObject(2);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, eventIdOffset, 0); // slot 1: eventId
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NWNR");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.wallet.nutzap.redeem", payload);
+  },
+
   /** Low-level arbitrary-kind publish escape; starter apps should prefer protocol/product builders such as publishReply or publishProfile. */
   /** Requires typed signer selection and route provenance for explicit targets; not the starter happy path. */
   publishRaw(

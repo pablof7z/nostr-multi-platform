@@ -23,7 +23,10 @@ use serde::{Deserialize, Serialize};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, DeclaredActionNamespace};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    DeclaredActionNamespace,
+};
 
 use crate::backend::WalletIntent;
 use crate::selector::WalletBackendSelector;
@@ -62,6 +65,13 @@ impl ActionModule for CashuCreateModule {
         DeclaredActionNamespace::framework(ACTION_CASHU_CREATE, "action.nmp.wallet.cashu");
 
     type Action = CashuCreateAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.cashu.create` `ActionPayload` codec (`NWCC`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.mint.trim().is_empty() {
@@ -121,6 +131,15 @@ impl ActionModule for CashuRecoverModule {
 
     type Action = CashuRecoverAction;
 
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.cashu.recover` `ActionPayload` codec (`NWCR`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    /// `start()` still rejects unconditionally (see below); this only makes
+    /// the namespace reachable by name.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
+
     /// See the module doc comment: no backend implements Cashu wallet
     /// recovery yet, and the generic capability check cannot distinguish
     /// this from `create`, so this rejects unconditionally.
@@ -175,6 +194,14 @@ impl ActionModule for CashuDepositQuoteModule {
         DeclaredActionNamespace::framework(ACTION_CASHU_DEPOSIT_QUOTE, "action.nmp.wallet.cashu");
 
     type Action = CashuDepositQuoteAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.cashu.deposit_quote` `ActionPayload` codec (`NWDQ`). The
+    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
+    /// `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.mint.trim().is_empty() {
@@ -246,6 +273,14 @@ impl ActionModule for CashuCompleteDepositModule {
     );
 
     type Action = CashuCompleteDepositAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.cashu.complete_deposit` `ActionPayload` codec (`NWCD`). The
+    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
+    /// `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.quote_id.trim().is_empty() {

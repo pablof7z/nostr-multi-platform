@@ -1,0 +1,26 @@
+namespace nmp.wallet;
+
+// #2920 (epic #2864) — typed FlatBuffers payload for the
+// `nmp.wallet.cashu.recover` `ActionModule`. The OPAQUE `DispatchEnvelope.payload`
+// for that namespace; the registry adapter decodes against THIS schema, gating
+// `schema_version` BEFORE `start()` (fail-closed on mismatch).
+//
+// Mirrors `CashuRecoverAction {}` — a unit action with no fields beyond the
+// tripwire. `CashuRecoverModule::start` rejects unconditionally today (no
+// backend implements recovery yet — see `action::cashu`'s module doc comment);
+// the typed payload still exists so the namespace is reachable by name and
+// starts working the moment a backend implements it, with zero wire change.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/cashu_recover.fbs
+
+table CashuRecoverPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode). The only
+  // field — recover carries no action data.
+  schema_version:uint;
+}
+
+file_identifier "NWCR";
+root_type CashuRecoverPayload;

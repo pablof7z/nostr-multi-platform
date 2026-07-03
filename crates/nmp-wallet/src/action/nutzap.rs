@@ -18,7 +18,10 @@ use serde::{Deserialize, Serialize};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, DeclaredActionNamespace};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    DeclaredActionNamespace,
+};
 
 use crate::backend::WalletIntent;
 use crate::selector::WalletBackendSelector;
@@ -51,6 +54,14 @@ impl ActionModule for NutzapPublishInfoModule {
         DeclaredActionNamespace::framework(ACTION_NUTZAP_PUBLISH_INFO, "action.nmp.wallet.nutzap");
 
     type Action = NutzapPublishInfoAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.nutzap.publish_info` `ActionPayload` codec (`NWPI`). The
+    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
+    /// `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(
         &self,
@@ -107,6 +118,13 @@ impl ActionModule for NutzapSendModule {
         DeclaredActionNamespace::framework(ACTION_NUTZAP_SEND, "action.nmp.wallet.nutzap");
 
     type Action = NutzapSendAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.nutzap.send` `ActionPayload` codec (`NWNS`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.recipient_pubkey.trim().is_empty() {
@@ -178,6 +196,13 @@ impl ActionModule for NutzapRedeemModule {
         DeclaredActionNamespace::framework(ACTION_NUTZAP_REDEEM, "action.nmp.wallet.nutzap");
 
     type Action = NutzapRedeemAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.nutzap.redeem` `ActionPayload` codec (`NWNR`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.event_id.trim().is_empty() {
