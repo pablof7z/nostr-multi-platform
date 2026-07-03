@@ -25,8 +25,11 @@ pub use backend::{
 };
 pub use capability::{WalletCapabilities, WalletCapability};
 pub use journal::{
-    WalletConsumedInput, WalletJournalError, WalletOperation, WalletOperationId,
-    WalletOperationJournal, WalletOperationKind, WalletOperationState,
+    CorrelationId, DeleteCause, HistoryFactSeed, MintUrl, ProofAtom, ProofRef, ProofVerdict,
+    Provenance, PubkeyRef, RelayRef, WalletApplySummary, WalletBalanceKey, WalletCauseIndex,
+    WalletConsumedInput, WalletDeltaRing, WalletDerivedState, WalletEventId, WalletFact,
+    WalletJournalError, WalletLedger, WalletOperation, WalletOperationId, WalletOperationJournal,
+    WalletOperationKind, WalletOperationState, WalletSagaEvent, WalletTrailEntry, WalletUnit,
 };
 pub use payment_port::{WalletBolt11Payment, WalletPaymentCommandFactory, WalletPaymentPort};
 pub use projection::{
@@ -35,10 +38,17 @@ pub use projection::{
 };
 
 pub const ACTION_SELECT_BACKEND: &str = "nmp.wallet.select_backend";
-pub const ACTION_NWC_CONNECT: &str = "nmp.wallet.nwc.connect";
-pub const ACTION_NWC_DISCONNECT: &str = "nmp.wallet.nwc.disconnect";
-pub const ACTION_LEGACY_NWC_CONNECT: &str = "nmp.wallet.connect";
-pub const ACTION_LEGACY_NWC_DISCONNECT: &str = "nmp.wallet.disconnect";
+// `nmp-nip47` is today's only implementation of NWC connect/disconnect, under
+// these exact names — there is no second, already-real "nmp.wallet.nwc.*"
+// implementation to be canonical relative to. Renaming to a backend-qualified
+// `nmp.wallet.nwc.connect`/`nmp.wallet.nwc.disconnect` is epic #2864 Phase 2
+// (NWC consolidation) work: it requires moving the `ActionModule` + wire
+// schema registration out of `nmp-nip47`, which is that crate's lane, not
+// this one's. Declaring both an aspirational new name and this real one as a
+// "canonical vs. legacy alias" pair before that move lands would just be a
+// compat alias with extra steps — so there is exactly one name per action.
+pub const ACTION_NWC_CONNECT: &str = "nmp.wallet.connect";
+pub const ACTION_NWC_DISCONNECT: &str = "nmp.wallet.disconnect";
 pub const ACTION_PAY_INVOICE: &str = "nmp.wallet.pay_invoice";
 pub const ACTION_CASHU_CREATE: &str = "nmp.wallet.cashu.create";
 pub const ACTION_CASHU_RECOVER: &str = "nmp.wallet.cashu.recover";
@@ -53,13 +63,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn canonical_action_names_are_backend_explicit_except_unified_pay_invoice() {
+    fn canonical_action_names_cover_the_declared_namespaces() {
         let names = [
             ACTION_SELECT_BACKEND,
             ACTION_NWC_CONNECT,
             ACTION_NWC_DISCONNECT,
-            ACTION_LEGACY_NWC_CONNECT,
-            ACTION_LEGACY_NWC_DISCONNECT,
             ACTION_PAY_INVOICE,
             ACTION_CASHU_CREATE,
             ACTION_CASHU_RECOVER,
@@ -72,6 +80,31 @@ mod tests {
         assert!(names.iter().all(|name| name.starts_with("nmp.wallet.")));
         assert!(names.iter().any(|name| name.contains(".cashu.")));
         assert!(names.iter().any(|name| name.contains(".nutzap.")));
-        assert!(names.iter().any(|name| name.contains(".nwc.")));
+    }
+
+    /// No compat aliases: every wallet action constant must name a distinct
+    /// namespace. A repeated string value would mean a "canonical" name and
+    /// a "legacy" name for the same concept coexist again.
+    #[test]
+    fn no_action_namespace_is_duplicated_as_a_compatibility_alias() {
+        let names = [
+            ACTION_SELECT_BACKEND,
+            ACTION_NWC_CONNECT,
+            ACTION_NWC_DISCONNECT,
+            ACTION_PAY_INVOICE,
+            ACTION_CASHU_CREATE,
+            ACTION_CASHU_RECOVER,
+            ACTION_CASHU_DEPOSIT_QUOTE,
+            ACTION_CASHU_COMPLETE_DEPOSIT,
+            ACTION_NUTZAP_PUBLISH_INFO,
+            ACTION_NUTZAP_SEND,
+            ACTION_NUTZAP_REDEEM,
+        ];
+        let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+        assert_eq!(
+            unique.len(),
+            names.len(),
+            "every wallet action constant must name a distinct namespace"
+        );
     }
 }

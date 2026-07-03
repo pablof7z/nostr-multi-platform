@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-sqlite-wasm`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wot` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features, including `nmp-substrate` |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned UniFFI facades and delivery crates |
 | Sidecars | Tooling, tests, diagnostics, conformance vehicles, and private proofs | `nmp-cli`, `nmp-codegen`, `nmp-component-registry`, `nmp-devtools`, `nmp-testing`, `nmp-browser-runtime-conformance`, `nmp-sqlite-wasm-conformance`, `nmp-example-login-timeline`, app shells |
@@ -84,6 +84,18 @@ hand each other, so all of them — `nmp-network` (L1), `nmp-router` /
 `nmp-nip17` (L4) — depend on this one crate rather than each re-implementing the
 rules. This centralizes the five previously drifting copies (#967). The type/authority owner is
 `nmp-relay-url`.
+
+`nmp-wallet` (Layer 4) is the wallet product-composition owner: the
+app-facing wallet action namespaces, the bounded `"wallet"` projection,
+backend selection policy, the operation journal/causal trail, the
+`WalletBackend` seam, and the NIP-57 `PaymentPort` adapter selection (see
+`docs/architecture/nip60-nip61-wallet-design.md`). Composing a wallet product
+out of protocol mechanics is its declared responsibility, so — unlike the
+general "siblings do not depend on siblings" rule above — it may depend on
+the sibling L4 protocol crates it composes (`nmp-nip47`, `nmp-nip57`,
+`nmp-nip60`) through their explicit composition surfaces only. It must not
+depend on any protocol crate for anything outside that seam, and `nmp-core`
+must not learn Cashu, nutzap, NWC, NIP-60, or NIP-61 nouns.
 
 ---
 

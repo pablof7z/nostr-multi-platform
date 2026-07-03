@@ -31,32 +31,6 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "namespace",
-            id: "action.nmp.wallet.nwc.connect",
-            exclusive: true,
-            scope: {
-                kind: "action",
-                value: "nmp.wallet.nwc.connect",
-                context: "",
-            },
-            owns: [
-                "canonical NWC connect action namespace",
-            ],
-        },
-        {
-            claim_type: "namespace",
-            id: "action.nmp.wallet.nwc.disconnect",
-            exclusive: true,
-            scope: {
-                kind: "action",
-                value: "nmp.wallet.nwc.disconnect",
-                context: "",
-            },
-            owns: [
-                "canonical NWC disconnect action namespace",
-            ],
-        },
-        {
-            claim_type: "namespace",
             id: "action.nmp.wallet.connect",
             exclusive: true,
             scope: {
@@ -65,7 +39,7 @@ nmp_ownership::declare_crate_ownership! {
                 context: "",
             },
             owns: [
-                "legacy wallet connect compatibility alias during NWC migration",
+                "canonical NWC connect action namespace (implemented today by nmp-nip47 as the sole NWC backend)",
             ],
         },
         {
@@ -78,7 +52,7 @@ nmp_ownership::declare_crate_ownership! {
                 context: "",
             },
             owns: [
-                "legacy wallet disconnect compatibility alias during NWC migration",
+                "canonical NWC disconnect action namespace (implemented today by nmp-nip47 as the sole NWC backend)",
             ],
         },
         {
@@ -138,6 +112,10 @@ nmp_ownership::declare_crate_ownership! {
         {
             claim: "wallet.backend_seam",
             text: "NIP-specific protocol mechanics remain in nmp-nip47, nmp-nip57, and nmp-nip60; nmp-wallet composes them behind the product wallet surface.",
+        },
+        {
+            claim: "action.nmp.wallet.connect",
+            text: "There is exactly one connect/disconnect action name today, not a canonical/legacy pair: nmp-nip47 is the only implementation, under these exact strings. Renaming to a backend-qualified nmp.wallet.nwc.connect/disconnect is epic #2864 Phase 2 (NWC consolidation) work, which moves the ActionModule + wire schema registration out of nmp-nip47 (nmp-nip47's lane, not nmp-wallet's).",
         },
     ],
 }

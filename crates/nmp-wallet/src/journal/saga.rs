@@ -1,3 +1,14 @@
+//! Money-safety saga: the pre-effect, durable, at-most-once state machine.
+//!
+//! `WalletOperationJournal` records that an operation is about to consume
+//! specific inputs *before* any value-moving mint HTTP request goes out. That
+//! pre-record is the at-most-once mechanism: on restart the wallet can check
+//! mint/proof state and reconcile instead of risking a double-spend. This is
+//! deliberately the only durable-pre-effect concern in `nmp-wallet` — derived
+//! balance and the causal trail are separate schemas (see `fact` and
+//! `ledger`), fed by [`WalletSagaEvent`] as a producer, never merged with the
+//! saga's own state.
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
@@ -55,6 +66,11 @@ impl WalletOperationState {
         matches!(self, Self::Settled | Self::Failed)
     }
 
+    /// Note the absence of `(Self::Unknown, Self::MintPending)`: reconciling a
+    /// crashed operation can only move it toward publish/settle/fail, never
+    /// back into a fresh mint request. That omission is the no-double-spend
+    /// guarantee — reconciliation replays the already-consumed-input record,
+    /// it never re-mints.
     #[must_use]
     pub const fn can_transition_to(self, next: Self) -> bool {
         matches!(
@@ -148,6 +164,23 @@ pub enum WalletJournalError {
     },
 }
 
+/// Emitted by [`WalletOperationJournal::transition`] on every successful
+/// state change. This is the saga's *only* outward-facing product: the trail
+/// (`crate::journal::fact::WalletFact::SagaTransition`) converts it into a
+/// fact via `From<WalletSagaEvent>`, but the saga itself never depends on the
+/// fact/trail types — the wiring is one-directional, producer to consumer.
+/// `#[must_use]` so a call site that does `journal.transition(..)?.unwrap();`
+/// and drops the result gets a compiler nudge toward feeding it into
+/// `WalletFact::from` — dropping it silently means that transition never
+/// reaches the causal trail.
+#[derive(Clone, Debug, Eq, PartialEq)]
+#[must_use]
+pub struct WalletSagaEvent {
+    pub op: WalletOperationId,
+    pub from: WalletOperationState,
+    pub to: WalletOperationState,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct WalletOperationJournal {
     operations: Vec<WalletOperation>,
@@ -183,13 +216,28 @@ impl WalletOperationJournal {
         Ok(())
     }
 
+    /// Transition `operation_id` to `next`, returning the [`WalletSagaEvent`]
+    /// the trail should fold in as a `SagaTransition` fact. Every transition
+    /// accepted by [`WalletOperationState::can_transition_to`] is a real
+    /// state change (there is no no-op transition in the allowed set), so
+    /// this deliberately returns a bare event rather than `Option` — an
+    /// `Option` a caller could `.unwrap_or_default()` away would hide the
+    /// one call site that must route this into the trail
+    /// (`WalletFact::from`); the `#[must_use]` on [`WalletSagaEvent`] itself
+    /// only warns when the value is a bare, unwrapped result.
     pub fn transition(
         &mut self,
         operation_id: &WalletOperationId,
         next: WalletOperationState,
-    ) -> Result<(), WalletJournalError> {
+    ) -> Result<WalletSagaEvent, WalletJournalError> {
         let operation = self.operation_mut(operation_id)?;
-        operation.transition(next)
+        let from = operation.state;
+        operation.transition(next)?;
+        Ok(WalletSagaEvent {
+            op: operation_id.clone(),
+            from,
+            to: next,
+        })
     }
 
     #[must_use]
@@ -199,6 +247,13 @@ impl WalletOperationJournal {
             .filter(|operation| !operation.state.is_terminal())
             .cloned()
             .collect()
+    }
+
+    #[must_use]
+    pub fn get(&self, operation_id: &WalletOperationId) -> Option<&WalletOperation> {
+        self.operations
+            .iter()
+            .find(|operation| &operation.id == operation_id)
     }
 
     fn operation_mut(
@@ -309,5 +364,36 @@ mod tests {
         let pending = journal.pending_operations();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].id.as_str(), "pending");
+    }
+
+    #[test]
+    fn journal_transition_emits_a_saga_event_for_the_trail() {
+        let mut journal = WalletOperationJournal::new();
+        journal
+            .insert(WalletOperation::new(
+                WalletOperationId::new("op-1"),
+                WalletOperationKind::PayBolt11,
+                WalletOperationState::Draft,
+            ))
+            .unwrap();
+
+        let event = journal
+            .transition(
+                &WalletOperationId::new("op-1"),
+                WalletOperationState::Prepared,
+            )
+            .unwrap();
+
+        assert_eq!(event.op.as_str(), "op-1");
+        assert_eq!(event.from, WalletOperationState::Draft);
+        assert_eq!(event.to, WalletOperationState::Prepared);
+    }
+
+    #[test]
+    fn reconciling_an_unknown_operation_can_never_reach_mint_pending_again() {
+        // This is the no-double-spend guarantee: restart reconciliation may
+        // only move an `Unknown` operation toward publish/settle/fail, never
+        // back into a fresh mint request.
+        assert!(!WalletOperationState::Unknown.can_transition_to(WalletOperationState::MintPending));
     }
 }

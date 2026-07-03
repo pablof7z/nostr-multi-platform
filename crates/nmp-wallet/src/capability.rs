@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
-    ACTION_CASHU_RECOVER, ACTION_LEGACY_NWC_CONNECT, ACTION_LEGACY_NWC_DISCONNECT,
-    ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM, ACTION_NUTZAP_SEND, ACTION_PAY_INVOICE,
+    ACTION_CASHU_RECOVER, ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM, ACTION_NUTZAP_SEND,
+    ACTION_NWC_CONNECT, ACTION_NWC_DISCONNECT, ACTION_PAY_INVOICE,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -85,8 +85,8 @@ impl WalletCapabilities {
         let mut actions = Vec::new();
         if self.pay_bolt11 {
             actions.extend([
-                ACTION_LEGACY_NWC_CONNECT,
-                ACTION_LEGACY_NWC_DISCONNECT,
+                ACTION_NWC_CONNECT,
+                ACTION_NWC_DISCONNECT,
                 ACTION_PAY_INVOICE,
             ]);
         }
