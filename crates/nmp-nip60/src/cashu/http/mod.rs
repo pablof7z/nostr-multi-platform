@@ -57,7 +57,9 @@
 //! - [`checkstate`] — `/v1/checkstate` (NUT-07).
 //!
 //! `#[cfg(test)] mint_http_support` holds test-only fixtures shared across
-//! those submodules' own test files.
+//! those submodules' own test files — `pub(crate)` (not private) so
+//! `nutzap_tests.rs` (a different module tree) can reuse the same mint-
+//! keyset/DLEQ fixtures rather than duplicating them.
 
 mod blinded;
 mod checkstate;
@@ -67,7 +69,7 @@ mod quote;
 mod swap;
 
 #[cfg(test)]
-mod mint_http_support;
+pub(crate) mod mint_http_support;
 
 pub use blinded::split_amount;
 pub use checkstate::{build_check_state_request, parse_check_state_response};

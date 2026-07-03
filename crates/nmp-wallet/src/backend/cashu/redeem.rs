@@ -20,10 +20,15 @@
 //! - not already redeemed (`WalletDerivedState::is_nutzap_redeemed`);
 //! - `u` mint is one this wallet accepts;
 //! - every proof's P2PK secret locks to THIS wallet's Cashu pubkey;
-//! - DLEQ (NUT-12) valid.
+//! - this session holds the Cashu private key to produce the P2PK witness;
+//! - DLEQ (NUT-12) valid — checked LAST (#2933): it is now a hard fail-closed
+//!   gate (a missing DLEQ is rejected, not skipped — see
+//!   `nmp_nip60::nutzap::verify_nutzap_dleq_against_keyset`'s doc comment)
+//!   and the only one of these that round-trips to the mint over HTTP, so
+//!   every cheaper, local check runs first.
 //!
-//! Any failure is `INVALID_NUTZAP`/`NO_TRUSTED_MINT` — rejected/ignored, never
-//! counted as value.
+//! Any failure is `INVALID_NUTZAP`/`NO_TRUSTED_MINT`/`NO_CASHU_WALLET` —
+//! rejected/ignored, never counted as value.
 //!
 //! # Swap-before-redeem ordering
 //!
@@ -207,22 +212,13 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 }
             }
         }
-        if let Err(e) = nmp_nip60::nutzap::verify_nutzap_dleq(&nutzap) {
-            return fail(
-                ctx,
-                &state,
-                &operation_id,
-                &event_id,
-                Some(&nutzap),
-                correlation_id,
-                ui_codes::INVALID_NUTZAP,
-                format!("DLEQ verification failed: {e}"),
-            );
-        }
         // Cold-start recovery of the Cashu privkey from kind:17375 is a
         // documented, separate deferral (see `state.rs`'s `CashuP2pkSecret`
         // doc comment) — without it in live state, redemption fails closed
-        // rather than silently skipping the P2PK witness.
+        // rather than silently skipping the P2PK witness. Checked BEFORE
+        // `verify_nutzap_dleq` (a cheap, local, in-memory check ahead of an
+        // HTTP round-trip to the mint) — no point spending that round-trip
+        // when this session cannot complete the redemption regardless.
         let Some(cashu_sk) = cashu_sk else {
             return fail(
                 ctx,
@@ -235,6 +231,18 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 "no Cashu private key available in this session".to_string(),
             );
         };
+        if let Err(e) = nmp_nip60::nutzap::verify_nutzap_dleq(&nutzap) {
+            return fail(
+                ctx,
+                &state,
+                &operation_id,
+                &event_id,
+                Some(&nutzap),
+                correlation_id,
+                ui_codes::INVALID_NUTZAP,
+                format!("DLEQ verification failed: {e}"),
+            );
+        }
 
         {
             let mut s = lock_state(&state);

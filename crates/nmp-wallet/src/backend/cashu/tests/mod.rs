@@ -40,6 +40,7 @@ mod deposit_retry_tests;
 mod deposit_tests;
 mod publish_info_tests;
 mod redeem_tests;
+mod redeem_worker_tests;
 mod reset_tests;
 mod send_tests;
 mod snapshot_tests;
