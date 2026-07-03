@@ -24,7 +24,7 @@ use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
     GenericOutboxRouter, InMemoryMailboxCache, IndexerRepublishPolicy,
-    IndexerRepublishPolicyHandle, Nip65OutboxResolver,
+    IndexerRepublishPolicyHandle, Nip65OutboxResolver, Nip65RelayListPublishSupport,
 };
 use nmp_store::EventStore;
 
@@ -246,6 +246,7 @@ pub fn install(
             ))
         },
     );
+    app.set_relay_list_publish_support(Arc::new(Nip65RelayListPublishSupport));
 
     let indexer_republish = IndexerRepublishPolicyHandle::new(true);
     let indexer_republish_for_policy = indexer_republish.clone();

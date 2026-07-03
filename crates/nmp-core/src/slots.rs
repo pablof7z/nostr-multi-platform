@@ -18,6 +18,11 @@ use std::sync::{Arc, Mutex};
 
 use zeroize::Zeroizing;
 
+pub use crate::slots_relay_list_publish::{
+    empty_relay_list_publish_support, new_relay_list_publish_support_slot,
+    EmptyRelayListPublishSupport, RelayListPublishSupport, RelayListPublishSupportSlot,
+};
+
 /// Store-derived contact-list row exposed by the protocol-owned reader.
 ///
 /// The kernel needs the loaded baseline for follow-list edits, but it must not

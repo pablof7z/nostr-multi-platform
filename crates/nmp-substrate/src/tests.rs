@@ -106,6 +106,12 @@ impl RoutingFactoryRegistrar for CapturingHost {
     {
     }
 
+    fn set_relay_list_publish_support(
+        &self,
+        _support: Arc<dyn nmp_core::slots::RelayListPublishSupport>,
+    ) {
+    }
+
     fn set_external_event_sink_policy_factory<F>(&self, factory: F)
     where
         F: Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn ExternalEventSinkPolicy>>

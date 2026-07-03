@@ -150,6 +150,7 @@ pub mod refs; // ADR-0070 Lane A (#1671) — row-grain delta carrier for keyed r
               // (private); promoted here so the crate-private actor module can still name them after
               // the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
 pub mod slots;
+mod slots_relay_list_publish;
 pub mod subs;
 pub mod substrate;
 pub mod tags;

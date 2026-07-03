@@ -35,6 +35,20 @@ impl Kernel {
         Arc::clone(&self.active_account_handle)
     }
 
+    pub fn set_relay_list_publish_support(
+        &mut self,
+        support: Arc<dyn crate::slots::RelayListPublishSupport>,
+    ) {
+        self.relay_list_publish_support = support;
+    }
+
+    #[must_use]
+    pub(crate) fn relay_list_publish_support(
+        &self,
+    ) -> Arc<dyn crate::slots::RelayListPublishSupport> {
+        Arc::clone(&self.relay_list_publish_support)
+    }
+
     /// Read the current active-account pubkey (lowercase hex), or `None`.
     #[must_use]
     pub(crate) fn active_account_pubkey(&self) -> Option<&str> {

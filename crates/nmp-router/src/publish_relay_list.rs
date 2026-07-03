@@ -66,6 +66,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::canonical_relay_url;
 use nmp_core::kinds::KIND_RELAY_LIST;
+use nmp_core::slots::RelayListPublishSupport;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection,
@@ -243,11 +244,11 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
 /// callback.
 ///
 /// The auto-trigger path from `actor::dispatch::AddRelay` / `RemoveRelay`
-/// is sibling to this action, NOT a caller of it: the actor reads its own
-/// `AppRelay` projection and calls `build_relay_list_event` directly,
-/// because `ActionContext` does not carry kernel state and `execute`'s
-/// signature is `(action, correlation_id, send)`. Both paths converge on
-/// the same on-wire kind:10002 shape via the shared builder above.
+/// is sibling to this action, NOT a caller of it: substrate composition
+/// installs [`Nip65RelayListPublishSupport`] into the kernel, and the actor
+/// asks that router-owned support object to build the relay-list event from
+/// its `AppRelay` projection. Both paths converge on the same on-wire
+/// kind:10002 shape via the shared builder above.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PublishRelayListInput {
     /// Relays to advertise as the user's NIP-65 relay set. Canonicalised
@@ -340,6 +341,40 @@ impl ActionModule for PublishRelayListAction {
 /// call order.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_default_action(PublishRelayListAction);
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Nip65RelayListPublishSupport;
+
+impl RelayListPublishSupport for Nip65RelayListPublishSupport {
+    fn build_unsigned_event_from_rows(&self, rows: &[nmp_core::AppRelay]) -> Option<UnsignedEvent> {
+        let entries: Vec<RelayListEntry> = rows
+            .iter()
+            .filter_map(|row| {
+                RelayMarker::from_role_string(row.role()).map(|marker| RelayListEntry {
+                    url: row.url().to_string(),
+                    marker,
+                })
+            })
+            .collect();
+        let event = build_relay_list_event(&entries);
+        (!event.tags.is_empty()).then_some(event)
+    }
+
+    fn cold_start_publish_targets(
+        &self,
+        declared_rows: &[nmp_core::AppRelay],
+        bootstrap_relays: Vec<String>,
+    ) -> Vec<String> {
+        let mut targets: Vec<String> = declared_rows
+            .iter()
+            .filter_map(|row| canonical_relay_url(row.url()))
+            .chain(bootstrap_relays.into_iter())
+            .collect();
+        targets.sort();
+        targets.dedup();
+        targets
+    }
 }
 
 #[cfg(test)]

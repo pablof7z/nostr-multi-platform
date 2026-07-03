@@ -152,7 +152,7 @@ pub struct AppRelay {
 }
 
 impl AppRelay {
-    pub(crate) fn new(url: String, role: String) -> Self {
+    pub fn new(url: String, role: String) -> Self {
         let role = crate::actor::canonical_relay_role(&role).unwrap_or(role);
         Self { url, role }
     }

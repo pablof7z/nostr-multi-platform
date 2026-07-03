@@ -1,44 +1,21 @@
-//! `create_account` cold-start publishing (NIP-01 kind:0, NIP-02 kind:3,
-//! NIP-65 kind:10002).
+//! `create_account` cold-start publishing (NIP-01 kind:0, NIP-02 kind:3).
 //!
 //! A brand-new account has no kind:10002 of its own yet, so routing any of
-//! these three kinds through the fail-closed `Nip65OutboxResolver`
-//! (`PublishTarget::Auto`) would resolve `NoTargets` and the publish engine
-//! would silently drop it. `create_account` closes that gap by publishing all
-//! three to an explicit cold-start target: the relays the user just declared
-//! (the canonical NIP-65 home of a relay list) unioned with the well-known
-//! discovery seed. These tests pin that each kind IS observable on cold-start
-//! and keeps its NIP-mandated tag shape.
+//! these kinds through the fail-closed outbox resolver (`PublishTarget::Auto`)
+//! would resolve `NoTargets` and the publish engine would silently drop them.
+//! `create_account` closes that gap by publishing through the cold-start target
+//! seam. These tests pin that core-owned kinds remain observable on cold-start
+//! and keep their NIP-mandated tag shape.
 //!
 //! This applies only to cold-start. A user updating an *existing* kind:0/3/
-//! 10002 publishes through the `Auto` outbox path, which routes to their
-//! already-declared write relays — that path is deliberately unaffected.
+//! Later profile/contact updates publish through the `Auto` outbox path, which
+//! routes to already-declared write relays.
 
 use std::collections::HashMap;
 
 use nmp_core::testing::ConformanceHarness;
 
-use crate::kind10002_relay_list::assert_nip65_relay_list;
 use crate::support::*;
-
-/// This test pins that the kind:10002 IS now observable and carries its
-/// `r`-tag structure intact.
-#[test]
-fn create_account_publishes_kind10002_to_coldstart_relays() {
-    let mut h = ConformanceHarness::new();
-    let relays: Vec<(String, String)> = vec![
-        ("wss://nip65-write.test".to_string(), "write".to_string()),
-        ("wss://nip65-read.test".to_string(), "read".to_string()),
-    ];
-    let mut profile = HashMap::new();
-    profile.insert("display_name".to_string(), "Marcus Webb".to_string());
-    h.create_account(profile, &relays, &[]);
-
-    let event = h
-        .published_event_of_kind(10002)
-        .expect("create_account must emit an observable kind:10002 on cold-start");
-    assert_nip65_relay_list(&event, &["wss://nip65-write.test", "wss://nip65-read.test"]);
-}
 
 /// This test pins that the kind:0 IS observable in the publish store (a
 /// `NoTargets` drop never persists) and carries the profile JSON in `content`

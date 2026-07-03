@@ -17,8 +17,8 @@ use nmp_core::slots::{
     new_active_account_slot, new_active_local_keys_slot, new_contact_list_reader_slot,
     new_event_store_slot, new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
     new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot, new_publish_resolver_slot,
-    new_pull_cursor_registry_handle_slot, new_routing_substrate_slot, new_routing_trace_slot,
-    new_storage_path_slot,
+    new_pull_cursor_registry_handle_slot, new_relay_list_publish_support_slot,
+    new_routing_substrate_slot, new_routing_trace_slot, new_storage_path_slot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
@@ -118,6 +118,8 @@ pub fn new_app() -> NmpApp {
     // Spec §271 (2026-05-25) — substrate-publish-resolver factory slot.
     let publish_resolver = new_publish_resolver_slot();
     let actor_publish_resolver = Arc::clone(&publish_resolver);
+    let relay_list_publish_support = new_relay_list_publish_support_slot();
+    let actor_relay_list_publish_support = Arc::clone(&relay_list_publish_support);
     // Test-support kernel-clock injection slot.
     let kernel_clock = nmp_core::slots::new_kernel_clock_slot();
     let actor_kernel_clock = Arc::clone(&kernel_clock);
@@ -234,6 +236,7 @@ pub fn new_app() -> NmpApp {
             bootstrap_self_kinds: actor_bootstrap_self_kinds,
             routing_substrate: actor_routing_substrate,
             publish_resolver: actor_publish_resolver,
+            relay_list_publish_support: actor_relay_list_publish_support,
             external_event_sink_policy: actor_external_event_sink_policy,
             kernel_clock: actor_kernel_clock,
             gc_budget_ceiling: gc_budget_ceiling_for_config,
@@ -357,6 +360,7 @@ pub fn new_app() -> NmpApp {
             external_event_sink_policy,
             routing_substrate,
             publish_resolver,
+            relay_list_publish_support,
             bootstrap_self_kinds,
             dm_inbox_relays_slot,
             contact_list_reader_slot,

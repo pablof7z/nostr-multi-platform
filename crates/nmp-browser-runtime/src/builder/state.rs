@@ -28,7 +28,7 @@ use nmp_core::substrate::{
 };
 use nmp_core::{
     publish::OutboxResolver,
-    slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
+    slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot, RelayListPublishSupport},
     ActionRegistry, AppRelaySlot, Clock, KernelReducer,
 };
 
@@ -101,6 +101,7 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) mailbox_cache_reader: Option<Arc<dyn MailboxCache>>,
     pub(crate) routing_substrate_factory: Option<RoutingSubstrateFactory>,
     pub(crate) publish_resolver_factory: Option<PublishResolverFactory>,
+    pub(crate) relay_list_publish_support: Option<Arc<dyn RelayListPublishSupport>>,
     /// Raw-event forward (external sink) policy factory. Stored here; consumed by
     /// the browser relay transport's outbound-forward path — seam: bounded
     /// transport-only relay adapter (#2050).
@@ -186,6 +187,7 @@ impl BrowserBuilderInner {
             mailbox_cache_reader: None,
             routing_substrate_factory: None,
             publish_resolver_factory: None,
+            relay_list_publish_support: None,
             external_event_sink_policy_factory: None,
             outbound_public_tags: Vec::new(),
             nostrconnect_bootstrap_relay: None,

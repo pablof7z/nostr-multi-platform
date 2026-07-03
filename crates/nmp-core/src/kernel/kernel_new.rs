@@ -354,6 +354,7 @@ impl Kernel {
             indexer_relays_handle,
             local_write_relays_handle,
             active_account_handle,
+            relay_list_publish_support: crate::slots::empty_relay_list_publish_support(),
             relay_score_map: relay_score::RelayAuthorScoreMap::new(),
             relay_score_store: None,
             replaceable_ttl: replaceable_ttl::ReplaceableTtlConfig::default(),

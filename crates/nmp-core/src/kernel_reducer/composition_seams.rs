@@ -424,6 +424,13 @@ impl super::KernelReducer {
         self.kernel.set_publish_resolver(resolver);
     }
 
+    pub fn set_relay_list_publish_support(
+        &mut self,
+        support: Arc<dyn crate::slots::RelayListPublishSupport>,
+    ) {
+        self.kernel.set_relay_list_publish_support(support);
+    }
+
     /// Publish a pre-signed event through the kernel's publish engine (#1008).
     ///
     /// The wasm `dispatch_bytes` execute arm calls this for

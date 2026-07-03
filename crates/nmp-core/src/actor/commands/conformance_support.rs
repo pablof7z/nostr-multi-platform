@@ -88,6 +88,13 @@ impl ConformanceHarness {
         self.kernel.last_error_toast_snapshot().cloned()
     }
 
+    pub fn set_relay_list_publish_support(
+        &mut self,
+        support: Arc<dyn crate::slots::RelayListPublishSupport>,
+    ) {
+        self.kernel.set_relay_list_publish_support(support);
+    }
+
     /// Seed a kind:1 note into the kernel read-cache so a subsequent
     /// `emit_reaction` against `id` exercises the warm path (`event_author`)
     /// rather than the cold fallback. `tags` carries whatever NIP-10 structure

@@ -3,51 +3,6 @@
 
 use super::*;
 
-struct TestMailboxParser {
-    cache: Arc<crate::substrate::TestInMemoryMailboxCache>,
-    hits: Arc<std::sync::atomic::AtomicUsize>,
-    seen_ids: Arc<Mutex<Vec<String>>>,
-}
-
-fn has_relay_marker_tag(tags: &[Vec<String>], url: &str, marker: &str) -> bool {
-    tags.iter()
-        .any(|tag| tag.len() == 3 && tag[0] == "r" && tag[1] == url && tag[2] == marker)
-}
-
-impl crate::substrate::IngestParser for TestMailboxParser {
-    fn parse(&self, evt: &crate::store::VerifiedEvent) {
-        let raw = evt.raw();
-        if raw.kind != crate::kinds::KIND_RELAY_LIST {
-            return;
-        }
-        self.hits.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        self.seen_ids
-            .lock()
-            .expect("seen ids mutex")
-            .push(raw.id.clone());
-        let has_read = has_relay_marker_tag(&raw.tags, "wss://signup-read.test", "read");
-        let has_write = has_relay_marker_tag(&raw.tags, "wss://signup-write.test", "write");
-        if !has_read && !has_write {
-            self.cache.fixture_remove(&raw.pubkey);
-        } else {
-            self.cache.fixture_upsert(
-                raw.pubkey.clone(),
-                crate::substrate::ParsedRelayList {
-                    read: has_read
-                        .then(|| "wss://signup-read.test".to_string())
-                        .into_iter()
-                        .collect(),
-                    write: has_write
-                        .then(|| "wss://signup-write.test".to_string())
-                        .into_iter()
-                        .collect(),
-                    both: Vec::new(),
-                },
-            );
-        }
-    }
-}
-
 #[test]
 fn sign_in_nsec_adds_active_account_and_projects_it() {
     let (mut id, mut kernel) = fresh();
@@ -194,16 +149,6 @@ fn create_account_launch_override_relay_gets_rust_owned_default_role() {
 fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     let (mut id, mut kernel, publish_store) = fresh_with_publish_store();
     kernel.install_profile_view_seed_parser_for_test("Signup User");
-    let parser_hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let parser_seen_ids = Arc::new(Mutex::new(Vec::new()));
-    kernel.register_ingest_parser(
-        crate::kinds::KIND_RELAY_LIST,
-        Arc::new(TestMailboxParser {
-            cache: kernel.test_mailbox_cache_arc(),
-            hits: Arc::clone(&parser_hits),
-            seen_ids: Arc::clone(&parser_seen_ids),
-        }),
-    );
     let mut profile = std::collections::HashMap::new();
     profile.insert("name".to_string(), "Signup User".to_string());
     let relays = vec![
@@ -230,41 +175,10 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
         false,
         true,
     );
-    let author = id.active_pubkey().expect("new account pubkey");
-    assert_eq!(
-        parser_hits.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "create_account kind:10002 must reach the accepted-event parser path exactly once; seen ids: {:?}",
-        parser_seen_ids.lock().expect("seen ids mutex")
-    );
-    let mailbox = kernel
-        .mailbox_cache()
-        .snapshot(&author)
-        .expect("kind:10002 parser must populate the mailbox cache");
-    assert_eq!(
-        mailbox.write,
-        vec!["wss://signup-write.test".to_string()],
-        "write-marker r tags must be materialized by the parser path"
-    );
-    assert_eq!(
-        mailbox.read,
-        vec!["wss://signup-read.test".to_string()],
-        "read-marker r tags must be materialized by the parser path"
-    );
-    assert!(
-        mailbox.both.is_empty(),
-        "indexer-only relays must not enter the NIP-65 mailbox cache"
-    );
 
     assert!(
         outbound.iter().any(|msg| msg.text.contains("\"kind\":0")),
         "create_account must return the kind:0 EVENT frame for actor dispatch"
-    );
-    assert!(
-        outbound
-            .iter()
-            .any(|msg| msg.text.contains("\"kind\":10002")),
-        "create_account must return the kind:10002 EVENT frame for actor dispatch"
     );
     assert!(
         outbound.iter().any(|msg| msg.text.contains("\"kind\":3")),
@@ -288,14 +202,14 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
         .map(|record| record.event.unsigned.kind)
         .collect();
     kinds.sort();
-    assert_eq!(kinds, vec![0, 3, 10002]);
+    assert_eq!(kinds, vec![0, 3]);
 
     let expected_targets = vec![
         "wss://signup-indexer.test".to_string(),
         "wss://signup-read.test".to_string(),
         "wss://signup-write.test".to_string(),
     ];
-    for kind in [0, 3, 10002] {
+    for kind in [0, 3] {
         let record = record_of_kind(&records, kind);
         assert_eq!(
             target_relays(record),
@@ -307,24 +221,6 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     let metadata = record_of_kind(&records, 0);
     assert!(metadata.event.unsigned.tags.is_empty());
     assert!(metadata.event.unsigned.content.contains("Signup User"));
-
-    let relay_list = record_of_kind(&records, 10002);
-    assert!(relay_list.event.unsigned.tags.contains(&vec![
-        "r".to_string(),
-        "wss://signup-write.test".to_string(),
-        "write".to_string(),
-    ]));
-    assert!(relay_list.event.unsigned.tags.contains(&vec![
-        "r".to_string(),
-        "wss://signup-read.test".to_string(),
-        "read".to_string(),
-    ]));
-    assert!(
-        !relay_list.event.unsigned.tags.iter().any(|tag| tag
-            .get(1)
-            .is_some_and(|url| url == "wss://signup-indexer.test")),
-        "indexer rows are app relay config, not NIP-65 account relay tags"
-    );
 
     let contacts = record_of_kind(&records, 3);
     assert!(
