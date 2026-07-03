@@ -77,13 +77,16 @@ impl CashuWalletState {
         id: WalletOperationId,
         kind: WalletOperationKind,
     ) -> Result<(), WalletJournalError> {
-        self.journal
-            .insert(WalletOperation::new(id.clone(), kind, WalletOperationState::Draft))?;
+        self.journal.insert(WalletOperation::new(
+            id.clone(),
+            kind,
+            WalletOperationState::Draft,
+        ))?;
         self.transition(&id, WalletOperationState::Prepared)
     }
 
-    /// The single saga-transition chokepoint every caller (backend + commands
-    /// + workers) goes through, so every journal transition is also folded
+    /// The single saga-transition chokepoint every caller (backend, commands,
+    /// and workers) goes through, so every journal transition is also folded
     /// into the ledger's causal trail — never call `self.journal.transition`
     /// directly from outside this type.
     pub(super) fn transition(

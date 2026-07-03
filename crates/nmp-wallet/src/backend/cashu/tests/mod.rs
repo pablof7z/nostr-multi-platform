@@ -21,7 +21,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionStageTracker, EmptyDmInboxRelayLookup, KernelClock, NoopErrorSurface,
     NoopHostOpHandlerAccess, NoopLocalSignerAccess, NoopWalletKernelAccess, NoopZapProfileLookup,
-    ProtocolCommandContext, ProtocolCommandContextParts, RecipientRelayLookup,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, RecipientRelayLookup,
 };
 
 use super::*;
@@ -148,7 +148,9 @@ pub(super) fn spawn_mock_mint(responses: Vec<(u16, String)>) -> String {
                         header_end = Some(pos + 4);
                         let headers = String::from_utf8_lossy(&buf[..pos]).to_string();
                         for line in headers.lines() {
-                            if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                            if let Some(v) =
+                                line.to_ascii_lowercase().strip_prefix("content-length:")
+                            {
                                 content_length = v.trim().parse().unwrap_or(0);
                             }
                         }

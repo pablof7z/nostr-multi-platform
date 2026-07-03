@@ -108,7 +108,12 @@ fn happy_path_signs_and_publishes_kind_17375() {
     let recipients = FixedRecipientLookup(vec!["wss://relay.example".to_string()]);
     let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
     {
-        let mut c = ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &recipients);
+        let mut c = ctx_with_sender(
+            &send,
+            nmp_core::CommandSender::new(worker_tx),
+            &clock,
+            &recipients,
+        );
         cmd.run(&mut c).expect("run returns Ok");
     }
 
@@ -120,7 +125,10 @@ fn happy_path_signs_and_publishes_kind_17375() {
             continuation,
             ..
         }) => {
-            assert_eq!(peer_pubkey, account, "self-encrypt targets the account's own pubkey");
+            assert_eq!(
+                peer_pubkey, account,
+                "self-encrypt targets the account's own pubkey"
+            );
             assert_eq!(signer_pubkey.as_deref(), Some(account.as_str()));
             continuation
         }
@@ -157,11 +165,18 @@ fn happy_path_signs_and_publishes_kind_17375() {
 
     // Step 3: Publish(SignedEvent) with an explicit, pre-signed route.
     match recv_command(&worker_rx) {
-        ActorCommand::Publish(PublishCommand::SignedEvent { raw, target, correlation_id }) => {
+        ActorCommand::Publish(PublishCommand::SignedEvent {
+            raw,
+            target,
+            correlation_id,
+        }) => {
             assert_eq!(raw.kind, nmp_nip60::KIND_NIP60_WALLET);
             assert_eq!(correlation_id.as_deref(), Some("cid-happy"));
             match target {
-                PublishTarget::Explicit { relays, route_class } => {
+                PublishTarget::Explicit {
+                    relays,
+                    route_class,
+                } => {
                     assert_eq!(relays, vec!["wss://relay.example".to_string()]);
                     assert_eq!(route_class, PublishRouteClass::ImportedOrPresigned);
                 }
@@ -180,7 +195,10 @@ fn happy_path_signs_and_publishes_kind_17375() {
         .journal
         .get(&crate::journal::WalletOperationId::new("cid-happy"))
         .unwrap();
-    assert_eq!(op.state, crate::journal::WalletOperationState::PublishPending);
+    assert_eq!(
+        op.state,
+        crate::journal::WalletOperationState::PublishPending
+    );
 }
 
 /// Signer-can't-NIP-44 fails closed: no publish, `created` stays false, and
@@ -208,12 +226,19 @@ fn signer_cannot_nip44_fails_closed() {
     let recipients = FixedRecipientLookup(vec!["wss://relay.example".to_string()]);
     let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
     {
-        let mut c = ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &recipients);
+        let mut c = ctx_with_sender(
+            &send,
+            nmp_core::CommandSender::new(worker_tx),
+            &clock,
+            &recipients,
+        );
         cmd.run(&mut c).expect("run returns Ok");
     }
 
     let continuation = match recv_command(&worker_rx) {
-        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount { continuation, .. }) => continuation,
+        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount { continuation, .. }) => {
+            continuation
+        }
         other => panic!("expected Nip44EncryptForAccount, got {other:?}"),
     };
     continuation.call(Err("signer does not support nip44".to_string()));
@@ -225,14 +250,19 @@ fn signer_cannot_nip44_fails_closed() {
         other => panic!("expected ShowErrorToken, got {other:?}"),
     }
     match recv_command(&worker_rx) {
-        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+            correlation_id, ..
+        }) => {
             assert_eq!(correlation_id, "cid-fail");
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
     }
 
     let state = state::lock_state(&backend.state);
-    assert!(!state.created, "a fail-closed encrypt must never mark the wallet created");
+    assert!(
+        !state.created,
+        "a fail-closed encrypt must never mark the wallet created"
+    );
     let op = state
         .journal
         .get(&crate::journal::WalletOperationId::new("cid-fail"))

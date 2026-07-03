@@ -184,7 +184,11 @@ impl CashuWalletBackend {
         correlation_id: Option<String>,
     ) -> Vec<ActorCommand> {
         let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return fail_closed(ui_codes::NO_ACCOUNT, correlation_id, "no active account".to_string());
+            return fail_closed(
+                ui_codes::NO_ACCOUNT,
+                correlation_id,
+                "no active account".to_string(),
+            );
         };
         if !is_well_formed_mint_url(&mint) {
             return fail_closed(
@@ -196,7 +200,9 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "create");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) = state.begin_operation(operation_id.clone(), WalletOperationKind::CreateCashuWallet) {
+            if let Err(e) =
+                state.begin_operation(operation_id.clone(), WalletOperationKind::CreateCashuWallet)
+            {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
         }
@@ -237,7 +243,9 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "deposit-quote");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) = state.begin_operation(operation_id.clone(), WalletOperationKind::DepositCashu) {
+            if let Err(e) =
+                state.begin_operation(operation_id.clone(), WalletOperationKind::DepositCashu)
+            {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
             // Pre-effect record: this operation has an HTTP round-trip in
@@ -265,7 +273,11 @@ impl CashuWalletBackend {
         correlation_id: Option<String>,
     ) -> Vec<ActorCommand> {
         let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return fail_closed(ui_codes::NO_ACCOUNT, correlation_id, "no active account".to_string());
+            return fail_closed(
+                ui_codes::NO_ACCOUNT,
+                correlation_id,
+                "no active account".to_string(),
+            );
         };
         let pending = {
             let state = lock_state(&self.state);
@@ -280,15 +292,17 @@ impl CashuWalletBackend {
                 "no pending deposit for this quote".to_string(),
             );
         };
-        vec![ActorCommand::Protocol(Box::new(CashuCompleteDepositCommand {
-            state: Arc::clone(&self.state),
-            operation_id: pending.operation_id,
-            quote_id,
-            mint: pending.mint,
-            amount_sats: pending.amount_sats,
-            account_pubkey,
-            correlation_id,
-        }))]
+        vec![ActorCommand::Protocol(Box::new(
+            CashuCompleteDepositCommand {
+                state: Arc::clone(&self.state),
+                operation_id: pending.operation_id,
+                quote_id,
+                mint: pending.mint,
+                amount_sats: pending.amount_sats,
+                account_pubkey,
+                correlation_id,
+            },
+        ))]
     }
 }
 
@@ -298,7 +312,11 @@ impl CashuWalletBackend {
 /// non-dispatch callers (tests) and is not guaranteed unique under concurrent
 /// no-id calls within the same wall-clock second, which is acceptable since
 /// production dispatch always supplies one.
-fn operation_id_for(correlation_id: &Option<String>, now_secs: u64, label: &str) -> WalletOperationId {
+fn operation_id_for(
+    correlation_id: &Option<String>,
+    now_secs: u64,
+    label: &str,
+) -> WalletOperationId {
     match correlation_id {
         Some(id) => WalletOperationId::new(id.clone()),
         None => WalletOperationId::new(format!("cashu-{label}-{now_secs}")),
@@ -307,15 +325,21 @@ fn operation_id_for(correlation_id: &Option<String>, now_secs: u64, label: &str)
 
 /// Fail-closed before any `ActorCommand::Protocol` is dispatched: a structured
 /// `ShowErrorToken` + (when a `correlation_id` was supplied) `RecordActionFailure`.
-fn fail_closed(code: &'static str, correlation_id: Option<String>, reason: String) -> Vec<ActorCommand> {
+fn fail_closed(
+    code: &'static str,
+    correlation_id: Option<String>,
+    reason: String,
+) -> Vec<ActorCommand> {
     let mut out = vec![ActorCommand::ShowErrorToken {
         token: UiToken::error(code, reason.clone()),
     }];
     if let Some(id) = correlation_id {
-        out.push(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-            correlation_id: id,
-            reason,
-        }));
+        out.push(ActorCommand::ActionLedger(
+            ActionLedgerCommand::RecordFailure {
+                correlation_id: id,
+                reason,
+            },
+        ));
     }
     out
 }

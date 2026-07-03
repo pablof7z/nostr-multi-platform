@@ -25,4 +25,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# `test-support` enables `nmp_core::ActorMail`/`ProtocolCommandContextParts`
+# capability adapters + noop singletons the Cashu backend's command tests
+# drive directly (mirrors nmp-nip17/nmp-nip57's own dev-dependency).
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 serde_json = { workspace = true }

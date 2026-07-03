@@ -114,7 +114,12 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
                         let mut guard = lock_state(&state);
                         let _ = guard.transition(&operation_id, WalletOperationState::Failed);
                     }
-                    fail(&worker_tx, correlation_id, ui_codes::MINT_QUOTE_FAILED, format!("mint quote request failed: {e}"));
+                    fail(
+                        &worker_tx,
+                        correlation_id,
+                        ui_codes::MINT_QUOTE_FAILED,
+                        format!("mint quote request failed: {e}"),
+                    );
                 }
             }
         });
@@ -188,7 +193,13 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
             let keyset = match client.get_sat_keyset() {
                 Ok(k) => k,
                 Err(e) => {
-                    fail_and_terminate_operation(&state, &operation_id, &worker_tx, correlation_id, format!("mint keyset fetch failed: {e}"));
+                    fail_and_terminate_operation(
+                        &state,
+                        &operation_id,
+                        &worker_tx,
+                        correlation_id,
+                        format!("mint keyset fetch failed: {e}"),
+                    );
                     return;
                 }
             };
@@ -201,7 +212,13 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
             let proofs = match client.mint_tokens(&quote_id, amount_sats, &keyset) {
                 Ok(p) => p,
                 Err(e) => {
-                    fail_and_terminate_operation(&state, &operation_id, &worker_tx, correlation_id, format!("mint-tokens request failed: {e}"));
+                    fail_and_terminate_operation(
+                        &state,
+                        &operation_id,
+                        &worker_tx,
+                        correlation_id,
+                        format!("mint-tokens request failed: {e}"),
+                    );
                     return;
                 }
             };
@@ -228,7 +245,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
 /// owns (the DHKE unblind+verify math itself is `nmp-nip60`'s own tested
 /// surface; this function only calls it).
 #[allow(clippy::too_many_arguments)]
-fn dispatch_token_event(
+pub(super) fn dispatch_token_event(
     worker_tx: CommandSender,
     state: Arc<Mutex<CashuWalletState>>,
     operation_id: WalletOperationId,
@@ -296,7 +313,12 @@ fn fail_and_terminate_operation(
         let mut guard = lock_state(state);
         let _ = guard.transition(operation_id, WalletOperationState::Failed);
     }
-    fail(worker_tx, correlation_id, ui_codes::MINT_TOKENS_FAILED, reason);
+    fail(
+        worker_tx,
+        correlation_id,
+        ui_codes::MINT_TOKENS_FAILED,
+        reason,
+    );
 }
 
 fn fail(

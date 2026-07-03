@@ -144,7 +144,8 @@ fn report_chain_failure(
     correlation_id: &Option<String>,
     reason: String,
 ) {
-    let token = UiToken::error(ui_codes::OPERATION_FAILED, reason.clone()).with_detail(reason.clone());
+    let token =
+        UiToken::error(ui_codes::OPERATION_FAILED, reason.clone()).with_detail(reason.clone());
     let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
     if let Some(id) = correlation_id.clone() {
         let _ = worker_tx.send(build_record_action_failure(id, reason));
