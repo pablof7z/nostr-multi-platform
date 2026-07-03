@@ -11,8 +11,8 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 

@@ -11,12 +11,12 @@ crate-type = ["rlib"]
 
 [dependencies]
 flatbuffers = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-nip25 = { path = "../nmp-nip25" }
-nmp-nip29 = { path = "../nmp-nip29" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-nip25 = { path = "../nmp-nip25", version = "1.0.0-rc.1" }
+nmp-nip29 = { path = "../nmp-nip29", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-planner = { path = "../nmp-planner" }
-nmp-read-session = { path = "../nmp-read-session" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

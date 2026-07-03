@@ -23,7 +23,7 @@ native = ["dep:ureq"]
 # nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind
 # integers. NIP-60/61/88 kind constants live there so this crate declares zero
 # kind literals (the #1493 fragmentation finding eliminated the local u16 copy).
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
 # nostr: NIP-44 encryption for wallet events, NIP-60 event types, key ops.
 nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
