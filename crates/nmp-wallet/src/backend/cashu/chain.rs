@@ -36,6 +36,13 @@ pub(super) fn launch_self_encrypted_publish(
     kind: u32,
     plaintext: String,
     relays: Vec<String>,
+    // D7 — the kernel owns the wall clock; the caller resolves this from
+    // `ctx.now_secs()` while it still holds `ctx` (this chain only holds an
+    // owned `CommandSender` from here on). kind:17375/7375 are both in the
+    // NIP-01 replaceable range (10000-19999), so a wrong/sentinel timestamp
+    // here would corrupt "latest wins" relay semantics for every event this
+    // backend ever publishes — never hardcode `0`.
+    created_at: u64,
     correlation_id: Option<String>,
     on_signed: impl FnOnce(&CommandSender, &SignedEvent) + Send + 'static,
 ) {
@@ -65,7 +72,7 @@ pub(super) fn launch_self_encrypted_publish(
                 kind,
                 tags: Vec::new(),
                 content: ciphertext,
-                created_at: 0,
+                created_at,
             };
             sign_and_publish(
                 tx_for_sign,

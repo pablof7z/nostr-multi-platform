@@ -197,6 +197,22 @@ impl CashuWalletBackend {
                 format!("unsupported mint: {mint}"),
             );
         }
+        // Fail closed rather than silently re-creating: a second wallet
+        // event would overwrite `mints`/`cashu_pubkey_hex` for a wallet that
+        // may already hold ledger balance under the first mint. This does
+        // not close the narrower "two `CreateCashuWallet` calls dispatched
+        // back-to-back before the first one's async chain finishes" race
+        // (`created` only flips once `on_signed` runs) — that needs the
+        // higher dispatch layer's own dedup, same as `nmp-nip47`'s
+        // `nmp.wallet.pay_invoice` action rejects a same-invoice retap in
+        // `start()` (see `nwc.rs`'s doc comment).
+        if lock_state(&self.state).created {
+            return fail_closed(
+                ui_codes::ALREADY_CREATED,
+                correlation_id,
+                "wallet already created".to_string(),
+            );
+        }
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "create");
         {
             let mut state = lock_state(&self.state);

@@ -9,6 +9,11 @@
 /// self-encrypt/sign for.
 pub const NO_ACCOUNT: &str = "wallet_cashu_no_account";
 
+/// `CreateCashuWallet` was dispatched again after this wallet already
+/// completed creation — refuse rather than silently overwrite `mints`/
+/// `cashu_pubkey_hex` for a wallet that may already hold ledger balance.
+pub const ALREADY_CREATED: &str = "wallet_cashu_already_created";
+
 /// The requested mint URL is malformed or (for a deposit) not one this
 /// wallet was created with.
 pub const UNSUPPORTED_MINT: &str = "wallet_cashu_unsupported_mint";

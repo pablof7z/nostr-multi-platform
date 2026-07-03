@@ -27,6 +27,7 @@ use nmp_core::substrate::{
 use super::*;
 
 mod create_wallet_tests;
+mod deposit_retry_tests;
 mod deposit_tests;
 mod snapshot_tests;
 
@@ -95,6 +96,32 @@ pub(super) fn ctx_with_sender<'a>(
 pub(super) struct NoopStages;
 impl ActionStageTracker for NoopStages {
     fn record_requested(&self, _correlation_id: &str) {}
+}
+
+/// The mint every `backend_with_mint` wallet accepts.
+pub(super) const MINT: &str = "https://testnut.cashu.space";
+
+/// A `CashuWalletBackend` that already accepts [`MINT`] — the shared
+/// precondition `DepositQuote`/`CompleteDeposit` tests need before they can
+/// exercise the deposit flow at all.
+pub(super) fn backend_with_mint() -> CashuWalletBackend {
+    let backend = CashuWalletBackend::new();
+    lock_state(&backend.state).mints = vec![MINT.to_string()];
+    backend
+}
+
+/// A minimal Cashu `Proof` for tests that drive post-mint wiring directly
+/// (never a real mint round-trip) — `secret` is a placeholder, never a real
+/// spending secret.
+pub(super) fn synthetic_proof(amount: u64, c: &str) -> nmp_nip60::cashu::types::Proof {
+    nmp_nip60::cashu::types::Proof {
+        amount,
+        id: "keyset-1".to_string(),
+        secret: "secret-never-logged".to_string(),
+        c: c.to_string(),
+        dleq: None,
+        witness: None,
+    }
 }
 
 /// Unwrap the `ActorMail::Command` variant a worker-thread `CommandSender`

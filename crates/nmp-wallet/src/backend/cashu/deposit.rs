@@ -20,6 +20,16 @@
 //! thread never blocks on mint HTTP); the worker writes results back into the
 //! shared [`CashuWalletState`] directly, mirroring how `NwcWalletBackend`'s
 //! runtime is the sole writer of its `WalletStatusSlot`.
+//!
+//! # NOT wired here (escalated, not silently skipped)
+//!
+//! `nmp_nip60::Nip60WalletHandle::complete_deposit` also queues a kind:7376
+//! spending-history event alongside the kind:7375 token event. This backend
+//! does not — the #2895 W2 design scoped `CompleteDeposit` to "mint tokens
+//! ... store proofs -> write kind:7375" only. A wallet driven exclusively by
+//! this backend will show correct balances (the ledger folds `TokenAdded`
+//! facts, not history events) but an incomplete kind:7376 history stream for
+//! other NIP-60 clients reading this wallet. Follow-up, not a silent gap.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -90,6 +100,7 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
                                 operation_id: operation_id.clone(),
                                 mint: mint.clone(),
                                 amount_sats,
+                                minted_proofs: None,
                             },
                         );
                         let _ = guard.transition(&operation_id, WalletOperationState::MintSettled);
@@ -162,64 +173,96 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
             correlation_id,
         } = *self;
         let relays = ctx.recipient_publish_relays(&account_pubkey, KIND_NIP60_TOKEN);
+        // D7 — the kernel owns the wall clock; re-stamp before the token
+        // event is built (see `chain.rs`'s `launch_self_encrypted_publish`).
+        let created_at = ctx.now_secs();
         let worker_tx = ctx.command_sender_clone();
         std::thread::spawn(move || {
-            let client = MintClient::new(&mint);
-            let status = match client.get_mint_quote_status(&quote_id) {
-                Ok(s) => s,
-                Err(e) => {
-                    fail(
-                        &worker_tx,
-                        correlation_id,
-                        ui_codes::MINT_QUOTE_FAILED,
-                        format!("mint quote status check failed: {e}"),
-                    );
-                    return;
-                }
+            // A quote already marked `ISSUED` by the mint can never be
+            // minted again — if a prior attempt got real proofs back but
+            // failed somewhere in the encrypt/sign/publish chain after that
+            // (transient port error, dead actor inbox, process restart),
+            // those proofs are the ONLY way to recover this deposit. Resume
+            // from them instead of re-touching the mint at all.
+            let already_minted = {
+                let guard = lock_state(&state);
+                guard
+                    .pending_deposits
+                    .get(&quote_id)
+                    .and_then(|p| p.minted_proofs.clone())
             };
-            if status.state != MintQuoteState::Paid {
-                // Retryable, not a hard failure — the caller pays the
-                // invoice (testnut auto-settles almost immediately) and
-                // retries `CompleteDeposit`. The operation stays at
-                // `MintSettled`; no journal transition here.
-                fail(
-                    &worker_tx,
-                    correlation_id,
-                    ui_codes::QUOTE_NOT_PAID,
-                    "mint quote not yet paid — pay the invoice and retry".to_string(),
-                );
-                return;
-            }
-            let keyset = match client.get_sat_keyset() {
-                Ok(k) => k,
-                Err(e) => {
-                    fail_and_terminate_operation(
-                        &state,
-                        &operation_id,
-                        &worker_tx,
-                        correlation_id,
-                        format!("mint keyset fetch failed: {e}"),
-                    );
-                    return;
-                }
-            };
-            // THE value-moving call. The operation's `MintSettled` pre-record
-            // (written back durably by `CashuDepositQuoteCommand`, before any
-            // HTTP happened) already satisfies the at-most-once guarantee —
-            // deposits consume zero local proofs (see
-            // `WalletOperationKind::requires_consumed_inputs_before_mint_request`),
-            // so there is nothing further to pre-record before this call.
-            let proofs = match client.mint_tokens(&quote_id, amount_sats, &keyset) {
-                Ok(p) => p,
-                Err(e) => {
-                    fail_and_terminate_operation(
-                        &state,
-                        &operation_id,
-                        &worker_tx,
-                        correlation_id,
-                        format!("mint-tokens request failed: {e}"),
-                    );
-                    return;
+            let proofs = match already_minted {
+                Some(proofs) => proofs,
+                None => {
+                    let client = MintClient::new(&mint);
+                    let status = match client.get_mint_quote_status(&quote_id) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            fail(
+                                &worker_tx,
+                                correlation_id,
+                                ui_codes::MINT_QUOTE_FAILED,
+                                format!("mint quote status check failed: {e}"),
+                            );
+                            return;
+                        }
+                    };
+                    if status.state != MintQuoteState::Paid {
+                        // Retryable, not a hard failure — the caller pays the
+                        // invoice (testnut auto-settles almost immediately) and
+                        // retries `CompleteDeposit`. The operation stays at
+                        // `MintSettled`; no journal transition here.
+                        fail(
+                            &worker_tx,
+                            correlation_id,
+                            ui_codes::QUOTE_NOT_PAID,
+                            "mint quote not yet paid — pay the invoice and retry".to_string(),
+                        );
+                        return;
+                    }
+                    let keyset = match client.get_sat_keyset() {
+                        Ok(k) => k,
+                        Err(e) => {
+                            mark_operation_uncertain(
+                                &state,
+                                &operation_id,
+                                &worker_tx,
+                                correlation_id,
+                                format!("mint keyset fetch failed: {e}"),
+                            );
+                            return;
+                        }
+                    };
+                    // THE value-moving call. The operation's `MintSettled`
+                    // pre-record (written back durably by
+                    // `CashuDepositQuoteCommand`, before any HTTP happened)
+                    // already satisfies the at-most-once guarantee —
+                    // deposits consume zero local proofs (see
+                    // `WalletOperationKind::requires_consumed_inputs_before_mint_request`),
+                    // so there is nothing further to pre-record before this
+                    // call.
+                    let proofs = match client.mint_tokens(&quote_id, amount_sats, &keyset) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            mark_operation_uncertain(
+                                &state,
+                                &operation_id,
+                                &worker_tx,
+                                correlation_id,
+                                format!("mint-tokens request failed: {e}"),
+                            );
+                            return;
+                        }
+                    };
+                    // Persist BEFORE handing off to the encrypt/sign/publish
+                    // chain — from here on, a chain failure must resume from
+                    // these proofs, never re-mint (see `PendingDeposit::minted_proofs`).
+                    let mut guard = lock_state(&state);
+                    if let Some(pending) = guard.pending_deposits.get_mut(&quote_id) {
+                        pending.minted_proofs = Some(proofs.clone());
+                    }
+                    drop(guard);
+                    proofs
                 }
             };
             dispatch_token_event(
@@ -231,6 +274,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                 proofs,
                 account_pubkey,
                 relays,
+                created_at,
                 correlation_id,
             );
         });
@@ -254,6 +298,7 @@ pub(super) fn dispatch_token_event(
     proofs: Vec<Proof>,
     account_pubkey: String,
     relays: Vec<String>,
+    created_at: u64,
     correlation_id: Option<String>,
 ) {
     let plaintext = token_event_plaintext(&mint, &proofs);
@@ -277,6 +322,7 @@ pub(super) fn dispatch_token_event(
         KIND_NIP60_TOKEN,
         plaintext,
         relays,
+        created_at,
         correlation_id,
         move |_tx, signed: &SignedEvent| {
             let mut guard = lock_state(&on_signed_state);
@@ -287,6 +333,10 @@ pub(super) fn dispatch_token_event(
                 proofs: proof_atoms,
                 via: Provenance::Saga(CorrelationId::new(on_signed_op.as_str())),
             });
+            // `Unknown` (from `mark_operation_uncertain`) allows this
+            // transition same as `MintSettled` does — see the state's own
+            // `can_transition_to` table — so a retry that recovered via
+            // `minted_proofs` still reaches `PublishPending` normally.
             let _ = guard.transition(&on_signed_op, WalletOperationState::PublishPending);
             guard.pending_deposits.remove(&quote_id);
         },
@@ -302,7 +352,16 @@ fn token_event_plaintext(mint: &str, proofs: &[Proof]) -> String {
     .to_string()
 }
 
-fn fail_and_terminate_operation(
+/// An HTTP failure talking to the mint mid-mint-request is genuinely
+/// ambiguous — the mint may have issued the tokens and the response was
+/// merely lost in transit, or the request may never have been accepted at
+/// all. `Unknown` (not `Failed`, which is terminal and can never transition
+/// again) is the state the saga's own transition table defines for exactly
+/// this "operation crashed, resolution still pending" case: a retry that
+/// recovers (see `PendingDeposit::minted_proofs`) can still reach
+/// `PublishPending`/`Settled` from `Unknown`, whereas a `Failed` operation
+/// would be stuck forever even after the deposit actually completed.
+fn mark_operation_uncertain(
     state: &Mutex<CashuWalletState>,
     operation_id: &WalletOperationId,
     worker_tx: &CommandSender,
@@ -311,7 +370,7 @@ fn fail_and_terminate_operation(
 ) {
     {
         let mut guard = lock_state(state);
-        let _ = guard.transition(operation_id, WalletOperationState::Failed);
+        let _ = guard.transition(operation_id, WalletOperationState::Unknown);
     }
     fail(
         worker_tx,

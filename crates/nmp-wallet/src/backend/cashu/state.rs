@@ -10,6 +10,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard};
 
+use nmp_nip60::cashu::types::Proof;
+
 use crate::journal::{
     WalletFact, WalletJournalError, WalletLedger, WalletOperation, WalletOperationId,
     WalletOperationJournal, WalletOperationKind, WalletOperationState,
@@ -30,6 +32,16 @@ pub(super) struct PendingDeposit {
     pub(super) operation_id: WalletOperationId,
     pub(super) mint: String,
     pub(super) amount_sats: u64,
+    /// Set once NUT-04 `mint_tokens` has actually returned these proofs. A
+    /// Cashu mint marks a quote `ISSUED` the moment it hands out proofs for
+    /// it and permanently refuses to mint that quote again — so if the
+    /// encrypt/sign/publish chain that follows fails (transient port error,
+    /// dead actor inbox, process restart), re-running `mint_tokens` on retry
+    /// would either be rejected outright or silently forfeit these
+    /// already-real proofs. `CashuCompleteDepositCommand` checks this FIRST,
+    /// before touching the mint again, and resumes the chain with these same
+    /// proofs when set (see `deposit.rs`'s module docs).
+    pub(super) minted_proofs: Option<Vec<Proof>>,
 }
 
 pub(super) struct CashuWalletState {

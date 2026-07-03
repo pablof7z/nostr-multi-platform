@@ -4,10 +4,7 @@
 
 use super::*;
 use nmp_core::actor::{ActionLedgerCommand, PublishCommand, SignCommand};
-use nmp_nip60::cashu::types::Proof;
 use std::sync::Arc;
-
-const MINT: &str = "https://testnut.cashu.space";
 
 fn ctx(account_pubkey: Option<&str>) -> WalletBackendContext<'_> {
     WalletBackendContext {
@@ -15,12 +12,6 @@ fn ctx(account_pubkey: Option<&str>) -> WalletBackendContext<'_> {
         selected_backend: None,
         account_pubkey,
     }
-}
-
-fn backend_with_mint() -> CashuWalletBackend {
-    let backend = CashuWalletBackend::new();
-    state::lock_state(&backend.state).mints = vec![MINT.to_string()];
-    backend
 }
 
 // ── DepositQuote: fail-closed gates + journal ordering ─────────────────────
@@ -340,17 +331,6 @@ fn complete_deposit_reports_not_yet_paid_without_failing_the_operation() {
 
 // ── dispatch_token_event: ledger/journal wiring with synthetic proofs ──────
 
-fn synthetic_proof(amount: u64, c: &str) -> Proof {
-    Proof {
-        amount,
-        id: "keyset-1".to_string(),
-        secret: "secret-never-logged".to_string(),
-        c: c.to_string(),
-        dleq: None,
-        witness: None,
-    }
-}
-
 /// Drives the post-mint wiring directly with synthetic proofs — the DHKE
 /// unblind+verify math itself is `nmp-nip60`'s own tested surface (this
 /// function only calls it); what this test proves is the ledger fact +
@@ -382,6 +362,7 @@ fn dispatch_token_event_applies_token_added_and_settles_the_operation() {
                 operation_id: operation_id.clone(),
                 mint: MINT.to_string(),
                 amount_sats: 30,
+                minted_proofs: None,
             },
         );
     }
@@ -401,6 +382,7 @@ fn dispatch_token_event_applies_token_added_and_settles_the_operation() {
         vec![synthetic_proof(20, "02aa"), synthetic_proof(10, "02bb")],
         account.clone(),
         vec!["wss://relay.example".to_string()],
+        1_700_000_000,
         Some("cid-complete".to_string()),
     );
 
@@ -424,6 +406,10 @@ fn dispatch_token_event_applies_token_added_and_settles_the_operation() {
             ..
         }) => {
             assert_eq!(unsigned.kind, nmp_nip60::KIND_NIP60_TOKEN);
+            assert_eq!(
+                unsigned.created_at, 1_700_000_000,
+                "created_at must be the caller-supplied wall-clock value, never a 0 sentinel"
+            );
             continuation
         }
         other => panic!("expected EventForAccount, got {other:?}"),

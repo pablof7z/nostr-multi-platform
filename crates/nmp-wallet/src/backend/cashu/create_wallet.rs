@@ -62,6 +62,9 @@ impl ProtocolCommand for CreateCashuWalletCommand {
         // `CommandSender`, mirroring `nmp_nip17::dm_send`'s up-front
         // `required_dm_relays` resolution.
         let relays = ctx.recipient_publish_relays(&account_pubkey, KIND_NIP60_WALLET);
+        // D7 — the kernel owns the wall clock; re-stamp before the wallet
+        // event is built (see `chain.rs`'s `launch_self_encrypted_publish`).
+        let created_at = ctx.now_secs();
 
         let worker_tx = ctx.command_sender_clone();
         let on_signed_state = Arc::clone(&state);
@@ -72,6 +75,7 @@ impl ProtocolCommand for CreateCashuWalletCommand {
             KIND_NIP60_WALLET,
             plaintext,
             relays,
+            created_at,
             correlation_id,
             move |_tx, _signed| {
                 let mut state = lock_state(&on_signed_state);

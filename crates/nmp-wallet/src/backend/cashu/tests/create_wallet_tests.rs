@@ -61,6 +61,34 @@ fn unsupported_mint_url_fails_closed() {
     }
 }
 
+/// A second `CreateCashuWallet` after the wallet already completed creation
+/// must fail closed rather than silently overwrite `mints`/`cashu_pubkey_hex`
+/// (which may already hold ledger balance under the first mint).
+#[test]
+fn create_wallet_refuses_to_recreate_an_already_created_wallet() {
+    let backend = CashuWalletBackend::new();
+    state::lock_state(&backend.state).created = true;
+    let commands = backend.start_intent(
+        ctx(Some("aa".repeat(32).as_str())),
+        WalletIntent::CreateCashuWallet {
+            mint: "https://other-mint.example".to_string(),
+        },
+        None,
+    );
+    assert!(
+        commands
+            .iter()
+            .all(|c| !matches!(c, ActorCommand::Protocol(_))),
+        "an already-created wallet must never dispatch a second create: {commands:?}"
+    );
+    match &commands[0] {
+        ActorCommand::ShowErrorToken { token } => {
+            assert_eq!(token.code(), ui_codes::ALREADY_CREATED);
+        }
+        other => panic!("expected ShowErrorToken, got {other:?}"),
+    }
+}
+
 #[test]
 fn valid_create_journals_prepared_before_dispatch() {
     let backend = CashuWalletBackend::new();
@@ -145,6 +173,10 @@ fn happy_path_signs_and_publishes_kind_17375() {
         }) => {
             assert_eq!(unsigned.kind, nmp_nip60::KIND_NIP60_WALLET);
             assert_eq!(unsigned.content, "fake-ciphertext");
+            assert_eq!(
+                unsigned.created_at, 1_700_000_000,
+                "created_at must be the kernel clock's value, never a 0 sentinel"
+            );
             assert_eq!(signer_pubkey.as_deref(), Some(account.as_str()));
             continuation
         }
