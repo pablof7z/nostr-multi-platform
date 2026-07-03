@@ -29,7 +29,9 @@ mod feed_facade;
 mod feed_params;
 mod feed_session;
 mod feed_session_host;
-mod group_feed;
+#[cfg(test)]
+#[path = "group_feed_tests.rs"]
+mod group_feed_tests;
 mod incremental_apply;
 mod intent;
 mod keyring_forget;
@@ -71,7 +73,6 @@ pub use feed_params::{
     FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
-pub use group_feed::{Nip25GroupReactionsHandle, Nip25GroupReactionsSession, GROUP_REACTIONS_KEY};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_nip18::PrimaryKindError;
