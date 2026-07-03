@@ -2,7 +2,7 @@ use trellis_core::ResourceCommand;
 
 use crate::{
     XrayInterestDescriptor, XrayProjectionContext, XrayReceipt, XrayReceiptEventKind,
-    XrayTransactionMarker,
+    XrayTimestamp, XrayTransactionMarker,
 };
 
 /// Adapter trait for Trellis command payloads that can describe NMP interests.
@@ -19,6 +19,7 @@ pub trait TrellisReceiptPayload {
 pub fn receipts_from_trellis_commands<C>(
     context: &XrayProjectionContext,
     transaction: XrayTransactionMarker,
+    timestamp: XrayTimestamp,
     commands: &[ResourceCommand<C>],
 ) -> Vec<XrayReceipt>
 where
@@ -47,7 +48,14 @@ where
                     (XrayReceiptEventKind::Close, key.as_str().to_string(), None)
                 }
             };
-            XrayReceipt::new(context.clone(), transaction, event, resource_key, interest)
+            XrayReceipt::new(
+                context.clone(),
+                transaction,
+                timestamp,
+                event,
+                resource_key,
+                interest,
+            )
         })
         .collect()
 }
@@ -58,6 +66,7 @@ mod tests {
     use trellis_core::{Graph, ResourceKey, ResourcePlan};
 
     use super::*;
+    use crate::{XrayReason, XrayReasonCode};
 
     #[derive(Clone)]
     struct DemoCommand(&'static str);
@@ -100,11 +109,16 @@ mod tests {
         );
         plan.close(ResourceKey::new("delta".to_string()), scope);
 
-        let context =
-            XrayProjectionContext::new("app.feed.home", "home-feed", "owner:feed", "sync");
+        let context = XrayProjectionContext::new(
+            "app.feed.home",
+            "home-feed",
+            "owner:feed",
+            XrayReason::new(XrayReasonCode::FeedSessionSync),
+        );
         let receipts = receipts_from_trellis_commands(
             &context,
             XrayTransactionMarker::new(11, 4),
+            XrayTimestamp::new(99),
             plan.commands(),
         );
 
@@ -113,7 +127,8 @@ mod tests {
         assert_eq!(receipts[1].event, XrayReceiptEventKind::Replace);
         assert_eq!(receipts[2].event, XrayReceiptEventKind::Refresh);
         assert_eq!(receipts[3].event, XrayReceiptEventKind::Close);
-        assert_eq!(receipts[0].resource_key, "alpha");
+        assert_eq!(receipts[0].resource_id, "alpha");
+        assert_eq!(receipts[0].timestamp.unix_ms, 99);
         assert_eq!(
             receipts[0].interest.as_ref().unwrap().provenance,
             "active-follow-timeline"
@@ -131,11 +146,16 @@ mod tests {
             DemoCommand("alice"),
         );
 
-        let context =
-            XrayProjectionContext::new("app.feed.home", "home-feed", "owner:feed", "sync");
+        let context = XrayProjectionContext::new(
+            "app.feed.home",
+            "home-feed",
+            "owner:feed",
+            XrayReason::new(XrayReasonCode::FeedSessionSync),
+        );
         let receipts = receipts_from_trellis_commands(
             &context,
             XrayTransactionMarker::new(11, 4),
+            XrayTimestamp::new(99),
             plan.commands(),
         );
         let value: Value = serde_json::to_value(&receipts).unwrap();
@@ -143,7 +163,10 @@ mod tests {
 
         assert!(json.contains("app.feed.home"));
         assert!(!json.contains("trellis_core"));
+        assert!(!json.contains("trellis"));
         assert!(!json.contains("ResourceKey"));
         assert!(!json.contains("ResourcePlan"));
+        assert!(!json.contains("resource_key"));
+        assert!(!json.contains("NodeId("));
     }
 }
