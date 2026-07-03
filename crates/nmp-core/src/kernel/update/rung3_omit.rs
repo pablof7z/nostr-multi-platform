@@ -8,8 +8,10 @@
 //! in the present set, synthesize explicit `Cleared` rows for manifest-Cleared
 //! keys absent from `typed`, and keep `Changed` rows intact.
 //!
-//! Mirrors `rung2_stamp.rs` in structure: a single pure function with no
-//! side-effects on kernel state.
+//! Mirrors `rung2_stamp.rs` in structure: a single function over the per-tick
+//! manifest. (`rung2_stamp::stamp_typed_projections` additionally threads a
+//! `&mut ProjectionRevTracker` to advance app-owned keys' content-driven rev —
+//! NMP#2944; this omit pass itself stays a pure transform.)
 //!
 //! ## Invariants (ADR-0070 §3 D3-1 / D3-2 / D3-7 + §10.2 / §10.3)
 //!
