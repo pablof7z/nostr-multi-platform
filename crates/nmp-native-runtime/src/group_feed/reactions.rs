@@ -65,44 +65,36 @@ impl NmpApp {
         let projection = Arc::new(ReactionAggregateProjection::new(Some(active_pubkey)));
         let projection_reader = Arc::clone(&projection);
 
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_REACTIONS_PROJECTION_TOKEN, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: GROUP_REACTIONS_KEY.to_string(),
-                    schema_id: REACTION_AGGREGATE_SCHEMA_ID.to_string(),
-                    schema_version: REACTION_AGGREGATE_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(REACTION_AGGREGATE_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_reaction_aggregate_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
+        let projection_for_output = Arc::clone(&projection);
+        let output_encoder: nmp_read_session::ReadOutputEncoder = Box::new(move || {
+            let snapshot = projection_for_output.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: GROUP_REACTIONS_KEY.to_string(),
+                schema_id: REACTION_AGGREGATE_SCHEMA_ID.to_string(),
+                schema_version: REACTION_AGGREGATE_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(REACTION_AGGREGATE_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload: encode_reaction_aggregate_snapshot(&snapshot),
+                ..Default::default()
+            })
+        });
 
-        let handle_id = self.open_group_feed(
-            GROUP_REACTIONS_KEY,
+        let read_handle = self.open_group_feed(
+            GROUP_REACTIONS_PROJECTION_TOKEN,
             GROUP_REACTIONS_CONSUMER,
             SCOPE_GLOBAL,
             relay_pin,
             filter_json,
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
+            output_encoder,
         );
-        (
-            Nip25GroupReactionsHandle {
-                key: GROUP_REACTIONS_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        )
+        (Nip25GroupReactionsHandle { read_handle }, projection_reader)
     }
 
     /// Close the group-reactions typed read session represented by `handle`.
     /// Idempotent (D6).
     pub fn close_nip25_group_reactions_session(&self, handle: Nip25GroupReactionsHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
+        self.close_group_feed_handle(&handle.read_handle);
     }
 }
 

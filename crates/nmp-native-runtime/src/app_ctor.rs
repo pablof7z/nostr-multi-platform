@@ -334,7 +334,6 @@ pub fn new_app() -> NmpApp {
         nip46_runtime: Arc::new(Mutex::new(None)),
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
-        group_feed_sessions: Mutex::new(std::collections::HashMap::new()),
         reaction_read_sessions: Mutex::new(std::collections::HashMap::new()),
         observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         #[cfg(any(test, feature = "test-support"))]

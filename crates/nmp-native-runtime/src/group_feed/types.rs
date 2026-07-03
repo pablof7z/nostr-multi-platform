@@ -1,4 +1,5 @@
 use nmp_nip29::group_id::GroupId;
+use nmp_read_session::ReadHandle;
 
 /// Descriptor for a NIP-29 group-events typed read session.
 ///
@@ -69,14 +70,13 @@ impl Nip25GroupReactionsSession {
 /// Runtime handle for one group-scoped NIP-25 reaction-aggregate read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip25GroupReactionsHandle {
-    pub(super) key: String,
-    pub(super) handle_id: u64,
+    pub(super) read_handle: ReadHandle,
 }
 
 impl Nip25GroupReactionsHandle {
     #[must_use]
     pub fn key(&self) -> &str {
-        &self.key
+        &self.read_handle.projection_key
     }
 }
 
@@ -157,55 +157,51 @@ impl Nip29JoinedGroupsSession {
 /// caller closes it by passing the handle back to the owning NMP app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29GroupEventsHandle {
-    pub(super) key: String,
-    pub(super) handle_id: u64,
+    pub(super) read_handle: ReadHandle,
 }
 
 impl Nip29GroupEventsHandle {
     #[must_use]
     pub fn key(&self) -> &str {
-        &self.key
+        &self.read_handle.projection_key
     }
 }
 
 /// Runtime handle for one host-driven NIP-29 group-discovery read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29GroupDiscoveryHandle {
-    pub(super) key: String,
-    pub(super) handle_id: u64,
+    pub(super) read_handle: ReadHandle,
 }
 
 impl Nip29GroupDiscoveryHandle {
     #[must_use]
     pub fn key(&self) -> &str {
-        &self.key
+        &self.read_handle.projection_key
     }
 }
 
 /// Runtime handle for the active account's NIP-29 joined-groups read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29JoinedGroupsHandle {
-    pub(super) key: String,
-    pub(super) handle_id: u64,
+    pub(super) read_handle: ReadHandle,
 }
 
 impl Nip29JoinedGroupsHandle {
     #[must_use]
     pub fn key(&self) -> &str {
-        &self.key
+        &self.read_handle.projection_key
     }
 }
 
 /// Runtime handle for one host-driven NIP-29 group-roster read session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29GroupRosterHandle {
-    pub(super) key: String,
-    pub(super) handle_id: u64,
+    pub(super) read_handle: ReadHandle,
 }
 
 impl Nip29GroupRosterHandle {
     #[must_use]
     pub fn key(&self) -> &str {
-        &self.key
+        &self.read_handle.projection_key
     }
 }

@@ -63,10 +63,8 @@
 //!   every view.
 //! - `types` — descriptor and handle types for all four views.
 
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use nmp_core::ObservedProjectionId;
 use nmp_nip29::group_id::group_metadata_filter_json;
 use nmp_nip29::{
     encode_discovered_groups_snapshot, encode_group_events_snapshot, encode_joined_groups_snapshot,
@@ -140,19 +138,6 @@ const DISCOVERED_GROUPS_CONSUMER: &str = "nip29-discovered-groups";
 const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 const GROUP_ROSTER_CONSUMER: &str = "nip29-group-roster";
 const GROUP_REACTIONS_CONSUMER: &str = "nip25-group-reactions";
-static NEXT_GROUP_READ_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
-
-/// Teardown recipe for one live NIP-29 read view (held in
-/// `NmpApp::group_feed_sessions`, keyed by the view's projection key). Records
-/// exactly what `open_*` installed so `close_*` reverses it.
-pub(crate) struct GroupFeedSession {
-    /// The snapshot-projection key (also the session key).
-    projection_key: String,
-    /// Unique id for the handle returned by this specific open.
-    handle_id: u64,
-    /// The observed-projection kernel observer id.
-    observer_id: ObservedProjectionId,
-}
 
 impl NmpApp {
     /// Open the NIP-29 group-events read view for `group_id` constrained to the
@@ -203,44 +188,35 @@ impl NmpApp {
         let projection = Arc::new(GroupEventsProjection::new(query));
         let projection_reader = Arc::clone(&projection);
 
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(GROUP_EVENTS_PROJECTION_TOKEN, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: GROUP_EVENTS_KEY.to_string(),
-                    schema_id: GROUP_EVENTS_SCHEMA_ID.to_string(),
-                    schema_version: GROUP_EVENTS_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(GROUP_EVENTS_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_group_events_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
+        let projection_for_output = Arc::clone(&projection);
+        let output_encoder: nmp_read_session::ReadOutputEncoder = Box::new(move || {
+            let snapshot = projection_for_output.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: GROUP_EVENTS_KEY.to_string(),
+                schema_id: GROUP_EVENTS_SCHEMA_ID.to_string(),
+                schema_version: GROUP_EVENTS_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(GROUP_EVENTS_FILE_IDENTIFIER).into_owned(),
+                payload: encode_group_events_snapshot(&snapshot),
+                ..Default::default()
+            })
+        });
 
-        let handle_id = self.open_group_feed(
-            GROUP_EVENTS_KEY,
+        let read_handle = self.open_group_feed(
+            GROUP_EVENTS_PROJECTION_TOKEN,
             GROUP_EVENTS_CONSUMER,
             SCOPE_GLOBAL,
             relay_pin,
             filter_json,
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
+            output_encoder,
         );
-        (
-            Nip29GroupEventsHandle {
-                key: GROUP_EVENTS_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        )
+        (Nip29GroupEventsHandle { read_handle }, projection_reader)
     }
 
     /// Close a group-events typed read session. Idempotent — closing an
     /// already-closed handle is a harmless no-op (D6).
     pub fn close_nip29_group_events_session(&self, handle: Nip29GroupEventsHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
+        self.close_group_feed_handle(&handle.read_handle);
     }
 
     /// Open the NIP-29 group-discovery typed read session for one host relay. Hydrating:
@@ -279,45 +255,37 @@ impl NmpApp {
         let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_url));
         let projection_reader = Arc::clone(&projection);
 
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(DISCOVERED_GROUPS_PROJECTION_TOKEN, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: DISCOVERED_GROUPS_KEY.to_string(),
-                    schema_id: DISCOVERED_GROUPS_SCHEMA_ID.to_string(),
-                    schema_version: DISCOVERED_GROUPS_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(DISCOVERED_GROUPS_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_discovered_groups_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
+        let projection_for_output = Arc::clone(&projection);
+        let output_encoder: nmp_read_session::ReadOutputEncoder = Box::new(move || {
+            let snapshot = projection_for_output.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: DISCOVERED_GROUPS_KEY.to_string(),
+                schema_id: DISCOVERED_GROUPS_SCHEMA_ID.to_string(),
+                schema_version: DISCOVERED_GROUPS_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(DISCOVERED_GROUPS_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload: encode_discovered_groups_snapshot(&snapshot),
+                ..Default::default()
+            })
+        });
 
-        let handle_id = self.open_group_feed(
-            DISCOVERED_GROUPS_KEY,
+        let read_handle = self.open_group_feed(
+            DISCOVERED_GROUPS_PROJECTION_TOKEN,
             DISCOVERED_GROUPS_CONSUMER,
             SCOPE_GLOBAL,
             relay_pin,
             group_metadata_filter_json(),
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
+            output_encoder,
         );
 
-        (
-            Nip29GroupDiscoveryHandle {
-                key: DISCOVERED_GROUPS_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        )
+        (Nip29GroupDiscoveryHandle { read_handle }, projection_reader)
     }
 
     /// Close the group-discovery typed read session represented by `handle`.
     /// Idempotent (D6).
     pub fn close_nip29_group_discovery_session(&self, handle: Nip29GroupDiscoveryHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
+        self.close_group_feed_handle(&handle.read_handle);
     }
 
     /// Open the NIP-29 joined-groups typed read session for the active account.
@@ -372,44 +340,36 @@ impl NmpApp {
         };
         let projection_reader = Arc::clone(&projection);
 
-        let projection_for_sidecar = Arc::clone(&projection);
-        let register_sidecar = move |app: &NmpApp| {
-            app.register_typed_snapshot_projection(JOINED_GROUPS_PROJECTION_TOKEN, move || {
-                let snapshot = projection_for_sidecar.snapshot();
-                Some(nmp_core::TypedProjectionData {
-                    key: JOINED_GROUPS_KEY.to_string(),
-                    schema_id: JOINED_GROUPS_SCHEMA_ID.to_string(),
-                    schema_version: JOINED_GROUPS_SCHEMA_VERSION,
-                    file_identifier: String::from_utf8_lossy(JOINED_GROUPS_FILE_IDENTIFIER)
-                        .into_owned(),
-                    payload: encode_joined_groups_snapshot(&snapshot),
-                    ..Default::default()
-                })
-            });
-        };
+        let projection_for_output = Arc::clone(&projection);
+        let output_encoder: nmp_read_session::ReadOutputEncoder = Box::new(move || {
+            let snapshot = projection_for_output.snapshot();
+            Some(nmp_core::TypedProjectionData {
+                key: JOINED_GROUPS_KEY.to_string(),
+                schema_id: JOINED_GROUPS_SCHEMA_ID.to_string(),
+                schema_version: JOINED_GROUPS_SCHEMA_VERSION,
+                file_identifier: String::from_utf8_lossy(JOINED_GROUPS_FILE_IDENTIFIER)
+                    .into_owned(),
+                payload: encode_joined_groups_snapshot(&snapshot),
+                ..Default::default()
+            })
+        });
 
-        let handle_id = self.open_group_feed(
-            JOINED_GROUPS_KEY,
+        let read_handle = self.open_group_feed(
+            JOINED_GROUPS_PROJECTION_TOKEN,
             JOINED_GROUPS_CONSUMER,
             SCOPE_ACTIVE_ACCOUNT,
             relay_pin,
             group_metadata_filter_json(),
             projection as Arc<dyn nmp_core::ObservedProjectionSink>,
-            register_sidecar,
+            output_encoder,
         );
-        Some((
-            Nip29JoinedGroupsHandle {
-                key: JOINED_GROUPS_KEY.to_string(),
-                handle_id,
-            },
-            projection_reader,
-        ))
+        Some((Nip29JoinedGroupsHandle { read_handle }, projection_reader))
     }
 
     /// Close the joined-groups typed read session represented by `handle`.
     /// Idempotent (D6).
     pub fn close_nip29_joined_groups_session(&self, handle: Nip29JoinedGroupsHandle) {
-        self.close_group_feed_handle(&handle.key, handle.handle_id);
+        self.close_group_feed_handle(&handle.read_handle);
     }
 }
 

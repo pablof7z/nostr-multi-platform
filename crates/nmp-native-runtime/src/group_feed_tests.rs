@@ -250,8 +250,5 @@ fn joined_groups_empty_active_pubkey_is_noop() {
 }
 
 fn session_count(app: &NmpApp) -> usize {
-    app.group_feed_sessions
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .len()
+    app.live_feed_session_count()
 }
