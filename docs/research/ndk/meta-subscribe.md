@@ -51,11 +51,16 @@ The original research mapped this to a proposed runtime reducer trait. That
 surface did not ship. Current NMP uses typed feed sessions,
 event observers, projections, ref claims, and the interest registry.
 
-> **Shipped (#2113).** The pointer-source read model now exists on exactly these
-> seams — no new trait family, no out-of-band fetch. The pure read-model state
-> machine is [`nmp_content::PointerSourceModel`](../../../crates/nmp-content/src/pointer_source/model.rs)
-> and the composition that wires it to the kernel lives with the content
-> pointer-source module.
+> **Shipped (#2113); composition root retired (#2956).** The pointer-source
+> read model now exists on exactly these seams — no new trait family, no
+> out-of-band fetch. The pure read-model state machine is
+> [`nmp_content::PointerSourceModel`](../../../crates/nmp-content/src/pointer_source/model.rs).
+> The original hand-rolled composition root that wired it to the kernel
+> (`op_pointer_source` / `DynamicTargetProjection`, §7 below) was dead code —
+> deleted in #2956 — and no longer lives with the content pointer-source
+> module. The live hydration path today is `nmp-feed-session::pointer_target_hydration`,
+> which drives the same lifecycle through the feed engine directly over the
+> pure model; see the superseded-note at the top of §7 for the full mapping.
 > The rest of this section is the design it implements.
 
 A meta-subscription is still the right shape, but the NMP implementation target
