@@ -5,15 +5,10 @@
 //! Apps use this for **mint discovery** — finding mints via Nostr search
 //! rather than hardcoded URLs.
 //!
-//! # Relay selection
-//!
-//! Wallet relay scoping is owned by `nmp-wallet`, not this crate (see
-//! `docs/architecture/nip60-nip61-wallet-design.md`, Relay Acquisition): the
-//! active user's kind:10019 `relay` tags are authoritative, with NIP-65
-//! fallback. The `relay` tags on the wallet's own kind:17375 are a legacy,
-//! non-authoritative compatibility hint (see
-//! [`crate::nip60_wallet::Nip60WalletHandle::legacy_relay_hint`]) and must
-//! never override that resolution.
+//! Note: this event's own `relays` field is about *mint* reachability, not
+//! wallet relay scoping — for the kind:17375 legacy relay hint and why it can
+//! never override kind:10019/NIP-65, see the [`crate::wallet_event`] module
+//! docs.
 
 use nostr::{EventBuilder, EventId, Kind, Tag, TagKind};
 

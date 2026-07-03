@@ -6,6 +6,17 @@ license = { workspace = true }
 repository.workspace = true
 description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only — backend selection, the wallet operation journal, and the WalletBackend seam live in nmp-wallet."
 
+[features]
+# `native` gates the synchronous Cashu mint HTTP client (`cashu::client`) and
+# every wallet operation that round-trips to a mint (deposit, nutzap
+# send/receive, DLEQ verification) — matches the convention in nmp-nip57 /
+# nmp-nip05. Enabled by default so existing native consumers see no change.
+# Disable with `default-features = false` for wasm32 / pure-codec builds; the
+# event codecs, Cashu proof/DLEQ types, and kind:10019 publishing remain
+# always-compiled.
+default = ["native"]
+native = ["dep:ureq"]
+
 [dependencies]
 # nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind
 # integers. NIP-60/61/88 kind constants live there so this crate declares zero
@@ -18,9 +29,9 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # sha2: Cashu hash_to_curve (SHA-256 try-and-increment).
 sha2 = "0.10"
-# ureq: synchronous HTTP client for Cashu mint API calls.
-# Matches the pattern used by nmp-nip57's LNURL fetcher.
-ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+# ureq: synchronous HTTP client for Cashu mint API calls. Optional — gated by
+# the `native` feature, matching the pattern used by nmp-nip57 / nmp-nip05.
+ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
 tracing = "0.1"
 hex = "0.4"
 # NOTE: this crate performs ZERO relay I/O. It owns no socket and no relay URL.

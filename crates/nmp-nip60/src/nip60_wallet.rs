@@ -17,13 +17,9 @@
 //!   outbox via [`Nip60WalletHandle::take_outbox`] and publishes each event
 //!   through its `ActorCommand::Publish*` chokepoint.
 //!
-//! The `legacy_relay_hint` field is wallet *metadata* (the `relay` tags
-//! listed in the kind:17375 config), surfaced verbatim for callers that want
-//! it. It is **not** authoritative relay selection: the active user's
-//! kind:10019 `relay` tags, with NIP-65 fallback, are the source of truth for
-//! wallet relay scoping (see `docs/architecture/nip60-nip61-wallet-design.md`,
-//! Relay Acquisition). That resolution policy lives in `nmp-wallet`, not
-//! here.
+//! For the kind:17375 legacy `relay`-tag hint and why it can never become the
+//! relay-selection source of truth, see the [`crate::wallet_event`] module
+//! docs — that is the canonical statement of this crate's relay policy.
 //!
 //! # Module layout
 //!
@@ -31,9 +27,11 @@
 //! balance, ingest). Each concern that operates on that shared state lives in
 //! its own submodule:
 //!
-//! - [`deposit`] — minting tokens from a paid Lightning invoice (NUT-04/23).
-//! - [`nutzap_send`] — proof selection, P2PK-locking, and sending NutZaps.
-//! - [`nutzap_receive`] — redeeming a received NutZap.
+//! - [`deposit`] — minting tokens from a paid Lightning invoice (NUT-04/23,
+//!   `native` feature only).
+//! - [`nutzap_send`] — proof selection, P2PK-locking, and sending NutZaps
+//!   (mint operations are `native`-only; publishing kind:10019 is not).
+//! - [`nutzap_receive`] — redeeming a received NutZap (`native` feature only).
 //!
 //! # Typical usage
 //!
@@ -47,7 +45,6 @@
 //! let wallet = Nip60WalletHandle::create_new(
 //!     &keys,
 //!     "https://testnut.cashu.space",
-//!     Vec::new(),
 //! ).expect("wallet creation");
 //!
 //! let to_publish = wallet.take_outbox();
@@ -55,10 +52,13 @@
 //! println!("{} event(s) queued for the kernel to publish", to_publish.len());
 //! ```
 
+#[cfg(feature = "native")]
 mod deposit;
+#[cfg(feature = "native")]
 mod nutzap_receive;
 mod nutzap_send;
 
+#[cfg(feature = "native")]
 pub use deposit::DepositRequest;
 
 use std::collections::HashSet;
@@ -81,7 +81,6 @@ pub struct Nip60WalletHandle {
     config: Arc<Mutex<WalletConfig>>,
     tokens: Arc<Mutex<Vec<TokenRecord>>>,
     redeemed: Arc<Mutex<HashSet<EventId>>>,
-    legacy_relay_hint: Vec<String>,
     /// Signed events awaiting publication by the kernel. Drained via
     /// [`Self::take_outbox`].
     outbox: Arc<Mutex<Vec<Event>>>,
@@ -93,12 +92,8 @@ impl Nip60WalletHandle {
     /// Create a brand-new NIP-60 wallet. Builds and signs the kind:17375
     /// wallet event and queues it in the outbox for the kernel to publish,
     /// then returns the wallet handle.
-    pub fn create_new(
-        keys: &Keys,
-        mint_url: &str,
-        relays: Vec<String>,
-    ) -> Result<Self, Nip60Error> {
-        let config = WalletConfig::generate(vec![mint_url.to_string()], relays.clone());
+    pub fn create_new(keys: &Keys, mint_url: &str) -> Result<Self, Nip60Error> {
+        let config = WalletConfig::generate(vec![mint_url.to_string()]);
         let wallet_builder = build_wallet_event(&config, keys)?;
         let wallet_event = wallet_builder
             .sign_with_keys(keys)
@@ -109,7 +104,6 @@ impl Nip60WalletHandle {
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
             redeemed: Arc::new(Mutex::new(HashSet::new())),
-            legacy_relay_hint: relays,
             outbox: Arc::new(Mutex::new(Vec::new())),
         };
         handle.enqueue(wallet_event);
@@ -119,21 +113,16 @@ impl Nip60WalletHandle {
     /// Build a wallet handle from a kind:17375 wallet event the kernel already
     /// fetched from its store.
     ///
-    /// The legacy relay hint comes from the event's own `relay` tags, if any
-    /// — a non-authoritative compatibility signal only (see
-    /// [`Self::legacy_relay_hint`]). After construction, feed the wallet's
-    /// token and history events through [`Self::ingest_token_events`] and
-    /// [`Self::ingest_history_events`] to populate balance and redemption
-    /// state.
+    /// After construction, feed the wallet's token and history events through
+    /// [`Self::ingest_token_events`] and [`Self::ingest_history_events`] to
+    /// populate balance and redemption state.
     pub fn from_wallet_event(keys: &Keys, wallet_event: &Event) -> Result<Self, Nip60Error> {
         let config = decode_wallet_event(wallet_event, keys.secret_key(), &keys.public_key())?;
-        let legacy_relay_hint = config.legacy_relay_hint.clone();
         Ok(Self {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
             redeemed: Arc::new(Mutex::new(HashSet::new())),
-            legacy_relay_hint,
             outbox: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -206,23 +195,14 @@ impl Nip60WalletHandle {
         self.redeemed.lock().unwrap().contains(&event_id)
     }
 
+    // Only called from `nutzap_receive::redeem_nutzap` (native-only) outside
+    // of tests; the `allow` keeps `--no-default-features` builds warning-free.
+    #[cfg_attr(not(feature = "native"), allow(dead_code))]
     fn mark_redeemed_nutzap(&self, event_id: EventId) {
         self.redeemed.lock().unwrap().insert(event_id);
     }
 
     // ── Accessors ──────────────────────────────────────────────────────────
-
-    /// The `relay` tags from the kind:17375 wallet event, if any.
-    ///
-    /// This is legacy design residue, not authoritative relay selection: the
-    /// active user's kind:10019 `relay` tags, with NIP-65 fallback, decide
-    /// where wallet-related events are read from and published to. Callers
-    /// must not use this as a relay-scoping source of truth — it exists only
-    /// as a compatibility hint for wallets whose kind:17375 predates
-    /// kind:10019 adoption.
-    pub fn legacy_relay_hint(&self) -> &[String] {
-        &self.legacy_relay_hint
-    }
 
     pub fn pubkey(&self) -> PublicKey {
         self.keys.public_key()

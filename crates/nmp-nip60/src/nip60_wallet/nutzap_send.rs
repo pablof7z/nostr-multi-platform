@@ -2,18 +2,60 @@
 //! publishing the kind:9321 nutzap event plus the kind:10019 NutZap info
 //! event that advertises this wallet's accepted mints.
 
+#[cfg(feature = "native")]
 use tracing::info;
 
-use nostr::{EventId, PublicKey};
+use nostr::EventId;
+#[cfg(feature = "native")]
+use nostr::PublicKey;
 
+#[cfg(feature = "native")]
 use crate::cashu::client::{self as cashu_client, split_amount, MintClient};
+#[cfg(feature = "native")]
 use crate::cashu::types::Proof;
 use crate::error::Nip60Error;
-use crate::nutzap::{build_nutzap_info_event, p2pk_secret, NutZapInfo, NutZapProof};
+use crate::nutzap::{build_nutzap_info_event, NutZapInfo};
+#[cfg(feature = "native")]
+use crate::nutzap::{p2pk_secret, NutZapProof};
+#[cfg(feature = "native")]
 use crate::token_event::{build_token_event, TokenRecord};
 
 use super::Nip60WalletHandle;
 
+impl Nip60WalletHandle {
+    /// Build the user's kind:10019 NutZap info event and queue it in the
+    /// outbox for the kernel to publish. Returns the queued event id.
+    ///
+    /// `relays` must be the caller's already-resolved authoritative relay set
+    /// (kind:10019 / NIP-65, per `crate::wallet_event`'s relay-policy note) —
+    /// this method never falls back to the wallet's kind:17375 legacy relay
+    /// hint. There is no default: seeding kind:10019 from anything but the
+    /// resolved set would make the demoted legacy hint the relay-selection
+    /// source of truth for every sender who reads it back.
+    pub fn publish_nutzap_info(&self, relays: &[String]) -> Result<EventId, Nip60Error> {
+        let config = self.config.lock().unwrap().clone();
+        let cashu_pubkey = config.pubkey_hex()?;
+        let info = NutZapInfo {
+            relays: relays.to_vec(),
+            mints: config.mints.clone(),
+            cashu_pubkey: Some(cashu_pubkey),
+        };
+        let builder = build_nutzap_info_event(&info, &self.keys)?;
+        let event = builder
+            .sign_with_keys(&self.keys)
+            .map_err(|e| Nip60Error::Event(format!("sign nutzap info: {e}")))?;
+        let event_id = event.id;
+        self.enqueue(event);
+        Ok(event_id)
+    }
+}
+
+// ─── Mint-HTTP-dependent operations (native only) ─────────────────────────
+//
+// Everything below round-trips to the Cashu mint over HTTP (`ureq`), so it
+// compiles only with the `native` feature. The codec/type surface above
+// (`publish_nutzap_info`) stays HTTP-free and always-compiled.
+#[cfg(feature = "native")]
 impl Nip60WalletHandle {
     /// Send a NutZap to a recipient.
     ///
@@ -27,7 +69,7 @@ impl Nip60WalletHandle {
         &self,
         amount_sats: u64,
         recipient_pubkey: &PublicKey,
-        nutzap_info: &NutZapInfo,
+        nutzap_info: &crate::nutzap::NutZapInfo,
         comment: Option<&str>,
         zapped_event_id: Option<&EventId>,
     ) -> Result<EventId, Nip60Error> {
@@ -69,34 +111,10 @@ impl Nip60WalletHandle {
         Ok(nutzap_event_id)
     }
 
-    /// Build the user's kind:10019 NutZap info event and queue it in the
-    /// outbox for the kernel to publish. Returns the queued event id.
-    ///
-    /// The published `relay` tags default to [`Self::legacy_relay_hint`] (the
-    /// relays this handle was constructed or decoded with). Callers that have
-    /// resolved the active user's real relay set (kind:10019 / NIP-65) should
-    /// prefer publishing that set instead — this default exists only so a
-    /// freshly created wallet has *some* relay tags on its first kind:10019.
-    pub fn publish_nutzap_info(&self) -> Result<EventId, Nip60Error> {
-        let config = self.config.lock().unwrap().clone();
-        let cashu_pubkey = config.pubkey_hex()?;
-        let info = NutZapInfo {
-            relays: self.legacy_relay_hint.clone(),
-            mints: config.mints.clone(),
-            cashu_pubkey: Some(cashu_pubkey),
-        };
-        let builder = build_nutzap_info_event(&info, &self.keys)?;
-        let event = builder
-            .sign_with_keys(&self.keys)
-            .map_err(|e| Nip60Error::Event(format!("sign nutzap info: {e}")))?;
-        let event_id = event.id;
-        self.enqueue(event);
-        Ok(event_id)
-    }
-
     /// Select proofs to cover `amount_sats`, swap them at the mint for
     /// P2PK-locked output proofs, and queue the token bookkeeping (spent
-    /// deletions + change) that results. Used by [`Self::send_nutzap`].
+    /// deletions + change) that results. Shared by [`Self::send_nutzap`] and
+    /// the `nmp-wallet` backend adapter.
     pub(super) fn create_p2pk_proofs(
         &self,
         amount_sats: u64,

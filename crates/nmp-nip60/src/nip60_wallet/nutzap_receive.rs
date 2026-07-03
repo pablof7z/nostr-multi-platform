@@ -1,6 +1,9 @@
 //! Receiving NutZaps — redeem a received kind:9321 event by re-signing its
 //! P2PK proofs with the wallet's Cashu key and swapping them at the mint for
 //! fresh, spendable proofs.
+//!
+//! Requires the `native` feature — redemption round-trips to the mint over
+//! HTTP via [`crate::cashu::client`].
 
 use tracing::info;
 
