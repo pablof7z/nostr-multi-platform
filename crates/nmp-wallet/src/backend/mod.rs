@@ -59,16 +59,16 @@ pub enum WalletIntent {
     /// mint. Split from the old single-shot `DepositCashu` (#2895 W2) because
     /// the two mint HTTP calls happen at different times: getting a quote
     /// never moves value, so it can complete before any invoice is paid.
-    DepositQuote {
+    DepositQuoteCashu {
         mint: String,
         amount_sats: u64,
     },
-    /// Finish a deposit started by [`Self::DepositQuote`]: check the quote's
-    /// paid state, then mint tokens (the value-moving NUT-04 call) and write
-    /// the resulting kind:7375 token event. `quote_id` identifies the pending
-    /// quote (see `WalletBackendSnapshot`/action-result surfacing — never the
-    /// bounded projection, which carries no quote ids).
-    CompleteDeposit {
+    /// Finish a deposit started by [`Self::DepositQuoteCashu`]: check the
+    /// quote's paid state, then mint tokens (the value-moving NUT-04 call)
+    /// and write the resulting kind:7375 token event. `quote_id` identifies
+    /// the pending quote (see `WalletBackendSnapshot`/action-result
+    /// surfacing — never the bounded projection, which carries no quote ids).
+    CompleteDepositCashu {
         quote_id: String,
     },
     MeltCashu {

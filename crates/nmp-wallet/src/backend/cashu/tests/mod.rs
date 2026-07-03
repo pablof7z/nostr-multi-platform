@@ -8,7 +8,7 @@
 //! - [`create_wallet_tests`] — `CreateCashuWallet`: fail-closed (no account,
 //!   unsupported mint), the happy-path encrypt->sign->publish chain, and the
 //!   signer-can't-NIP-44 fail-closed branch.
-//! - [`deposit_tests`] — `DepositQuote`/`CompleteDeposit`: the "journals
+//! - [`deposit_tests`] — `DepositQuoteCashu`/`CompleteDepositCashu`: the "journals
 //!   before the mint request" ordering invariant, the auto-settle path
 //!   against a mockable mint, fail-closed unsupported-mint/unknown-quote, and
 //!   `dispatch_token_event`'s ledger/journal wiring with synthetic proofs.
@@ -102,7 +102,7 @@ impl ActionStageTracker for NoopStages {
 pub(super) const MINT: &str = "https://testnut.cashu.space";
 
 /// A `CashuWalletBackend` that already accepts [`MINT`] — the shared
-/// precondition `DepositQuote`/`CompleteDeposit` tests need before they can
+/// precondition `DepositQuoteCashu`/`CompleteDepositCashu` tests need before they can
 /// exercise the deposit flow at all.
 pub(super) fn backend_with_mint() -> CashuWalletBackend {
     let backend = CashuWalletBackend::new();

@@ -24,7 +24,7 @@ use crate::journal::{
 const DELTA_RING_CAPACITY: usize = 256;
 
 /// A deposit whose quote has been requested but not yet completed —
-/// [`crate::backend::WalletIntent::CompleteDeposit`] looks operations up by
+/// [`crate::backend::WalletIntent::CompleteDepositCashu`] looks operations up by
 /// `quote_id` (the caller's only handle on a pending deposit; see the action
 /// result surfacing in `deposit.rs`).
 #[derive(Clone)]
@@ -48,7 +48,7 @@ pub(super) struct CashuWalletState {
     /// Whether `CreateCashuWallet` has completed (kind:17375 signed and
     /// handed to the publish pipeline). Drives `snapshot()`'s readiness.
     pub(super) created: bool,
-    /// Mints this wallet accepts — the allow-list `DepositQuote` validates
+    /// Mints this wallet accepts — the allow-list `DepositQuoteCashu` validates
     /// against ("unsupported mint" is "not in this list", never a fixed
     /// global whitelist; MVP defaults the shell's suggested mint to
     /// `https://testnut.cashu.space`, but any mint the wallet was created
@@ -58,7 +58,7 @@ pub(super) struct CashuWalletState {
     pub(super) cashu_pubkey_hex: Option<String>,
     pub(super) journal: WalletOperationJournal,
     pub(super) ledger: WalletLedger,
-    /// quote_id -> pending deposit, keyed by the id `CompleteDeposit` carries.
+    /// quote_id -> pending deposit, keyed by the id `CompleteDepositCashu` carries.
     /// Never surfaced through `WalletProjection` (bounded product shape) or a
     /// log line — quote ids are secret-adjacent (ties the wallet to a
     /// specific pending payment); they only ever cross through the

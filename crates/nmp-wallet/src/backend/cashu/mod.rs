@@ -8,7 +8,7 @@
 //!   send/receive/publish-info and mint-probe observation are separate epic
 //!   #2864 waves this backend does not implement yet (see
 //!   `WalletCapabilities::cashu_wallet_and_deposit`'s doc comment).
-//! * `start_intent()` maps `CreateCashuWallet`/`DepositQuote`/`CompleteDeposit`
+//! * `start_intent()` maps `CreateCashuWallet`/`DepositQuoteCashu`/`CompleteDepositCashu`
 //!   onto `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`)
 //!   that drive the signer-transparent NIP-44 + sign ports and `nmp-nip60`'s
 //!   mint HTTP lane. Every other intent variant is NWC/nutzap-shaped and this
@@ -132,10 +132,10 @@ impl WalletBackend for CashuWalletBackend {
             WalletIntent::CreateCashuWallet { mint } => {
                 self.start_create_wallet(ctx, mint, correlation_id)
             }
-            WalletIntent::DepositQuote { mint, amount_sats } => {
+            WalletIntent::DepositQuoteCashu { mint, amount_sats } => {
                 self.start_deposit_quote(ctx, mint, amount_sats, correlation_id)
             }
-            WalletIntent::CompleteDeposit { quote_id } => {
+            WalletIntent::CompleteDepositCashu { quote_id } => {
                 self.start_complete_deposit(ctx, quote_id, correlation_id)
             }
             // Not this backend's capability — `capabilities()` already tells

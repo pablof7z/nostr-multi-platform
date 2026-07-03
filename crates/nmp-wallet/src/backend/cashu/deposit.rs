@@ -1,4 +1,4 @@
-//! `DepositQuote` / `CompleteDeposit` — the two-phase Cashu deposit flow
+//! `DepositQuoteCashu` / `CompleteDepositCashu` — the two-phase Cashu deposit flow
 //! (#2895 W2), split because the two NUT-04 mint HTTP calls happen at
 //! different times and only one of them moves value:
 //!
@@ -8,7 +8,7 @@
 //!   (`MintPending` -> `MintSettled`) and surfaces `{quote_id, bolt11, mint,
 //!   amount_sats}` through the action's `RecordActionSuccess` result JSON —
 //!   the one-shot channel a caller keeps to pay the invoice and later name
-//!   `quote_id` back to `CompleteDeposit`. Never the bounded
+//!   `quote_id` back to `CompleteDepositCashu`. Never the bounded
 //!   `WalletProjection` or a log line (quote ids are secret-adjacent).
 //! - [`CashuCompleteDepositCommand`] checks the quote's paid state (testnut:
 //!   already `Paid`; a real mint: `Paid` once the invoice above is settled
@@ -25,7 +25,7 @@
 //!
 //! `nmp_nip60::Nip60WalletHandle::complete_deposit` also queues a kind:7376
 //! spending-history event alongside the kind:7375 token event. This backend
-//! does not — the #2895 W2 design scoped `CompleteDeposit` to "mint tokens
+//! does not — the #2895 W2 design scoped `CompleteDepositCashu` to "mint tokens
 //! ... store proofs -> write kind:7375" only. A wallet driven exclusively by
 //! this backend will show correct balances (the ledger folds `TokenAdded`
 //! facts, not history events) but an incomplete kind:7376 history stream for
@@ -55,7 +55,7 @@ use super::chain::launch_self_encrypted_publish;
 use super::state::{lock_state, CashuWalletState, PendingDeposit};
 use super::ui_codes;
 
-// ─── DepositQuote ───────────────────────────────────────────────────────────
+// ─── DepositQuoteCashu ───────────────────────────────────────────────────────────
 
 pub(super) struct CashuDepositQuoteCommand {
     pub(super) state: Arc<Mutex<CashuWalletState>>,
@@ -108,7 +108,7 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
                     // The action-result channel (NOT the bounded projection,
                     // NOT a log line — see module docs) is how the caller
                     // learns the invoice to pay and the quote_id to name back
-                    // to `CompleteDeposit`.
+                    // to `CompleteDepositCashu`.
                     if let Some(id) = correlation_id {
                         let result_json = serde_json::json!({
                             "quote_id": quote_id,
@@ -138,7 +138,7 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
     }
 }
 
-// ─── CompleteDeposit ────────────────────────────────────────────────────────
+// ─── CompleteDepositCashu ────────────────────────────────────────────────────────
 
 pub(super) struct CashuCompleteDepositCommand {
     pub(super) state: Arc<Mutex<CashuWalletState>>,
@@ -210,7 +210,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                     if status.state != MintQuoteState::Paid {
                         // Retryable, not a hard failure — the caller pays the
                         // invoice (testnut auto-settles almost immediately) and
-                        // retries `CompleteDeposit`. The operation stays at
+                        // retries `CompleteDepositCashu`. The operation stays at
                         // `MintSettled`; no journal transition here.
                         fail(
                             &worker_tx,

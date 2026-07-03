@@ -1,4 +1,4 @@
-//! Money-safety: a `CompleteDeposit` retry after the encrypt/sign/publish
+//! Money-safety: a `CompleteDepositCashu` retry after the encrypt/sign/publish
 //! chain fails must resume from already-minted proofs, never re-touch the
 //! mint (a Cashu mint permanently refuses to mint an already-`ISSUED` quote —
 //! see `PendingDeposit::minted_proofs`'s doc comment).
@@ -8,7 +8,7 @@ use nmp_core::actor::SignCommand;
 use std::sync::Arc;
 
 /// Seed a pending deposit whose proofs are ALREADY minted (as if a prior
-/// `CompleteDeposit` attempt succeeded at `mint_tokens` but failed before the
+/// `CompleteDepositCashu` attempt succeeded at `mint_tokens` but failed before the
 /// chain finished publishing), then run `CashuCompleteDepositCommand` against
 /// a mint URL nothing is listening on. If the worker touched the mint at all
 /// it would report `MINT_QUOTE_FAILED` (connection refused) instead of

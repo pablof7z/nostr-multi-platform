@@ -1,6 +1,6 @@
 //! Unit tests for [`super::NwcWalletBackend`]. Split from `nwc.rs` itself
-//! (AGENTS.md LOC discipline — adding the #2895 W2 `DepositQuote`/
-//! `CompleteDeposit` split pushed the inline test module past the 500-LOC
+//! (AGENTS.md LOC discipline — adding the #2895 W2 `DepositQuoteCashu`/
+//! `CompleteDepositCashu` split pushed the inline test module past the 500-LOC
 //! hard cap).
 
 use super::*;
@@ -96,11 +96,11 @@ fn cashu_and_nutzap_intents_are_a_documented_no_op() {
         WalletIntent::RedeemNutzap {
             event_id: "c".repeat(64),
         },
-        WalletIntent::DepositQuote {
+        WalletIntent::DepositQuoteCashu {
             mint: "https://mint.example.com".to_string(),
             amount_sats: 21,
         },
-        WalletIntent::CompleteDeposit {
+        WalletIntent::CompleteDepositCashu {
             quote_id: "quote-1".to_string(),
         },
         WalletIntent::MeltCashu {

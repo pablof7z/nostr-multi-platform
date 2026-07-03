@@ -151,8 +151,8 @@ impl WalletBackend for NwcWalletBackend {
             | WalletIntent::PublishNutzapInfo
             | WalletIntent::SendNutzap { .. }
             | WalletIntent::RedeemNutzap { .. }
-            | WalletIntent::DepositQuote { .. }
-            | WalletIntent::CompleteDeposit { .. }
+            | WalletIntent::DepositQuoteCashu { .. }
+            | WalletIntent::CompleteDepositCashu { .. }
             | WalletIntent::MeltCashu { .. } => Vec::new(),
         }
     }

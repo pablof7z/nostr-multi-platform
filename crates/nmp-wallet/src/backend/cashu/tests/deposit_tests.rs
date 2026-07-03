@@ -1,4 +1,4 @@
-//! `DepositQuote` / `CompleteDeposit` — journal ordering, the auto-settle path
+//! `DepositQuoteCashu` / `CompleteDepositCashu` — journal ordering, the auto-settle path
 //! against a mockable mint, fail-closed gates, and `dispatch_token_event`'s
 //! ledger/journal wiring with synthetic proofs.
 
@@ -14,14 +14,14 @@ fn ctx(account_pubkey: Option<&str>) -> WalletBackendContext<'_> {
     }
 }
 
-// ── DepositQuote: fail-closed gates + journal ordering ─────────────────────
+// ── DepositQuoteCashu: fail-closed gates + journal ordering ─────────────────────
 
 #[test]
 fn deposit_quote_rejects_a_mint_this_wallet_was_not_created_with() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(None),
-        WalletIntent::DepositQuote {
+        WalletIntent::DepositQuoteCashu {
             mint: "https://other-mint.example".to_string(),
             amount_sats: 21,
         },
@@ -40,7 +40,7 @@ fn deposit_quote_rejects_zero_amount() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(None),
-        WalletIntent::DepositQuote {
+        WalletIntent::DepositQuoteCashu {
             mint: MINT.to_string(),
             amount_sats: 0,
         },
@@ -63,7 +63,7 @@ fn deposit_quote_journals_mint_pending_before_the_mint_request() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(None),
-        WalletIntent::DepositQuote {
+        WalletIntent::DepositQuoteCashu {
             mint: MINT.to_string(),
             amount_sats: 21,
         },
@@ -81,18 +81,18 @@ fn deposit_quote_journals_mint_pending_before_the_mint_request() {
     assert_eq!(op.kind, WalletOperationKind::DepositCashu);
 }
 
-// ── DepositQuote: the auto-settle path against a mockable mint ─────────────
+// ── DepositQuoteCashu: the auto-settle path against a mockable mint ─────────────
 
 /// testnut-style: the quote request round-trips against a mock mint and the
 /// wiring records the quote as pending + surfaces `{quote_id, bolt11}`
 /// through the action-result channel — the same shape a real caller uses to
-/// pay the invoice and later call `CompleteDeposit`.
+/// pay the invoice and later call `CompleteDepositCashu`.
 #[test]
 fn deposit_quote_completes_against_a_mock_mint() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(None),
-        WalletIntent::DepositQuote {
+        WalletIntent::DepositQuoteCashu {
             mint: MINT.to_string(),
             amount_sats: 100,
         },
@@ -222,14 +222,14 @@ fn deposit_quote_fails_closed_when_the_mint_is_unreachable() {
     );
 }
 
-// ── CompleteDeposit: fail-closed gates ──────────────────────────────────────
+// ── CompleteDepositCashu: fail-closed gates ──────────────────────────────────────
 
 #[test]
 fn complete_deposit_rejects_an_unknown_quote_id() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(Some("aa".repeat(32).as_str())),
-        WalletIntent::CompleteDeposit {
+        WalletIntent::CompleteDepositCashu {
             quote_id: "never-seen".to_string(),
         },
         None,
@@ -245,7 +245,7 @@ fn complete_deposit_requires_an_active_account() {
     let backend = backend_with_mint();
     let commands = backend.start_intent(
         ctx(None),
-        WalletIntent::CompleteDeposit {
+        WalletIntent::CompleteDepositCashu {
             quote_id: "whatever".to_string(),
         },
         None,

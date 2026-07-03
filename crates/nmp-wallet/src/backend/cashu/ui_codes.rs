@@ -18,7 +18,7 @@ pub const ALREADY_CREATED: &str = "wallet_cashu_already_created";
 /// wallet was created with.
 pub const UNSUPPORTED_MINT: &str = "wallet_cashu_unsupported_mint";
 
-/// `CompleteDeposit` named a `quote_id` this backend has no pending record
+/// `CompleteDepositCashu` named a `quote_id` this backend has no pending record
 /// for (unknown or already completed).
 pub const UNKNOWN_QUOTE: &str = "wallet_cashu_unknown_quote";
 
