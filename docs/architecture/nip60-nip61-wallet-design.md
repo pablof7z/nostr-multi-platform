@@ -38,7 +38,9 @@ nutzaps, and later melt to BOLT-11.
 of activation, before any public product claim. That reactivation must remove
 or gate false surfaces such as unsupported `pay_invoice` stubs. An operation
 the backend cannot do is represented as an absent capability in Rust-owned
-state, not as a user-discoverable action that fails at runtime.
+state, not as a user-discoverable action that fails at runtime. (Phase 0 of
+this reactivation has landed: #2866, closing #2865; post-merge follow-ups are
+tracked in #2870 and referenced where relevant below.)
 
 The closed #1508 demo is folded into the real wallet milestone. If a gallery or
 developer demo is needed, it must exercise the same Rust actions, projections,
@@ -49,20 +51,35 @@ deleted.
 
 ### New Wallet Composition Crate
 
-Add a reusable Layer-4 crate, `nmp-wallet`, as the wallet composition owner.
-This crate owns:
+Add a reusable Layer-4 composition crate, `nmp-wallet`. Per
+[`crate-boundaries.md`](crate-boundaries.md) §2, "composition root" names only
+the Layer-5 `nmp-substrate`/app-runtime tier; `nmp-wallet` is a Layer-4
+composition crate that assembles lower-level protocol crates, the same way
+`nmp-note-feed` composes `nmp-nip01`, `nmp-nip18`, `nmp-content`, and `nmp-feed`
+into one reusable feed surface (crate-boundaries §8). Its scope is bounded to
+wallet backend selection and journaling, not an open-ended "everything wallet"
+bucket — the same distinction crate-boundaries §8 draws between a legitimate
+composition crate and the forbidden central-relations "reusable framework
+bucket".
+
+`nmp-wallet` owns:
 
 - the app-facing wallet action namespaces;
 - the wallet typed projection under the `"wallet"` key;
-- backend selection policy;
+- backend selection policy: which configured `WalletBackend` handles an
+  intent, including which backend the substrate `PaymentPort` routes to for
+  NIP-57 zaps (`nmp-wallet` does not own or reassign `PaymentPort` itself —
+  see Existing NIP Crates below);
 - the durable wallet operation journal;
 - the Rust-owned `WalletBackend` seam;
-- the `PaymentPort` adapter used by NIP-57 zaps;
 - registration of wallet read interests and relay-text/event observers.
 
 `nmp-wallet` may depend on `nmp-nip47`, `nmp-nip60`, `nmp-nip57` only through
-the explicit composition surfaces it needs. `nmp-core` must not learn Cashu,
-nutzap, NWC, NIP-60, NIP-61, or mint nouns.
+the explicit composition surfaces it needs. The `nmp-nip57` dependency is
+concrete, not speculative: at composition time `nmp-wallet` calls
+`nmp_nip57::Config::with_payment_port` with the selected `WalletPaymentPort`
+backend to wire NIP-57 zaps to the active wallet. `nmp-core` must not learn
+Cashu, nutzap, NWC, NIP-60, NIP-61, or mint nouns.
 
 ### Existing NIP Crates
 
@@ -77,13 +94,22 @@ nutzap, NWC, NIP-60, NIP-61, or mint nouns.
 It does not own relay sockets, app product policy, UI projection keys, backend
 selection, or a private operation queue.
 
-`nmp-nip47` continues to own NWC protocol mechanics and its actor-side runtime.
-When composed through `nmp-wallet`, its current `"wallet"` projection becomes
-backend-internal state. Standalone NWC-only composition may keep the existing
-projection until the migration removes that compatibility path.
+`nmp-nwc` owns the pure NWC protocol codec: connection-URI parsing, NIP-04/
+NIP-44 request/response encryption, and the `kind:23194`/`kind:23195` event
+shapes. `nmp-nip47` owns the NWC actor-side runtime, its `nmp.wallet.*` action
+surface, and — per crate-boundaries §8 — the `PaymentPort` implementation
+(`WalletPaymentPort`) injected into the zap chain at composition time. This
+design does not reassign `PaymentPort` ownership away from `nmp-nip47`;
+`nmp-wallet` only selects which backend that port routes to when NWC is one of
+several configured backends. When composed through `nmp-wallet`, `nmp-nip47`'s
+current `"wallet"` projection becomes backend-internal state. Standalone
+NWC-only composition may keep the existing projection until the migration
+removes that compatibility path.
 
 `nmp-nip57` remains wallet-agnostic. It emits `PaymentIntent` through the
-substrate `PaymentPort`; `nmp-wallet` supplies the selected backend adapter.
+substrate `PaymentPort`; it does not depend on `nmp-nip47` or `nmp-nip60`.
+`nmp-wallet` supplies the selected backend's `WalletPaymentPort` to
+`nmp-nip57`'s composition entry point.
 
 ### Runtime And Shell
 
@@ -218,10 +244,17 @@ For receiving nutzaps:
    journal and redeemed event ids remain the source of retry safety.
 3. Redeem only events whose mint and P2PK lock match the active `kind:10019`.
 
-The current parked `nmp-nip60` references to `relay` tags on `kind:17375` are
-legacy design residue. Activation should remove that as the source of truth, or
-parse it only as a non-authoritative compatibility hint that cannot override
-`kind:10019` or NIP-65 fallback.
+`nmp-nip60` is an active workspace member (Phase 0, #2866, closing #2865).
+`relay` tags on `kind:17375` are decoded into `legacy_relay_hint`, a field
+named and documented as a non-authoritative compatibility hint — it must never
+become the relay-selection source of truth. `kind:10019` `relay` tags, with
+NIP-65 fallback, remain the only authoritative relay set, and that resolution
+policy belongs to `nmp-wallet` (Phase 1), not `nmp-nip60`. This boundary is not
+yet fully closed: post-merge review (#2870) found that `nmp-nip60`'s
+`publish_nutzap_info` helper currently seeds a `kind:10019`'s `relay` tags
+directly from `legacy_relay_hint` — dormant today (zero callers) but the one
+path where the hint would become truth if left unfixed. That fix must land
+before `nmp-wallet` gives `publish_nutzap_info` its first caller.
 
 ## State Machine
 
