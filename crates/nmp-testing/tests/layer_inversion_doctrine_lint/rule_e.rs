@@ -64,6 +64,7 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         "nmp-component-registry" => Some(CrateClass::Exempt(
             "component registry manifest/export sidecar",
         )),
+        "nmp-devtools" => Some(CrateClass::Exempt("dev-only diagnostic sidecar")),
         "nmp-testing" => Some(CrateClass::Exempt("test and benchmark sidecar")),
         "nmp-browser-runtime-conformance" => {
             Some(CrateClass::Exempt("browser runtime conformance sidecar"))

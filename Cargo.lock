@@ -3917,6 +3917,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-devtools"
+version = "0.8.4"
+dependencies = [
+ "nmp-ownership",
+ "serde",
+ "serde_json",
+ "trellis-core",
+]
+
+[[package]]
 name = "nmp-example-login-timeline"
 version = "0.8.4"
 dependencies = [

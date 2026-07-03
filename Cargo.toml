@@ -13,6 +13,7 @@ members = [
     "crates/nmp-content-fixtures",
     "crates/nmp-core",
     "crates/nmp-coverage-gate",
+    "crates/nmp-devtools",
     "crates/nmp-feed",
     "crates/nmp-feed-session",
     "crates/nmp-read-session",
