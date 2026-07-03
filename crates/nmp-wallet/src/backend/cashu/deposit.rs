@@ -189,7 +189,7 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
             // `minted_proofs` is in-memory only (see its doc comment in
             // `state.rs`): a hard crash between `mint_tokens` succeeding and
             // reaching this point still loses the proofs — that durable gap
-            // is a separate, tracked follow-up, not closed here.
+            // is tracked as issue #2910, not closed here.
             let already_minted = {
                 let guard = lock_state(&state);
                 guard

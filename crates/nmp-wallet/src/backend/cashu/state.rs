@@ -46,8 +46,8 @@ pub(super) struct PendingDeposit {
     /// This field is in-memory only — it does NOT survive a process crash or
     /// restart. A hard crash in the window between `mint_tokens` returning
     /// `Ok` and the kind:7375 event publishing loses these proofs for real;
-    /// closing that window needs a durable write-ahead record, tracked as a
-    /// separate follow-up (not this ticket's scope — real-sats gate, not a
+    /// closing that window needs a durable write-ahead record, tracked as
+    /// issue #2910 (not this ticket's scope — real-sats gate, not a
     /// testnut/merge gate).
     pub(super) minted_proofs: Option<Vec<Proof>>,
 }

@@ -4,7 +4,7 @@
 //! see `PendingDeposit::minted_proofs`'s doc comment). This covers only
 //! in-process, still-running failures (a port hiccup, a dead-but-alive actor
 //! inbox) — `minted_proofs` is in-memory, so a hard process crash in that
-//! window is a separate, tracked follow-up, not something this test proves.
+//! window is tracked as issue #2910, not something this test proves.
 
 use super::*;
 use nmp_core::actor::SignCommand;
