@@ -246,7 +246,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "wallet",
         tier: ProjectionTier::HostRegistered,
-        producer: "apps/chirp wallet_runtime (NIP-47)",
+        producer: "nmp-wallet projection contract; nmp-nip47 compatibility implementation",
         owner_claim: "projection.wallet",
         schema_id: "nmp.nip47.wallet",
         file_identifier: "NWST",

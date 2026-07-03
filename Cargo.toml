@@ -50,6 +50,7 @@ members = [
     "crates/nmp-nip05",
     "crates/nmp-intent",
     "crates/nmp-nip57",
+    "crates/nmp-wallet",
     "crates/nmp-zaps",
     "crates/nmp-nip60",
     "crates/nmp-nip68",

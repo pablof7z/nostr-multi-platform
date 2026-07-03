@@ -345,6 +345,11 @@ path = "crates/nmp-nip57"
 reason = "Post-v1 lightning zap protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
 
 [[private_packages]]
+name = "nmp-wallet"
+path = "crates/nmp-wallet"
+reason = "Post-v1 wallet composition crate (#2864); active in workspace for Phase 1 tests but excluded from the v1 public release train until the wallet product surface is complete"
+
+[[private_packages]]
 name = "nmp-zaps"
 path = "crates/nmp-zaps"
 reason = "Post-v1 zap-summary read concept crate over nmp-nip57 (#2318, #2758); kept in the workspace for tests and future work, but excluded from the v1 public release train"

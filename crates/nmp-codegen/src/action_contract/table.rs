@@ -414,7 +414,8 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         },
         typed_dispatch: TYPED_ONLY,
     },
-    // nmp-nip47 — NIP-47 Nostr Wallet Connect (opt-in via `with_wallet`).
+    // nmp-wallet owns the wallet product namespaces. nmp-nip47 remains the
+    // current compatibility implementation for these NWC-backed actions.
     ActionContract {
         namespace: "nmp.wallet.connect",
         producer: "nmp-nip47 action connect",
