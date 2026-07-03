@@ -24,8 +24,11 @@
 //!
 //! ## Design (option C — source-version stamps + derived rev)
 //!
-//! Validated by opus+codex review. NOT per-mutation-site-per-projection bumping,
-//! NOT content-hash-as-gate. Instead:
+//! Validated by opus+codex review. For Tier-2 built-in keys: NOT
+//! per-mutation-site-per-projection bumping, NOT content-hash-as-gate. Instead:
+//! (App-owned keys have no dependency table, so their rev IS content-driven —
+//! see `app_owned.rs` / NMP#2944 — which is sound precisely because the kernel
+//! cannot introspect an opaque host payload's source dependencies.)
 //!
 //! 1. A small typed struct `SourceVersions` holds one named `u64` counter per
 //!    distinct source domain. Counters are bumped at the SINGLE write chokepoint
@@ -239,6 +242,9 @@ pub(crate) struct ProjectionRevTracker {
     /// `ProjectionCache`, which skip a `Changed` row when `incomingRev <=
     /// cached.rev`). This map derives a content-advancing rev for those keys so
     /// the contract holds universally. See `app_owned::stamp_app_owned_revs`.
+    /// Entries are deliberately never pruned on `Cleared` (monotonicity over
+    /// memory): a re-opened key must resume ABOVE its last-emitted rev, or a
+    /// host that kept its cache across the gap would skip the re-open as stale.
     app_owned_revs: std::collections::HashMap<String, (u64, u64)>,
 }
 
