@@ -275,8 +275,7 @@ fn nmp_native_runtime_does_not_bundle_nip29_as_production_dependency() {
     );
 }
 
-#[test]
-fn nmp_native_runtime_wallet_nips_are_feature_gated() {
+fn native_runtime_non_optional_dependency_findings(names: &[&str]) -> Vec<String> {
     let metadata = cargo_metadata();
     let packages = metadata["packages"]
         .as_array()
@@ -289,18 +288,23 @@ fn nmp_native_runtime_wallet_nips_are_feature_gated() {
         .as_array()
         .expect("package dependencies must be an array");
 
-    let mut findings = Vec::new();
-    for dependency in dependencies {
-        let name = dependency["name"].as_str().unwrap_or_default();
-        if !matches!(name, "nmp-nip47" | "nmp-nip57") {
-            continue;
-        }
-        let kind = dependency["kind"].as_str().unwrap_or("normal");
-        let optional = dependency["optional"].as_bool().unwrap_or(false);
-        if kind != "dev" && !optional {
-            findings.push(format!("nmp-native-runtime -> {name} ({kind})"));
-        }
-    }
+    dependencies
+        .iter()
+        .filter_map(|dependency| {
+            let name = dependency["name"].as_str().unwrap_or_default();
+            if !names.contains(&name) {
+                return None;
+            }
+            let kind = dependency["kind"].as_str().unwrap_or("normal");
+            let optional = dependency["optional"].as_bool().unwrap_or(false);
+            (!optional && kind != "dev").then(|| format!("nmp-native-runtime -> {name} ({kind})"))
+        })
+        .collect()
+}
+
+#[test]
+fn nmp_native_runtime_wallet_nips_are_feature_gated() {
+    let findings = native_runtime_non_optional_dependency_findings(&["nmp-nip47", "nmp-nip57"]);
 
     assert!(
         findings.is_empty(),
@@ -312,30 +316,21 @@ fn nmp_native_runtime_wallet_nips_are_feature_gated() {
 }
 
 #[test]
-fn nmp_native_runtime_search_concept_is_feature_gated() {
-    let metadata = cargo_metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("cargo metadata packages must be an array");
-    let runtime = packages
-        .iter()
-        .find(|pkg| pkg["name"] == "nmp-native-runtime")
-        .expect("nmp-native-runtime package must be in cargo metadata");
-    let dependencies = runtime["dependencies"]
-        .as_array()
-        .expect("package dependencies must be an array");
+fn nmp_native_runtime_nip05_concept_is_feature_gated() {
+    let findings = native_runtime_non_optional_dependency_findings(&["nmp-nip05"]);
 
-    let mut findings = Vec::new();
-    for dependency in dependencies {
-        if dependency["name"] != "nmp-nip50" {
-            continue;
-        }
-        let kind = dependency["kind"].as_str().unwrap_or("normal");
-        let optional = dependency["optional"].as_bool().unwrap_or(false);
-        if kind != "dev" && !optional {
-            findings.push(format!("nmp-native-runtime -> nmp-nip50 ({kind})"));
-        }
-    }
+    assert!(
+        findings.is_empty(),
+        "#2797: NIP-05 resolution is concept-owned composition. Keep the \
+         native runtime protocol command dispatch behind the \
+         nmp-native-runtime `nip05` feature:\n{}",
+        findings.join("\n")
+    );
+}
+
+#[test]
+fn nmp_native_runtime_search_concept_is_feature_gated() {
+    let findings = native_runtime_non_optional_dependency_findings(&["nmp-nip50"]);
 
     assert!(
         findings.is_empty(),
@@ -348,30 +343,11 @@ fn nmp_native_runtime_search_concept_is_feature_gated() {
 
 #[test]
 fn nmp_native_runtime_op_feed_concepts_are_feature_gated() {
-    let metadata = cargo_metadata();
-    let packages = metadata["packages"]
-        .as_array()
-        .expect("cargo metadata packages must be an array");
-    let runtime = packages
-        .iter()
-        .find(|pkg| pkg["name"] == "nmp-native-runtime")
-        .expect("nmp-native-runtime package must be in cargo metadata");
-    let dependencies = runtime["dependencies"]
-        .as_array()
-        .expect("package dependencies must be an array");
-
-    let mut findings = Vec::new();
-    for dependency in dependencies {
-        let name = dependency["name"].as_str().unwrap_or_default();
-        if !matches!(name, "nmp-nip02" | "nmp-nip51" | "nmp-note-feed") {
-            continue;
-        }
-        let kind = dependency["kind"].as_str().unwrap_or("normal");
-        let optional = dependency["optional"].as_bool().unwrap_or(false);
-        if kind != "dev" && !optional {
-            findings.push(format!("nmp-native-runtime -> {name} ({kind})"));
-        }
-    }
+    let findings = native_runtime_non_optional_dependency_findings(&[
+        "nmp-nip02",
+        "nmp-nip51",
+        "nmp-note-feed",
+    ]);
 
     assert!(
         findings.is_empty(),
