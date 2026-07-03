@@ -231,6 +231,23 @@ pub(super) const BUILTIN_FILES: &[(&str, &str)] = &[
         "tui/content-view/nostr_content_widget.rs",
         include_str!("../registry/tui/content-view/nostr_content_widget.rs"),
     ),
+    // Ratatui group chat widgets.
+    (
+        "tui/chat-core/nostr_group_chat_wire.rs",
+        include_str!("../registry/tui/chat-core/nostr_group_chat_wire.rs"),
+    ),
+    (
+        "tui/chat-message-row/nostr_group_message_row.rs",
+        include_str!("../registry/tui/chat-message-row/nostr_group_message_row.rs"),
+    ),
+    (
+        "tui/chat-composer/nostr_group_composer.rs",
+        include_str!("../registry/tui/chat-composer/nostr_group_composer.rs"),
+    ),
+    (
+        "tui/chat-roster-list/nostr_group_roster_list.rs",
+        include_str!("../registry/tui/chat-roster-list/nostr_group_roster_list.rs"),
+    ),
     // Ratatui user profile widgets.
     (
         "tui/user-core/profile_wire.rs",

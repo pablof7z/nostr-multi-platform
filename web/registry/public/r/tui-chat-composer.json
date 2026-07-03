@@ -1,0 +1,18 @@
+{
+  "name": "tui-chat-composer",
+  "type": "registry:ui",
+  "title": "Chat Composer (tui)",
+  "description": "Ratatui group-chat composer that renders draft state only and exposes trim/send helpers without publishing protocol data.",
+  "dependencies": [],
+  "registryDependencies": [
+    "tui-chat-core"
+  ],
+  "files": [
+    {
+      "path": "registry/tui/chat-composer/nostr_group_composer.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_chat/nostr_group_composer.rs",
+      "content": "use ratatui::{\n    buffer::Buffer,\n    layout::Rect,\n    style::{Color, Modifier, Style},\n    text::{Line, Span},\n    widgets::{Block, Borders, Paragraph, Widget},\n};\n\n/// Display-only Ratatui group-chat composer.\n///\n/// The host TUI owns input events and publish actions. This component renders\n/// draft state and exposes the same trim/send decision a host can call before\n/// routing into a Rust-owned action.\npub struct NostrGroupComposer<'a> {\n    draft: &'a str,\n    placeholder: &'a str,\n    is_enabled: bool,\n    is_focused: bool,\n}\n\nimpl<'a> NostrGroupComposer<'a> {\n    pub fn new(draft: &'a str) -> Self {\n        Self {\n            draft,\n            placeholder: \"Message\",\n            is_enabled: true,\n            is_focused: false,\n        }\n    }\n\n    pub fn placeholder(mut self, placeholder: &'a str) -> Self {\n        self.placeholder = placeholder;\n        self\n    }\n\n    pub fn enabled(mut self, enabled: bool) -> Self {\n        self.is_enabled = enabled;\n        self\n    }\n\n    pub fn focused(mut self, focused: bool) -> Self {\n        self.is_focused = focused;\n        self\n    }\n\n    pub fn trimmed_message(&self) -> Option<&str> {\n        let trimmed = self.draft.trim();\n        (!trimmed.is_empty()).then_some(trimmed)\n    }\n\n    pub fn can_send(&self) -> bool {\n        self.is_enabled && self.trimmed_message().is_some()\n    }\n\n    fn line(&self) -> Line<'static> {\n        let style = if self.is_enabled {\n            Style::default().fg(Color::White)\n        } else {\n            Style::default().fg(Color::DarkGray)\n        };\n        let text = if self.draft.is_empty() {\n            Span::styled(\n                self.placeholder.to_string(),\n                Style::default().fg(Color::DarkGray),\n            )\n        } else {\n            Span::styled(self.draft.to_string(), style)\n        };\n        let send = if self.can_send() { \" send \" } else { \"      \" };\n        Line::from(vec![\n            Span::styled(\"> \", Style::default().fg(Color::Cyan)),\n            text,\n            Span::raw(\" \"),\n            Span::styled(\n                send,\n                Style::default()\n                    .fg(Color::Black)\n                    .bg(if self.can_send() {\n                        Color::Cyan\n                    } else {\n                        Color::DarkGray\n                    })\n                    .add_modifier(Modifier::BOLD),\n            ),\n        ])\n    }\n}\n\nimpl Widget for NostrGroupComposer<'_> {\n    fn render(self, area: Rect, buf: &mut Buffer) {\n        let border = if self.is_focused {\n            Style::default().fg(Color::Cyan)\n        } else {\n            Style::default().fg(Color::DarkGray)\n        };\n        let block = Block::default().borders(Borders::ALL).border_style(border);\n        let inner = block.inner(area);\n        block.render(area, buf);\n        Paragraph::new(self.line()).render(inner, buf);\n    }\n}\n"
+    }
+  ]
+}

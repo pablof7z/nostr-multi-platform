@@ -182,3 +182,84 @@ fn cross_platform_tui_user_card() {
         );
     }
 }
+
+#[test]
+fn cross_platform_tui_chat_family() {
+    let tmp = TempDir::new("e2e-tui-chat");
+
+    for id in [
+        "tui/chat-message-row",
+        "tui/chat-composer",
+        "tui/chat-roster-list",
+    ] {
+        let add = nmp(tmp.path(), &["add", "component", id]);
+        assert!(
+            add.status.success(),
+            "add {id} failed: {}",
+            String::from_utf8_lossy(&add.stderr)
+        );
+    }
+
+    let nc = tmp.path().join("src/components/nostr_chat");
+    let nu = tmp.path().join("src/components/nostr_user");
+    let files = [
+        (
+            nc.join("nostr_group_chat_wire.rs"),
+            "src/components/nostr_chat/nostr_group_chat_wire.rs",
+        ),
+        (
+            nc.join("nostr_group_message_row.rs"),
+            "src/components/nostr_chat/nostr_group_message_row.rs",
+        ),
+        (
+            nc.join("nostr_group_composer.rs"),
+            "src/components/nostr_chat/nostr_group_composer.rs",
+        ),
+        (
+            nc.join("nostr_group_roster_list.rs"),
+            "src/components/nostr_chat/nostr_group_roster_list.rs",
+        ),
+        (
+            nu.join("profile_wire.rs"),
+            "src/components/nostr_user/profile_wire.rs",
+        ),
+        (
+            nu.join("nostr_avatar.rs"),
+            "src/components/nostr_user/nostr_avatar.rs",
+        ),
+        (
+            nu.join("nostr_profile_name.rs"),
+            "src/components/nostr_user/nostr_profile_name.rs",
+        ),
+    ];
+    for (path, _) in &files {
+        assert!(path.exists(), "expected TUI chat file: {}", path.display());
+    }
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    for id in &[
+        "tui/chat-core",
+        "tui/chat-message-row",
+        "tui/chat-composer",
+        "tui/chat-roster-list",
+        "tui/user-core",
+        "tui/user-avatar",
+        "tui/user-name",
+    ] {
+        assert!(
+            lock.contains(&format!("id = \"{id}\"")),
+            "lock missing TUI chat component {id}: {lock}"
+        );
+    }
+
+    for (path, target) in &files {
+        let on_disk = fs::read_to_string(path).unwrap();
+        let actual = lock_sha_for_path(&lock, target)
+            .unwrap_or_else(|| panic!("lock missing sha for {target}: {lock}"));
+        assert_eq!(
+            actual,
+            sha256_hex_of(&on_disk),
+            "TUI chat lock sha mismatch for {target}"
+        );
+    }
+}
