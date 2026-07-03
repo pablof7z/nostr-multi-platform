@@ -66,6 +66,7 @@ pub(crate) use notifications::{
 mod feed_lifecycle;
 pub use feed_lifecycle::BrowserFeeds;
 mod read_host;
+#[cfg(feature = "search")]
 mod search;
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────

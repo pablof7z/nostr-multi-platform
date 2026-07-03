@@ -7,10 +7,13 @@ pub(crate) fn install_browser_production_composition(
 
     let _substrate = nmp_substrate::install(app, nmp_substrate::SubstrateConfig::default());
 
-    assert!(
-        nmp_nip50::register(app, nmp_nip50::Config::default()).is_ok(),
-        "nmp-nip50 registration must not collide"
-    );
+    #[cfg(feature = "search")]
+    {
+        assert!(
+            nmp_nip50::register(app, nmp_nip50::Config::default()).is_ok(),
+            "nmp-nip50 registration must not collide"
+        );
+    }
     assert!(
         nmp_nip02::register(app, nmp_nip02::Config::default()).is_ok(),
         "nmp-nip02 registration must not collide"
@@ -40,13 +43,7 @@ pub(crate) fn install_browser_production_composition(
         "nmp-wot registration must not collide"
     );
     assert!(
-        nmp_nip51::register(
-            app,
-            nmp_nip51::Config {
-                search_fallback_relays: nmp_nip50::SearchFallbackRelays::default(),
-            },
-        )
-        .is_ok(),
+        nmp_nip51::register(app, nmp_nip51::Config::default()).is_ok(),
         "nmp-nip51 registration must not collide"
     );
     assert!(

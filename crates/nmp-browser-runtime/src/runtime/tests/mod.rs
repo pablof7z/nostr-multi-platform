@@ -38,6 +38,7 @@ mod feed_spec;
 mod group_discovery;
 mod group_events;
 mod pump;
+#[cfg(feature = "search")]
 mod search;
 mod signer;
 

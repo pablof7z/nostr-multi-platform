@@ -4,13 +4,18 @@
 
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
+#[cfg(feature = "search")]
 use std::collections::BTreeSet;
 
 use super::core::NmpRuntimeCore;
+#[cfg(feature = "search")]
 use super::dispatch_support::not_started_error;
-use super::protocol::{SearchClose, SearchOpen, SearchScope, SearchTargets, WorkerEvent};
+use super::protocol::{SearchClose, SearchOpen, WorkerEvent};
+#[cfg(feature = "search")]
+use super::protocol::{SearchScope, SearchTargets};
 
 impl NmpRuntimeCore {
+    #[cfg(feature = "search")]
     pub(super) fn handle_search_open(&mut self, req: SearchOpen) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
@@ -32,6 +37,16 @@ impl NmpRuntimeCore {
         }]
     }
 
+    #[cfg(not(feature = "search"))]
+    pub(super) fn handle_search_open(&mut self, req: SearchOpen) -> Vec<WorkerEvent> {
+        vec![WorkerEvent::CapabilityFailure {
+            capability: "nmp.nip50.search.open".to_string(),
+            correlation_id: req.correlation_id,
+            reason: "feature_disabled:nmp.nip50.search".to_string(),
+        }]
+    }
+
+    #[cfg(feature = "search")]
     pub(super) fn handle_search_close(&mut self, req: SearchClose) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(Some(req.correlation_id));
@@ -45,8 +60,18 @@ impl NmpRuntimeCore {
             correlation_id: req.correlation_id,
         }]
     }
+
+    #[cfg(not(feature = "search"))]
+    pub(super) fn handle_search_close(&mut self, req: SearchClose) -> Vec<WorkerEvent> {
+        vec![WorkerEvent::CapabilityFailure {
+            capability: "nmp.nip50.search.close".to_string(),
+            correlation_id: req.correlation_id,
+            reason: "feature_disabled:nmp.nip50.search".to_string(),
+        }]
+    }
 }
 
+#[cfg(feature = "search")]
 fn search_request_from_protocol(req: &SearchOpen) -> Option<nmp_nip50::SearchRequest> {
     let scope = match req.scope {
         SearchScope::Notes => {

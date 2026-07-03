@@ -50,6 +50,7 @@ pub struct BrowserRuntimeHandle {
     // ── #2074 — Rust-owned signer-state slot ─────────────────────────────────
     pub(super) signer_state_slot: BrowserSignerStateSlot,
 
+    #[cfg_attr(not(feature = "search"), allow(dead_code))]
     pub(super) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
     pub(super) observed_projection_registrar: ObservedProjectionCommandHandle,
     pub(super) notifications_sessions: HashMap<String, BrowserNotificationsSession>,

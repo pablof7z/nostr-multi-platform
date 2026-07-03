@@ -73,6 +73,7 @@ mod smoke_tests {
     #[test]
     fn owner_composition_symbols_accessible() {
         let _ = nmp_substrate::SubstrateConfig::default();
+        #[cfg(feature = "search")]
         let _ = nmp_nip50::SearchFallbackRelays::default();
     }
 }
