@@ -28,6 +28,8 @@
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
 //! - [`projection`] — `GroupEventsProjection`: the read-side of a group-chat
 //!   screen, plus raw group-event projections for reusable `h`-tag mechanics.
+//! - [`read_session`] — concept-owned active read doors for group-events,
+//!   discovery, joined-groups, and roster views.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
@@ -47,6 +49,7 @@ mod installer;
 pub mod interest;
 pub mod kinds;
 pub mod projection;
+pub mod read_session;
 pub mod search;
 pub mod wire;
 
@@ -60,6 +63,18 @@ pub use projection::{
     GroupEventsProjection, GroupEventsSnapshot, GroupRole, GroupRosterMember,
     GroupRosterProjection, GroupRosterSnapshot, JoinedGroup, JoinedGroupsProjection,
     JoinedGroupsSnapshot,
+};
+pub use read_session::{
+    close_nip29_group_discovery_session, close_nip29_group_events_session,
+    close_nip29_group_roster_session, close_nip29_joined_groups_session,
+    open_nip29_group_discovery_session, open_nip29_group_discovery_session_with_reader,
+    open_nip29_group_events_session, open_nip29_group_events_session_with_reader,
+    open_nip29_group_roster_session, open_nip29_group_roster_session_with_reader,
+    open_nip29_joined_groups_session, open_nip29_joined_groups_session_with_reader,
+    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
+    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
+    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY,
+    GROUP_ROSTER_KEY, JOINED_GROUPS_KEY,
 };
 pub use search::{GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
 pub use wire::discovered_groups_fb::{

@@ -1,9 +1,9 @@
-//! Real relay smoke for NIP-29 discovery through the public native-runtime path.
+//! Real relay smoke for NIP-29 discovery through the public concept path.
 //!
-//! This test opens the same Rust-facing surface a consumer app uses:
-//! `open_nip29_group_discovery_session_with_reader`, then dispatches the
-//! typed `nmp.nip29.discover` action. The assertion reads the returned
-//! `DiscoveredGroupsProjection`; it never injects events by hand.
+//! This test opens the same Rust-facing surface a consumer app uses against the
+//! native runtime host: `open_nip29_group_discovery_session_with_reader`, then
+//! dispatches the typed `nmp.nip29.discover` action. The assertion reads the
+//! returned `DiscoveredGroupsProjection`; it never injects events by hand.
 
 #[path = "real_relay_common/mod.rs"]
 mod common;
@@ -15,11 +15,12 @@ use std::time::{Duration, Instant};
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
-use nmp_native_runtime::{
-    dispatch_action_bytes_typed, Nip29GroupDiscoverySession, NmpApp, NmpAppBuilder, RunConfig,
-};
+use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp, NmpAppBuilder, RunConfig};
 use nmp_nip29::action::DiscoverGroupsInput;
-use nmp_nip29::DiscoveredGroup;
+use nmp_nip29::{
+    close_nip29_group_discovery_session, open_nip29_group_discovery_session_with_reader,
+    DiscoveredGroup, Nip29GroupDiscoverySession,
+};
 
 const NIP29_RELAY: &str = "wss://nip29.f7z.io";
 const DISCOVERY_BUDGET: Duration = Duration::from_secs(45);
@@ -93,7 +94,8 @@ fn nip29_discovery_session_receives_live_group_rows() {
 
     let app = DiscoveryApp::boot();
     let app_ref = unsafe { &*app.app };
-    let (handle, reader) = app_ref.open_nip29_group_discovery_session_with_reader(
+    let (handle, reader) = open_nip29_group_discovery_session_with_reader(
+        app_ref,
         Nip29GroupDiscoverySession::new(NIP29_RELAY.to_string()),
     );
 
@@ -115,7 +117,7 @@ fn nip29_discovery_session_receives_live_group_rows() {
     );
 
     let groups = wait_for_groups(&app.ticks, || reader.snapshot().groups, DISCOVERY_BUDGET);
-    app_ref.close_nip29_group_discovery_session(handle);
+    assert!(close_nip29_group_discovery_session(app_ref, handle));
 
     assert!(
         !groups.is_empty(),

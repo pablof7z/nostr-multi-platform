@@ -26,6 +26,7 @@ fn code_only(line: &str) -> &str {
 #[test]
 fn retired_app_visible_read_doors_are_not_public_defs() {
     let root = repo_root();
+    let absent_files = ["crates/nmp-native-runtime/src/group_feed/roster.rs"];
     let checks = [
         (
             "crates/nmp-native-runtime/src/search.rs",
@@ -79,6 +80,49 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
                 "Nip50SearchHandle",
                 "Nip50SearchSession",
                 "parse_search_request",
+                "Nip29GroupDiscoveryHandle",
+                "Nip29GroupDiscoverySession",
+                "Nip29GroupEventsHandle",
+                "Nip29GroupEventsSession",
+                "Nip29GroupRosterHandle",
+                "Nip29GroupRosterSession",
+                "Nip29JoinedGroupsHandle",
+                "Nip29JoinedGroupsSession",
+                "DISCOVERED_GROUPS_KEY",
+                "GROUP_EVENTS_KEY",
+                "GROUP_ROSTER_KEY",
+                "JOINED_GROUPS_KEY",
+            ][..],
+        ),
+        (
+            "crates/nmp-native-runtime/src/group_feed/mod.rs",
+            &[
+                "pub fn open_nip29_group_events_session(",
+                "pub fn open_nip29_group_events_session_with_reader(",
+                "pub fn close_nip29_group_events_session(",
+                "pub fn open_nip29_group_discovery_session(",
+                "pub fn open_nip29_group_discovery_session_with_reader(",
+                "pub fn close_nip29_group_discovery_session(",
+                "pub fn open_nip29_joined_groups_session(",
+                "pub fn open_nip29_joined_groups_session_with_reader(",
+                "pub fn close_nip29_joined_groups_session(",
+                "GROUP_EVENTS_KEY",
+                "DISCOVERED_GROUPS_KEY",
+                "JOINED_GROUPS_KEY",
+                "GROUP_ROSTER_KEY",
+            ][..],
+        ),
+        (
+            "crates/nmp-native-runtime/src/group_feed/types.rs",
+            &[
+                "pub struct Nip29GroupEventsSession",
+                "pub struct Nip29GroupDiscoverySession",
+                "pub struct Nip29GroupRosterSession",
+                "pub struct Nip29JoinedGroupsSession",
+                "pub struct Nip29GroupEventsHandle",
+                "pub struct Nip29GroupDiscoveryHandle",
+                "pub struct Nip29GroupRosterHandle",
+                "pub struct Nip29JoinedGroupsHandle",
             ][..],
         ),
         (
@@ -88,6 +132,14 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
     ];
 
     let mut violations = Vec::new();
+    for relative in absent_files {
+        let path = root.join(relative);
+        if path.exists() {
+            violations.push(format!(
+                "{relative}: retired native NIP-29 roster door file reappeared"
+            ));
+        }
+    }
     for (relative, needles) in checks {
         let path = root.join(relative);
         let text = fs::read_to_string(&path)

@@ -1,10 +1,8 @@
-//! Shared hydrating-feed machinery for the per-open NIP-29 read views.
+//! Shared hydrating-feed machinery for native group-scoped composed reads.
 //!
-//! Split out of `group_feed.rs` (file-size cap) so that file owns only the
-//! public per-view session entry points + their identity constants, while this
-//! submodule owns the common open/teardown plumbing every view drives. The
-//! methods are `pub(super)` / `pub(crate)` so the parent module's view APIs can
-//! call them across the module boundary.
+//! Pure NIP-29 group reads now use `nmp_nip29`'s concept-owned doorway. This
+//! helper remains for native app-layer reads that compose multiple concepts,
+//! currently the NIP-25 reaction aggregate scoped by a NIP-29 group.
 
 use std::sync::Arc;
 
@@ -18,7 +16,7 @@ use nmp_read_session::{
 use crate::app_struct::NmpApp;
 
 impl NmpApp {
-    /// Shared open path for the hydrating NIP-29 read views.
+    /// Shared open path for hydrating group-scoped composed reads.
     ///
     /// Idempotently tears down any prior session under `key` first (singleton
     /// semantics), registers the typed sidecar, registers the projection MUTED,
