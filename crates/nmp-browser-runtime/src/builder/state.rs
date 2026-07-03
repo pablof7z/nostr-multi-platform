@@ -83,6 +83,7 @@ pub(crate) struct BrowserBuilderInner {
     // ── Registries (held as Arc for install_into at start()) ─────────────────
     pub(crate) search_scope_registry: Arc<SearchScopeRegistry>,
     pub(crate) input_scope_registry: Arc<InputScopeRegistry>,
+    pub(crate) draft_builders: Arc<nmp_core::substrate::DraftBuilderRegistry>,
     pub(crate) observed_projection_sessions: ObservedProjectionSessionMap,
 
     // ── Deferred &mut-kernel settings (applied in start()) ───────────────────
@@ -176,6 +177,7 @@ impl BrowserBuilderInner {
             preferred_relay_source: None,
             search_scope_registry: Arc::new(SearchScopeRegistry::new()),
             input_scope_registry: Arc::new(InputScopeRegistry::new()),
+            draft_builders: Arc::new(nmp_core::substrate::DraftBuilderRegistry::new()),
             observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
             coverage_hook: None,
             req_frame_interceptor: None,

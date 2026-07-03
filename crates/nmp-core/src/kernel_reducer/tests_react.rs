@@ -39,9 +39,8 @@ fn build_reaction_draft_degrades_gracefully_when_author_not_cached() {
 #[test]
 fn build_reaction_draft_includes_p_tag_when_author_cached() {
     // ingest_pre_verified_event populates BOTH the store AND self.events (the
-    // HashMap read-cache that event_author reads). Store-only seeding (as used
-    // by seed_event_with_kind in tests_reply_tags) is insufficient here
-    // because event_author reads self.events, not the store.
+    // HashMap read-cache that event_author reads). Store-only seeding is
+    // insufficient here because event_author reads self.events, not the store.
     let mut r = KernelReducer::new();
     let raw = RawEvent {
         id: TARGET_ID.to_string(),

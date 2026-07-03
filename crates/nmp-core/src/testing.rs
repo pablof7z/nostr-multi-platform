@@ -103,6 +103,7 @@ pub fn spawn_actor_with_storage_path(
                 crate::substrate::EventIngestDispatcher::new(),
             )),
             search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
+            draft_builders: Arc::new(crate::substrate::DraftBuilderRegistry::new()),
             dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
             contact_list_reader: crate::slots::new_contact_list_reader_slot(),
             profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),

@@ -51,6 +51,7 @@ mod bounded;
 mod capability;
 pub mod content_parser;
 mod dm_inbox_relays;
+mod draft_builder;
 mod empty_routing;
 pub mod external_event_sink;
 mod host_op;
@@ -109,6 +110,10 @@ pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use dm_inbox_relays::TestDmInboxRelayCache;
 pub use dm_inbox_relays::{
     empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
+};
+pub use draft_builder::{
+    DraftBuildContext, DraftBuildError, DraftBuilder, DraftBuilderRegistrar, DraftBuilderRegistry,
+    DraftIntent, DraftIntentKind,
 };
 pub use intent::{
     InputIntentCandidate, InputIntentClassification, InputIntentRejection, InputIntentRequest,
@@ -180,10 +185,4 @@ pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependen
 
 pub use active_observed_projection::ObservedProjectionReconciler;
 
-// NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
-// nip21 — not a per-kind decoder, so D0-clean). Re-exported here so the
-// per-NIP relation crates that already `use nmp_core::substrate::{...}`
-// consume one source.
-pub use crate::tags::{
-    a_tag, all_tag_values, e_tag, first_tag_value, p_tag, parse_nip10, q_tag, EventRef, Nip10Refs,
-};
+pub use crate::tags::{a_tag, all_tag_values, e_tag, first_tag_value, p_tag, q_tag};

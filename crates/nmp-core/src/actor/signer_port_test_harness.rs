@@ -87,6 +87,7 @@ pub(super) fn dispatch_one_with_relays(
         relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
         ingest_dispatcher: ingest_dispatcher_slot,
         search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
+        draft_builders: Arc::new(crate::substrate::DraftBuilderRegistry::new()),
         dm_inbox_relays: dm_inbox_relays_slot,
         contact_list_reader: crate::slots::new_contact_list_reader_slot(),
         profile_lookup: profile_lookup_slot,

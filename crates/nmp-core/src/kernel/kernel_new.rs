@@ -179,6 +179,7 @@ impl Kernel {
         let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
         let content_parser: Arc<dyn crate::substrate::ContentParser> =
             Arc::new(crate::substrate::NoopContentParser::new());
+        let draft_builders = Arc::new(crate::substrate::DraftBuilderRegistry::new());
         #[cfg(any(test, feature = "test-support"))]
         let test_mailbox_cache = Arc::new(TestInMemoryMailboxCache::new());
         #[cfg(any(test, feature = "test-support"))]
@@ -268,6 +269,7 @@ impl Kernel {
             test_mailbox_cache,
             outbox_router,
             content_parser,
+            draft_builders,
             routing_trace,
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),
             #[cfg(any(test, feature = "test-support"))]

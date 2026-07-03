@@ -10,7 +10,8 @@
 //! ## Module layout
 //!
 //! - [`kinds`] — `KIND_SHORT_TEXT_NOTE = 1`.
-//! - [`decode`] — `NoteRecord` carrying `Nip10Refs` (parsed once at decode).
+//! - [`decode`] — `NoteRecord` carrying [`Nip10Refs`] (parsed once at decode).
+//! - [`nip10`] — NIP-10 reference parser and reply tag builder.
 //! - [`build`] — `Note::new(content).reply_to(parent).build(author, ts)`
 //!   producing an `UnsignedEvent` with NIP-10 marked tags via
 //!   [`nmp_core::tags`].
@@ -34,9 +35,11 @@ mod timeline_snapshot_generated {
 
 pub mod build;
 pub mod decode;
+pub mod draft;
 pub mod kind0_parser;
 pub mod kinds;
 pub mod meta_timeline;
+pub mod nip10;
 pub mod profile_cache;
 mod profile_display;
 pub mod timeline_projection;
@@ -45,12 +48,14 @@ pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
+pub use draft::register_draft_builders;
 pub use kind0_parser::Kind0Parser;
 pub use kinds::KIND_SHORT_TEXT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
 };
+pub use nip10::{parse_nip10, reply_tags, EventRef, Nip10Refs};
 pub use profile_cache::ProfileCache;
 pub use profile_display::{
     profile_metadata_projection_from_event, AuthorDisplay, ProfileDisplay,

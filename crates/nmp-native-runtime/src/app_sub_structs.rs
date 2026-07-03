@@ -81,6 +81,8 @@ pub(crate) struct CompositionConfig {
     pub(crate) search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
     /// #1804 — shared crate-registered input-scope recognizer registry.
     pub(crate) input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry>,
+    /// Composition-registered protocol draft builders.
+    pub(crate) draft_builders: Arc<nmp_core::substrate::DraftBuilderRegistry>,
     /// ADR-0072 §D3 — per-app bunker-URI hook slot. Belongs here (not in
     /// `CapabilityPorts`) because `nmp_signer_broker_init` guards it with
     /// `ensure_prestart_config` — it cannot be refreshed after start.

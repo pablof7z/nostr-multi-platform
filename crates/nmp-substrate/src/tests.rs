@@ -9,12 +9,12 @@ use nmp_core::slots::{
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::{
     ActionModule, ActionRegistrar, BlockedRelayLookup, BlockedRelayLookupRegistrar,
-    CoverageHookRegistrar, ExternalEventSinkPolicy, IngestOutcomeKind, IngestParser,
-    IngestParserRegistrar, KernelReaderRegistrar, MailboxCache, OutboxRouter, ProfileLookup,
-    RawEventForwardPolicyContext, RegistrationError, RelayConnectedHook,
-    RelayConnectedHookRegistrar, RelayTextInterceptor, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptor, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    RoutingTraceObserver, SignedEventFrame,
+    CoverageHookRegistrar, DraftBuilder, DraftBuilderRegistrar, DraftIntentKind,
+    ExternalEventSinkPolicy, IngestOutcomeKind, IngestParser, IngestParserRegistrar,
+    KernelReaderRegistrar, MailboxCache, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
+    RegistrationError, RelayConnectedHook, RelayConnectedHookRegistrar, RelayTextInterceptor,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptor, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, RoutingTraceObserver, SignedEventFrame,
 };
 use nmp_store::{EventStore, MemEventStore, RawEvent};
 
@@ -36,6 +36,10 @@ impl ActionRegistrar for CapturingHost {
     ) -> Result<(), RegistrationError> {
         Ok(())
     }
+}
+
+impl DraftBuilderRegistrar for CapturingHost {
+    fn register_draft_builder(&self, _kind: DraftIntentKind, _builder: Arc<dyn DraftBuilder>) {}
 }
 
 impl IngestParserRegistrar for CapturingHost {

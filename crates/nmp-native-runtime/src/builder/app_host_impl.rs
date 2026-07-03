@@ -15,10 +15,11 @@ use std::sync::Arc;
 use crate::NmpApp;
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    DmInboxRelayRegistrar, DraftBuilderRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection,
+    ObservedProjectionRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
+    SnapshotProjectionRegistrar,
 };
 use nmp_ownership::ProjectionRegistrationKey;
 
@@ -183,6 +184,17 @@ impl<S> BlockedRelayLookupRegistrar for NmpAppBuilder<S> {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_blocked_relay_lookup(lookup);
+    }
+}
+
+impl<S> DraftBuilderRegistrar for NmpAppBuilder<S> {
+    fn register_draft_builder(
+        &self,
+        kind: nmp_core::substrate::DraftIntentKind,
+        builder: Arc<dyn nmp_core::substrate::DraftBuilder>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_draft_builder(kind, builder);
     }
 }
 

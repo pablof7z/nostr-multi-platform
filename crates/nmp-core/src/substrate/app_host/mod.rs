@@ -35,9 +35,9 @@ use crate::subs::PlanCoverageHook;
 use crate::AppRelaySlot;
 
 use super::{
-    ActionRegistrar, DmInboxRelayLookup, ExternalEventSinkPolicy, IngestParser, MailboxCache,
-    OutboxRouter, ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
-    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+    ActionRegistrar, DmInboxRelayLookup, DraftBuilderRegistrar, ExternalEventSinkPolicy,
+    IngestParser, MailboxCache, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
+    RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 mod observed;
@@ -403,6 +403,7 @@ pub trait AppHost:
     + KernelReaderRegistrar
     + DmInboxRelayRegistrar
     + BlockedRelayLookupRegistrar
+    + DraftBuilderRegistrar
     + RoutingFactoryRegistrar
     + super::search::SearchScopeRegistrar
     + super::intent::InputScopeRegistrar
@@ -424,6 +425,7 @@ impl<T> AppHost for T where
         + KernelReaderRegistrar
         + DmInboxRelayRegistrar
         + BlockedRelayLookupRegistrar
+        + DraftBuilderRegistrar
         + RoutingFactoryRegistrar
         + super::search::SearchScopeRegistrar
         + super::intent::InputScopeRegistrar

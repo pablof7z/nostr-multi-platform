@@ -288,6 +288,7 @@ pub(crate) fn publish_signed_event(
 /// registry-minted action id; threading it through makes the publish engine
 /// report it in `action_results` so the host spinner keyed on the dispatch
 /// return value can be cleared. `None` for non-dispatch callers.
+#[cfg(test)]
 pub(crate) fn publish_profile(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
@@ -361,6 +362,7 @@ pub(crate) fn publish_profile(
     }
 }
 
+#[cfg(test)]
 fn merged_profile_fields(
     kernel: &Kernel,
     pubkey: &str,

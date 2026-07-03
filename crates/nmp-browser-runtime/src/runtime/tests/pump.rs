@@ -97,6 +97,7 @@ fn protocol_command_expands_before_headless_interpretation() {
 #[test]
 fn needs_sign_parks_continuation_and_emits_sign_request() {
     let mut reducer = KernelReducer::new();
+    nmp_substrate::install_on_reducer(&mut reducer);
     reducer.set_active_account_for_test("ab".repeat(32));
 
     let cmd = ActorCommand::Publish(PublishCommand::Profile {

@@ -29,7 +29,7 @@ fn set_publish_error(kernel: &mut Kernel, code: &'static str, fallback: String) 
 ///
 /// The lifecycle `reason` is the bare `"no active account"` prose; #1735 also
 /// sets the curated `LIFECYCLE_NO_ACTIVE_ACCOUNT` code the host localizes.
-pub(super) fn toast_no_account(
+pub(crate) fn toast_no_account(
     kernel: &mut Kernel,
     action: &str,
     correlation_id: Option<String>,
@@ -59,7 +59,7 @@ pub(super) fn toast_no_account(
 /// copy-pastes (with one branch in `publish_unsigned_event_to_relays`
 /// silently DROPPING the `correlation_id`, which orphaned the host spinner on
 /// a dispatched NIP-29 group-message sign failure — fixed by this consolidation).
-pub(super) fn fail_publish(
+pub(crate) fn fail_publish(
     kernel: &mut Kernel,
     reason: String,
     correlation_id: Option<String>,

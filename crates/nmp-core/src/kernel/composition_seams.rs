@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use crate::substrate::{ContentParser, MailboxCache, OutboxRouter};
+use crate::substrate::{
+    ContentParser, DraftBuildContext, DraftBuildError, DraftBuilderRegistry, DraftIntent,
+    MailboxCache, OutboxRouter,
+};
 
 use super::Kernel;
 
@@ -12,6 +15,34 @@ impl Kernel {
 
     pub fn set_content_parser(&mut self, parser: Arc<dyn ContentParser>) {
         self.content_parser = parser;
+    }
+
+    pub fn set_draft_builder_registry(&mut self, registry: Arc<DraftBuilderRegistry>) {
+        self.draft_builders = registry;
+    }
+
+    pub fn register_draft_builder(
+        &self,
+        kind: crate::substrate::DraftIntentKind,
+        builder: Arc<dyn crate::substrate::DraftBuilder>,
+    ) {
+        self.draft_builders.register(kind, builder);
+    }
+
+    pub fn build_draft(
+        &self,
+        intent: &DraftIntent,
+        author_pubkey: &str,
+        created_at: u64,
+    ) -> Result<nmp_signer_iface::UnsignedEvent, DraftBuildError> {
+        self.draft_builders.build(
+            intent,
+            DraftBuildContext {
+                event_store: &*self.event_store_handle(),
+                author_pubkey,
+                created_at,
+            },
+        )
     }
 
     /// Test seam for delivering a raw event through the genuine post-store

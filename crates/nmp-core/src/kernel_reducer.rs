@@ -309,10 +309,6 @@ mod tests_snapshot_claims;
 mod tests_feed_verbs;
 
 #[cfg(test)]
-#[path = "kernel_reducer/tests_reply_tags.rs"]
-mod tests_reply_tags;
-
-#[cfg(test)]
 #[path = "kernel_reducer/tests_react.rs"]
 mod tests_react;
 
@@ -327,6 +323,10 @@ mod command_apply_tests;
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_publish_tests.rs"]
 mod command_apply_publish_tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/command_apply_publish_draft_tests.rs"]
+mod command_apply_publish_draft_tests;
 
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_publish_timestamp_tests.rs"]

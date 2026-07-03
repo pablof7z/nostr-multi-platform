@@ -15,10 +15,11 @@ use std::sync::Arc;
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use nmp_core::substrate::{
-    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
-    IngestParser, IngestParserRegistrar, KernelReaderRegistrar, MailboxCache, OutboxRouter,
-    ProfileLookup, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
+    ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DraftBuilderRegistrar,
+    ExternalEventSinkPolicy, IngestParser, IngestParserRegistrar, KernelReaderRegistrar,
+    MailboxCache, OutboxRouter, ProfileLookup, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    RoutingTraceObserver,
 };
 use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
@@ -118,7 +119,10 @@ impl SubstrateWiring {
     /// kind:10002 parser writer (see [`Self::mailbox_cache`]).
     pub fn install_on_app_host(
         &self,
-        app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
+        app: &(impl IngestParserRegistrar
+              + KernelReaderRegistrar
+              + RoutingFactoryRegistrar
+              + DraftBuilderRegistrar),
     ) -> Arc<dyn MailboxCache> {
         let mailbox_reader: Arc<dyn MailboxCache> = self.mailbox_cache.clone();
         app.set_mailbox_cache_reader(Arc::clone(&mailbox_reader));
@@ -141,6 +145,8 @@ impl SubstrateWiring {
     /// Install the shared cache/parser pairs on a reducer-owned web
     /// composition root.
     pub fn install_on_reducer(&self, reducer: &mut KernelReducer) {
+        nmp_nip01::register_draft_builders(reducer);
+
         let router: Arc<dyn OutboxRouter> = Arc::new(GenericOutboxRouter::new());
         let mailbox_reader: Arc<dyn MailboxCache> = self.mailbox_cache.clone();
         reducer.set_routing(router, mailbox_reader);
@@ -185,7 +191,10 @@ impl SubstrateWiring {
 /// installed as the encoder reader, the routing factory cache, and the
 /// kind:10002 parser writer.
 pub fn install_on_app_host(
-    app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
+    app: &(impl IngestParserRegistrar
+          + KernelReaderRegistrar
+          + RoutingFactoryRegistrar
+          + DraftBuilderRegistrar),
 ) -> Arc<dyn MailboxCache> {
     SubstrateWiring::new().install_on_app_host(app)
 }
@@ -210,6 +219,7 @@ pub fn install(
               + CoverageHookRegistrar
               + IngestParserRegistrar
               + KernelReaderRegistrar
+              + DraftBuilderRegistrar
               + RelayConnectedHookRegistrar
               + RelayTextInterceptorRegistrar
               + ReqFrameInterceptorRegistrar
@@ -217,6 +227,7 @@ pub fn install(
     config: SubstrateConfig,
 ) -> SubstrateHandles {
     nmp_router::register_actions(app);
+    nmp_nip01::register_draft_builders(app);
 
     let mailbox_cache = install_on_app_host(app);
 

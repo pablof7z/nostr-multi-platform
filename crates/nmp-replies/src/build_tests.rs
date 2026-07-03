@@ -1,7 +1,6 @@
 use super::*;
 use crate::ReplyTarget;
-use nmp_core::tags::{EventRef, Nip10Refs};
-use nmp_nip01::NoteRecord;
+use nmp_nip01::{EventRef, Nip10Refs, NoteRecord};
 
 const AUTHOR: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const PARENT_AUTHOR: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";

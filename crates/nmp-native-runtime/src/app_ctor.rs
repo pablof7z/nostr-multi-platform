@@ -156,6 +156,9 @@ pub fn new_app() -> NmpApp {
     // #1804 — crate-registered input-scope recognizer registry.
     let input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry> =
         Arc::new(nmp_core::substrate::InputScopeRegistry::new());
+    let draft_builders: Arc<nmp_core::substrate::DraftBuilderRegistry> =
+        Arc::new(nmp_core::substrate::DraftBuilderRegistry::new());
+    let actor_draft_builders = Arc::clone(&draft_builders);
     // V-40 — substrate `DmInboxRelayLookup` slot.
     let dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>> =
         Arc::new(Mutex::new(
@@ -227,6 +230,7 @@ pub fn new_app() -> NmpApp {
             relay_connected_hook: actor_relay_connected_hook,
             ingest_dispatcher: actor_ingest_dispatcher,
             search_scope_registry: actor_search_scope_registry,
+            draft_builders: actor_draft_builders,
             dm_inbox_relays: actor_dm_inbox_relays,
             contact_list_reader: actor_contact_list_reader,
             profile_lookup: actor_profile_lookup,
@@ -365,6 +369,7 @@ pub fn new_app() -> NmpApp {
             mailbox_cache_reader: Mutex::new(None),
             search_scope_registry,
             input_scope_registry,
+            draft_builders,
             bunker_hook,
         },
         capability_ports: CapabilityPorts {

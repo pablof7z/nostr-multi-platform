@@ -1,15 +1,15 @@
 //! Decoder half (read side) — `NoteRecord` from a kind:1 event.
 //!
-//! Pure, allocation-bounded, no I/O. Uses [`nmp_core::tags::parse_nip10`] so
+//! Pure, allocation-bounded, no I/O. Uses [`crate::nip10::parse_nip10`] so
 //! every NIP-10 reference (root, reply, mentions, mentioned pubkeys) is
 //! parsed once and carried in the record alongside the raw fields.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::tags::{parse_nip10, Nip10Refs};
 use nmp_store::StoredEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_SHORT_TEXT_NOTE;
+use crate::nip10::{parse_nip10, Nip10Refs};
 
 /// Decoded NIP-01 short text note. Immutable per `kind-wrappers.md` §1 — no
 /// setters, no shared mutable wrapper (D4 violation). Apps that need a

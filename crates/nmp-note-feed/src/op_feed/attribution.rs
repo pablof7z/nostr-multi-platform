@@ -15,8 +15,8 @@
 //! their own dependency path.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::tags::parse_nip10;
 use nmp_feed::AttributionPayload;
+use nmp_nip01::parse_nip10;
 use serde::{Deserialize, Serialize};
 
 /// Per-root attribution for a followed author's NIP-10 reply.

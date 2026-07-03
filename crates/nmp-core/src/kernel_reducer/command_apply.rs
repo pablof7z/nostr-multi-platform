@@ -69,7 +69,7 @@ impl super::KernelReducer {
             ActionLedgerCommand, ContactsCommand, InterestsCommand, LifecycleCommand,
             PublishCommand, RelayCommand,
         };
-        use CommandApplyOutcome::{Applied, NeedsSign, Unsupported};
+        use CommandApplyOutcome::{Applied, Unsupported};
 
         match command {
             // ── Group A: Applied (synchronous) ───────────────────────────────
@@ -301,9 +301,8 @@ impl super::KernelReducer {
                 )
             }
 
-            // Reply: derive NIP-10 tags from the stored parent, then build the
-            // same unsigned kind:1 JSON path as RawEvent. The host never
-            // constructs protocol tags.
+            // Reply: resolve the user intent through the registered protocol
+            // draft builder, then publish the returned unsigned event.
             ActorCommand::Publish(PublishCommand::Reply {
                 content,
                 reply_to_event_id,
@@ -311,40 +310,31 @@ impl super::KernelReducer {
                 signer_pubkey: _,
                 correlation_id: cid,
             }) => {
-                let Some(tags) = self.build_reply_tags(&reply_to_event_id) else {
-                    return Unsupported {
-                        reason: format!("reply_target_unknown: {reply_to_event_id}"),
-                    };
-                };
                 let Some(account_pubkey) = self.active_account_pubkey() else {
                     return Unsupported {
                         reason: "no active account for Reply sign round-trip".to_string(),
                     };
                 };
                 let created_at = self.now_secs();
-                let unsigned_json = serde_json::json!({
-                    "pubkey": account_pubkey,
-                    "kind": 1u32,
-                    "tags": tags,
-                    "content": content,
-                    "created_at": created_at,
-                })
-                .to_string();
-                match self.begin_sign_roundtrip_at(
-                    account_pubkey,
-                    &unsigned_json,
-                    crate::time::Instant::now(),
-                ) {
-                    Ok(request) => NeedsSign {
-                        request,
-                        target,
-                        action_correlation_id: cid,
-                    },
-                    Err(reason) => Unsupported { reason },
-                }
+                let intent = crate::substrate::DraftIntent::Reply {
+                    content,
+                    reply_to_event_id,
+                };
+                let unsigned = match self
+                    .kernel
+                    .build_draft(&intent, &account_pubkey, created_at)
+                {
+                    Ok(unsigned) => unsigned,
+                    Err(err) => {
+                        return Unsupported {
+                            reason: err.to_string(),
+                        }
+                    }
+                };
+                self.begin_unsigned_publish_roundtrip(unsigned, None, target, cid, false, "Reply")
             }
 
-            // Profile (kind:0): build kind:0 content JSON, begin sign round-trip.
+            // Profile: resolve through the registered protocol draft builder.
             ActorCommand::Publish(PublishCommand::Profile {
                 fields,
                 correlation_id: cid,
@@ -354,28 +344,27 @@ impl super::KernelReducer {
                         reason: "no active account for Profile sign round-trip".to_string(),
                     };
                 };
-                let content = serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
                 let created_at = self.now_secs();
-                let unsigned_json = serde_json::json!({
-                    "pubkey": account_pubkey,
-                    "kind": 0u32,
-                    "tags": serde_json::Value::Array(vec![]),
-                    "content": content,
-                    "created_at": created_at,
-                })
-                .to_string();
-                match self.begin_sign_roundtrip_at(
-                    account_pubkey,
-                    &unsigned_json,
-                    crate::time::Instant::now(),
-                ) {
-                    Ok(request) => NeedsSign {
-                        request,
-                        target: PublishTarget::Auto,
-                        action_correlation_id: cid,
-                    },
-                    Err(reason) => Unsupported { reason },
-                }
+                let intent = crate::substrate::DraftIntent::Profile { fields };
+                let unsigned = match self
+                    .kernel
+                    .build_draft(&intent, &account_pubkey, created_at)
+                {
+                    Ok(unsigned) => unsigned,
+                    Err(err) => {
+                        return Unsupported {
+                            reason: err.to_string(),
+                        }
+                    }
+                };
+                self.begin_unsigned_publish_roundtrip(
+                    unsigned,
+                    None,
+                    PublishTarget::Auto,
+                    cid,
+                    false,
+                    "Profile",
+                )
             }
 
             // Contacts: splice the active account's loaded kind:3 and publish
