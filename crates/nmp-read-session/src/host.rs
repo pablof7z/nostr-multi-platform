@@ -51,6 +51,16 @@ pub struct ReadDependentDemand {
     pub replay_limit: usize,
 }
 
+/// How an observed demand should seed before live activation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReadReplayPolicy {
+    /// Use the demand filter as the structural read-cache replay selector.
+    Structural,
+    /// Open only the live interest. The concept supplied a stronger seed path
+    /// (for example NIP-50 FTS search, which must evaluate query text).
+    LiveOnly,
+}
+
 /// Cloneable hooks the engine can retain after open to reconcile derived
 /// observed demands from an event callback. Runtime hosts implement this once;
 /// concept crates never see it.
@@ -99,6 +109,8 @@ pub struct ReadDemand {
     pub relay_pin: Option<String>,
     /// Maximum number of cached events to replay before activation.
     pub replay_limit: usize,
+    /// Whether this demand uses structural replay or a concept-supplied seed.
+    pub replay: ReadReplayPolicy,
 }
 
 /// Everything a concept declares to open one read. The engine ([`crate::open_read`])
@@ -106,7 +118,9 @@ pub struct ReadDemand {
 pub struct ReadSpec {
     /// The framework/app projection key this read's typed output surfaces under.
     pub projection_key: ProjectionRegistrationKey,
-    /// The routed demand(s) this read keeps live. Non-empty for a real read.
+    /// The routed demand(s) this read keeps live. Empty only when the concept
+    /// supplied a seed-only read and explicitly allows it via
+    /// [`Self::keep_open_without_live_demand`].
     pub demands: Vec<ReadDemand>,
     /// The admission-applying event reducer + typed read model. Shared by every
     /// demand of this read (one reducer, one output).
@@ -115,6 +129,9 @@ pub struct ReadSpec {
     pub output_encoder: ReadOutputEncoder,
     /// Optional engine-owned dependent demand stages. Empty for fixed reads.
     pub dependent_demands: Vec<ReadDependentDemandProvider>,
+    /// Keep the output + close handle live even when no primary live demand
+    /// opens. Used by seed-only reads such as cache-only NIP-50 search.
+    pub keep_open_without_live_demand: bool,
 }
 
 /// The typed close handle a concept read returns. Pairs the opaque projection
@@ -142,6 +159,12 @@ pub trait ReadHost {
     /// returns `ObservedProjectionId(0)`.
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId;
 
+    /// Open one observed interest without generic structural replay. Concepts
+    /// use this only through [`ReadReplayPolicy::LiveOnly`].
+    fn open_live_only_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        self.open_read_interest(decl)
+    }
+
     /// Build the teardown step that withdraws the observed interest `id` (closes
     /// its `REQ` + unregisters the observer). Runs first on close.
     fn teardown_close_interest(&self, id: ObservedProjectionId) -> TeardownAction;
@@ -164,6 +187,11 @@ pub trait ReadHost {
 
     /// Close the read session `id`, running its reverse teardown once.
     fn close_read_session(&self, id: &ReadSessionId) -> bool;
+
+    /// Close a live read by projection key. This is the generic compatibility
+    /// path for legacy hosts that can only name a stable output key; concepts do
+    /// not own a separate close map.
+    fn close_read_session_by_projection_key(&self, projection_key: &str) -> bool;
 
     /// Optional cloneable controller for engine-owned derived observed demands.
     ///

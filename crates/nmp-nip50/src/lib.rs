@@ -37,9 +37,9 @@ pub use scopes::{
     SCOPE_NAME_PROFILES,
 };
 pub use search::{
-    install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,
-    SearchFallbackRelays, SearchRelaySource, SearchSessionBuild, SearchSessionRegistry,
-    SearchTeardownAction,
+    close_search_read, close_search_read_by_key, install_search_relay_source, open_search_read,
+    resolve_search_relays, search_projection_key, search_relay_plan, OpenSearchRead,
+    RelayPinnedInterest, SearchFallbackRelays, SearchReadHandle, SearchRelaySource,
 };
 pub use wire::{
     decode_search_results_snapshot, encode_search_results_snapshot,

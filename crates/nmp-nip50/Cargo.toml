@@ -16,6 +16,7 @@ nmp-core = { path = "../nmp-core", default-features = false }
 # SearchScopeId / StoredEvent / SearchField) the cache-search path and scope
 # providers build against. #1811.
 nmp-store = { path = "../nmp-store" }
+nmp-read-session = { path = "../nmp-read-session" }
 # Direct dep on nmp-planner for bounded_search_query / InterestShape —
 # the nmp_core::planner compat facade is deleted (#1608).
 nmp-planner = { path = "../nmp-planner" }

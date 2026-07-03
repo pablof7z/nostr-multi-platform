@@ -56,7 +56,7 @@ use nmp_ownership::FrameworkProjectionKey;
 use nmp_planner::InterestShape;
 use nmp_read_session::{
     close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
-    ReadOutputEncoder, ReadSpec,
+    ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
 use serde::{Deserialize, Serialize};
 
@@ -232,6 +232,7 @@ pub fn open_reactions(
         scope: REACTION_READ_SCOPE_GLOBAL,
         relay_pin: None,
         replay_limit: REACTION_REPLAY_LIMIT,
+        replay: ReadReplayPolicy::Structural,
     };
 
     // No viewer pubkey: this read is identity-free (module docs), so the
@@ -279,6 +280,7 @@ pub fn open_reactions(
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
             dependent_demands,
+            keep_open_without_live_demand: false,
         },
     );
     Ok(ReactionsReadHandle(handle))

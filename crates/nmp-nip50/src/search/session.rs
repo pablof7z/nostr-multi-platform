@@ -1,187 +1,151 @@
-//! Typed lifecycle registry for one NIP-50 search read session.
+//! `open_search_read` — the concept-owned NIP-50 active read (#2777).
 //!
-//! The registry is intentionally search-shaped, not reusable across unrelated reads:
-//! callers compile a validated [`crate::SearchRequest`] into one search snapshot
-//! key, resolved relay pins, and teardown actions that release the machinery
-//! they registered. The registry owns replacement and close semantics so hosts
-//! do not keep a parallel hand-written `open`/`close` recipe per search surface.
+//! This is the NIP-50 owner's lifecycle door. It resolves relay targets,
+//! seeds the result projection from the store's FTS index, compiles live
+//! relay-pinned demand, and drives everything through `nmp-read-session`.
+//! It contains NO registry, close map, replay implementation, or teardown
+//! recipe of its own; those mechanics belong to the shared read engine.
 
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-/// A single teardown step recorded when a search session opens.
-///
-/// Boxed `FnOnce` keeps every registered resource single-owner: once close runs,
-/// the registry cannot run the same teardown again.
-pub type SearchTeardownAction = Box<dyn FnOnce() + Send>;
+use nmp_core::substrate::KernelEvent;
+use nmp_core::{ObservedProjectionSink, TypedProjectionData};
+use nmp_ownership::FrameworkProjectionKey;
+use nmp_read_session::{
+    close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
+    ReadSpec,
+};
+use nmp_store::EventStore;
 
-/// The compiled lifecycle for one search session.
-pub struct SearchSessionBuild {
-    /// The typed `N50S` projection key surfaced to the host.
-    pub projection_key: String,
-    /// The resolved relay pins this session opened live demand against.
+use crate::{
+    encode_search_results_snapshot, resolve_search_relays, search_relay_plan, SearchRelaySource,
+    SearchRequest, SearchResultsProjection, SEARCH_RESULTS_FILE_IDENTIFIER,
+    SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
+};
+
+/// `1` = Global. Search interests pin concrete relays and are not re-routed on
+/// account switch; callers close/reopen to change identity.
+const SEARCH_READ_SCOPE_GLOBAL: u32 = 1;
+
+/// Runtime close/read handle for one NIP-50 search read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SearchReadHandle(ReadHandle);
+
+impl SearchReadHandle {
+    #[must_use]
+    pub fn projection_key(&self) -> &str {
+        &self.0.projection_key
+    }
+}
+
+/// Result of opening a search read.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OpenSearchRead {
+    pub handle: SearchReadHandle,
+    /// Resolved live relay pins. Empty means cache-only search.
     pub relays: Vec<String>,
-    /// Teardown steps in registration order. Close runs them in reverse.
-    pub teardown: Vec<SearchTeardownAction>,
 }
 
-struct SearchSession {
-    projection_key: String,
-    relays: Vec<String>,
-    teardown: Vec<SearchTeardownAction>,
+struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
+
+impl ObservedProjectionSink for SearchObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        let relay = event.relay_provenance.first().cloned().unwrap_or_default();
+        if let Ok(mut projection) = self.0.lock() {
+            projection.ingest_relay_event(event, relay);
+        }
+    }
 }
 
-/// Registry of live NIP-50 search sessions keyed by caller-supplied session id.
-#[derive(Default)]
-pub struct SearchSessionRegistry {
-    sessions: Mutex<BTreeMap<String, SearchSession>>,
+/// The snapshot-projection key for a search session.
+#[must_use]
+pub fn search_projection_key(session_id: &str) -> String {
+    format!("nmp.nip50.search.{session_id}")
 }
 
-impl SearchSessionRegistry {
-    /// Open or replace `session_id` with `build`.
-    ///
-    /// Replacing a live id first closes the old session, then records the new
-    /// one. If the registry cannot take ownership of the new build, it tears the
-    /// build down immediately and reports failure.
-    pub fn open(&self, session_id: impl Into<String>, build: SearchSessionBuild) -> bool {
-        let session_id = session_id.into();
-        self.close(&session_id);
+/// Refcount-owner key for one relay's search interest within a session.
+#[must_use]
+pub fn search_consumer(session_id: &str, relay: &str) -> String {
+    format!("search-{session_id}-{relay}")
+}
 
-        let SearchSessionBuild {
-            projection_key,
-            relays,
-            teardown,
-        } = build;
-        match self.sessions.lock() {
-            Ok(mut sessions) => {
-                sessions.insert(
-                    session_id,
-                    SearchSession {
-                        projection_key,
-                        relays,
-                        teardown,
-                    },
-                );
-                true
-            }
-            Err(_) => {
-                run_teardown(teardown);
-                false
-            }
+/// Open a NIP-50 search read through the shared read-session engine.
+#[must_use]
+pub fn open_search_read(
+    host: &dyn ReadHost,
+    request: SearchRequest,
+    session_id: &str,
+    relay_source: Option<&dyn SearchRelaySource>,
+    store: Option<&dyn EventStore>,
+) -> OpenSearchRead {
+    let _ = close_search_read_by_key(host, session_id);
+
+    let relays = relay_source
+        .map(|source| resolve_search_relays(&request.targets, source))
+        .unwrap_or_default();
+    let key = search_projection_key(session_id);
+    let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
+
+    if let Some(store) = store {
+        if let Ok(mut projection) = projection.lock() {
+            let _ = projection.ingest_cache_from_store(store);
         }
     }
 
-    /// Close `session_id`, running its teardown exactly once.
-    pub fn close(&self, session_id: &str) -> bool {
-        let session = self
-            .sessions
-            .lock()
-            .ok()
-            .and_then(|mut sessions| sessions.remove(session_id));
-        let Some(session) = session else {
-            return false;
-        };
-        run_teardown(session.teardown);
-        true
-    }
+    let demands = search_relay_plan(&request, &relays)
+        .into_iter()
+        .map(|pinned| ReadDemand {
+            filter_json: nmp_core::subs::filter_json_for(&pinned.shape),
+            consumer_id: search_consumer(session_id, &pinned.relay),
+            scope: SEARCH_READ_SCOPE_GLOBAL,
+            relay_pin: Some(pinned.relay),
+            replay_limit: 0,
+            replay: ReadReplayPolicy::LiveOnly,
+        })
+        .collect();
 
-    /// Return the projection key for a live session.
-    #[must_use]
-    pub fn projection_key(&self, session_id: &str) -> Option<String> {
-        self.sessions
-            .lock()
-            .ok()
-            .and_then(|sessions| sessions.get(session_id).map(|s| s.projection_key.clone()))
-    }
+    let projection_for_output = Arc::clone(&projection);
+    let output_key = key.clone();
+    let output_encoder: ReadOutputEncoder = Box::new(move || {
+        let snapshot = projection_for_output.lock().ok()?.snapshot();
+        Some(TypedProjectionData {
+            key: output_key.clone(),
+            schema_id: SEARCH_RESULTS_SCHEMA_ID.to_string(),
+            schema_version: SEARCH_RESULTS_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(SEARCH_RESULTS_FILE_IDENTIFIER).into_owned(),
+            payload: encode_search_results_snapshot(&snapshot),
+            ..Default::default()
+        })
+    });
 
-    /// Return the resolved live relay pins for a session.
-    ///
-    /// Diagnostic/test surface: this proves empty relay resolution stays
-    /// fail-closed and never becomes wildcard demand.
-    #[must_use]
-    pub fn relays(&self, session_id: &str) -> Vec<String> {
-        self.sessions
-            .lock()
-            .ok()
-            .and_then(|sessions| sessions.get(session_id).map(|s| s.relays.clone()))
-            .unwrap_or_default()
-    }
+    let projection_key = FrameworkProjectionKey::declared(key, "projection.nmp.nip50.search")
+        .expect("search projection keys use the nmp.nip50.search family");
+    let handle = open_read(
+        host,
+        ReadSpec {
+            projection_key: projection_key.into(),
+            demands,
+            observer: Arc::new(SearchObserver(projection)) as Arc<dyn ObservedProjectionSink>,
+            output_encoder,
+            dependent_demands: Vec::new(),
+            keep_open_without_live_demand: true,
+        },
+    );
 
-    /// Count live sessions for contract tests.
-    #[must_use]
-    pub fn live_count(&self) -> usize {
-        self.sessions.lock().map(|s| s.len()).unwrap_or(0)
-    }
-}
-
-fn run_teardown(teardown: Vec<SearchTeardownAction>) {
-    for action in teardown.into_iter().rev() {
-        action();
+    OpenSearchRead {
+        handle: SearchReadHandle(handle),
+        relays,
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use std::sync::{Arc, Mutex};
+/// Close a search read by its engine-owned handle.
+#[must_use]
+pub fn close_search_read(host: &dyn ReadHost, handle: &SearchReadHandle) -> bool {
+    close_read(host, &handle.0)
+}
 
-    use super::*;
-
-    #[test]
-    fn replacing_a_search_session_runs_old_teardown_once() {
-        let registry = SearchSessionRegistry::default();
-        let log = Arc::new(Mutex::new(Vec::new()));
-
-        let first_log = Arc::clone(&log);
-        assert!(registry.open(
-            "s1",
-            SearchSessionBuild {
-                projection_key: "nmp.nip50.search.s1".to_string(),
-                relays: vec!["wss://one/".to_string()],
-                teardown: vec![Box::new(move || {
-                    first_log.lock().unwrap().push("old");
-                })],
-            },
-        ));
-
-        let second_log = Arc::clone(&log);
-        assert!(registry.open(
-            "s1",
-            SearchSessionBuild {
-                projection_key: "nmp.nip50.search.s1".to_string(),
-                relays: vec!["wss://two/".to_string()],
-                teardown: vec![Box::new(move || {
-                    second_log.lock().unwrap().push("new");
-                })],
-            },
-        ));
-
-        assert_eq!(registry.relays("s1"), vec!["wss://two/"]);
-        assert_eq!(&*log.lock().unwrap(), &["old"]);
-        assert!(registry.close("s1"));
-        assert!(!registry.close("s1"));
-        assert_eq!(&*log.lock().unwrap(), &["old", "new"]);
-    }
-
-    #[test]
-    fn close_runs_teardown_in_reverse_registration_order() {
-        let registry = SearchSessionRegistry::default();
-        let log = Arc::new(Mutex::new(Vec::new()));
-        let first = Arc::clone(&log);
-        let second = Arc::clone(&log);
-
-        assert!(registry.open(
-            "s1",
-            SearchSessionBuild {
-                projection_key: "key".to_string(),
-                relays: Vec::new(),
-                teardown: vec![
-                    Box::new(move || first.lock().unwrap().push("projection")),
-                    Box::new(move || second.lock().unwrap().push("live")),
-                ],
-            },
-        ));
-
-        assert!(registry.close("s1"));
-        assert_eq!(&*log.lock().unwrap(), &["live", "projection"]);
-    }
+/// Close a search read by its stable session key through the shared registry.
+#[must_use]
+pub fn close_search_read_by_key(host: &dyn ReadHost, session_id: &str) -> bool {
+    host.close_read_session_by_projection_key(&search_projection_key(session_id))
 }

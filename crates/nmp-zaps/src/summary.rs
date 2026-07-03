@@ -43,7 +43,7 @@ use nmp_ownership::FrameworkProjectionKey;
 use nmp_planner::InterestShape;
 use nmp_read_session::{
     close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
-    ReadOutputEncoder, ReadSpec,
+    ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
 
 use crate::read::ZapReadPlan;
@@ -299,6 +299,7 @@ pub fn open_zaps(
         scope: ZAP_READ_SCOPE_GLOBAL,
         relay_pin: None,
         replay_limit: ZAP_REPLAY_LIMIT,
+        replay: ReadReplayPolicy::Structural,
     };
 
     let projection = Arc::new(ZapSummaryProjection::new(target));
@@ -338,6 +339,7 @@ pub fn open_zaps(
             observer: projection as Arc<dyn ObservedProjectionSink>,
             output_encoder,
             dependent_demands,
+            keep_open_without_live_demand: false,
         },
     );
     Ok(ZapsReadHandle(handle))

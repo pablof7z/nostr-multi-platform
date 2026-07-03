@@ -14,7 +14,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::{dispatch_capability, unregister_observer};
+use nmp_core::__ffi_internal::dispatch_capability;
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{
     IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand,
@@ -23,20 +23,10 @@ use nmp_core::slots::{
     event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
     PullCursorRegistryHandleSlot,
 };
-use nmp_core::ObservedProjectionId;
 
 use crate::app_struct::NmpApp;
 
 impl NmpApp {
-    /// Remove an internal observed-projection sink by id.
-    ///
-    /// Crate-private because production app code must close declarations
-    /// through `ObservedProjectionRegistrar::close_observed_projection`, which
-    /// also withdraws the paired interest.
-    pub(crate) fn revoke_observed_projection_sink(&self, id: ObservedProjectionId) {
-        unregister_observer(&self.event_observers, id);
-    }
-
     /// Attach one scoped owner to a `LogicalInterest`.
     pub fn ensure_interest(
         &self,

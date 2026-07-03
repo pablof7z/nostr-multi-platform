@@ -14,7 +14,7 @@ use nmp_core::substrate::ObservedProjection;
 use nmp_planner::InterestShape;
 
 use crate::dependent::{close_dependent_reconcilers, prepare_dependent_demand_observer};
-use crate::host::{ReadDemand, ReadHandle, ReadHost, ReadSpec};
+use crate::host::{ReadDemand, ReadHandle, ReadHost, ReadReplayPolicy, ReadSpec};
 use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
 
 /// Derive the read-cache replay shapes for a demand from its own `REQ` filter
@@ -52,6 +52,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
         observer,
         output_encoder,
         dependent_demands,
+        keep_open_without_live_demand,
     } = spec;
     let key_str = projection_key.as_str().to_string();
 
@@ -70,9 +71,13 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
             scope,
             relay_pin,
             replay_limit,
+            replay,
         } = demand;
-        let replay_shapes = replay_shapes_for(&filter_json, relay_pin.as_deref());
-        let id = host.open_read_interest(ObservedProjection {
+        let replay_shapes = match replay {
+            ReadReplayPolicy::Structural => replay_shapes_for(&filter_json, relay_pin.as_deref()),
+            ReadReplayPolicy::LiveOnly => Vec::new(),
+        };
+        let decl = ObservedProjection {
             observer: Arc::clone(&observer),
             filter_json,
             consumer_id,
@@ -80,7 +85,11 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
             relay_pin,
             replay_shapes,
             replay_limit,
-        });
+        };
+        let id = match replay {
+            ReadReplayPolicy::Structural => host.open_read_interest(decl),
+            ReadReplayPolicy::LiveOnly => host.open_live_only_read_interest(decl),
+        };
         if id.0 != 0 {
             interest_ids.push(id);
         }
@@ -88,7 +97,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
 
     // 3. If nothing stayed live, do not track a dead read: tombstone the output
     //    we installed and flag a tick, then hand back a closed sentinel handle.
-    if interest_ids.is_empty() {
+    if interest_ids.is_empty() && !keep_open_without_live_demand {
         close_dependent_reconcilers(&dependent_reconcilers);
         (host.teardown_remove_output(key_str.clone()))();
         (host.teardown_mark_changed())();

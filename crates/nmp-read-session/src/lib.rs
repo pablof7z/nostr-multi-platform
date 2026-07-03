@@ -56,6 +56,6 @@ mod registry;
 pub use engine::{close_read, open_read, replay_shapes_for};
 pub use host::{
     ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHandle, ReadHost,
-    ReadInterestController, ReadOutputEncoder, ReadSpec,
+    ReadInterestController, ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
 pub use registry::{ReadSessionBuild, ReadSessionId, ReadSessionRegistry, TeardownAction};

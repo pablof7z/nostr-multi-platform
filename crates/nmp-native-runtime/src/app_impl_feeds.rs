@@ -1,14 +1,11 @@
 //! Feed-management `impl NmpApp` methods — extracted from `lib.rs` to keep
 //! each file under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `register_feed`, internal feed paging, internal observed-interest
-//! wiring, `close_interest_pinned`, `unregister_feed`, and the
+//! Covers: `register_feed`, internal feed paging, `unregister_feed`, and the
 //! [`ObservedProjectionRegistrar`] impl.
 
 use std::sync::Arc;
 
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::ObservedProjectionId;
 use nmp_feed::{FeedHandle, FeedLoadStatus};
@@ -52,65 +49,6 @@ impl NmpApp {
             return FeedLoadStatus::session_unavailable();
         }
         self.load_older_feed_by_key_status(projection_key.as_str())
-    }
-
-    /// ADR-0070 + relay-pin — open an observed interest and route it to exactly
-    /// one relay (the planner's relay-pin lane).
-    ///
-    /// `relay_pin` — `Some(host)` pins the interest to that relay, bypassing
-    /// NIP-65 outbox routing; `None` leaves routing unpinned.
-    /// NIP-50 search sessions open one pinned interest per
-    /// resolved search relay. The pin participates in the `InterestShape` hash,
-    /// so the matching close MUST pass the same pin (see
-    /// [`Self::close_interest_pinned`]).
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn open_observed_interest_pinned(
-        &self,
-        filter_json: &str,
-        consumer_id: &str,
-        scope: u32,
-        relay_pin: Option<String>,
-        observer_id: ObservedProjectionId,
-        replay_shapes: Vec<nmp_planner::InterestShape>,
-        replay_limit: usize,
-    ) {
-        // Validate filter before handing the raw acquisition request to the
-        // actor; this is internal runtime machinery, not a public raw-interest
-        // app door.
-        if nmp_planner::InterestShape::from_filter_json(filter_json).is_none() {
-            // D6: invalid filter is a no-op.
-            return;
-        }
-        self.send_cmd(ActorCommand::Interests(
-            InterestsCommand::OpenObservedInterest {
-                filter_json: filter_json.to_string(),
-                consumer_id: consumer_id.to_string(),
-                scope,
-                relay_pin,
-                observer_id,
-                replay_shapes,
-                replay_limit,
-            },
-        ));
-    }
-
-    /// Send a relay-pinned `CloseInterest` matching a
-    /// [`Self::open_observed_interest_pinned`] open. The `(filter_json,
-    /// consumer_id, scope, relay_pin)` tuple MUST match the open so the
-    /// reconstructed `InterestShape` hash lands on the same registry slot.
-    pub(crate) fn close_interest_pinned(
-        &self,
-        filter_json: &str,
-        consumer_id: &str,
-        scope: u32,
-        relay_pin: Option<String>,
-    ) {
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::CloseInterest {
-            filter_json: filter_json.to_string(),
-            consumer_id: consumer_id.to_string(),
-            scope,
-            relay_pin,
-        }));
     }
 
     /// Tear down a feed registered via [`Self::register_feed`].
@@ -268,9 +206,10 @@ impl ObservedProjectionRegistrar for NmpApp {
     ///
     /// 1. `register_rust_observer_muted` — installs `decl.observer` in MUTED
     ///    state so the kernel fan-out does not deliver events until activation.
-    /// 2. `open_observed_interest_pinned` — sends `OpenObservedInterest` to the
-    ///    actor, which replays the in-memory read-cache to the observer and then
-    ///    activates it (unmutes the slot and hooks it into the live fan-out).
+    /// 2. `ObservedProjectionCommandHandle::open` records and opens the paired
+    ///    observed interest, which replays the in-memory read-cache to the
+    ///    observer and then activates it (unmutes the slot and hooks it into
+    ///    the live fan-out).
     /// 3. Returns the `ObservedProjectionId` (the observer's slot id), which
     ///    the caller passes to [`close_observed_projection`] for cleanup.
     ///
@@ -304,7 +243,7 @@ impl ObservedProjectionRegistrar for NmpApp {
     ///
     /// Reverses both registrations in order:
     ///
-    /// 1. Closes the pinned interest (sends `CloseInterest` to the actor).
+    /// 1. Withdraws the paired observed interest.
     /// 2. Unregisters the observer from the kernel fan-out.
     ///
     /// Idempotent: closing an unknown or already-closed id is a harmless no-op
