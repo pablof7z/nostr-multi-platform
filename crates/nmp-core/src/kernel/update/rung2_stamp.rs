@@ -28,9 +28,11 @@ pub(super) fn epoch_stamp(manifest: &ProjectionManifest) -> FrameEpochStamp {
 /// projections are emitted regardless of presence.
 ///
 /// Host-registered projections (keys not in `KERNEL_BUILTIN_PROJECTION_KEYS`)
-/// are absent from the manifest and keep their defaults (rev 0 / `Changed`)
-/// because the manifest covers Tier-2 built-ins only — they are unconditionally
-/// `Changed` at every tick (no host-projection manifests yet).
+/// are absent from the manifest, so the manifest pass below leaves them at the
+/// default rev 0 / `Changed`. NMP#2944: `stamp_app_owned_revs` then derives a
+/// content-advancing `projection_rev` for them (the manifest covers Tier-2
+/// built-ins only), so the wire contract — rev advances on content change —
+/// holds universally and rev-aware host apply caches don't freeze them.
 ///
 /// Note: `record_emitted` is NOT called here. In test/test-support builds the
 /// oracle (`run_projection_oracle` → `oracle.record_tick`) advances the baseline
@@ -40,8 +42,9 @@ pub(super) fn epoch_stamp(manifest: &ProjectionManifest) -> FrameEpochStamp {
 pub(super) fn stamp_typed_projections(
     typed: Vec<TypedProjectionData>,
     manifest: &ProjectionManifest,
+    tracker: &mut ProjectionRevTracker,
 ) -> Vec<TypedProjectionData> {
-    typed
+    let typed: Vec<TypedProjectionData> = typed
         .into_iter()
         .map(|mut entry| {
             if let Some(ps) = manifest.states.iter().find(|s| s.key == entry.key.as_str()) {
@@ -53,7 +56,9 @@ pub(super) fn stamp_typed_projections(
             }
             entry
         })
-        .collect()
+        .collect();
+    // NMP#2944 — advance app-owned (non-manifest) keys' rev on content change.
+    tracker.stamp_app_owned_revs(typed, manifest)
 }
 
 /// Advance the tracker's last-emitted baseline for every Tier-2 built-in so the

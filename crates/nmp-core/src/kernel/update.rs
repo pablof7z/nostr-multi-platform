@@ -393,7 +393,7 @@ impl Kernel {
         // baseline-pending reset (above) MUST also happen before this call.
         let manifest = self.projection_manifest();
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
-        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest, &mut self.projection_rev_tracker);
         // ADR-0070 Rung 1 (F3) — biconditional completeness oracle. Runs AFTER
         // the single production encode-shaping pass (`typed` here is the exact
         // sidecar that `encode_snapshot_with_envelope` serializes below), so it
