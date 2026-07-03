@@ -7,6 +7,7 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+use std::collections::BTreeSet;
 
 /// Self-fetched account-config kinds the cold-start tailing subscription
 /// keeps live after sign-in.
@@ -43,6 +44,10 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// about NIP-51 mute semantics.
 const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006, 10007];
 
+/// Self-fetched account-config kinds that must remain discovery one-shots even
+/// though they are governed by the same host override as the tailing set.
+const SELF_KINDS_ONESHOT: &[u32] = &[10050];
+
 impl Kernel {
     pub(crate) fn startup_requests(&mut self, now: Instant) -> Vec<OutboundMessage> {
         self.contacts_deadline = Some(now + Duration::from_secs(3));
@@ -63,7 +68,7 @@ impl Kernel {
     /// publish→ingest round-trip closes — a structural latency wart for any
     /// user who already has a kind:10050 published on a prior device.
     ///
-    /// V-04 Stage 2: the four bootstrap interests are registered through
+    /// V-04 Stage 2: bootstrap interests are registered through
     /// [`crate::subs::InterestRegistry::ensure_sub`] instead of being emitted
     /// as M1 `self.req(...)` frames. The planner's next `drain_tick` compiles
     /// them into wire REQs against `bootstrap_indexer_relays` (the planner
@@ -95,25 +100,34 @@ impl Kernel {
         // mutates.
         let owner = SubOwnerKey::new("kernel:bootstrap");
 
+        let selected_self_kinds = self.selected_bootstrap_self_kinds();
+
         // ── Discovery-direction one-shots (kind:10050 only) ───────────────
         //
         // kind:10050 (NIP-17 DM relay list) intentionally stays a OneShot:
         // it is consumed by the DM gift-wrap publish path on demand, the
         // recipient's `dm_inbox_relays` cache is a read-once snapshot, and
         // tailing it would multiply REQ pressure on the indexer for no
-        // observable behavioural win. The other config kinds move to
-        // tailing below.
+        // observable behavioural win. The host override still governs whether
+        // this lane exists: omitting 10050 from the override opts out.
         //
         // `is_indexer_discovery: true` opts the interest into
         // `case_a_authors`'s `bootstrap_indexer_relays` fallback so the
         // cold-start author-unknown case lands a REQ instead of falling
         // through to `unroutable`.
-        self.register_oneshot_discovery_interest(
-            owner,
-            "bootstrap:self-dm-relays",
-            [10050u32].into_iter().collect(),
-            self_pk.clone(),
-        );
+        let oneshot_self_kinds = selected_self_kinds
+            .iter()
+            .copied()
+            .filter(|kind| SELF_KINDS_ONESHOT.contains(kind))
+            .collect::<BTreeSet<_>>();
+        if !oneshot_self_kinds.is_empty() {
+            self.register_oneshot_discovery_interest(
+                owner,
+                "bootstrap:self-dm-relays",
+                oneshot_self_kinds,
+                self_pk.clone(),
+            );
+        }
 
         // ── Reactive tailing self-kind subscription ──────────────────────
         //
@@ -134,7 +148,14 @@ impl Kernel {
         // arm still lands — the active account's NIP-65 mailbox is
         // unknown until the kind:10002 itself comes back, the canonical
         // bootstrap chicken-and-egg.
-        self.register_tailing_self_kinds_interest(owner, self_pk.clone());
+        let tailing_self_kinds = selected_self_kinds
+            .iter()
+            .copied()
+            .filter(|kind| !SELF_KINDS_ONESHOT.contains(kind))
+            .collect::<BTreeSet<_>>();
+        if !tailing_self_kinds.is_empty() {
+            self.register_tailing_self_kinds_interest(owner, self_pk.clone(), tailing_self_kinds);
+        }
 
         // The two register_interest(Replace) calls above each enqueue an
         // InvalidateCompile trigger when the interest is new or changed — that
@@ -183,7 +204,7 @@ impl Kernel {
         &mut self,
         owner: SubOwnerKey,
         seed: &'static str,
-        kinds: std::collections::BTreeSet<u32>,
+        kinds: BTreeSet<u32>,
         author: String,
     ) {
         let sub_key = SubKey::new(seed);
@@ -228,20 +249,17 @@ impl Kernel {
     /// stored kind:0/3/10002/… immediately is what hydrates the profile, the
     /// follow set (→ the follow-feed → the timeline), and the relay list on cold
     /// start with no network — the tailing REQ revalidates in place.
-    fn register_tailing_self_kinds_interest(&mut self, owner: SubOwnerKey, author: String) {
+    fn register_tailing_self_kinds_interest(
+        &mut self,
+        owner: SubOwnerKey,
+        author: String,
+        kinds: BTreeSet<u32>,
+    ) {
         let sub_key = SubKey::new("bootstrap:self-kinds-tailing");
         let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
-        // FFI override slot beats the builtin list — apps that need a
-        // different replaceable-kind set (e.g. a publish-only app that
-        // doesn't care about kind:10006 blocked relays) install one via
-        // `nmp_app_set_bootstrap_self_kinds` before `nmp_app_start`.
-        let kinds_iter: Box<dyn Iterator<Item = u32>> = match self.bootstrap_self_kinds_override() {
-            Some(override_kinds) => Box::new(override_kinds.to_vec().into_iter()),
-            None => Box::new(SELF_KINDS_TAILING.iter().copied()),
-        };
         let shape = InterestShape {
             authors: [author].into_iter().collect(),
-            kinds: kinds_iter.collect(),
+            kinds,
             // `limit: None` — Tailing lifecycle, want every replacement
             // republication. See module doc on `SELF_KINDS_TAILING`.
             limit: None,
@@ -272,6 +290,22 @@ impl Kernel {
             }],
             "bootstrap-self-kinds",
         );
+    }
+
+    /// Selected bootstrap self-kind set after applying the host override.
+    ///
+    /// `None` means the framework default: the reactive tailing account-config
+    /// kinds plus the kind:10050 discovery one-shot. `Some` is authoritative, so
+    /// apps can opt out of or reshape either lifecycle lane with one slot.
+    fn selected_bootstrap_self_kinds(&self) -> BTreeSet<u32> {
+        match self.bootstrap_self_kinds_override() {
+            Some(override_kinds) => override_kinds.iter().copied().collect(),
+            None => SELF_KINDS_TAILING
+                .iter()
+                .chain(SELF_KINDS_ONESHOT.iter())
+                .copied()
+                .collect(),
+        }
     }
 }
 
