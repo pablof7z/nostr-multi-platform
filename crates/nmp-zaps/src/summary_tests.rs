@@ -222,6 +222,32 @@ fn typed_output_round_trips() {
     assert_eq!(zappers.get(0).total_msats(), 15_000);
 }
 
+#[test]
+fn decode_zap_summary_snapshot_round_trips_through_encode() {
+    // #2900: a pure-Rust consumer (no UniFFI/codegen boundary) must be able
+    // to turn the engine-emitted payload bytes back into the typed snapshot
+    // using ONLY this crate's own public decode fn.
+    let snapshot = ZapSummarySnapshot {
+        target_id: TARGET.to_string(),
+        total_msats: 15_000,
+        zap_count: 1,
+        zappers: vec![ZapperTotal {
+            pubkey: Some("alice".to_string()),
+            total_msats: 15_000,
+            zap_count: 1,
+        }],
+    };
+    let bytes = encode_zap_summary_snapshot(&snapshot);
+    let decoded = decode_zap_summary_snapshot(&bytes).expect("valid payload decodes");
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn decode_zap_summary_snapshot_rejects_a_foreign_buffer() {
+    let err = decode_zap_summary_snapshot(&[0u8; 16]).unwrap_err();
+    assert!(err.contains("NZSM"), "{err}");
+}
+
 // ── The door drives the engine end-to-end (fake host) ───────────────────────
 
 #[derive(Default)]
@@ -391,6 +417,41 @@ fn derived_delete_demand_routes_zap_receipt_delete_discovered_after_open() {
     assert_eq!(decoded.total_msats(), 0);
 
     assert!(close_zaps(&host, handle));
+}
+
+#[test]
+fn into_parts_from_parts_round_trips_and_closes_without_a_handle_map() {
+    let host = FakeHost::default();
+    let handle = open_zaps(&host, TARGET).unwrap();
+    let expected_key = handle.projection_key().to_string();
+
+    // The bridge-lane round trip (#2899 Part A): decompose to scalar parts —
+    // exactly what a UniFFI facade can carry across the FFI boundary — then
+    // reconstruct the typed handle from those same parts, with no
+    // facade-owned handle map in between.
+    let (projection_key, handle_id) = handle.into_parts();
+    assert_eq!(projection_key, expected_key);
+    assert_ne!(handle_id, 0);
+
+    let reconstructed = ZapsReadHandle::from_parts(projection_key, handle_id);
+    assert_eq!(reconstructed.projection_key(), expected_key);
+
+    assert!(
+        close_zaps(&host, reconstructed),
+        "a handle reconstructed purely from scalar parts still closes the live read"
+    );
+    assert_eq!(host.registry.live_count(), 0, "no leak after close");
+
+    // D6 idempotency: closing again via a FRESH handle reconstructed from the
+    // very same scalar parts (e.g. a facade retrying a close after a dropped
+    // response) is a safe no-op — never a panic, never a double-run teardown.
+    let reclosed_from_same_parts = ZapsReadHandle::from_parts(expected_key.clone(), handle_id);
+    assert!(
+        !close_zaps(&host, reclosed_from_same_parts),
+        "re-closing via a fresh from_parts reconstruction of an already-closed \
+         session is idempotent, not a panic"
+    );
+    assert_eq!(host.registry.live_count(), 0, "still no leak");
 }
 
 #[test]

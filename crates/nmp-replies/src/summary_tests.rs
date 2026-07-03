@@ -65,6 +65,18 @@ fn note_target() -> ReplyTarget {
     ReplyTarget::event(ROOT, 1, Some(AUTHOR.to_string())).unwrap()
 }
 
+/// A top-level kind:1111 NIP-22 comment target, decoded through the real
+/// FFI-marshalable input ([`crate::decode_and_validate_reply_target`]) rather
+/// than constructed by hand — the marshal's `Comment` variant is the ONLY
+/// correct way to supply a kind:1111 target (#2899 Part A; see
+/// `target_tests.rs` for the rejection/decode unit proofs).
+fn comment_target_via_marshal(comment_id: &str, root_id: &str) -> ReplyTarget {
+    let json = format!(
+        r#"{{"target_type":"comment","event_id":"{comment_id}","author_pubkey":"{AUTHOR}","created_at":1,"tags":[["E","{root_id}"],["K","1"],["e","{root_id}"],["k","1"]],"content":"top-level comment"}}"#
+    );
+    crate::decode_and_validate_reply_target(&json).unwrap()
+}
+
 // ── The concept composition + admission (no engine involved) ────────────────
 
 #[test]
@@ -166,6 +178,27 @@ fn typed_output_round_trips() {
     assert_eq!(decoded.count(), 2);
     let ids: Vec<&str> = decoded.reply_event_ids().unwrap().iter().collect();
     assert_eq!(ids, vec![REPLY_A, REPLY_B]);
+}
+
+#[test]
+fn decode_reply_summary_snapshot_round_trips_through_encode() {
+    // #2900: a pure-Rust consumer (no UniFFI/codegen boundary) must be able
+    // to turn the engine-emitted payload bytes back into the typed snapshot
+    // using ONLY this crate's own public decode fn.
+    let snapshot = ReplySummarySnapshot {
+        target_id: ROOT.to_string(),
+        count: 2,
+        reply_event_ids: vec![REPLY_A.to_string(), REPLY_B.to_string()],
+    };
+    let bytes = encode_reply_summary_snapshot(&snapshot);
+    let decoded = decode_reply_summary_snapshot(&bytes).expect("valid payload decodes");
+    assert_eq!(decoded, snapshot);
+}
+
+#[test]
+fn decode_reply_summary_snapshot_rejects_a_foreign_buffer() {
+    let err = decode_reply_summary_snapshot(&[0u8; 16]).unwrap_err();
+    assert!(err.contains("NRSM"), "{err}");
 }
 
 // ── The door drives the engine end-to-end (fake host) ───────────────────────
@@ -300,6 +333,108 @@ fn open_replies_drives_the_engine_and_close_withdraws_everything() {
         "output tombstoned"
     );
     assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn open_replies_drives_the_engine_for_a_kind_1111_comment_target_from_the_marshal() {
+    // The load-bearing marshal proof (#2899 DERISK refocus): a kind:1111
+    // target decoded via the FFI-marshalable `Comment` variant must drive
+    // `open_replies` exactly like a hand-built `ReplyTarget::Comment`, with a
+    // single NIP-22-only demand (no NIP-10 demand — a comment is never
+    // `is_nip10`) scoped to the comment's OWN event id as the direct-parent
+    // query.
+    const COMMENT_ID: &str = "5555555555555555555555555555555555555555555555555555555555555555";
+    let host = FakeHost::new_default();
+    let target = comment_target_via_marshal(COMMENT_ID, ROOT);
+    let handle = open_replies(&host, target).unwrap();
+
+    let filters = host.opened_filters.lock().unwrap().clone();
+    assert_eq!(
+        filters.len(),
+        1,
+        "a comment target composes NIP-22 only, never NIP-10"
+    );
+    assert!(filters[0].contains("\"kinds\":[1111]"), "{}", filters[0]);
+    assert!(
+        filters[0].contains(&format!(r##""#e":["{COMMENT_ID}"]"##)),
+        "queries by the comment's own id as the direct-parent scope: {}",
+        filters[0]
+    );
+
+    // A real kind:1111 reply to that comment (its lowercase `e` parent tag
+    // names the comment, its uppercase `E` root tag mirrors the thread root)
+    // is admitted; a reply to some OTHER comment on the same thread is not.
+    let reply_to_comment = event_by(
+        AUTHOR_B,
+        "6666666666666666666666666666666666666666666666666666666666666666",
+        1111,
+        vec![
+            vec!["E", ROOT],
+            vec!["K", "1"],
+            vec!["e", COMMENT_ID],
+            vec!["k", "1111"],
+        ],
+    );
+    let reply_to_a_sibling = event_by(
+        AUTHOR_B,
+        "7777777777777777777777777777777777777777777777777777777777777777",
+        1111,
+        vec![
+            vec!["E", ROOT],
+            vec!["K", "1"],
+            vec!["e", "8888888888888888888888888888888888888888888888888888888888888888"],
+            vec!["k", "1111"],
+        ],
+    );
+    host.feed(&reply_to_comment);
+    host.feed(&reply_to_a_sibling);
+
+    let data = host.run_encoder().expect("output emits");
+    let decoded = root_as_reply_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(
+        decoded.count(),
+        1,
+        "only the reply that names the comment as its direct parent counts"
+    );
+    assert_eq!(decoded.target_id(), Some(COMMENT_ID));
+
+    assert!(close_replies(&host, handle));
+    assert_eq!(host.registry.live_count(), 0, "no leak after close");
+}
+
+#[test]
+fn into_parts_from_parts_round_trips_and_closes_without_a_handle_map() {
+    let host = FakeHost::new_default();
+    let handle = open_replies(&host, note_target()).unwrap();
+    let expected_key = handle.projection_key().to_string();
+
+    // The bridge-lane round trip (#2899 Part A): decompose to scalar parts —
+    // exactly what a UniFFI facade can carry across the FFI boundary — then
+    // reconstruct the typed handle from those same parts, with no
+    // facade-owned handle map in between.
+    let (projection_key, handle_id) = handle.into_parts();
+    assert_eq!(projection_key, expected_key);
+    assert_ne!(handle_id, 0);
+
+    let reconstructed = RepliesReadHandle::from_parts(projection_key, handle_id);
+    assert_eq!(reconstructed.projection_key(), expected_key);
+
+    assert!(
+        close_replies(&host, reconstructed),
+        "a handle reconstructed purely from scalar parts still closes the live read"
+    );
+    assert_eq!(host.registry.live_count(), 0, "no leak after close");
+
+    // D6 idempotency: closing again via a FRESH handle reconstructed from the
+    // very same scalar parts (e.g. a facade retrying a close after a dropped
+    // response) is a safe no-op — never a panic, never a double-run teardown.
+    let reclosed_from_same_parts = RepliesReadHandle::from_parts(expected_key.clone(), handle_id);
+    assert!(
+        !close_replies(&host, reclosed_from_same_parts),
+        "re-closing via a fresh from_parts reconstruction of an already-closed \
+         session is idempotent, not a panic"
+    );
+    assert_eq!(host.registry.live_count(), 0, "still no leak");
 }
 
 #[test]

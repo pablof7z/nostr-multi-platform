@@ -37,6 +37,17 @@ impl core::fmt::Display for ReplyReadPlanError {
 
 impl std::error::Error for ReplyReadPlanError {}
 
+impl ReplyReadPlanError {
+    /// The stable machine code (crosses the wire as an FFI error code; never
+    /// renumbered or repurposed — #2899 Part A).
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::CommentEventRequiresRecord => "comment_event_requires_record",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ReplyReadPlan {
     pub protocol: ReplyProtocol,

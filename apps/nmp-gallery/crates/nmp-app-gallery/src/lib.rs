@@ -8,6 +8,7 @@
 uniffi::setup_scaffolding!();
 
 mod composition;
+mod concept_reads_replies;
 mod event_ref;
 mod facade;
 mod snapshot_json;
@@ -20,6 +21,7 @@ const GALLERY_COMPOSITION_ROOT: &str = "nmp-app-gallery";
 const GALLERY_COMPOSITION_PROVIDER: &str = "nmp_app_gallery::install_gallery_composition";
 
 pub use composition::install_gallery_composition;
+pub use concept_reads_replies::{GalleryOpenedReplies, GalleryReadError};
 pub use facade::{
     GalleryApp, GalleryCapabilitySink, GalleryDispatchOutcome, GalleryEventRef, GalleryEventShape,
     GalleryProfileShape, GalleryRefLiveness, GalleryRefNamespace, GalleryRefShape,
