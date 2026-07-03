@@ -7,12 +7,12 @@
 //! deduplicating result projection itself lives in the crate-root `projection`
 //! module (issue #1811 / cache FTS).
 //!
-//! ## Where `open_search_read` lives
+//! ## Where `open_search` lives
 //!
 //! The public search doorway lives here in the concept crate. Runtime hosts
-//! implement `nmp-read-session::ReadHost` once, then call this crate-owned door
-//! with their relay-source and store capabilities. A host that does not import
-//! `nmp-nip50` has no search symbol.
+//! implement `nmp-read-session::ReadHost` and [`SearchHost`] once, then call
+//! this crate-owned door. A host that does not import `nmp-nip50` has no search
+//! symbol.
 
 pub mod plan;
 pub mod relays;
@@ -23,6 +23,7 @@ pub use relays::{
     install_search_relay_source, resolve_search_relays, SearchFallbackRelays, SearchRelaySource,
 };
 pub use session::{
-    close_search_read, close_search_read_by_key, open_search_read, search_consumer,
-    search_projection_key, OpenSearchRead, SearchReadHandle,
+    close_search, close_search_read, close_search_read_by_key, open_search, open_search_read,
+    parse_search_request, search_consumer, search_projection_key, search_snapshot_bytes,
+    Nip50SearchHandle, Nip50SearchSession, OpenSearchRead, SearchHost, SearchReadHandle,
 };
