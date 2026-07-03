@@ -182,11 +182,12 @@ wallet, nutzap send, and nutzap redeem. Cashu melt can later implement
 
 ## Product Surface
 
-The app-facing action surface is owned by `nmp-wallet`:
+The app-facing action surface is owned by `nmp-wallet`. These are the canonical
+names — each action has exactly one:
 
 - `nmp.wallet.select_backend`;
-- `nmp.wallet.nwc.connect`;
-- `nmp.wallet.nwc.disconnect`;
+- `nmp.wallet.connect`;
+- `nmp.wallet.disconnect`;
 - `nmp.wallet.pay_invoice`;
 - `nmp.wallet.cashu.create`;
 - `nmp.wallet.cashu.recover`;
@@ -196,10 +197,14 @@ The app-facing action surface is owned by `nmp-wallet`:
 - `nmp.wallet.nutzap.send`;
 - `nmp.wallet.nutzap.redeem`.
 
-Existing `nmp.wallet.connect`, `nmp.wallet.disconnect`, and
-`nmp.wallet.pay_invoice` from `nmp-nip47` can remain as compatibility aliases
-only while migration is in progress. The canonical namespaces should make the
-backend explicit where an action is backend-specific.
+`nmp.wallet.connect` / `nmp.wallet.disconnect` / `nmp.wallet.pay_invoice` are the
+current NWC-backed names implemented by `nmp-nip47`. There are **no compatibility
+aliases** — NMP never ships a name and an alias for the same action. If a later
+milestone makes the backend explicit in the name (e.g. `nmp.wallet.nwc.connect`),
+that is a single-PR hard-break — move `nmp-nip47`'s `ActionModule` and
+wire-schema registration and update every caller in the same change — scheduled
+as Phase 2 (NWC consolidation) of [#2864](https://github.com/pablof7z/nostr-multi-platform/issues/2864),
+not an aliasing period.
 
 The `"wallet"` typed projection is bounded and screen-shaped:
 
