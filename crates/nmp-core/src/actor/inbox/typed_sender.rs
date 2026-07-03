@@ -48,6 +48,7 @@ impl CommandSender {
             consumer_id,
             scope,
             relay_pin: None,
+            is_indexer_discovery: false,
         }));
     }
 

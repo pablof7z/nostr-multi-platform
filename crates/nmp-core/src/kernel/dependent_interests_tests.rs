@@ -52,6 +52,7 @@ fn typed_tailing_child_matches_open_interest_key_for_active_and_global() {
             "consumer",
             raw_scope,
             None,
+            false,
         )
         .expect("canonical filter parses");
 

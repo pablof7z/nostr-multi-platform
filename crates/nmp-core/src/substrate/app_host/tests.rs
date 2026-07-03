@@ -53,6 +53,21 @@ fn observed_projection_from_shape_preserves_relay_pin() {
         decl.replay_shapes[0].relay_pin.as_deref(),
         Some("wss://relay.example")
     );
+    assert!(
+        !decl.is_indexer_discovery,
+        "observed projections default to normal content/outbox routing"
+    );
+}
+
+#[test]
+fn observed_projection_can_opt_into_indexer_discovery() {
+    let decl = ObservedProjection::from_kinds(noop_sink(), "test.indexer", 1, [10154], 64)
+        .with_indexer_discovery(true);
+
+    assert!(
+        decl.is_indexer_discovery,
+        "sparse global read models must be able to request indexer routing"
+    );
 }
 
 #[test]
@@ -63,6 +78,7 @@ fn filterless_observed_projection_is_rejected() {
         consumer_id: "test.filterless".to_string(),
         scope: 1,
         relay_pin: None,
+        is_indexer_discovery: false,
         replay_shapes: vec![InterestShape::default()],
         replay_limit: 32,
     };

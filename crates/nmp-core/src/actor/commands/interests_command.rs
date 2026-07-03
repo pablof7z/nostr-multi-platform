@@ -120,6 +120,9 @@ pub enum InterestsCommand {
         /// hash, so the matching [`Self::CloseInterest`] MUST carry the same
         /// pin.
         relay_pin: Option<String>,
+        /// When true, route this sparse global interest through the planner's
+        /// indexer-discovery relay lane.
+        is_indexer_discovery: bool,
         /// The muted observer id to replay events to and then activate.
         observer_id: ObservedProjectionId,
         /// `InterestShape`s used to match events in the read-cache during
@@ -143,5 +146,8 @@ pub enum InterestsCommand {
         /// `InterestShape` hash lands on the same registry slot. `None` for
         /// the normal outbox-routed path.
         relay_pin: Option<String>,
+        /// Must match the corresponding open. It participates in the
+        /// subscription identity because it changes planner routing.
+        is_indexer_discovery: bool,
     },
 }

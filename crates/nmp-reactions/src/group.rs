@@ -117,6 +117,7 @@ pub fn open_nip25_group_reactions_session_with_reader(
                 consumer_id: GROUP_REACTIONS_CONSUMER.to_string(),
                 scope: SCOPE_GLOBAL,
                 relay_pin,
+                is_indexer_discovery: false,
                 replay_limit: GROUP_REACTIONS_REPLAY_LIMIT,
                 replay: ReadReplayPolicy::Structural,
             }],

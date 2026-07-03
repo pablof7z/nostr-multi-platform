@@ -183,13 +183,16 @@ impl DependentDemandReconciler {
         let Some(observer) = self.observer.upgrade() else {
             return;
         };
-        let id = self.controller.open(ObservedProjection::from_shape(
-            observer,
-            self.consumer_id.clone(),
-            demand.scope,
-            demand.shape.clone(),
-            demand.replay_limit,
-        ));
+        let id = self.controller.open(
+            ObservedProjection::from_shape(
+                observer,
+                self.consumer_id.clone(),
+                demand.scope,
+                demand.shape.clone(),
+                demand.replay_limit,
+            )
+            .with_indexer_discovery(demand.is_indexer_discovery),
+        );
         if id.0 != 0 {
             if let Ok(mut current) = self.current.lock() {
                 *current = Some((demand, id));

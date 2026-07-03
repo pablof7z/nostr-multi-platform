@@ -294,6 +294,7 @@ pub(crate) fn register_follow_state_runtime(
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0,
                 relay_pin: None,
+                is_indexer_discovery: false,
             }));
         }
     };

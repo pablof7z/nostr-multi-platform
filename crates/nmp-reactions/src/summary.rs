@@ -181,6 +181,7 @@ fn reaction_delete_demand(
             ..Default::default()
         },
         scope: REACTION_READ_SCOPE_GLOBAL,
+        is_indexer_discovery: false,
         replay_limit: REACTION_REPLAY_LIMIT,
     })
 }
@@ -231,6 +232,7 @@ pub fn open_reactions(
         consumer_id: key_string.clone(),
         scope: REACTION_READ_SCOPE_GLOBAL,
         relay_pin: None,
+        is_indexer_discovery: false,
         replay_limit: REACTION_REPLAY_LIMIT,
         replay: ReadReplayPolicy::Structural,
     };

@@ -66,7 +66,7 @@ pub struct KernelReducer {
     reaction_draft_builder: Arc<dyn ReactionDraftBuilder>,
     /// Close recipes for browser/wasm observed-projection sessions.
     observed_projection_sessions:
-        HashMap<crate::ObservedProjectionId, (String, String, u32, Option<String>)>,
+        HashMap<crate::ObservedProjectionId, (String, String, u32, Option<String>, bool)>,
     /// #1753 S6 — wasm signing round-trip state: the shared `ParkedSignerOps`
     /// queue + drain driver (the SAME component the native actor loop uses), the
     /// per-correlation value-delivery senders, the account-pin map, and the

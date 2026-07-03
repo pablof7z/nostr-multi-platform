@@ -168,6 +168,7 @@ fn open_observed_interest_with_relay_connected_emits_req_frame() {
             consumer_id: "observed-feed".to_string(),
             scope: 1,
             relay_pin: None,
+            is_indexer_discovery: false,
             observer_id: ObservedProjectionId(1),
             replay_shapes: vec![shape],
             replay_limit: 64,
@@ -184,6 +185,52 @@ fn open_observed_interest_with_relay_connected_emits_req_frame() {
         }
         other => panic!("expected Applied, got {other:?}"),
     }
+}
+
+#[test]
+fn open_observed_interest_preserves_indexer_discovery_routing() {
+    let mut r = KernelReducer::new();
+    let shape = InterestShape {
+        kinds: [10154].into_iter().collect(),
+        ..Default::default()
+    };
+
+    let outcome = r.apply_actor_command(ActorCommand::Interests(
+        InterestsCommand::OpenObservedInterest {
+            filter_json: r#"{"kinds":[10154]}"#.to_string(),
+            consumer_id: "podcast-discovery".to_string(),
+            scope: 1,
+            relay_pin: None,
+            is_indexer_discovery: true,
+            observer_id: ObservedProjectionId(7),
+            replay_shapes: vec![shape],
+            replay_limit: 64,
+        },
+    ));
+
+    assert!(matches!(outcome, CommandApplyOutcome::Applied(_)));
+    let active = r.kernel.lifecycle_mut().registry_mut().iter_active();
+    assert_eq!(active.len(), 1);
+    assert!(
+        active[0].is_indexer_discovery,
+        "OpenObservedInterest must preserve the observed-projection routing bit"
+    );
+
+    let _ = r.apply_actor_command(ActorCommand::Interests(InterestsCommand::CloseInterest {
+        filter_json: r#"{"kinds":[10154]}"#.to_string(),
+        consumer_id: "podcast-discovery".to_string(),
+        scope: 1,
+        relay_pin: None,
+        is_indexer_discovery: true,
+    }));
+    assert!(
+        r.kernel
+            .lifecycle_mut()
+            .registry_mut()
+            .iter_active()
+            .is_empty(),
+        "close must reconstruct the same indexer-discovery identity"
+    );
 }
 
 #[test]
@@ -204,6 +251,7 @@ fn close_interest_after_open_emits_close_frame() {
         consumer_id: "chirp-home".to_string(),
         scope: 1,
         relay_pin: None,
+        is_indexer_discovery: false,
     }));
 
     match outcome {

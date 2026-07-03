@@ -47,6 +47,9 @@ pub struct ReadDependentDemand {
     pub shape: InterestShape,
     /// `0` = `ActiveAccount` (re-routed on account switch), `1` = `Global`.
     pub scope: u32,
+    /// Whether sparse author-unknown/account discovery demand should use the
+    /// planner's indexer-discovery routing lane.
+    pub is_indexer_discovery: bool,
     /// Maximum number of cached events to replay before activation.
     pub replay_limit: usize,
 }
@@ -107,6 +110,9 @@ pub struct ReadDemand {
     /// When `Some`, pins the demand to exactly one relay (bypasses outbox
     /// routing). The matching close passes the same pin.
     pub relay_pin: Option<String>,
+    /// Whether sparse author-unknown/account discovery demand should use the
+    /// planner's indexer-discovery routing lane.
+    pub is_indexer_discovery: bool,
     /// Maximum number of cached events to replay before activation.
     pub replay_limit: usize,
     /// Whether this demand uses structural replay or a concept-supplied seed.

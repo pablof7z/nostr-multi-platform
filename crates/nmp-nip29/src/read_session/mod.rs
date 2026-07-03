@@ -323,6 +323,7 @@ fn open_group_read(
                 consumer_id: consumer.to_string(),
                 scope,
                 relay_pin,
+                is_indexer_discovery: false,
                 replay_limit: NIP29_GROUP_REPLAY_LIMIT,
                 replay: ReadReplayPolicy::Structural,
             }],

@@ -229,6 +229,7 @@ pub fn open_search_read(
             consumer_id: search_consumer(session_id, &pinned.relay),
             scope: SEARCH_READ_SCOPE_GLOBAL,
             relay_pin: Some(pinned.relay),
+            is_indexer_discovery: false,
             replay_limit: 0,
             replay: ReadReplayPolicy::LiveOnly,
         })

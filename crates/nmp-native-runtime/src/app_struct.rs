@@ -14,11 +14,11 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use crate::passive_start::ActorStarter;
-use nmp_core::ObservedProjectionId;
 use nmp_core::__ffi_internal::{
     ActionRegistry, CapabilityCallbackSlot, LifecycleObserverSlot, ObservedProjectionSinkSlot,
     SnapshotProjectionSlot,
 };
+use nmp_core::ObservedProjectionId;
 use std::sync::mpsc;
 
 pub(crate) use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
@@ -249,10 +249,11 @@ pub struct NmpApp {
     pub(crate) external_signer_driver: Arc<Mutex<Option<Arc<crate::external_signer::Nip55Driver>>>>,
     /// Observed-projection sessions keyed by `ObservedProjectionId`. Each
     /// entry maps an observer id returned by `open_observed_projection` to the
-    /// close params `(filter_json, consumer_id, scope, relay_pin)` needed to
-    /// reverse the open in `close_observed_projection`.
+    /// close params `(filter_json, consumer_id, scope, relay_pin,
+    /// is_indexer_discovery)` needed to reverse the open in
+    /// `close_observed_projection`.
     pub(crate) observed_projection_sessions:
-        Arc<Mutex<HashMap<ObservedProjectionId, (String, String, u32, Option<String>)>>>,
+        Arc<Mutex<HashMap<ObservedProjectionId, (String, String, u32, Option<String>, bool)>>>,
     /// Test-support GC budget ceiling.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,

@@ -17,7 +17,7 @@ use nmp_planner::InterestShape;
 
 /// Session metadata needed to reverse an observed-projection open.
 pub type ObservedProjectionSessionMap =
-    Arc<Mutex<HashMap<ObservedProjectionId, (String, String, u32, Option<String>)>>>;
+    Arc<Mutex<HashMap<ObservedProjectionId, (String, String, u32, Option<String>, bool)>>>;
 
 /// Cloneable command-backed observed-projection registrar.
 ///
@@ -92,6 +92,7 @@ impl ObservedProjectionCommandHandle {
                 decl.consumer_id.clone(),
                 decl.scope,
                 decl.relay_pin.clone(),
+                decl.is_indexer_discovery,
             ),
         );
         drop(sessions);
@@ -100,6 +101,7 @@ impl ObservedProjectionCommandHandle {
             &decl.consumer_id,
             decl.scope,
             decl.relay_pin,
+            decl.is_indexer_discovery,
             observer_id,
             decl.replay_shapes,
             decl.replay_limit,
@@ -114,10 +116,17 @@ impl ObservedProjectionCommandHandle {
             .lock()
             .ok()
             .and_then(|mut sessions| sessions.remove(&id));
-        let Some((filter_json, consumer_id, scope, relay_pin)) = params else {
+        let Some((filter_json, consumer_id, scope, relay_pin, is_indexer_discovery)) = params
+        else {
             return;
         };
-        self.close_interest_pinned(&filter_json, &consumer_id, scope, relay_pin);
+        self.close_interest_pinned(
+            &filter_json,
+            &consumer_id,
+            scope,
+            relay_pin,
+            is_indexer_discovery,
+        );
         unregister_observer_internal(&self.observers, id);
     }
 
@@ -128,6 +137,7 @@ impl ObservedProjectionCommandHandle {
         consumer_id: &str,
         scope: u32,
         relay_pin: Option<String>,
+        is_indexer_discovery: bool,
         observer_id: ObservedProjectionId,
         replay_shapes: Vec<InterestShape>,
         replay_limit: usize,
@@ -141,6 +151,7 @@ impl ObservedProjectionCommandHandle {
                 consumer_id: consumer_id.to_string(),
                 scope,
                 relay_pin,
+                is_indexer_discovery,
                 observer_id,
                 replay_shapes,
                 replay_limit,
@@ -154,6 +165,7 @@ impl ObservedProjectionCommandHandle {
         consumer_id: &str,
         scope: u32,
         relay_pin: Option<String>,
+        is_indexer_discovery: bool,
     ) {
         let _ = self
             .sender
@@ -162,6 +174,7 @@ impl ObservedProjectionCommandHandle {
                 consumer_id: consumer_id.to_string(),
                 scope,
                 relay_pin,
+                is_indexer_discovery,
             }));
     }
 }
@@ -224,6 +237,9 @@ pub struct ObservedProjection {
     /// When `Some`, pins the interest to exactly one relay (bypasses NIP-65
     /// outbox routing).  The matching close MUST pass the same pin.
     pub relay_pin: Option<String>,
+    /// Route this sparse global read through indexer-discovery relays instead
+    /// of the normal content/outbox lane.
+    pub is_indexer_discovery: bool,
     /// Shapes used during the kernel-side read-cache replay before activation
     /// and for scoped future delivery. This must be non-empty for production
     /// read models.
@@ -254,6 +270,7 @@ impl ObservedProjection {
             consumer_id: consumer_id.into(),
             scope,
             relay_pin,
+            is_indexer_discovery: false,
             replay_shapes: vec![shape],
             replay_limit,
         }
@@ -281,6 +298,13 @@ impl ObservedProjection {
             },
             replay_limit,
         )
+    }
+
+    /// Opt this observed projection into indexer-discovery routing.
+    #[must_use]
+    pub fn with_indexer_discovery(mut self, enabled: bool) -> Self {
+        self.is_indexer_discovery = enabled;
+        self
     }
 
     /// Whether the declaration has a concrete event shape.
