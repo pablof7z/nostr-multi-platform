@@ -5,11 +5,15 @@
 //! Apps use this for **mint discovery** — finding mints via Nostr search
 //! rather than hardcoded URLs.
 //!
-//! # Relay selection (NIP-60 §relay-tags)
+//! # Relay selection
 //!
-//! When fetching wallet-related events for a user who has a NIP-60 wallet:
-//! - If the wallet's kind:17375 includes `relay` tags → use ONLY those relays.
-//! - Otherwise → fall back to the user's NIP-65 relays.
+//! Wallet relay scoping is owned by `nmp-wallet`, not this crate (see
+//! `docs/architecture/nip60-nip61-wallet-design.md`, Relay Acquisition): the
+//! active user's kind:10019 `relay` tags are authoritative, with NIP-65
+//! fallback. The `relay` tags on the wallet's own kind:17375 are a legacy,
+//! non-authoritative compatibility hint (see
+//! [`crate::nip60_wallet::Nip60WalletHandle::legacy_relay_hint`]) and must
+//! never override that resolution.
 
 use nostr::{EventBuilder, EventId, Kind, Tag, TagKind};
 

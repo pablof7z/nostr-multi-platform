@@ -51,6 +51,7 @@ members = [
     "crates/nmp-intent",
     "crates/nmp-nip57",
     "crates/nmp-zaps",
+    "crates/nmp-nip60",
     "crates/nmp-nip68",
     "crates/nmp-nip59",
     "crates/nmp-nip77",
@@ -81,9 +82,6 @@ members = [
 # §155-170. The code is preserved in-tree so it is ready when the
 # corresponding milestone enters scope:
 #
-#   nmp-nip60    — Cashu / nutzaps (NIP-60). Re-activate when issue
-#                  #1001 enters scope.
-#
 #   nmp-nip59-decrypt-only — NIP-59 decrypt-only staticlib; intended consumer
 #                            is an external iOS notification-service extension
 #                            that links it as a staticlib. Parked pending
@@ -94,12 +92,16 @@ members = [
 # (hl, podcast-player). Un-parked into [workspace].members so CI builds and
 # tests it; consumers no longer need a local [patch] workaround.
 #
+# NOTE: nmp-nip60 was previously parked here (issue #1250) pending the NIP-60
+# wallet milestone (#1001). It re-entered [workspace].members in #2865 (Phase
+# 0 of the wallet epic #2864, per
+# docs/architecture/nip60-nip61-wallet-design.md) once its false pay_invoice
+# surface was removed and CI coverage was restored.
+#
 # To build a parked crate on demand:
-#   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
 #   cargo build --manifest-path crates/nmp-nip59-decrypt-only/Cargo.toml
 exclude = [
     "crates/nmp-nip59-decrypt-only",
-    "crates/nmp-nip60",
 ]
 resolver = "2"
 

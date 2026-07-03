@@ -4393,6 +4393,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip60"
+version = "0.8.4"
+dependencies = [
+ "hex",
+ "nmp-kinds",
+ "nmp-ownership",
+ "nostr",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tracing",
+ "ureq",
+]
+
+[[package]]
 name = "nmp-nip65-types"
 version = "0.8.4"
 dependencies = [

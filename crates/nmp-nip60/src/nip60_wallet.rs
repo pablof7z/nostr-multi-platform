@@ -1,5 +1,6 @@
 //! High-level NIP-60 wallet — ties together event encoding, the Cashu mint
-//! HTTP client, and the `WalletBackend` trait implementation.
+//! HTTP client, and the in-memory wallet state that a backend adapter wraps
+//! for `nmp-wallet`.
 //!
 //! # Relay I/O is the kernel's job
 //!
@@ -16,15 +17,19 @@
 //!   outbox via [`Nip60WalletHandle::take_outbox`] and publishes each event
 //!   through its `ActorCommand::Publish*` chokepoint.
 //!
-//! The `relays` field is wallet *metadata* (the relay URLs listed in the
-//! kind:17375 config) the kernel uses to scope its interests and publishes —
-//! it is not a connection handle.
+//! The `legacy_relay_hint` field is wallet *metadata* (the `relay` tags
+//! listed in the kind:17375 config), surfaced verbatim for callers that want
+//! it. It is **not** authoritative relay selection: the active user's
+//! kind:10019 `relay` tags, with NIP-65 fallback, are the source of truth for
+//! wallet relay scoping (see `docs/architecture/nip60-nip61-wallet-design.md`,
+//! Relay Acquisition). That resolution policy lives in `nmp-wallet`, not
+//! here.
 //!
 //! # Module layout
 //!
 //! This file owns the wallet's shared state (struct, construction, outbox,
-//! balance, ingest) and the [`WalletBackend`] trait adapter. Each concern
-//! that operates on that shared state lives in its own submodule:
+//! balance, ingest). Each concern that operates on that shared state lives in
+//! its own submodule:
 //!
 //! - [`deposit`] — minting tokens from a paid Lightning invoice (NUT-04/23).
 //! - [`nutzap_send`] — proof selection, P2PK-locking, and sending NutZaps.
@@ -61,10 +66,8 @@ use std::sync::{Arc, Mutex};
 
 use nostr::{Event, EventId, Keys, PublicKey};
 
-use crate::backend::{PayResult, WalletBackend, WalletError};
 use crate::error::Nip60Error;
 use crate::history_event::redeemed_nutzap_ids;
-use crate::nutzap::NutZapProof;
 use crate::token_event::{decode_token_event, TokenRecord};
 use crate::wallet_event::{build_wallet_event, decode_wallet_event, WalletConfig};
 
@@ -78,7 +81,7 @@ pub struct Nip60WalletHandle {
     config: Arc<Mutex<WalletConfig>>,
     tokens: Arc<Mutex<Vec<TokenRecord>>>,
     redeemed: Arc<Mutex<HashSet<EventId>>>,
-    relays: Vec<String>,
+    legacy_relay_hint: Vec<String>,
     /// Signed events awaiting publication by the kernel. Drained via
     /// [`Self::take_outbox`].
     outbox: Arc<Mutex<Vec<Event>>>,
@@ -106,7 +109,7 @@ impl Nip60WalletHandle {
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
             redeemed: Arc::new(Mutex::new(HashSet::new())),
-            relays,
+            legacy_relay_hint: relays,
             outbox: Arc::new(Mutex::new(Vec::new())),
         };
         handle.enqueue(wallet_event);
@@ -116,20 +119,21 @@ impl Nip60WalletHandle {
     /// Build a wallet handle from a kind:17375 wallet event the kernel already
     /// fetched from its store.
     ///
-    /// The wallet's relay list comes exclusively from the event's own `relay`
-    /// tags. After construction, feed the wallet's token and history events
-    /// through [`Self::ingest_token_events`] and
+    /// The legacy relay hint comes from the event's own `relay` tags, if any
+    /// — a non-authoritative compatibility signal only (see
+    /// [`Self::legacy_relay_hint`]). After construction, feed the wallet's
+    /// token and history events through [`Self::ingest_token_events`] and
     /// [`Self::ingest_history_events`] to populate balance and redemption
     /// state.
     pub fn from_wallet_event(keys: &Keys, wallet_event: &Event) -> Result<Self, Nip60Error> {
         let config = decode_wallet_event(wallet_event, keys.secret_key(), &keys.public_key())?;
-        let relays = config.relays.clone();
+        let legacy_relay_hint = config.legacy_relay_hint.clone();
         Ok(Self {
             keys: keys.clone(),
             config: Arc::new(Mutex::new(config)),
             tokens: Arc::new(Mutex::new(Vec::new())),
             redeemed: Arc::new(Mutex::new(HashSet::new())),
-            relays,
+            legacy_relay_hint,
             outbox: Arc::new(Mutex::new(Vec::new())),
         })
     }
@@ -208,39 +212,20 @@ impl Nip60WalletHandle {
 
     // ── Accessors ──────────────────────────────────────────────────────────
 
-    pub fn relays(&self) -> &[String] {
-        &self.relays
+    /// The `relay` tags from the kind:17375 wallet event, if any.
+    ///
+    /// This is legacy design residue, not authoritative relay selection: the
+    /// active user's kind:10019 `relay` tags, with NIP-65 fallback, decide
+    /// where wallet-related events are read from and published to. Callers
+    /// must not use this as a relay-scoping source of truth — it exists only
+    /// as a compatibility hint for wallets whose kind:17375 predates
+    /// kind:10019 adoption.
+    pub fn legacy_relay_hint(&self) -> &[String] {
+        &self.legacy_relay_hint
     }
 
     pub fn pubkey(&self) -> PublicKey {
         self.keys.public_key()
-    }
-}
-
-// ─── WalletBackend impl ────────────────────────────────────────────────────
-
-impl WalletBackend for Nip60WalletHandle {
-    fn balance_sats(&self) -> u64 {
-        self.balance_sats()
-    }
-
-    fn pay_invoice(&self, _bolt11: &str) -> Result<PayResult, WalletError> {
-        // TODO: implement melt (NUT-05) for paying Lightning invoices via ecash.
-        Err(WalletError::Unsupported)
-    }
-
-    fn create_nutzap_proofs(
-        &self,
-        amount_sats: u64,
-        recipient_cashu_pubkey: &str,
-        mint_url: &str,
-    ) -> Result<Vec<NutZapProof>, WalletError> {
-        let proofs = self.create_p2pk_proofs(amount_sats, recipient_cashu_pubkey, mint_url)?;
-        Ok(proofs.into_iter().map(Into::into).collect())
-    }
-
-    fn backend_type(&self) -> &'static str {
-        "nip60"
     }
 }
 
