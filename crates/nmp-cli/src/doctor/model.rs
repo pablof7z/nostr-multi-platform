@@ -329,10 +329,13 @@ fn parse_cargo_lock(path: &Path) -> Result<BTreeMap<String, Vec<LockPackage>>, S
 }
 
 fn parse_retired_crates() -> Result<BTreeMap<String, String>, String> {
-    const RELEASE: &str = include_str!("../../../../release/nmp-release.toml");
+    // Vendored copy, not a path into the workspace root: a published crate
+    // cannot `include_str!` files outside its own directory. Kept in sync
+    // with release/nmp-release.toml by tests/retired_crates_sync.rs.
+    const RELEASE: &str = include_str!("retired_crates.toml");
     let value = RELEASE
         .parse::<Value>()
-        .map_err(|error| format!("failed to parse release/nmp-release.toml: {error}"))?;
+        .map_err(|error| format!("failed to parse retired_crates.toml: {error}"))?;
     let mut out = BTreeMap::new();
     if let Some(items) = value.get("retired_crates").and_then(Value::as_array) {
         for item in items {

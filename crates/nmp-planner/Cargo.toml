@@ -23,6 +23,6 @@ nmp-ownership = { workspace = true }
 # violate the layer rule (Layer 2 may depend on Layer 0). It is the single
 # relay-URL canonicalization authority, so the planner shares one normalization
 # with the kernel/router instead of carrying its own copy (#967).
-nmp-relay-url = { path = "../nmp-relay-url" }
+nmp-relay-url = { path = "../nmp-relay-url", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

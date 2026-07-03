@@ -8,10 +8,10 @@ description = "NIP-47 Nostr Wallet Connect — Layer-4 NIP crate. Owns the actor
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core" }
-nmp-network = { path = "../nmp-network", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nmp-nwc = { path = "../nmp-nwc" }
+nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
+nmp-nwc = { path = "../nmp-nwc", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 nostr = { version = "0.44", features = ["std"] }
 serde = { workspace = true, features = ["derive"] }

@@ -7,18 +7,18 @@ repository.workspace = true
 description = "Shared feed-session compiler for NMP runtimes."
 
 [dependencies]
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-content = { path = "../nmp-content" }
-nmp-feed = { path = "../nmp-feed" }
-nmp-kinds = { path = "../nmp-kinds" }
-nmp-nip02 = { path = "../nmp-nip02" }
-nmp-nip09 = { path = "../nmp-nip09" }
-nmp-nip18 = { path = "../nmp-nip18" }
-nmp-nip29 = { path = "../nmp-nip29" }
-nmp-nip51 = { path = "../nmp-nip51" }
-nmp-note-feed = { path = "../nmp-note-feed" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-nip02 = { path = "../nmp-nip02", version = "1.0.0-rc.1" }
+nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
+nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
+nmp-nip29 = { path = "../nmp-nip29", version = "1.0.0-rc.1" }
+nmp-nip51 = { path = "../nmp-nip51", version = "1.0.0-rc.1" }
+nmp-note-feed = { path = "../nmp-note-feed", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-planner = { path = "../nmp-planner", default-features = false }
-nmp-store = { path = "../nmp-store" }
-nmp-wot = { path = "../nmp-wot" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+nmp-wot = { path = "../nmp-wot", version = "1.0.0-rc.1" }
 trellis-core = "0.2.1"

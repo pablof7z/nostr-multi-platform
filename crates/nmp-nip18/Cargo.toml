@@ -8,14 +8,14 @@ description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 # Canonical DeleteRecord (kind:5 decode) and AddressCoordinate (a-tag identity)
 # — nmp-nip09 is the exclusive owner of the generic NIP-09 deletion grammar
 # and the address-coordinate type it decodes (ADR-0074, widened by #2589).
-nmp-nip09 = { path = "../nmp-nip09" }
-nmp-planner = { path = "../nmp-planner", default-features = false }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

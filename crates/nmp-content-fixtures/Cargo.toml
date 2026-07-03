@@ -15,16 +15,16 @@ path = "src/bin/build-wire-fixtures.rs"
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-content = { path = "../nmp-content" }
-nmp-core = { path = "../nmp-core" }
-nmp-nip23 = { path = "../nmp-nip23" }
+nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
+nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
+nmp-nip23 = { path = "../nmp-nip23", version = "1.0.0-rc.1" }
 # NIP-19/NIP-21 identifier vocabulary (Layer 0) — the fixtures build `nostr:`
 # URIs via `nmp_nostr_id::{NostrUri, format_nostr_uri, parse_nostr_uri}`.
-nmp-nostr-id = { path = "../nmp-nostr-id" }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-nostr-id = { path = "../nmp-nostr-id", version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 # Deterministic BIP340 schnorr signing for reproducible fixture bundles
 # (`sign_schnorr_no_aux_rand`); no relay/networking features needed.
 nostr = { workspace = true, features = ["std"] }

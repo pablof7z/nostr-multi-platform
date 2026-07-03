@@ -11,16 +11,16 @@ crate-type = ["rlib"]
 
 [dependencies]
 flatbuffers = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-kinds = { path = "../nmp-kinds" }
-nmp-nip09 = { path = "../nmp-nip09" }
-nmp-nip01 = { path = "../nmp-nip01" }
-nmp-nip22 = { path = "../nmp-nip22" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
+nmp-nip01 = { path = "../nmp-nip01", version = "1.0.0-rc.1" }
+nmp-nip22 = { path = "../nmp-nip22", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-planner = { path = "../nmp-planner" }
-nmp-read-session = { path = "../nmp-read-session" }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
-nmp-store = { path = "../nmp-store" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

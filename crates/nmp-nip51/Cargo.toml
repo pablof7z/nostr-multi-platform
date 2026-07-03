@@ -13,20 +13,20 @@ crate-type = ["rlib"]
 # `nmp-core` supplies `ObservedProjectionSink` (the ingest seam) and
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
-nmp-core = { path = "../nmp-core", default-features = false }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestScope / InterestLifecycle /
 # LogicalInterest / PTagRouting / stable_hash64 — used by `interests.rs` for
 # the bookmark-list and mute-list interest builders (mirrors nmp-nip57/Cargo.toml).
-nmp-planner = { path = "../nmp-planner", default-features = false }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 # Layer-0 kind-constant registry — re-exports NIP-51 kind integers
 # so this crate no longer duplicates those values.
-nmp-kinds = { path = "../nmp-kinds" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 # NIP-50 owns search relay-selection semantics. The NIP-51 runtime installs a
 # source backed by the active account's kind:10007 projection.
-nmp-nip50 = { path = "../nmp-nip50" }
-nmp-store = { path = "../nmp-store" }
+nmp-nip50 = { path = "../nmp-nip50", version = "1.0.0-rc.1" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 trellis-core = "0.2.1"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

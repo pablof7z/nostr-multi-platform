@@ -15,15 +15,15 @@ native = [
 ]
 
 [dependencies]
-nmp-coverage-gate = { path = "../nmp-coverage-gate" }
-nmp-core = { path = "../nmp-core", default-features = false }
+nmp-coverage-gate = { path = "../nmp-coverage-gate", version = "1.0.0-rc.1" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-nip11 = { path = "../nmp-nip11", optional = true }
-nmp-nip01 = { path = "../nmp-nip01", default-features = false }
-nmp-nip51 = { path = "../nmp-nip51" }
-nmp-nip77 = { path = "../nmp-nip77" }
-nmp-router = { path = "../nmp-router", default-features = false }
-nmp-store = { path = "../nmp-store" }
+nmp-nip11 = { path = "../nmp-nip11", optional = true, version = "1.0.0-rc.1" }
+nmp-nip01 = { path = "../nmp-nip01", default-features = false, version = "1.0.0-rc.1" }
+nmp-nip51 = { path = "../nmp-nip51", version = "1.0.0-rc.1" }
+nmp-nip77 = { path = "../nmp-nip77", version = "1.0.0-rc.1" }
+nmp-router = { path = "../nmp-router", default-features = false, version = "1.0.0-rc.1" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

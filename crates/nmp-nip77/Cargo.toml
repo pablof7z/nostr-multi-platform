@@ -11,15 +11,15 @@ name = "nmp_nip77"
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false }
-nmp-network = { path = "../nmp-network", default-features = false }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle —
 # the nmp_core::planner compat facade is deleted (#1608).
-nmp-planner = { path = "../nmp-planner" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for EventStore / StoreQuery — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store" }
-nmp-coverage-gate = { path = "../nmp-coverage-gate" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+nmp-coverage-gate = { path = "../nmp-coverage-gate", version = "1.0.0-rc.1" }
 negentropy = { version = "0.5", default-features = false, features = ["std"] }
 nostr = { workspace = true }
 serde_json = { workspace = true }
