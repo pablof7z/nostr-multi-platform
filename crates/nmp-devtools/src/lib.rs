@@ -11,6 +11,7 @@ mod capsule;
 mod feed_session;
 mod prover;
 mod receipt;
+mod relay_snapshot;
 mod trellis;
 
 /// Compiled ownership descriptor for crate-ownership reports.
@@ -24,6 +25,9 @@ pub use feed_session::{
     receipts_from_feed_session_batch, XrayFeedSessionClock, XrayFeedSessionRecorder,
 };
 pub use prover::{XrayProbe, XrayReplaySession, XrayReplayTransaction, XrayScopeInventory};
+pub use relay_snapshot::{
+    snapshots_from_wire_subscription_diagnostics, XrayWireSubscriptionSnapshot,
+};
 pub use receipt::{
     XrayCauseLink, XrayCommandOutcome, XrayInterestDescriptor, XrayOutcomeStatus, XrayOwnerCounts,
     XrayProjectionContext, XrayReason, XrayReasonCode, XrayReasonParam, XrayReceipt,
