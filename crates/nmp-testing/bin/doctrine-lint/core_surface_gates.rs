@@ -23,7 +23,10 @@ const CORE_ROOT_EXPORTS: &[&str] = &[
     "pub use app::{ resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD, };",
     "pub use bunker_hook::{ install_bunker_hook, new_bunker_hook_slot, BunkerHookFn, BunkerHookRequest, BunkerHookSlot, };",
     "pub use external_signer_hook::{ install_external_signer_hook, new_external_signer_hook_slot, ExternalSignerHookFn, ExternalSignerHookRequest, ExternalSignerHookSlot, };",
-    "pub use kernel::{ read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, DependentInterestChild, DependentInterestDelta, DependentInterestDeltaCommand, Kernel, ProfileLiveness, KERNEL_BUILTIN_PROJECTION_KEYS, };",
+    // doctrine-allow: #2868 — `WireSubscriptionDiagnosticSnapshot` is the neutral
+    // wire-subscription diagnostic seam the dev-only `nmp-devtools` sidecar reads
+    // (devtools -> core edge; core never depends on devtools).
+    "pub use kernel::{ read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, DependentInterestChild, DependentInterestDelta, DependentInterestDeltaCommand, Kernel, ProfileLiveness, WireSubscriptionDiagnosticSnapshot, KERNEL_BUILTIN_PROJECTION_KEYS, };",
     "pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope};",
     "pub use kernel::pull_cursor::{InvalidCursorSpec, PullConsumerId, PullCursorHandle};",
     "pub use kernel::pull_cursor::{PullCursorId, PullCursorMode, PullCursorRegistry, PullCursorSpec};",

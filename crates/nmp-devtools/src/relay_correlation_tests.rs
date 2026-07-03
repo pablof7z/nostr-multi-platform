@@ -1,9 +1,10 @@
 use crate::{
     XrayCommandOutcome, XrayInterestDescriptor, XrayOwnerCounts, XrayProjectionContext, XrayReason,
     XrayReasonCode, XrayReceipt, XrayReceiptEventKind, XrayTimestamp, XrayTransactionMarker,
+    XrayWireSubscriptionSnapshot,
 };
 
-use super::{correlate_receipts_with_wire_subscriptions, XrayWireSubscriptionSnapshot};
+use super::correlate_receipts_with_wire_subscriptions;
 
 fn receipt(event: XrayReceiptEventKind, planner_interest_id: &str) -> XrayReceipt {
     let mut interest = XrayInterestDescriptor::new(

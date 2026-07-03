@@ -1,0 +1,33 @@
+namespace nmp.chat;
+
+// Typed FlatBuffers wire for the chat read-state/presence projection
+// (`nmp_chat::ChatPresenceSnapshot`), schema_id "nmp.chat.presence".
+//
+// This schema owns no transport semantics: source events are selected by the
+// concept read session's caller-supplied kind set plus the NIP-29 `#h` group
+// envelope. Read markers and typing state enter as explicit local inputs, so
+// replay is deterministic and no wall clock is read inside the projection.
+
+table ReadMarker {
+  event_id:string;       // raw hex event id at the read boundary
+  created_at:uint64;     // boundary event created_at, Unix seconds
+}
+
+table TypingParticipant {
+  pubkey:string;         // raw hex pubkey
+  updated_at_ms:uint64;  // explicit input time
+  expires_at_ms:uint64;  // pruned after explicit clock input passes this value
+}
+
+table ChatPresenceSnapshot {
+  schema_version:uint32 = 1;
+  host_relay_url:string;
+  group_id:string;
+  active_pubkey:string;
+  read_marker:ReadMarker;
+  unread_count:uint32;
+  typing:[TypingParticipant];
+}
+
+root_type ChatPresenceSnapshot;
+file_identifier "NCHP";

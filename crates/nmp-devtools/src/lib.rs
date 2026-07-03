@@ -12,6 +12,7 @@ mod feed_session;
 mod prover;
 mod receipt;
 mod relay_correlation;
+mod relay_snapshot;
 mod trellis;
 
 /// Compiled ownership descriptor for crate-ownership reports.
@@ -31,7 +32,8 @@ pub use receipt::{
     XrayReceiptEventKind, XrayReceiptRecorder, XrayReceiptStream, XrayRecordingConfig,
     XrayRelayEffect, XrayTeardownCascade, XrayTimestamp, XrayTransactionMarker,
 };
-pub use relay_correlation::{
-    correlate_receipts_with_wire_subscriptions, XrayWireSubscriptionSnapshot,
+pub use relay_correlation::correlate_receipts_with_wire_subscriptions;
+pub use relay_snapshot::{
+    snapshots_from_wire_subscription_diagnostics, XrayWireSubscriptionSnapshot,
 };
 pub use trellis::{receipts_from_trellis_commands, TrellisReceiptPayload};

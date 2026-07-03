@@ -21,12 +21,9 @@
 //! The kernel fetches the wallet's events through its `EventStore` / interest
 //! pipeline and feeds them in via `Nip60WalletHandle::ingest_*`; events to
 //! publish are queued in the handle's outbox and drained by the kernel through
-//! its `ActorCommand::Publish*` chokepoint. The legacy `relay` tags on the
-//! kind:17375 config are surfaced only as a non-authoritative compatibility
-//! hint (`Nip60WalletHandle::legacy_relay_hint`) — they must never be treated
-//! as the relay-selection source of truth. The authoritative relay set is the
-//! active user's kind:10019 `relay` tags, with NIP-65 fallback; that
-//! resolution policy is owned by `nmp-wallet`, not this crate.
+//! its `ActorCommand::Publish*` chokepoint. For the kind:17375 legacy relay
+//! hint and why it can never become relay-selection truth, see the
+//! [`wallet_event`] module docs.
 //!
 //! # Cashu cryptography
 //!
@@ -46,16 +43,18 @@
 //! let wallet = Nip60WalletHandle::create_new(
 //!     &keys,
 //!     "https://testnut.cashu.space",
-//!     Vec::new(),
 //! ).expect("wallet creation");
 //!
-//! // Initiate a deposit.
-//! let deposit = wallet.initiate_deposit(64).expect("initiate deposit");
-//! println!("Pay this invoice: {}", deposit.bolt11);
-//! // (testnut auto-pays — skip actual payment)
-//! let minted = wallet.complete_deposit(&deposit).expect("complete deposit");
-//! println!("Minted {minted} sat");
+//! let to_publish = wallet.take_outbox();
+//! println!("balance: {} sat", wallet.balance_sats());
+//! println!("{} event(s) queued for the kernel to publish", to_publish.len());
 //! ```
+//!
+//! For depositing funds (mint tokens from a paid Lightning invoice) and
+//! sending/receiving NutZaps — all `native`-feature-only, since they round-
+//! trip to the Cashu mint over HTTP — see [`Nip60WalletHandle`]'s
+//! `initiate_deposit`/`complete_deposit`/`send_nutzap`/`redeem_nutzap` docs
+//! (only compiled with the `native` feature).
 
 pub mod cashu;
 pub mod error;
@@ -73,10 +72,14 @@ pub use kinds::*;
 pub use mint_announce::{
     decode_mint_announce_event, mint_announce_filter, MintAnnouncement,
 };
-pub use nip60_wallet::{DepositRequest, Nip60WalletHandle};
+#[cfg(feature = "native")]
+pub use nip60_wallet::DepositRequest;
+pub use nip60_wallet::Nip60WalletHandle;
 pub use nutzap::{
     build_nutzap_event, build_nutzap_info_event, decode_nutzap_event, decode_nutzap_info_event,
-    p2pk_secret, verify_nutzap_dleq, NutZapInfo, NutZapProof, ReceivedNutZap,
+    p2pk_secret, NutZapInfo, NutZapProof, ReceivedNutZap,
 };
+#[cfg(feature = "native")]
+pub use nutzap::verify_nutzap_dleq;
 pub use token_event::{build_token_event, decode_token_event, TokenRecord};
 pub use wallet_event::{build_wallet_event, decode_wallet_event, WalletConfig};

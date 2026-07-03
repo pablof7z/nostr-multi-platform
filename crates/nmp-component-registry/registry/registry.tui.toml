@@ -229,7 +229,64 @@ role = "source"
 source = "tui/content-view/nostr_content_widget.rs"
 target = "src/components/nostr_content/nostr_content_widget.rs"
 role = "source"
-# Jetpack Compose user profile components. `compose/user-avatar` owns the shared
+
+# -----------------------------------------------------------------------------
+# Ratatui group chat components. These mirror the SwiftUI/Compose chat family
+# and stay render-only over Rust-owned chat projections and profile refs.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "tui/chat-core"
+version = "0.1.0"
+target = "tui"
+description = "Shared Ratatui group-chat wire structs for Rust-owned message, reaction, and roster projections."
+[[components.files]]
+source = "tui/chat-core/nostr_group_chat_wire.rs"
+target = "src/components/nostr_chat/nostr_group_chat_wire.rs"
+role = "source"
+
+[[components]]
+id = "tui/chat-message-row"
+version = "0.1.1"
+target = "tui"
+description = "Ratatui group-chat message row with profile self-claiming, reply preview, outgoing alignment, and reaction badges."
+dependencies = [
+    "tui/chat-core",
+    "tui/user-avatar",
+    "tui/user-name",
+]
+[[components.files]]
+source = "tui/chat-message-row/nostr_group_message_row.rs"
+target = "src/components/nostr_chat/nostr_group_message_row.rs"
+role = "source"
+
+[[components]]
+id = "tui/chat-composer"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui group-chat composer that renders draft state only and exposes trim/send helpers without publishing protocol data."
+dependencies = ["tui/chat-core"]
+[[components.files]]
+source = "tui/chat-composer/nostr_group_composer.rs"
+target = "src/components/nostr_chat/nostr_group_composer.rs"
+role = "source"
+
+[[components]]
+id = "tui/chat-roster-list"
+version = "0.1.0"
+target = "tui"
+description = "Ratatui group roster list that renders Rust-owned participant rows through self-claiming profile components."
+dependencies = [
+    "tui/chat-core",
+    "tui/user-avatar",
+    "tui/user-name",
+]
+[[components.files]]
+source = "tui/chat-roster-list/nostr_group_roster_list.rs"
+target = "src/components/nostr_chat/nostr_group_roster_list.rs"
+role = "source"
+
+# Ratatui user profile components. `tui/user-core` owns the shared
 # `ProfileWire` mirror for the smaller profile display components.
 # -----------------------------------------------------------------------------
 

@@ -7,6 +7,7 @@ repository.workspace = true
 description = "Dev-only NMP diagnostic receipt surface."
 
 [dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-ownership = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

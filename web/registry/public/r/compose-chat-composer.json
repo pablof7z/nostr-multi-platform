@@ -1,0 +1,18 @@
+{
+  "name": "compose-chat-composer",
+  "type": "registry:ui",
+  "title": "Chat Composer (Compose)",
+  "description": "Compose group-chat composer that owns draft UI only and emits send callbacks without publishing or parsing protocol data.",
+  "dependencies": [],
+  "registryDependencies": [
+    "compose-chat-core"
+  ],
+  "files": [
+    {
+      "path": "registry/compose/chat-composer/NostrGroupComposer.kt",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupComposer.kt",
+      "content": "package org.nmp.registry\n\nimport androidx.compose.foundation.layout.Row\nimport androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.padding\nimport androidx.compose.material3.Button\nimport androidx.compose.material3.OutlinedTextField\nimport androidx.compose.material3.Text\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.unit.dp\n\n@Composable\nfun NostrGroupComposer(\n    text: String,\n    onTextChange: (String) -> Unit,\n    onSend: (String) -> Unit,\n    modifier: Modifier = Modifier,\n    placeholder: String = \"Message\",\n    enabled: Boolean = true,\n) {\n    val trimmed = text.trim()\n    Row(\n        modifier = modifier.fillMaxWidth(),\n        verticalAlignment = Alignment.CenterVertically,\n    ) {\n        OutlinedTextField(\n            value = text,\n            onValueChange = onTextChange,\n            enabled = enabled,\n            placeholder = { Text(placeholder) },\n            minLines = 1,\n            maxLines = 5,\n            modifier = Modifier\n                .weight(1f)\n                .padding(end = 8.dp),\n        )\n        Button(\n            enabled = enabled && trimmed.isNotEmpty(),\n            onClick = {\n                if (trimmed.isNotEmpty()) {\n                    onSend(trimmed)\n                    onTextChange(\"\")\n                }\n            },\n        ) {\n            Text(\"Send\")\n        }\n    }\n}\n"
+    }
+  ]
+}

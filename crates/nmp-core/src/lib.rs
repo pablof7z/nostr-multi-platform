@@ -180,7 +180,7 @@ pub use external_signer_hook::{
 pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, DependentInterestChild,
     DependentInterestDelta, DependentInterestDeltaCommand, Kernel, ProfileLiveness,
-    KERNEL_BUILTIN_PROJECTION_KEYS,
+    WireSubscriptionDiagnosticSnapshot, KERNEL_BUILTIN_PROJECTION_KEYS,
 };
 // ADR-0070 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0072

@@ -108,6 +108,10 @@ name = "nmp-read-session"
 path = "crates/nmp-read-session"
 
 [[public_crates]]
+name = "nmp-chat"
+path = "crates/nmp-chat"
+
+[[public_crates]]
 name = "nmp-marmot"
 path = "crates/nmp-marmot"
 
@@ -343,6 +347,11 @@ reason = "Post-v1 Nostr Wallet Connect protocol crate (#2318); kept in the works
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
 reason = "Post-v1 lightning zap protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
+
+[[private_packages]]
+name = "nmp-wallet"
+path = "crates/nmp-wallet"
+reason = "Post-v1 wallet composition crate (#2864); active in workspace for Phase 1 tests but excluded from the v1 public release train until the wallet product surface is complete"
 
 [[private_packages]]
 name = "nmp-zaps"

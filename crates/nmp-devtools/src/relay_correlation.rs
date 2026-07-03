@@ -2,63 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::{
     XrayCommandOutcome, XrayOutcomeStatus, XrayReceipt, XrayReceiptEventKind, XrayRelayEffect,
+    XrayWireSubscriptionSnapshot,
 };
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct XrayWireSubscriptionSnapshot {
-    pub wire_id: String,
-    pub relay_url: String,
-    pub state: String,
-    pub originating_interest_ids: Vec<String>,
-    pub consumer_count: u32,
-    pub events_rx: u64,
-    pub eose_observed: bool,
-    pub close_reason: Option<String>,
-}
-
-impl XrayWireSubscriptionSnapshot {
-    #[must_use]
-    pub fn new(
-        wire_id: impl Into<String>,
-        relay_url: impl Into<String>,
-        state: impl Into<String>,
-        consumer_count: u32,
-        events_rx: u64,
-    ) -> Self {
-        Self {
-            wire_id: wire_id.into(),
-            relay_url: relay_url.into(),
-            state: state.into(),
-            originating_interest_ids: Vec::new(),
-            consumer_count,
-            events_rx,
-            eose_observed: false,
-            close_reason: None,
-        }
-    }
-
-    #[must_use]
-    pub fn with_eose_observed(mut self, eose_observed: bool) -> Self {
-        self.eose_observed = eose_observed;
-        self
-    }
-
-    #[must_use]
-    pub fn with_originating_interest_ids<I, S>(mut self, interest_ids: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        self.originating_interest_ids = interest_ids.into_iter().map(Into::into).collect();
-        self
-    }
-
-    #[must_use]
-    pub fn with_close_reason(mut self, close_reason: impl Into<String>) -> Self {
-        self.close_reason = Some(close_reason.into());
-        self
-    }
-}
 
 #[must_use]
 pub fn correlate_receipts_with_wire_subscriptions(

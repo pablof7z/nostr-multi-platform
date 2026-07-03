@@ -3810,6 +3810,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-chat"
+version = "0.8.4"
+dependencies = [
+ "flatbuffers",
+ "nmp-core",
+ "nmp-nip29",
+ "nmp-ownership",
+ "nmp-read-session",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-cli"
 version = "0.8.4"
 dependencies = [
@@ -3920,6 +3933,7 @@ dependencies = [
 name = "nmp-devtools"
 version = "0.8.4"
 dependencies = [
+ "nmp-core",
  "nmp-feed-session",
  "nmp-ownership",
  "serde",
@@ -4804,6 +4818,16 @@ dependencies = [
  "nmp-core",
  "nmp-native-runtime",
  "nmp-ownership",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-wallet"
+version = "0.8.4"
+dependencies = [
+ "nmp-core",
+ "nmp-ownership",
+ "serde",
  "serde_json",
 ]
 

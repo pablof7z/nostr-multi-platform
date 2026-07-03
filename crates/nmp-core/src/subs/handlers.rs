@@ -73,6 +73,30 @@ impl SubscriptionLifecycle {
             .unwrap_or_default()
     }
 
+    /// Current planner-originating interests keyed by `(relay_url, wire_id)`.
+    ///
+    /// Wire subscription rows keep transport facts; the compiled plan owns the
+    /// logical-interest provenance for each `SubShape`. Diagnostics join the two
+    /// here without storing planner internals in the transport row.
+    #[must_use]
+    pub(crate) fn current_plan_wire_origins(
+        &self,
+    ) -> std::collections::BTreeMap<(RelayUrl, String), Vec<InterestId>> {
+        let Some(plan) = self.current_plan.as_ref() else {
+            return std::collections::BTreeMap::new();
+        };
+        let mut origins = std::collections::BTreeMap::new();
+        for (relay_url, relay_plan) in &plan.per_relay {
+            for shape in &relay_plan.sub_shapes {
+                origins.insert(
+                    (relay_url.clone(), wire::sub_id_for(&plan.plan_id, shape)),
+                    shape.originating_interests.clone(),
+                );
+            }
+        }
+        origins
+    }
+
     /// Per-relay routing provenance from the last successful compile, captured
     /// BEFORE the blocked-relay post-pass (SPLIT A). Empty before the first
     /// compile. Read by `Kernel::relay_diagnostics_snapshot` to surface

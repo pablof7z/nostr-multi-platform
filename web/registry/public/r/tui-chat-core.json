@@ -1,0 +1,16 @@
+{
+  "name": "tui-chat-core",
+  "type": "registry:ui",
+  "title": "Chat Core (tui)",
+  "description": "Shared Ratatui group-chat wire structs for Rust-owned message, reaction, and roster projections.",
+  "dependencies": [],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "registry/tui/chat-core/nostr_group_chat_wire.rs",
+      "type": "registry:ui",
+      "target": "src/components/nostr_chat/nostr_group_chat_wire.rs",
+      "content": "/// Display-only reaction count for a Rust-owned group-chat message row.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NostrGroupChatReactionWire {\n    pub emoji: String,\n    pub count: u32,\n}\n\nimpl NostrGroupChatReactionWire {\n    pub fn label(&self) -> String {\n        if self.count <= 1 {\n            self.emoji.clone()\n        } else {\n            format!(\"{} {}\", self.emoji, self.count)\n        }\n    }\n}\n\n/// Display-only group-chat message row projected by Rust.\n///\n/// TUI components render this mirror as-is. They do not parse Nostr tags,\n/// decide relay policy, publish replies, or derive reaction/read state.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NostrGroupChatMessageWire {\n    pub id: String,\n    pub author_pubkey: String,\n    pub content: String,\n    pub created_at_label: String,\n    pub reply_preview: Option<String>,\n    pub reactions: Vec<NostrGroupChatReactionWire>,\n    pub is_outgoing: bool,\n}\n\nimpl NostrGroupChatMessageWire {\n    pub fn reply_preview(&self) -> Option<&str> {\n        non_empty(self.reply_preview.as_deref())\n    }\n}\n\n/// Display-only group participant row projected by Rust.\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct NostrGroupChatParticipantWire {\n    pub pubkey: String,\n    pub role_label: Option<String>,\n    pub status_label: Option<String>,\n}\n\nimpl NostrGroupChatParticipantWire {\n    pub fn role_label(&self) -> Option<&str> {\n        non_empty(self.role_label.as_deref())\n    }\n\n    pub fn status_label(&self) -> Option<&str> {\n        non_empty(self.status_label.as_deref())\n    }\n}\n\nfn non_empty(value: Option<&str>) -> Option<&str> {\n    value.map(str::trim).filter(|value| !value.is_empty())\n}\n"
+    }
+  ]
+}
