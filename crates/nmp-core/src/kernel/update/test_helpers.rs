@@ -82,7 +82,7 @@ impl Kernel {
             .reconcile_publish_engine_fingerprint(publish_engine_fp);
         let manifest = self.projection_manifest();
         let epoch_stamp = rung2_stamp::epoch_stamp(&manifest);
-        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest);
+        let typed = rung2_stamp::stamp_typed_projections(typed, &manifest, &mut self.projection_rev_tracker);
         let typed = rung3_omit::omit_unchanged(typed, &manifest, incremental_enabled);
         // ADR-0070 Rung 3 (D3-6): pass the kernel-owned reusable builder,
         // matching the production path in `make_update`.

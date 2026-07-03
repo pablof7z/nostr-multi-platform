@@ -53,6 +53,7 @@
 //!   enqueue-or-real-expiry; `Cleared` the tick the tracker is empty;
 //!   `Unchanged` while holding rows unchanged.
 
+pub(crate) mod app_owned;
 pub(crate) mod source_versions;
 // ADR-0070 Rung 1: the `impl Kernel` manifest accessors live in a sibling file
 // so `kernel/mod.rs` stays at its file-size baseline.
@@ -230,6 +231,15 @@ pub(crate) struct ProjectionRevTracker {
     /// last reconcile. `publish_outbox` / `outbox_summary` are derived from the
     /// embedded engine snapshot, not the queue rows.
     last_seen_publish_engine_fingerprint: u64,
+    /// NMP#2944 — per-app-owned-key `(rev, payload_fingerprint)`. App-owned
+    /// (host-registered) projection keys are absent from `BUILTIN_PROJECTION_DEPENDENCIES`,
+    /// so their manifest-derived rev is always 0. That violates the
+    /// `projection_rev` wire contract (monotonic, advances on content change)
+    /// and freezes the rev-aware host apply caches (iOS/Android
+    /// `ProjectionCache`, which skip a `Changed` row when `incomingRev <=
+    /// cached.rev`). This map derives a content-advancing rev for those keys so
+    /// the contract holds universally. See `app_owned::stamp_app_owned_revs`.
+    app_owned_revs: std::collections::HashMap<String, (u64, u64)>,
 }
 
 // #1723 (epic #1719): DRAIN_PROJECTION_KEYS + CONDITIONAL_PRESENCE_KEYS are now
