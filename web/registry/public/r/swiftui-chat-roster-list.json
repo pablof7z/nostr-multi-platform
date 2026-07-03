@@ -1,0 +1,20 @@
+{
+  "name": "swiftui-chat-roster-list",
+  "type": "registry:ui",
+  "title": "Chat Roster List (SwiftUI)",
+  "description": "SwiftUI group roster list that renders Rust-owned participant rows through self-claiming profile components.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-chat-core",
+    "swiftui-user-avatar",
+    "swiftui-user-name"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/chat-roster-list/NostrGroupRosterList.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupRosterList.swift",
+      "content": "import SwiftUI\n\npublic struct NostrGroupRosterList: View {\n    public var participants: [NostrGroupChatParticipantWire]\n    public var onSelectParticipant: (String) -> Void\n\n    public init(\n        participants: [NostrGroupChatParticipantWire],\n        onSelectParticipant: @escaping (String) -> Void = { _ in }\n    ) {\n        self.participants = participants\n        self.onSelectParticipant = onSelectParticipant\n    }\n\n    public var body: some View {\n        LazyVStack(alignment: .leading, spacing: 10) {\n            ForEach(participants) { participant in\n                Button {\n                    onSelectParticipant(participant.pubkey)\n                } label: {\n                    HStack(spacing: 10) {\n                        NostrAvatar(\n                            pubkey: participant.pubkey,\n                            size: 36,\n                            consumerID: \"chat.roster.\\(participant.pubkey).avatar\"\n                        )\n\n                        VStack(alignment: .leading, spacing: 2) {\n                            NostrProfileName(\n                                pubkey: participant.pubkey,\n                                font: .subheadline.weight(.semibold),\n                                consumerID: \"chat.roster.\\(participant.pubkey).name\"\n                            )\n                            HStack(spacing: 6) {\n                                if let role = participant.roleLabel, !role.isEmpty {\n                                    Text(role)\n                                }\n                                if let status = participant.statusLabel, !status.isEmpty {\n                                    Text(status)\n                                }\n                            }\n                            .font(.caption)\n                            .foregroundStyle(.secondary)\n                        }\n\n                        Spacer(minLength: 0)\n                    }\n                    .contentShape(Rectangle())\n                }\n                .buttonStyle(.plain)\n            }\n        }\n    }\n}\n"
+    }
+  ]
+}

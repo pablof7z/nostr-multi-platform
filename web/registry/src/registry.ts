@@ -14,6 +14,7 @@ import { userComponents } from "./registry/user";
 import { relayComponents } from "./registry/relay";
 import { embedComponents } from "./registry/embeds";
 import { componentHostComponents } from "./registry/componentHost";
+import { chatComponents } from "./registry/chat";
 
 export type { Component, ComponentFile, Platform, PlatformImpl, Section } from "./registry/types";
 export { PLATFORM_LABELS, PLATFORM_ORDER } from "./registry/types";
@@ -25,6 +26,7 @@ export const COMPONENTS: Component[] = [
   ...authComponents,
   ...userComponents,
   ...relayComponents,
+  ...chatComponents,
   ...embedAndKindComponents,
 ];
 
@@ -33,6 +35,7 @@ export const SECTIONS: Section[] = [
   { label: "Auth", components: authComponents },
   { label: "User", components: userComponents },
   { label: "Relay", components: relayComponents },
+  { label: "Chat", components: chatComponents },
   { label: "Embeds & Kinds", components: embedAndKindComponents },
 ];
 

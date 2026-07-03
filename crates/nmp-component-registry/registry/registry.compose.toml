@@ -134,11 +134,62 @@ dependencies = ["compose/content-kind-registry"]
 source = "compose/content-kind-0/NostrProfileCard.kt"
 target = "Components/NostrContent/NostrProfileCard.kt"
 role = "source"
+
 # -----------------------------------------------------------------------------
-# Ratatui content widgets. These consume the Rust-owned ContentTreeWire
-# projection and stay render-only: host apps own navigation, image protocol
-# negotiation, clipboard, and network capabilities.
+# Compose group chat components. These mirror the SwiftUI chat family and stay
+# render-only over Rust-owned chat projections and profile refs.
 # -----------------------------------------------------------------------------
+
+[[components]]
+id = "compose/chat-core"
+version = "0.1.0"
+target = "compose"
+description = "Shared Compose group-chat wire structs for Rust-owned message, reaction, and roster projections."
+[[components.files]]
+source = "compose/chat-core/NostrGroupChatWire.kt"
+target = "Components/NostrChat/NostrGroupChatWire.kt"
+role = "source"
+
+[[components]]
+id = "compose/chat-message-row"
+version = "0.1.0"
+target = "compose"
+description = "Compose group-chat message row with profile self-claiming, reply preview, outgoing bubble styling, and reaction badges."
+dependencies = [
+    "compose/chat-core",
+    "compose/user-avatar",
+    "compose/user-name",
+]
+[[components.files]]
+source = "compose/chat-message-row/NostrGroupMessageRow.kt"
+target = "Components/NostrChat/NostrGroupMessageRow.kt"
+role = "source"
+
+[[components]]
+id = "compose/chat-composer"
+version = "0.1.0"
+target = "compose"
+description = "Compose group-chat composer that owns draft UI only and emits send callbacks without publishing or parsing protocol data."
+dependencies = ["compose/chat-core"]
+[[components.files]]
+source = "compose/chat-composer/NostrGroupComposer.kt"
+target = "Components/NostrChat/NostrGroupComposer.kt"
+role = "source"
+
+[[components]]
+id = "compose/chat-roster-list"
+version = "0.1.0"
+target = "compose"
+description = "Compose group roster list that renders Rust-owned participant rows through self-claiming profile components."
+dependencies = [
+    "compose/chat-core",
+    "compose/user-avatar",
+    "compose/user-name",
+]
+[[components.files]]
+source = "compose/chat-roster-list/NostrGroupRosterList.kt"
+target = "Components/NostrChat/NostrGroupRosterList.kt"
+role = "source"
 
 [[components]]
 id = "compose/user-avatar"

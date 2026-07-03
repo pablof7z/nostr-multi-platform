@@ -1,0 +1,18 @@
+{
+  "name": "swiftui-chat-composer",
+  "type": "registry:ui",
+  "title": "Chat Composer (SwiftUI)",
+  "description": "SwiftUI group-chat composer that owns draft UI only and emits send callbacks without publishing or parsing protocol data.",
+  "dependencies": [],
+  "registryDependencies": [
+    "swiftui-chat-core"
+  ],
+  "files": [
+    {
+      "path": "registry/swiftui/chat-composer/NostrGroupComposer.swift",
+      "type": "registry:ui",
+      "target": "Components/NostrChat/NostrGroupComposer.swift",
+      "content": "import SwiftUI\n\npublic struct NostrGroupComposer: View {\n    @Binding private var text: String\n    public var placeholder: String\n    public var isEnabled: Bool\n    public var onSend: (String) -> Void\n\n    public init(\n        text: Binding<String>,\n        placeholder: String = \"Message\",\n        isEnabled: Bool = true,\n        onSend: @escaping (String) -> Void\n    ) {\n        self._text = text\n        self.placeholder = placeholder\n        self.isEnabled = isEnabled\n        self.onSend = onSend\n    }\n\n    public var body: some View {\n        HStack(spacing: 8) {\n            TextField(placeholder, text: $text)\n                .textFieldStyle(.plain)\n                .padding(.horizontal, 10)\n                .padding(.vertical, 8)\n                .background(.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))\n                .disabled(!isEnabled)\n\n            Button {\n                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)\n                guard !trimmed.isEmpty else { return }\n                onSend(trimmed)\n                text = \"\"\n            } label: {\n                Text(\"Send\").font(.callout.weight(.semibold))\n            }\n            .buttonStyle(.borderedProminent)\n            .disabled(!isEnabled || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)\n        }\n    }\n}\n"
+    }
+  ]
+}

@@ -219,6 +219,64 @@ role = "source"
 source = "swiftui/relay-list/Examples/NostrRelayListPreview.swift"
 target = "Components/NostrRelays/Examples/NostrRelayListPreview.swift"
 role = "example"
+
+# -----------------------------------------------------------------------------
+# SwiftUI group chat components. These are render-only widgets over Rust-owned
+# chat projections and profile refs; NIP-29 transport/action semantics stay in
+# Rust crates.
+# -----------------------------------------------------------------------------
+
+[[components]]
+id = "swiftui/chat-core"
+version = "0.1.0"
+target = "swiftui"
+description = "Shared SwiftUI group-chat wire structs for Rust-owned message, reaction, and roster projections."
+[[components.files]]
+source = "swiftui/chat-core/NostrGroupChatWire.swift"
+target = "Components/NostrChat/NostrGroupChatWire.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/chat-message-row"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI group-chat message row with profile self-claiming, reply preview, outgoing bubble styling, and reaction badges."
+dependencies = [
+    "swiftui/chat-core",
+    "swiftui/user-avatar",
+    "swiftui/user-name",
+]
+[[components.files]]
+source = "swiftui/chat-message-row/NostrGroupMessageRow.swift"
+target = "Components/NostrChat/NostrGroupMessageRow.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/chat-composer"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI group-chat composer that owns draft UI only and emits send callbacks without publishing or parsing protocol data."
+dependencies = ["swiftui/chat-core"]
+[[components.files]]
+source = "swiftui/chat-composer/NostrGroupComposer.swift"
+target = "Components/NostrChat/NostrGroupComposer.swift"
+role = "source"
+
+[[components]]
+id = "swiftui/chat-roster-list"
+version = "0.1.0"
+target = "swiftui"
+description = "SwiftUI group roster list that renders Rust-owned participant rows through self-claiming profile components."
+dependencies = [
+    "swiftui/chat-core",
+    "swiftui/user-avatar",
+    "swiftui/user-name",
+]
+[[components.files]]
+source = "swiftui/chat-roster-list/NostrGroupRosterList.swift"
+target = "Components/NostrChat/NostrGroupRosterList.swift"
+role = "source"
+
 # -----------------------------------------------------------------------------
 # SwiftUI user profile components. `swiftui/user-avatar` owns `ProfileWire`,
 # so the smaller name / NIP-05 / npub / card components all depend on it.
