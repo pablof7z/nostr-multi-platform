@@ -33,6 +33,7 @@
 //! | `feed_vocabulary_tests.rs`| feed-facade "session" vocabulary ratchet (#2508/#2783) |
 //! | `no_deprecated_tests.rs`  | no deprecated-attribute compatibility ratchet (#2770) |
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
+//! | `trellis_phase_a_gates.rs`| #2858 devtools Trellis receipt gates  |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
 //! | `doc_citation_truth_gates.rs` | crate-boundaries.md §N.M / ADR-NNNN content-truth (#2768) |
@@ -70,7 +71,11 @@ mod tests_d10_d11_d12; // D10, D11, D12 fixture smoke tests — sibling module.
 mod tests_d13_d14_d15; // D13, D14, D15 fixture smoke tests — sibling module.
 mod tests_d16_workspace; // apps/chirp tombstone, --workspace-d8, end-to-end clean — sibling module.
 mod tests_d17_misc; // D17 and cache-serve seal — sibling module.
+mod trellis_phase_a_fixture_support; // #2858 receipt render fixture harness.
+mod trellis_phase_a_gates; // #2858 devtools Trellis diagnostic-surface gates.
+mod trellis_phase_a_support; // #2858 release graph and manifest scan helpers.
 mod trellis_public_api_gates; // Trellis must stay private implementation machinery.
+mod trellis_public_api_support; // Shared Trellis public-surface scan helpers.
 mod wasm_abi_gates; // nmp-wasm retired-crate gates (deleted #2202; must stay deleted).
 
 const FIXTURE_ROOT: &str = "crates/nmp-testing/bin/doctrine-lint/fixtures";
