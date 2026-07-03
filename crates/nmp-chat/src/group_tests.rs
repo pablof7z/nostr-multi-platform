@@ -42,11 +42,24 @@ fn empty_kinds_means_all_group_events() {
 }
 
 #[test]
+fn filter_json_includes_remote_typing_kinds_when_messages_are_bounded() {
+    let v: serde_json::Value = serde_json::from_str(&chat_presence_filter_json_with_remote_typing(
+        &group(),
+        &[11, 9, 9],
+        &[24_010, 9],
+    ))
+    .unwrap();
+    assert_eq!(v["kinds"], serde_json::json!([9, 11, 24010]));
+    assert_eq!(v["#h"], serde_json::json!(["room-a"]));
+}
+
+#[test]
 fn session_descriptor_exposes_scope_without_kind_policy() {
     let session = ChatPresenceSession::new(group(), "me".into(), vec![11, 9]);
     assert_eq!(session.group_id().local_id, "room-a");
     assert_eq!(session.active_pubkey(), "me");
     assert_eq!(session.message_kinds(), &[11, 9]);
+    assert!(session.remote_typing().kinds().is_empty());
     assert_eq!(
         session.projection_key(),
         chat_presence_projection_key(&group())
@@ -71,6 +84,7 @@ struct FakeHost {
     registry: ReadSessionRegistry,
     installed_keys: Mutex<Vec<String>>,
     emitted_keys: Mutex<Vec<String>>,
+    opened_filters: Mutex<Vec<String>>,
     opened_consumers: Mutex<Vec<String>>,
     closed_outputs: Arc<Mutex<Vec<String>>>,
     closed_interests: Arc<Mutex<Vec<u64>>>,
@@ -90,6 +104,7 @@ impl ReadHost for FakeHost {
     }
 
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        self.opened_filters.lock().unwrap().push(decl.filter_json);
         self.opened_consumers.lock().unwrap().push(decl.consumer_id);
         ObservedProjectionId(self.next_interest.fetch_add(1, Ordering::Relaxed) + 1)
     }
@@ -185,4 +200,17 @@ fn reopening_same_group_replaces_only_that_group() {
     assert!(close_chat_presence_session(&host, replacement_room_a));
     assert!(close_chat_presence_session(&host, room_b));
     assert_eq!(host.registry.live_count(), 0);
+}
+
+#[test]
+fn session_remote_typing_spec_extends_opened_filter() {
+    let host = FakeHost::default();
+    let descriptor = session("room-a").with_remote_typing(ChatRemoteTypingSpec::new(vec![24_010]));
+    let (handle, _) = open_chat_presence_session_with_reader(&host, descriptor);
+
+    assert_eq!(handle.key(), chat_presence_projection_key(&group()));
+    let filters = host.opened_filters.lock().unwrap();
+    let v: serde_json::Value = serde_json::from_str(&filters[0]).unwrap();
+    assert_eq!(v["kinds"], serde_json::json!([9, 24010]));
+    assert_eq!(v["#h"], serde_json::json!(["room-a"]));
 }

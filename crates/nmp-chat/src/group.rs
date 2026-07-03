@@ -11,6 +11,7 @@ use nmp_read_session::{
 };
 
 use crate::presence::ChatPresenceProjection;
+use crate::typing_event::ChatRemoteTypingSpec;
 use crate::wire::{
     encode_chat_presence_snapshot, CHAT_PRESENCE_FILE_IDENTIFIER, CHAT_PRESENCE_SCHEMA_ID,
     CHAT_PRESENCE_SCHEMA_VERSION,
@@ -28,6 +29,7 @@ pub struct ChatPresenceSession {
     group_id: GroupId,
     active_pubkey: String,
     message_kinds: Vec<u32>,
+    remote_typing: ChatRemoteTypingSpec,
 }
 
 impl ChatPresenceSession {
@@ -37,7 +39,14 @@ impl ChatPresenceSession {
             group_id,
             active_pubkey,
             message_kinds,
+            remote_typing: ChatRemoteTypingSpec::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_remote_typing(mut self, remote_typing: ChatRemoteTypingSpec) -> Self {
+        self.remote_typing = remote_typing;
+        self
     }
 
     #[must_use]
@@ -53,6 +62,11 @@ impl ChatPresenceSession {
     #[must_use]
     pub fn message_kinds(&self) -> &[u32] {
         &self.message_kinds
+    }
+
+    #[must_use]
+    pub fn remote_typing(&self) -> &ChatRemoteTypingSpec {
+        &self.remote_typing
     }
 
     #[must_use]
@@ -100,15 +114,21 @@ pub fn open_chat_presence_session_with_reader(
         group_id,
         active_pubkey,
         message_kinds,
+        remote_typing,
     } = descriptor;
-    let filter_json = chat_presence_filter_json(&group_id, &message_kinds);
+    let filter_json = chat_presence_filter_json_with_remote_typing(
+        &group_id,
+        &message_kinds,
+        remote_typing.kinds(),
+    );
     let relay_pin = Some(group_id.host_relay_url.clone());
     let projection_key = chat_presence_projection_key(&group_id);
-    let projection = Arc::new(ChatPresenceProjection::new(
+    let projection = Arc::new(ChatPresenceProjection::with_remote_typing(
         group_id.host_relay_url.clone(),
         group_id.local_id.clone(),
         active_pubkey,
         message_kinds,
+        remote_typing,
     ));
     let projection_reader = Arc::clone(&projection);
 
@@ -163,15 +183,37 @@ pub fn close_chat_presence_session(host: &dyn ReadHost, handle: ChatPresenceHand
 /// matching the group-events read session's normalization.
 #[must_use]
 pub fn chat_presence_filter_json(group_id: &GroupId, message_kinds: &[u32]) -> String {
+    chat_presence_filter_json_with_remote_typing(group_id, message_kinds, &[])
+}
+
+/// NIP-01 `REQ` filter for source messages plus optional remote typing events.
+///
+/// Empty `message_kinds` still means all h-tagged group events. Otherwise the
+/// filter includes both caller-owned message kinds and remote typing kinds.
+#[must_use]
+pub fn chat_presence_filter_json_with_remote_typing(
+    group_id: &GroupId,
+    message_kinds: &[u32],
+    remote_typing_kinds: &[u32],
+) -> String {
     let mut map = serde_json::Map::new();
-    let mut kinds = message_kinds.to_vec();
-    kinds.sort_unstable();
-    kinds.dedup();
+    let kinds = combined_kinds(message_kinds, remote_typing_kinds);
     if !kinds.is_empty() {
         map.insert("kinds".to_string(), serde_json::json!(kinds));
     }
     map.insert("#h".to_string(), serde_json::json!([group_id.local_id]));
     serde_json::Value::Object(map).to_string()
+}
+
+fn combined_kinds(message_kinds: &[u32], remote_typing_kinds: &[u32]) -> Vec<u32> {
+    if message_kinds.is_empty() {
+        return Vec::new();
+    }
+    let mut kinds = message_kinds.to_vec();
+    kinds.extend_from_slice(remote_typing_kinds);
+    kinds.sort_unstable();
+    kinds.dedup();
+    kinds
 }
 
 fn lower_hex(bytes: &[u8]) -> String {
