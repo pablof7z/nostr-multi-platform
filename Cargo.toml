@@ -9,6 +9,7 @@ members = [
     "crates/nmp-browser-runtime",
     "crates/nmp-browser-runtime-conformance",
     "crates/nmp-codegen",
+    "crates/nmp-chat",
     "crates/nmp-content",
     "crates/nmp-content-fixtures",
     "crates/nmp-core",

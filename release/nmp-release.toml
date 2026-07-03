@@ -108,6 +108,10 @@ name = "nmp-read-session"
 path = "crates/nmp-read-session"
 
 [[public_crates]]
+name = "nmp-chat"
+path = "crates/nmp-chat"
+
+[[public_crates]]
 name = "nmp-marmot"
 path = "crates/nmp-marmot"
 

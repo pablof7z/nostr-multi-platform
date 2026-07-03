@@ -64,6 +64,7 @@ export const PROJECTION_CONTRACT: Readonly<Record<string, ProjectionContractEntr
   "nmp.wot.bootstrap": { schemaId: "nmp.wot.bootstrap", fileIdentifier: "NWBS" },
   "nmp.notifications": { schemaId: "nmp.notifications", fileIdentifier: "NNTF" },
   "refs.event.envelopes": { schemaId: "refs.event.envelopes", fileIdentifier: "NEMB" },
+  "nmp.chat.presence": { schemaId: "nmp.chat.presence", fileIdentifier: "NCHP" },
   "nmp.marmot.snapshot": { schemaId: "nmp.marmot.snapshot", fileIdentifier: "NMMS" },
   "nmp.marmot.messages": { schemaId: "nmp.marmot.messages", fileIdentifier: "NMMG" },
 };

@@ -1,11 +1,10 @@
-//! #1723 — the [`PROJECTION_CONTRACT`] data table (and its `SRC_*`
-//! source-version-counter name constants), split out of `projection_contract.rs`
-//! to keep that file under the 500-LOC hard ceiling (AGENTS.md). The neutral
-//! contract TYPES + the derivation/lookup helpers stay in the parent module;
-//! this child owns only the manifest data. Re-exported through the parent so
-//! `projection_contract::PROJECTION_CONTRACT` resolves unchanged.
+//! #1723 — the [`PROJECTION_CONTRACT`] data table plus source-version names.
+//! The neutral contract types and lookup helpers stay in the parent module; this
 
-use super::marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT};
+use super::{
+    chat::CHAT_PRESENCE,
+    marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT},
+};
 use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTier};
 
 // ── Source-version counter names ───────────────────────────────────────────────
@@ -494,6 +493,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
     },
+    CHAT_PRESENCE,
     MARMOT_SNAPSHOT,
     MARMOT_MESSAGES,
 ];

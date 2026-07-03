@@ -35,6 +35,7 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         "nmp-core" | "nmp-coverage-gate" => Some(CrateClass::Layer(3)),
         // L4 — reusable Nostr protocol/product modules (non-NIP members).
         "nmp-blossom"
+        | "nmp-chat"
         | "nmp-content"
         | "nmp-content-fixtures"
         | "nmp-feed"
