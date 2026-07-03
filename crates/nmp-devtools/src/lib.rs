@@ -11,6 +11,7 @@ mod capsule;
 mod feed_session;
 mod prover;
 mod receipt;
+mod relay_correlation;
 mod relay_snapshot;
 mod trellis;
 
@@ -25,13 +26,14 @@ pub use feed_session::{
     receipts_from_feed_session_batch, XrayFeedSessionClock, XrayFeedSessionRecorder,
 };
 pub use prover::{XrayProbe, XrayReplaySession, XrayReplayTransaction, XrayScopeInventory};
-pub use relay_snapshot::{
-    snapshots_from_wire_subscription_diagnostics, XrayWireSubscriptionSnapshot,
-};
 pub use receipt::{
     XrayCauseLink, XrayCommandOutcome, XrayInterestDescriptor, XrayOutcomeStatus, XrayOwnerCounts,
     XrayProjectionContext, XrayReason, XrayReasonCode, XrayReasonParam, XrayReceipt,
     XrayReceiptEventKind, XrayReceiptRecorder, XrayReceiptStream, XrayRecordingConfig,
     XrayRelayEffect, XrayTeardownCascade, XrayTimestamp, XrayTransactionMarker,
+};
+pub use relay_correlation::correlate_receipts_with_wire_subscriptions;
+pub use relay_snapshot::{
+    snapshots_from_wire_subscription_diagnostics, XrayWireSubscriptionSnapshot,
 };
 pub use trellis::{receipts_from_trellis_commands, TrellisReceiptPayload};

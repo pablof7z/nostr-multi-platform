@@ -10,6 +10,8 @@
 //! neutral facts; devtools translates them into its own X-Ray vocabulary.
 
 use super::{Kernel, WireSubscriptionStatus};
+use crate::planner::InterestId;
+use std::collections::BTreeMap;
 
 /// One neutral fact row per active `(relay_url, wire_id)` subscription.
 ///
@@ -34,6 +36,10 @@ pub struct WireSubscriptionDiagnosticSnapshot {
     pub eose_observed: bool,
     /// Close-reason prose, or `None` while the subscription is still open.
     pub close_reason: Option<String>,
+    /// Planner logical interests whose compiled `SubShape` produced this wire
+    /// subscription. Empty when the row is no longer present in the current
+    /// compiled plan.
+    pub originating_interest_ids: Vec<u64>,
 }
 
 impl Kernel {
@@ -51,15 +57,23 @@ impl Kernel {
         if !enabled {
             return Vec::new();
         }
+        let origins = self.lifecycle.current_plan_wire_origins();
         self.wire_subscriptions()
             .into_iter()
-            .map(WireSubscriptionDiagnosticSnapshot::from_status)
+            .map(|status| WireSubscriptionDiagnosticSnapshot::from_status(status, &origins))
             .collect()
     }
 }
 
 impl WireSubscriptionDiagnosticSnapshot {
-    fn from_status(status: WireSubscriptionStatus) -> Self {
+    fn from_status(
+        status: WireSubscriptionStatus,
+        origins: &BTreeMap<(String, String), Vec<InterestId>>,
+    ) -> Self {
+        let originating_interest_ids = origins
+            .get(&(status.relay_url.clone(), status.wire_id.clone()))
+            .map(|ids| ids.iter().map(|id| id.0).collect())
+            .unwrap_or_default();
         Self {
             wire_id: status.wire_id,
             relay_url: status.relay_url,
@@ -68,13 +82,19 @@ impl WireSubscriptionDiagnosticSnapshot {
             events_rx: status.events_rx,
             eose_observed: status.eose_at_ms.is_some(),
             close_reason: status.close_reason,
+            originating_interest_ids,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::planner::{
+        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+        LogicalInterest, MailboxSnapshot,
+    };
     use crate::relay::{CanonicalRelayUrl, DEFAULT_VISIBLE_LIMIT};
+    use crate::subs::WireFrame;
     use crate::time::Instant;
     use nmp_network::role::RelayRole;
 
@@ -87,6 +107,10 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         kernel.start();
         kernel
+    }
+
+    fn pubkey(s: &str) -> String {
+        format!("{s:0>64}").chars().take(64).collect()
     }
 
     fn open_sub(kernel: &mut Kernel, sub_id: &str, state: &str) {
@@ -118,6 +142,21 @@ mod tests {
         rows.iter()
             .find(|r| r.wire_id == wire_id)
             .expect("row present")
+    }
+
+    fn follow_interest(id: u64, authors: &[&str]) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(id),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: authors.iter().map(|author| pubkey(author)).collect(),
+                kinds: [1u32].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::Tailing,
+            is_indexer_discovery: false,
+        }
     }
 
     #[test]
@@ -177,5 +216,75 @@ mod tests {
         assert_eq!(d.state, "open");
         assert!(d.eose_observed);
         assert_eq!(d.events_rx, 0);
+    }
+
+    #[test]
+    fn diagnostics_carry_originating_interest_ids_from_current_plan() {
+        let mut kernel = kernel();
+        kernel
+            .lifecycle
+            .set_selection_budget(usize::MAX, usize::MAX);
+
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(
+            pubkey("aa01"),
+            MailboxSnapshot {
+                write_relays: vec!["wss://relay-a.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        cache.put(
+            pubkey("bb02"),
+            MailboxSnapshot {
+                write_relays: vec!["wss://relay-b.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        crate::subs::replace_test_interest(
+            &mut kernel.lifecycle,
+            follow_interest(991, &["aa01", "bb02"]),
+        );
+
+        let frames = kernel
+            .lifecycle
+            .recompile_and_diff(&cache)
+            .expect("compile");
+        assert!(
+            frames
+                .iter()
+                .any(|frame| matches!(frame, WireFrame::Req { .. })),
+            "compile must produce real content REQ frames"
+        );
+        for frame in kernel.lifecycle.current_plan_frames() {
+            let WireFrame::Req {
+                relay_url,
+                sub_id,
+                filter_json,
+                ..
+            } = frame
+            else {
+                continue;
+            };
+            kernel.insert_wire_sub(
+                RelayRole::Content,
+                CanonicalRelayUrl::parse_or_raw(&relay_url),
+                sub_id,
+                filter_json,
+                "open",
+                None,
+            );
+        }
+
+        let rows = kernel.wire_subscription_diagnostics(true);
+        assert_eq!(
+            rows.len(),
+            2,
+            "author partitioning should produce one wire row per write relay"
+        );
+        for row in rows {
+            assert_eq!(row.originating_interest_ids, vec![991]);
+        }
     }
 }

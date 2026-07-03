@@ -157,6 +157,13 @@ fn adapter_emits_live_diagnostics_when_sink_is_enabled() {
     assert_eq!(interest.provenance, "active-follow-timeline");
     assert!(interest.shape.starts_with("lifecycle=tailing:shape="));
     assert!(
+        interest
+            .planner_interest_id_hint
+            .as_deref()
+            .is_some_and(|interest_id| interest_id.parse::<u64>().is_ok()),
+        "diagnostic interest should expose a planner interest id hint"
+    );
+    assert!(
         !interest.shape.contains("alice"),
         "diagnostic shape label should not expose raw author keys"
     );
@@ -178,7 +185,14 @@ fn adapter_emits_live_diagnostics_when_sink_is_enabled() {
     );
     assert_eq!(close.receipts[0].owner_counts.before, 1);
     assert_eq!(close.receipts[0].owner_counts.after, 0);
-    assert!(close.receipts[0].interest.is_none());
+    assert!(
+        close.receipts[0]
+            .interest
+            .as_ref()
+            .and_then(|interest| interest.planner_interest_id_hint.as_ref())
+            .is_some(),
+        "close receipts retain the prior interest identity for relay correlation"
+    );
 }
 
 #[test]

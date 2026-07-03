@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use super::{XrayCauseLink, XrayReason};
+use super::{
+    outcome::{XrayCommandOutcome, XrayOwnerCounts, XrayRelayEffect, XrayTeardownCascade},
+    XrayCauseLink, XrayReason,
+};
 
 /// Wall-clock timestamp assigned by NMP at the receipt boundary.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -72,6 +75,10 @@ pub struct XrayInterestDescriptor {
     pub interest_key: String,
     pub scope: String,
     pub shape: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wire_id_hint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub planner_interest_id_hint: Option<String>,
     pub provenance: String,
     pub privacy_bearing: bool,
 }
@@ -88,6 +95,8 @@ impl XrayInterestDescriptor {
             interest_key: interest_key.into(),
             scope: scope.into(),
             shape: shape.into(),
+            wire_id_hint: None,
+            planner_interest_id_hint: None,
             provenance: provenance.into(),
             privacy_bearing: true,
         }
@@ -102,112 +111,6 @@ pub enum XrayReceiptEventKind {
     Replace,
     Refresh,
     Close,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum XrayOutcomeStatus {
-    Applied,
-    Retained,
-    Pending,
-    Failed,
-    Unknown,
-}
-
-/// Outcome after a receipt is joined to kernel/socket effects.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct XrayCommandOutcome {
-    pub status: XrayOutcomeStatus,
-    pub code: String,
-}
-
-impl XrayCommandOutcome {
-    #[must_use]
-    pub fn applied() -> Self {
-        Self {
-            status: XrayOutcomeStatus::Applied,
-            code: "applied".to_string(),
-        }
-    }
-}
-
-/// Owner-count state around a resource receipt.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct XrayOwnerCounts {
-    pub before: Option<u32>,
-    pub after: Option<u32>,
-}
-
-impl XrayOwnerCounts {
-    #[must_use]
-    pub const fn unknown() -> Self {
-        Self {
-            before: None,
-            after: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn known(before: u32, after: u32) -> Self {
-        Self {
-            before: Some(before),
-            after: Some(after),
-        }
-    }
-}
-
-/// Relay or wire-subscription correlation attached to a receipt.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct XrayRelayEffect {
-    pub relay_url: String,
-    pub wire_id: Option<String>,
-    pub state: String,
-    pub consumer_count: u32,
-    pub events_rx: u64,
-    pub outcome: XrayCommandOutcome,
-}
-
-impl XrayRelayEffect {
-    #[must_use]
-    pub fn new(
-        relay_url: impl Into<String>,
-        wire_id: Option<String>,
-        state: impl Into<String>,
-        consumer_count: u32,
-        events_rx: u64,
-    ) -> Self {
-        Self {
-            relay_url: relay_url.into(),
-            wire_id,
-            state: state.into(),
-            consumer_count,
-            events_rx,
-            outcome: XrayCommandOutcome::applied(),
-        }
-    }
-}
-
-/// Kernel teardown result attached after a receipt is joined to outcomes.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct XrayTeardownCascade {
-    pub withdrawn_children: u32,
-    pub closed_slots: u32,
-    pub retained_owner_slots: u32,
-}
-
-impl XrayTeardownCascade {
-    #[must_use]
-    pub const fn new(
-        withdrawn_children: u32,
-        closed_slots: u32,
-        retained_owner_slots: u32,
-    ) -> Self {
-        Self {
-            withdrawn_children,
-            closed_slots,
-            retained_owner_slots,
-        }
-    }
 }
 
 /// One ordered X-Ray receipt.
@@ -268,6 +171,12 @@ impl XrayReceipt {
     #[must_use]
     pub fn with_relay_effects(mut self, relay_effects: Vec<XrayRelayEffect>) -> Self {
         self.relay_effects = relay_effects;
+        self
+    }
+
+    #[must_use]
+    pub fn with_outcome(mut self, outcome: XrayCommandOutcome) -> Self {
+        self.outcome = outcome;
         self
     }
 

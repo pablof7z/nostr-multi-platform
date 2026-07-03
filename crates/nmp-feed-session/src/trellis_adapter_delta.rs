@@ -14,12 +14,19 @@ use crate::trellis_resources::{
 
 #[derive(Default)]
 pub(super) struct FeedSessionResourceLedger {
-    active_children: BTreeMap<ResourceKey, DependentInterestChild>,
+    active_children: BTreeMap<ResourceKey, ActiveChild>,
 }
 
 pub(super) struct FeedSessionResourceLedgerOutput {
     pub(super) delta: DependentInterestDelta,
     pub(super) diagnostics: Vec<FeedSessionDiagnosticReceipt>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ActiveChild {
+    child: DependentInterestChild,
+    scope: String,
+    provenance: &'static str,
 }
 
 impl FeedSessionResourceLedger {
@@ -47,49 +54,69 @@ impl FeedSessionResourceLedger {
         };
         let mut diagnostics = Vec::new();
         for command in commands {
-            let before = owner_count(self.active_children.contains_key(command.key()));
-            let diagnostic_event = diagnostic_event_kind(command);
-            let diagnostic_interest = diagnostic_interest(command);
+            let before = diagnostics_enabled
+                .then(|| owner_count(self.active_children.contains_key(command.key())));
+            let diagnostic_event = diagnostics_enabled.then(|| diagnostic_event_kind(command));
+            let mut diagnostic_interest_record = None;
             match command {
                 ResourceCommand::Open { key, command, .. } => {
-                    self.upsert_child(
-                        &mut delta,
-                        key,
-                        child_from_command(command),
-                        DependentInterestDeltaCommand::Open,
-                    );
+                    let child = active_child_from_command(command);
+                    if diagnostics_enabled {
+                        diagnostic_interest_record =
+                            child.as_ref().map(|child| diagnostic_interest(key, child));
+                    }
+                    self.upsert_child(&mut delta, key, child, DependentInterestDeltaCommand::Open);
                 }
                 ResourceCommand::Replace { key, command, .. } => {
+                    let child = active_child_from_command(command);
+                    if diagnostics_enabled {
+                        diagnostic_interest_record =
+                            child.as_ref().map(|child| diagnostic_interest(key, child));
+                    }
                     self.upsert_child(
                         &mut delta,
                         key,
-                        child_from_command(command),
+                        child,
                         DependentInterestDeltaCommand::Replace,
                     );
                 }
                 ResourceCommand::Refresh { key, command, .. } => {
+                    let child = active_child_from_command(command);
+                    if diagnostics_enabled {
+                        diagnostic_interest_record =
+                            child.as_ref().map(|child| diagnostic_interest(key, child));
+                    }
                     self.upsert_child(
                         &mut delta,
                         key,
-                        child_from_command(command),
+                        child,
                         DependentInterestDeltaCommand::Refresh,
                     );
                 }
                 ResourceCommand::Close { key, .. } => {
+                    if diagnostics_enabled {
+                        diagnostic_interest_record = self
+                            .active_children
+                            .get(key)
+                            .map(|child| diagnostic_interest(key, child));
+                    }
                     if let Some(child) = self.active_children.remove(key) {
                         delta
                             .commands
-                            .push(DependentInterestDeltaCommand::Close(child));
+                            .push(DependentInterestDeltaCommand::Close(child.child));
                     }
                 }
             }
             if diagnostics_enabled {
                 let after = owner_count(self.active_children.contains_key(command.key()));
                 diagnostics.push(FeedSessionDiagnosticReceipt {
-                    event: diagnostic_event,
+                    event: diagnostic_event.expect("diagnostic event set when enabled"),
                     resource_id: command.key().as_str().to_string(),
-                    interest: diagnostic_interest,
-                    owner_counts: FeedSessionDiagnosticOwnerCounts::known(before, after),
+                    interest: diagnostic_interest_record,
+                    owner_counts: FeedSessionDiagnosticOwnerCounts::known(
+                        before.expect("diagnostic before count set when enabled"),
+                        after,
+                    ),
                 });
             }
         }
@@ -100,32 +127,32 @@ impl FeedSessionResourceLedger {
         &mut self,
         delta: &mut DependentInterestDelta,
         key: &ResourceKey,
-        child: Option<DependentInterestChild>,
+        child: Option<ActiveChild>,
         command: impl FnOnce(DependentInterestChild) -> DependentInterestDeltaCommand,
     ) {
         let Some(child) = child else {
             if let Some(previous) = self.active_children.remove(key) {
                 delta
                     .commands
-                    .push(DependentInterestDeltaCommand::Close(previous));
+                    .push(DependentInterestDeltaCommand::Close(previous.child));
             }
             return;
         };
 
         if let Some(previous) = self.active_children.insert(key.clone(), child.clone()) {
-            if previous != child {
+            if previous.child != child.child {
                 delta
                     .commands
-                    .push(DependentInterestDeltaCommand::Close(previous));
+                    .push(DependentInterestDeltaCommand::Close(previous.child));
             }
         }
-        delta.commands.push(command(child));
+        delta.commands.push(command(child.child));
     }
 }
 
-fn child_from_command(command: &FeedSessionResourceCommand) -> Option<DependentInterestChild> {
+fn active_child_from_command(command: &FeedSessionResourceCommand) -> Option<ActiveChild> {
     match command {
-        FeedSessionResourceCommand::OpenInterest(demand) => Some(child_from_demand(demand)),
+        FeedSessionResourceCommand::OpenInterest(demand) => Some(active_child_from_demand(demand)),
         FeedSessionResourceCommand::CloseInterest(_)
         | FeedSessionResourceCommand::ReplaceInterestSet(_)
         | FeedSessionResourceCommand::ReplayFromStore(_)
@@ -134,8 +161,12 @@ fn child_from_command(command: &FeedSessionResourceCommand) -> Option<DependentI
     }
 }
 
-fn child_from_demand(demand: &InterestDemand) -> DependentInterestChild {
-    DependentInterestChild::tailing(demand.shape.clone(), interest_scope(&demand.scope))
+fn active_child_from_demand(demand: &InterestDemand) -> ActiveChild {
+    ActiveChild {
+        child: DependentInterestChild::tailing(demand.shape.clone(), interest_scope(&demand.scope)),
+        scope: demand.scope.key_part(),
+        provenance: demand.provenance.key_part(),
+    }
 }
 
 fn diagnostic_event_kind(
@@ -150,40 +181,19 @@ fn diagnostic_event_kind(
 }
 
 fn diagnostic_interest(
-    command: &ResourceCommand<FeedSessionResourceCommand>,
-) -> Option<FeedSessionDiagnosticInterest> {
-    match command {
-        ResourceCommand::Open { command, .. }
-        | ResourceCommand::Replace { command, .. }
-        | ResourceCommand::Refresh { command, .. } => interest_from_command(command),
-        ResourceCommand::Close { .. } => None,
-    }
-}
-
-fn interest_from_command(
-    command: &FeedSessionResourceCommand,
-) -> Option<FeedSessionDiagnosticInterest> {
-    match command {
-        FeedSessionResourceCommand::OpenInterest(demand) => Some(interest_from_demand(demand)),
-        FeedSessionResourceCommand::CloseInterest(_)
-        | FeedSessionResourceCommand::ReplaceInterestSet(_)
-        | FeedSessionResourceCommand::ReplayFromStore(_)
-        | FeedSessionResourceCommand::AttachProjection(_)
-        | FeedSessionResourceCommand::DetachProjection(_) => None,
-    }
-}
-
-fn interest_from_demand(demand: &InterestDemand) -> FeedSessionDiagnosticInterest {
-    let interest_key = demand.resource_key();
+    interest_key: &ResourceKey,
+    active: &ActiveChild,
+) -> FeedSessionDiagnosticInterest {
     FeedSessionDiagnosticInterest::new(
-        interest_key.as_str().to_string(),
-        demand.scope.key_part(),
+        interest_key.as_str(),
+        active.scope.clone(),
         format!(
             "lifecycle={}:shape={}",
-            lifecycle_part(&demand.lifecycle),
-            digest(("interest-shape", &demand.shape))
+            lifecycle_part(&active.child.interest.lifecycle),
+            digest(("interest-shape", &active.child.interest.shape))
         ),
-        demand.provenance.key_part(),
+        Some(active.child.interest.id.0.to_string()),
+        active.provenance,
     )
 }
 

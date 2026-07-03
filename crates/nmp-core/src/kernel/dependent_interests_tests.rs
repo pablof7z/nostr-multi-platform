@@ -58,6 +58,8 @@ fn typed_tailing_child_matches_open_interest_key_for_active_and_global() {
 
         assert_eq!(child.key, identity.key);
         assert_eq!(child.scope, identity.scope);
+        assert_eq!(child.interest.id, interest.id);
+        assert_eq!(child.interest.id, InterestId(child.key.0));
         assert_eq!(child.interest.scope, interest.scope);
         assert_eq!(child.interest.shape, interest.shape);
         assert_eq!(child.interest.lifecycle, InterestLifecycle::Tailing);
