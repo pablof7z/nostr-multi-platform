@@ -31,6 +31,7 @@ use nmp_core::substrate::{
 use super::*;
 
 mod create_wallet_tests;
+mod deposit_concurrency_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
 mod publish_info_tests;

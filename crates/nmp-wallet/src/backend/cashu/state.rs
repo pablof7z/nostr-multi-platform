@@ -12,6 +12,7 @@ use std::fmt;
 use std::sync::{Mutex, MutexGuard};
 
 use nmp_nip60::cashu::types::Proof;
+use nmp_signer_iface::SignedEvent;
 
 use crate::journal::{
     WalletFact, WalletJournalError, WalletLedger, WalletOperation, WalletOperationId,
@@ -85,7 +86,55 @@ pub(super) struct PendingDeposit {
     /// closing that window needs a durable write-ahead record, tracked as
     /// issue #2910 (not this ticket's scope — real-sats gate, not a
     /// testnut/merge gate).
+    ///
+    /// Never cleared once set (mirrors `signed_token`): kept around both for
+    /// sequential retries AND as the reference proof set `still_held`
+    /// (`deposit.rs`) checks a cached `signed_token` against before
+    /// republishing it.
     pub(super) minted_proofs: Option<Vec<Proof>>,
+    /// Wall-clock (`ctx.now_secs()`) at which a `CompleteDepositCashu`
+    /// attempt for this quote most recently started chaining toward a
+    /// signature (i.e. entered the `Minted`/`Fresh` resume branch — see
+    /// `deposit.rs`'s `DepositResume`), `None` once no attempt is currently
+    /// in flight. This is the concurrency guard: two attempts for the SAME
+    /// `quote_id` racing each other must never both read `minted_proofs` and
+    /// each launch their own encrypt/sign chain over it — that would sign
+    /// TWO differently-id'd token events for one real deposit and
+    /// double-fold the ledger (which has no proof-identity dedup, only
+    /// token-event-id dedup). A retry that finds this set AND still fresh
+    /// (within `DEPOSIT_CHAIN_LEASE_SECS`) is told to wait rather than start
+    /// a second chain; past the lease, the previous attempt is presumed
+    /// abandoned (its actor-thread continuation errored out with no hook
+    /// back to clear this — see `chain.rs`'s `report_chain_failure` — or the
+    /// process partially wedged) and a new attempt is allowed to take over. Cleared
+    /// (set back to `None`) the moment signing actually succeeds
+    /// (`signed_token` becomes `Some`) or a synchronous pre-chain failure
+    /// returns (mint HTTP errors) — see `clear_chain_lease`.
+    pub(super) chain_started_at: Option<u64>,
+    /// Set once the kind:7375 token event for `minted_proofs` has actually
+    /// been SIGNED (see `deposit.rs`'s `dispatch_token_event`'s `on_signed`
+    /// closure) — this is the fix for #2923's "compounding money-safety
+    /// issue": signing can succeed while the publish right after it fails
+    /// (no relay resolves, a relay round-trip errors, ...), and until this
+    /// field existed `pending_deposits[quote_id]` was removed at sign time
+    /// regardless, so a retry after a publish failure got `UNKNOWN_QUOTE`
+    /// with no way back to the already-real proofs.
+    ///
+    /// A retry that finds this set must NEVER re-run the encrypt/sign chain
+    /// — that would sign a SECOND, differently-id'd token event over the
+    /// SAME proofs, and `WalletLedger` folds `TokenAdded` per token-event id
+    /// with no proof-identity dedup, so a second sign would double-count the
+    /// balance. It must only re-publish this EXACT cached event, which is
+    /// safe to repeat: kind:7375 is a NIP-01 "regular" event (id 7375, below
+    /// the 10000 replaceable-range floor), so relays dedupe repeated
+    /// publishes of the same id rather than treating them as replacements.
+    ///
+    /// This entry is intentionally never cleared/removed once set — there is
+    /// no publish-ACK loop back into this backend to know when it is finally
+    /// safe to forget (see `dispatch_token_event`'s doc comment); a bounded
+    /// `pending_deposits` map growing by one settled entry per deposit for
+    /// the life of the process is the accepted tradeoff pending #2910.
+    pub(super) signed_token: Option<SignedEvent>,
 }
 
 pub(super) struct CashuWalletState {
