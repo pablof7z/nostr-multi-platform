@@ -34,6 +34,7 @@ impl super::KernelReducer {
             consumer_id,
             scope,
             None,
+            false,
         ) {
             let _ = self.kernel.open_interest_sub(identity, interest);
         }
@@ -57,6 +58,7 @@ impl super::KernelReducer {
             consumer_id,
             scope,
             None,
+            false,
         ) {
             let _ = self.kernel.close_interest_sub(&identity);
         }

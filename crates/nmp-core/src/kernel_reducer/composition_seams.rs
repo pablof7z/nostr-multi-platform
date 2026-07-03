@@ -136,6 +136,7 @@ impl super::KernelReducer {
             &decl.consumer_id,
             decl.scope,
             decl.relay_pin.as_deref(),
+            decl.is_indexer_discovery,
         ) else {
             unregister_observer_internal(&self.observer_slot, observer_id);
             return ObservedProjectionId(0);
@@ -147,6 +148,7 @@ impl super::KernelReducer {
                 decl.consumer_id.clone(),
                 decl.scope,
                 decl.relay_pin.clone(),
+                decl.is_indexer_discovery,
             ),
         );
         let replay = crate::kernel::ObserverReplayRequest {
@@ -167,7 +169,7 @@ impl super::KernelReducer {
 
     /// Close a reducer/browser observed projection by id.
     pub fn close_observed_projection(&mut self, id: ObservedProjectionId) {
-        let Some((filter_json, consumer_id, scope, relay_pin)) =
+        let Some((filter_json, consumer_id, scope, relay_pin, is_indexer_discovery)) =
             self.observed_projection_sessions.remove(&id)
         else {
             return;
@@ -177,6 +179,7 @@ impl super::KernelReducer {
             &consumer_id,
             scope,
             relay_pin.as_deref(),
+            is_indexer_discovery,
         ) {
             let _ = self.kernel.close_interest_sub(&identity);
         }

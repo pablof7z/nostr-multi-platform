@@ -164,6 +164,7 @@ impl ReplySummaryProjection {
                 ..Default::default()
             },
             scope: REPLY_READ_SCOPE_GLOBAL,
+            is_indexer_discovery: false,
             replay_limit: REPLY_REPLAY_LIMIT,
         })
     }
@@ -229,6 +230,7 @@ pub fn open_replies(
             consumer_id: key_string.clone(),
             scope: REPLY_READ_SCOPE_GLOBAL,
             relay_pin: None,
+            is_indexer_discovery: false,
             replay_limit: REPLY_REPLAY_LIMIT,
             replay: ReadReplayPolicy::Structural,
         })

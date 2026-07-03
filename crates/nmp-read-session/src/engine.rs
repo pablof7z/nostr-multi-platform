@@ -70,6 +70,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
             consumer_id,
             scope,
             relay_pin,
+            is_indexer_discovery,
             replay_limit,
             replay,
         } = demand;
@@ -83,6 +84,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
             consumer_id,
             scope,
             relay_pin,
+            is_indexer_discovery,
             replay_shapes,
             replay_limit,
         };

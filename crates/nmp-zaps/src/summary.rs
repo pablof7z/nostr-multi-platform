@@ -225,6 +225,7 @@ impl ZapSummaryProjection {
                 ..Default::default()
             },
             scope: ZAP_READ_SCOPE_GLOBAL,
+            is_indexer_discovery: false,
             replay_limit: ZAP_REPLAY_LIMIT,
         })
     }
@@ -298,6 +299,7 @@ pub fn open_zaps(
         consumer_id: key_string.clone(),
         scope: ZAP_READ_SCOPE_GLOBAL,
         relay_pin: None,
+        is_indexer_discovery: false,
         replay_limit: ZAP_REPLAY_LIMIT,
         replay: ReadReplayPolicy::Structural,
     };

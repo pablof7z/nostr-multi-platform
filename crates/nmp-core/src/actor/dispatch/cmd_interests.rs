@@ -124,7 +124,8 @@ pub(super) fn open_interest(
     // ensure_sub + CompileTrigger body as the `EnsureInterest` arm.
     // D6: a malformed filter is a silent no-op (the FFI shim already
     // surfaced a toast before sending — see `nmp_app_open_interest`).
-    if let Some((identity, interest)) = build_open_interest(&filter_json, &consumer_id, scope, None)
+    if let Some((identity, interest)) =
+        build_open_interest(&filter_json, &consumer_id, scope, None, false)
     {
         let _ = ports.kernel.open_interest_sub(identity, interest);
     }
@@ -144,6 +145,7 @@ pub(super) fn open_observed_interest(
     consumer_id: String,
     scope: u32,
     relay_pin: Option<String>,
+    is_indexer_discovery: bool,
     observer_id: ObservedProjectionId,
     replay_shapes: Vec<crate::planner::InterestShape>,
     replay_limit: usize,
@@ -152,9 +154,13 @@ pub(super) fn open_observed_interest(
     use crate::actor::tick::maybe_emit_after_dispatch;
     // ADR-0070 — open interest + catch-up replay to a single muted observer,
     // then activate it. D6: a malformed filter is a silent no-op.
-    if let Some((identity, interest)) =
-        build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
-    {
+    if let Some((identity, interest)) = build_open_interest(
+        &filter_json,
+        &consumer_id,
+        scope,
+        relay_pin.as_deref(),
+        is_indexer_discovery,
+    ) {
         let replay = crate::kernel::ObserverReplayRequest {
             observer_id,
             shapes: replay_shapes,
@@ -183,6 +189,7 @@ pub(super) fn close_interest(
     consumer_id: String,
     scope: u32,
     relay_pin: Option<String>,
+    is_indexer_discovery: bool,
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
@@ -190,9 +197,13 @@ pub(super) fn close_interest(
     // leave. The `(owner, key, scope)` identity is reconstructed from
     // the SAME filter + consumer + scope + relay_pin the open used, so
     // the InterestShape hash lands on the same registry slot.
-    if let Some((identity, _interest)) =
-        build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
-    {
+    if let Some((identity, _interest)) = build_open_interest(
+        &filter_json,
+        &consumer_id,
+        scope,
+        relay_pin.as_deref(),
+        is_indexer_discovery,
+    ) {
         let _ = ports.kernel.close_interest_sub(&identity);
     }
     maybe_emit_after_dispatch(
@@ -333,6 +344,7 @@ pub(super) fn dispatch(
             consumer_id,
             scope,
             relay_pin,
+            is_indexer_discovery,
             observer_id,
             replay_shapes,
             replay_limit,
@@ -341,6 +353,7 @@ pub(super) fn dispatch(
             consumer_id,
             scope,
             relay_pin,
+            is_indexer_discovery,
             observer_id,
             replay_shapes,
             replay_limit,
@@ -351,6 +364,14 @@ pub(super) fn dispatch(
             consumer_id,
             scope,
             relay_pin,
-        } => close_interest(filter_json, consumer_id, scope, relay_pin, ports),
+            is_indexer_discovery,
+        } => close_interest(
+            filter_json,
+            consumer_id,
+            scope,
+            relay_pin,
+            is_indexer_discovery,
+            ports,
+        ),
     }
 }

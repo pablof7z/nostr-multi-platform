@@ -70,6 +70,10 @@ impl ReadHost for FakeHost {
         *self.observer.lock().unwrap() = Some(Arc::clone(&decl.observer));
         let id = self.next_interest.fetch_add(1, Ordering::Relaxed);
         self.push(format!("open_interest:{}", decl.filter_json));
+        self.push(format!(
+            "open_indexer_discovery:{}",
+            decl.is_indexer_discovery
+        ));
         ObservedProjectionId(id)
     }
     fn teardown_close_interest(&self, id: ObservedProjectionId) -> TeardownAction {
@@ -107,6 +111,10 @@ impl ReadHost for FakeHost {
             log.lock()
                 .unwrap()
                 .push(format!("open_interest:{}", decl.filter_json));
+            log.lock().unwrap().push(format!(
+                "open_indexer_discovery:{}",
+                decl.is_indexer_discovery
+            ));
             let replay = replay_slot.lock().unwrap().take();
             if let Some(event) = replay {
                 decl.observer.on_kernel_event(&event);
@@ -131,6 +139,7 @@ fn demand(filter: &str) -> ReadDemand {
         consumer_id: "consumer".to_string(),
         scope: 0,
         relay_pin: None,
+        is_indexer_discovery: false,
         replay_limit: 64,
         replay: ReadReplayPolicy::Structural,
     }
@@ -241,6 +250,32 @@ fn close_is_idempotent_and_rejects_a_forged_key() {
 }
 
 #[test]
+fn demand_indexer_discovery_flag_reaches_observed_interest() {
+    let host = FakeHost::new();
+    let mut read = demand(r##"{"kinds":[3],"authors":["aa"]}"##);
+    read.is_indexer_discovery = true;
+
+    let _handle = open_read(
+        &host,
+        ReadSpec {
+            projection_key: key("app.test.discovery"),
+            demands: vec![read],
+            observer: Arc::new(NoopSink),
+            output_encoder: Box::new(|| None),
+            dependent_demands: Vec::new(),
+            keep_open_without_live_demand: false,
+        },
+    );
+
+    let log = host.log();
+    assert!(
+        log.iter()
+            .any(|entry| entry == "open_indexer_discovery:true"),
+        "read demand opt-in must reach the opened observed projection: {log:?}"
+    );
+}
+
+#[test]
 fn a_read_that_keeps_nothing_live_is_not_tracked() {
     let mut host = FakeHost::new();
     host.fail_opens = true;
@@ -274,6 +309,7 @@ impl ObservedProjectionSink for DerivedDemandSink {
                     ..Default::default()
                 },
                 scope: 1,
+                is_indexer_discovery: true,
                 replay_limit: 32,
             });
         } else if event.kind == 5 {
@@ -325,6 +361,19 @@ fn dependent_demand_opens_from_reducer_state_and_closes_with_the_read() {
         opens[1].contains(r#""kinds":[5]"#)
             && opens[1].contains(&format!(r##""#e":["{admitted_id}"]"##)),
         "derived demand routes kind:5 deletes by admitted event id: {log:?}"
+    );
+    let indexer_flags = log
+        .iter()
+        .filter(|entry| entry.starts_with("open_indexer_discovery:"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        indexer_flags,
+        vec![
+            "open_indexer_discovery:false",
+            "open_indexer_discovery:true"
+        ],
+        "primary and derived read demands preserve separate routing flags"
     );
 
     assert!(close_read(&host, &handle));

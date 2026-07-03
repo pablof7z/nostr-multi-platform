@@ -30,7 +30,6 @@ use super::{
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
 
-// Sub-modules — each covers one logical slice of the dispatch surface.
 mod cmd_action_ledger;
 mod cmd_identity;
 mod cmd_interests;
@@ -40,11 +39,8 @@ mod cmd_publish;
 mod helpers;
 // #1927 — narrow command-family port bundles (Protocol / Interests).
 mod ports;
-// Relay/outbound arms (EnqueueOutbound / SetReconnectPreamble /
-// UnregisterPersistentSub) + RelayCommand family dispatcher.
 mod relay_cmds;
 mod relay_events;
-// Debt C — capability adapters for `ProtocolCommandContext`.
 mod substrate_adapters;
 
 use ports::{InterestsPorts, ProtocolPorts};
@@ -66,8 +62,15 @@ pub(crate) fn build_open_interest(
     consumer_id: &str,
     scope: u32,
     relay_pin: Option<&str>,
+    is_indexer_discovery: bool,
 ) -> Option<(crate::subs::SubIdentity, crate::planner::LogicalInterest)> {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, relay_pin)
+    crate::subs::interest_builder::build_interest_pair(
+        filter_json,
+        consumer_id,
+        scope,
+        relay_pin,
+        is_indexer_discovery,
+    )
 }
 
 /// Borrowed bundle of the actor loop's mutable runtime state.

@@ -126,14 +126,26 @@ fn author_shape(author: &str, kinds: &[u32]) -> InterestShape {
 
 /// Build a SubIdentity for testing (filter_json + consumer_id + scope).
 fn sub_identity(filter_json: &str, consumer_id: &str, scope: u32) -> SubIdentity {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
+    crate::subs::interest_builder::build_interest_pair(
+        filter_json,
+        consumer_id,
+        scope,
+        None,
+        false,
+    )
         .map(|(id, _)| id)
         .expect("valid filter → identity")
 }
 
 /// Build a LogicalInterest (Tailing) for testing.
 fn logical_interest(filter_json: &str, consumer_id: &str, scope: u32) -> LogicalInterest {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
+    crate::subs::interest_builder::build_interest_pair(
+        filter_json,
+        consumer_id,
+        scope,
+        None,
+        false,
+    )
         .map(|(_, interest)| interest)
         .expect("valid filter → interest")
 }
@@ -149,6 +161,7 @@ fn logical_interest_pinned(
         consumer_id,
         scope,
         Some(relay_pin),
+        false,
     )
     .map(|(_, interest)| interest)
     .expect("valid pinned filter → interest")
@@ -321,6 +334,7 @@ fn replay_honors_relay_pinned_shape() {
         "test-consumer-relay-pin",
         1,
         Some("wss://relay-a.example"),
+        false,
     )
     .map(|(id, _)| id)
     .expect("valid pinned identity");

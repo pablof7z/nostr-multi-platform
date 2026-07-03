@@ -185,6 +185,7 @@ impl RepostSummaryProjection {
                 ..Default::default()
             },
             scope: REPOST_READ_SCOPE_GLOBAL,
+            is_indexer_discovery: false,
             replay_limit: REPOST_REPLAY_LIMIT,
         })
     }
@@ -247,6 +248,7 @@ pub fn open_reposts(
         consumer_id: key_string.clone(),
         scope: REPOST_READ_SCOPE_GLOBAL,
         relay_pin: None,
+        is_indexer_discovery: false,
         replay_limit: REPOST_REPLAY_LIMIT,
         replay: ReadReplayPolicy::Structural,
     };

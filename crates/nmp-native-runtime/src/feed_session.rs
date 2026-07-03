@@ -122,7 +122,7 @@ pub(crate) struct FeedTeardown {
             std::sync::Mutex<
                 std::collections::HashMap<
                     ObservedProjectionId,
-                    (String, String, u32, Option<String>),
+                    (String, String, u32, Option<String>, bool),
                 >,
             >,
         >,
@@ -226,12 +226,15 @@ impl FeedTeardown {
                     .lock()
                     .ok()
                     .and_then(|mut sessions| sessions.remove(&id));
-                if let Some((filter_json, consumer_id, scope, relay_pin)) = params {
+                if let Some((filter_json, consumer_id, scope, relay_pin, is_indexer_discovery)) =
+                    params
+                {
                     let _ = sender.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
                         filter_json,
                         consumer_id,
                         scope,
                         relay_pin,
+                        is_indexer_discovery,
                     }));
                 }
             }

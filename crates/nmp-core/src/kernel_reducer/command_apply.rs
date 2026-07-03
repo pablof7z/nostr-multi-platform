@@ -115,6 +115,7 @@ impl super::KernelReducer {
                 consumer_id,
                 scope,
                 relay_pin,
+                is_indexer_discovery,
                 observer_id,
                 replay_shapes,
                 replay_limit,
@@ -125,6 +126,7 @@ impl super::KernelReducer {
                         &consumer_id,
                         scope,
                         relay_pin.as_deref(),
+                        is_indexer_discovery,
                     )
                 {
                     let replay = crate::kernel::ObserverReplayRequest {
@@ -152,6 +154,7 @@ impl super::KernelReducer {
                 consumer_id,
                 scope,
                 relay_pin,
+                is_indexer_discovery,
             }) => {
                 if let Some((identity, _interest)) =
                     crate::subs::interest_builder::build_interest_pair(
@@ -159,6 +162,7 @@ impl super::KernelReducer {
                         &consumer_id,
                         scope,
                         relay_pin.as_deref(),
+                        is_indexer_discovery,
                     )
                 {
                     let _ = self.kernel.close_interest_sub(&identity);
