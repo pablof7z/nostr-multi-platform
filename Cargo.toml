@@ -49,6 +49,8 @@ members = [
     "crates/nmp-nip84",
     "crates/nmp-nip89",
     "crates/nmp-nip05",
+    "crates/nmp-wellknown-http",
+    "crates/nmp-nip-ad",
     "crates/nmp-intent",
     "crates/nmp-nip57",
     "crates/nmp-wallet",

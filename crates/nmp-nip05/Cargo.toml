@@ -11,22 +11,24 @@ crate-type = ["rlib"]
 
 [features]
 default = []
-# Enables the blocking `ureq` HTTP round-trip in `ResolveNip05Command::run`.
-# Off in pure-shape / wasm builds (parse_nip05 is always available).
-native = ["dep:ureq"]
+# Enables the blocking `.well-known/nostr.json` GET in `ResolveNip05Command::run`
+# by turning on the shared `nmp-wellknown-http` native fetcher (SSRF guard +
+# bounded GET). Off in pure-shape / wasm builds (parse_nip05 is always available).
+native = ["nmp-wellknown-http/native"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+# Shared SSRF-guarded bounded `.well-known` GET (#2927). The host guard
+# (`assert_host_is_public`) and bounded `http_get_json` used to live here as a
+# forked copy; they are now the single workspace authority in this crate.
+nmp-wellknown-http = { path = "../nmp-wellknown-http", version = "1.0.0-rc.1" }
 serde_json = { workspace = true }
 # Canonical pubkey validation/normalization for the `names[name]` value
 # (mirrors the nmp-nip57 LNURL fetcher's `nostr::PublicKey::from_hex`
 # re-canonicalization — never a hand-rolled hex check). Always-compiled: the
 # `pubkey_from_names` parse is pure and wasm-safe.
 nostr = { workspace = true }
-# LUD/NIP-05 `.well-known/nostr.json` GET — blocking, mirrors the nmp-nip57
-# LNURL fetcher's `ureq` round-trip. Optional behind `native`.
-ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }

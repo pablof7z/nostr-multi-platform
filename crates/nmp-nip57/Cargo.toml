@@ -14,7 +14,7 @@ description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptReco
 # compilation (the zap decoder, builder, view, and FlatBuffers codec remain
 # always-compiled).
 default = ["native"]
-native = ["dep:ureq"]
+native = ["nmp-wellknown-http/native"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
@@ -40,12 +40,13 @@ flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # LNURL-pay fetcher dependencies (V-41). The fetcher runs on
-# `std::thread::spawn` from the actor's `Protocol(...)` dispatch arm and
-# uses `ureq` for the two-leg HTTP round-trip. `bech32` decodes LUD-01
-# `lnurl1…` inputs; `nostr` mints the kind:9734 signature on the actor
-# thread (the keys come from `ProtocolCommandContext::active_local_keys`).
-# Optional — gated by the `native` feature; absent on wasm32.
-ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
+# `std::thread::spawn` from the actor's `Protocol(...)` dispatch arm and does a
+# two-leg HTTP round-trip through the shared `nmp-wellknown-http` bounded GET
+# (#2927 — the forked `http_get_json` copy that used to live here was deleted).
+# `bech32` decodes LUD-01 `lnurl1…` inputs; `nostr` mints the kind:9734
+# signature on the actor thread (keys come from
+# `ProtocolCommandContext::active_local_keys`).
+nmp-wellknown-http = { path = "../nmp-wellknown-http", version = "1.0.0-rc.1" }
 bech32 = "0.11"
 nostr = { workspace = true }
 # NIP-57 description-hash validation: the bolt11 `h` field must equal

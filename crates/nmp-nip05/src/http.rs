@@ -6,14 +6,7 @@
 //! and a hard response-body cap so a hostile / runaway endpoint is a bounded
 //! error, not an OOM event.
 
-use std::io::Read;
-
-use crate::host_guard::assert_host_is_public;
-
-/// Total budget for the single `.well-known/nostr.json` GET. Conservative —
-/// keeps a stuck domain from accumulating worker threads even though each
-/// thread is independent of the actor loop.
-const NIP05_HTTP_TIMEOUT_SECS: u64 = 10;
+use nmp_wellknown_http::{assert_host_is_public, http_get_json};
 
 /// Maximum response body the worker will accept. A NIP-05 `nostr.json`
 /// document is a small JSON object (a `names` map, optionally a `relays`
@@ -48,7 +41,7 @@ pub fn resolve_nip05_pubkey_blocking(name: &str, domain: &str) -> Result<String,
     // percent-encoding; `domain` is a validated host. A literal `_` (the
     // NIP-05 root identifier) is queried verbatim per the spec.
     let url = format!("https://{domain}/.well-known/nostr.json?name={name}");
-    let document = http_get_json(&url)?;
+    let document = http_get_json(&url, NIP05_MAX_RESPONSE_BYTES)?;
     pubkey_from_names(&document, name)
 }
 
@@ -73,42 +66,6 @@ pub(crate) fn pubkey_from_names(
     nostr::PublicKey::from_hex(raw)
         .map(|pk| pk.to_hex())
         .map_err(|e| format!("NIP-05 document mapped `{name}` to an invalid pubkey: {e}"))
-}
-
-/// One-shot HTTP GET → JSON. Bounded by [`NIP05_HTTP_TIMEOUT_SECS`] and
-/// [`NIP05_MAX_RESPONSE_BYTES`]. The result is a `serde_json::Value` because a
-/// NIP-05 document carries optional sibling objects (`relays`, NIP-46
-/// `nip46`) we do not model — only `names` is load-bearing here.
-fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(NIP05_HTTP_TIMEOUT_SECS))
-        // SSRF guard — DO NOT follow redirects. The host was vetted by
-        // `assert_host_is_public`; a `3xx` could otherwise bounce the request to
-        // an un-vetted (internal) host. With `redirects(0)` ureq returns the
-        // `3xx` verbatim, which the `status() != 200` check below turns into a
-        // bounded error rather than a silent follow.
-        .redirects(0)
-        .build();
-    let response = agent
-        .get(url)
-        .call()
-        .map_err(|e| format!("HTTP GET {url} failed: {e}"))?;
-    if response.status() != 200 {
-        return Err(format!(
-            "HTTP GET {url} returned status {} {}",
-            response.status(),
-            response.status_text()
-        ));
-    }
-    // Bound the response so a runaway / hostile endpoint can't OOM us.
-    let mut body = Vec::with_capacity(1024);
-    response
-        .into_reader()
-        .take(NIP05_MAX_RESPONSE_BYTES as u64)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("read response body from {url}: {e}"))?;
-    serde_json::from_slice::<serde_json::Value>(&body)
-        .map_err(|e| format!("parse JSON from {url}: {e}"))
 }
 
 #[cfg(test)]

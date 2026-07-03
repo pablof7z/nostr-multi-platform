@@ -4127,6 +4127,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip-ad"
+version = "1.0.0-rc.1"
+dependencies = [
+ "nmp-core",
+ "nmp-nip-ad",
+ "nmp-ownership",
+ "nmp-wellknown-http",
+ "nostr",
+ "percent-encoding",
+ "serde_json",
+ "tungstenite",
+ "url",
+]
+
+[[package]]
 name = "nmp-nip01"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -4164,9 +4179,9 @@ version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
+ "nmp-wellknown-http",
  "nostr",
  "serde_json",
- "ureq",
 ]
 
 [[package]]
@@ -4389,12 +4404,12 @@ dependencies = [
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
+ "nmp-wellknown-http",
  "nostr",
  "serde",
  "serde_json",
  "sha2",
  "tracing",
- "ureq",
 ]
 
 [[package]]
@@ -4836,6 +4851,15 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-wellknown-http"
+version = "1.0.0-rc.1"
+dependencies = [
+ "nmp-ownership",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

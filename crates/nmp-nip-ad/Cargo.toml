@@ -1,0 +1,43 @@
+[package]
+name = "nmp-nip-ad"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-AD web-URL → Nostr-events resolver for NMP (#2927). Resolves an ordinary `https://<domain>/<path>` URL by fetching `.well-known/nostr.json?ad=<path>`, selecting the entry keyed by the requested path, and yielding a live `{filter, relays}` collection query (0..N events). Ships the app-injected `AdResolutionPolicy` seam. Shape/parse is pure; the HTTP round-trip is a blocking worker (native feature)."
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+# Enables the blocking `.well-known/nostr.json?ad=<path>` GET in
+# `resolve_ad_url_blocking` (SSRF-guarded, bounded, via `nmp-wellknown-http`)
+# plus URL parsing / percent-encoding. Off in pure-shape / wasm builds
+# (`parse_ad_wellknown` and the policy seam are always available).
+native = ["nmp-wellknown-http/native", "dep:url", "dep:percent-encoding"]
+
+[dependencies]
+nmp-ownership = { workspace = true }
+# Pure-kernel traits only for the ProtocolCommand seam (moment-2 dispatch);
+# no I/O layer needed here — the HTTP worker uses `nmp-wellknown-http`.
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+# Shared SSRF-guarded bounded `.well-known` GET (#2927) — never a forked copy.
+nmp-wellknown-http = { path = "../nmp-wellknown-http", version = "1.0.0-rc.1" }
+# Canonical `nostr::Filter` deserialization (multi-event capable) — never a
+# hand-rolled filter parse. Always-compiled: `parse_ad_wellknown` is pure and
+# wasm-safe.
+nostr = { workspace = true }
+serde_json = { workspace = true }
+# URL parsing + path percent-encoding for the `.well-known` fetch. Native-only
+# (only the blocking worker builds the request); never hand-rolled encoding.
+url = { version = "2", optional = true }
+percent-encoding = { version = "2", optional = true, default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+nmp-nip-ad = { path = ".", features = ["native"] }
+serde_json = { workspace = true }
+nostr = { workspace = true }
+# Live integration test: connect to the site-supplied relays and run the
+# resolved filter. Blocking client, mirrors the nmp-nwc probe pattern.
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
