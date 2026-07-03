@@ -251,6 +251,22 @@ path = "crates/nmp-blossom"
 name = "nmp-nip60"
 path = "crates/nmp-nip60"
 
+# nmp-wallet is release-classified public in #2882 to unblock the external
+# nutsack NIP-60/NIP-61 consumer's B1 blocker (SPEC.md §9): external consumers
+# pin only public_crates by git rev, and nutsack cannot even resolve/package
+# `nmp-wallet` while it stays private, independent of how much of epic #2864's
+# backend is built. This crate is pre-1.0 / unstable: Wave C (#2864 W4-W7 —
+# action-module registration, projection registration, actor/runtime wiring)
+# has not landed yet, so nothing in the live actor system dispatches its
+# actions or reads its projection today. Consumers must pin by git rev off
+# master (see docs/architecture/external-consumers.md's pre-v1 compatibility
+# stance), not a version-tag release train, and should expect the surface to
+# keep changing under Wave C. Flipping this only clears nutsack's B1; B3/B4
+# (real functional round-trip) stay gated on Wave C landing.
+[[public_crates]]
+name = "nmp-wallet"
+path = "crates/nmp-wallet"
+
 [[public_crates]]
 name = "nmp-nip59"
 path = "crates/nmp-nip59"
@@ -347,11 +363,6 @@ reason = "Post-v1 Nostr Wallet Connect protocol crate (#2318); kept in the works
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
 reason = "Post-v1 lightning zap protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
-
-[[private_packages]]
-name = "nmp-wallet"
-path = "crates/nmp-wallet"
-reason = "Post-v1 wallet composition crate (#2864); active in workspace for Phase 1 tests but excluded from the v1 public release train until the wallet product surface is complete"
 
 [[private_packages]]
 name = "nmp-zaps"
