@@ -80,7 +80,7 @@ impl<'a> NostrGroupMessageRow<'a> {
         available.min(self.max_width).max(1)
     }
 
-    fn author_profile(&self) -> ProfileWire {
+    fn resolved_author_profile(&self) -> ProfileWire {
         if let Some(profile) = self.author_profile {
             return profile.clone();
         }
@@ -157,7 +157,7 @@ impl Widget for NostrGroupMessageRow<'_> {
         if area.is_empty() {
             return;
         }
-        let profile = self.author_profile();
+        let profile = self.resolved_author_profile();
         let text_width = self.text_width(area.width);
         let text_x = if self.message.is_outgoing {
             area.x + area.width.saturating_sub(text_width)

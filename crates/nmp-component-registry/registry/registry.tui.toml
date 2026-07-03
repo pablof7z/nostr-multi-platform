@@ -247,7 +247,7 @@ role = "source"
 
 [[components]]
 id = "tui/chat-message-row"
-version = "0.1.0"
+version = "0.1.1"
 target = "tui"
 description = "Ratatui group-chat message row with profile self-claiming, reply preview, outgoing alignment, and reaction badges."
 dependencies = [
