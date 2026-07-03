@@ -36,6 +36,7 @@ use nmp_feed::{
 
 mod active_shape;
 mod custom;
+mod diagnostics;
 mod dynamic_observer;
 mod flat_replay;
 mod nip29_group_context;
@@ -53,13 +54,17 @@ mod set_algebra;
 mod source;
 mod source_replay;
 mod trellis_adapter;
+mod trellis_adapter_command;
 mod trellis_adapter_delta;
+mod trellis_adapter_diagnostics;
 #[cfg(test)]
 mod trellis_adapter_equivalence_support;
 #[cfg(test)]
 mod trellis_adapter_equivalence_tests;
 #[cfg(test)]
 mod trellis_adapter_tests;
+#[cfg(test)]
+mod trellis_adapter_trace;
 mod trellis_owner_cell;
 // #2629 owns the private taxonomy; #2630 is the first production adapter user.
 mod trellis_resources;
@@ -67,6 +72,12 @@ mod trellis_resources;
 mod trellis_resources_tests;
 mod wot_graph;
 pub(crate) use active_shape::read_active;
+pub use diagnostics::{
+    FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
+    FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReason, FeedSessionDiagnosticReasonCode,
+    FeedSessionDiagnosticReceipt, FeedSessionDiagnosticTransaction, FeedSessionDiagnosticsHandle,
+    FeedSessionDiagnosticsSink,
+};
 pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use params::validate_feed_params;
@@ -111,6 +122,9 @@ pub trait FeedSessionHost {
     ) -> TeardownAction;
     fn feed_pull_fn(&self) -> PullFn;
     fn command_sender(&self) -> CommandSender;
+    fn feed_session_diagnostics(&self) -> FeedSessionDiagnosticsHandle {
+        FeedSessionDiagnosticsHandle::disabled()
+    }
     fn register_feed(&self, key: String, controller: Arc<dyn FeedController>);
     fn load_older_feed(&self, key: &str) -> bool;
     fn register_feed_window_source<S, F>(

@@ -3920,6 +3920,7 @@ dependencies = [
 name = "nmp-devtools"
 version = "0.8.4"
 dependencies = [
+ "nmp-feed-session",
  "nmp-ownership",
  "serde",
  "serde_json",

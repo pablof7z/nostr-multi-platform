@@ -242,8 +242,13 @@ fn build_op_scope_session(
     // children immediately; teardown sends the empty set. The session never
     // serializes shapes to NIP-01 JSON or tracks a private open log.
     let sender = app.command_sender();
-    let acquisition_adapter =
-        FeedSessionTrellisAdapter::new(key, FeedShape::RootIndexed, interests, sender)?;
+    let acquisition_adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        key,
+        FeedShape::RootIndexed,
+        interests,
+        sender,
+        app.feed_session_diagnostics(),
+    )?;
     acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition");
 
     // Wire each source change to re-sync observed delivery/acquisition for the

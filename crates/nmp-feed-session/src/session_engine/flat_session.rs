@@ -103,8 +103,13 @@ pub(super) fn build_flat_scope_session(
         })
     });
     let sender = app.command_sender();
-    let acquisition_adapter =
-        FeedSessionTrellisAdapter::new(key, FeedShape::Flat, interests.clone(), sender)?;
+    let acquisition_adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        key,
+        FeedShape::Flat,
+        interests.clone(),
+        sender,
+        app.feed_session_diagnostics(),
+    )?;
     let replayed_tail = app.load_older_feed(key);
     let replayed_ids = super::super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
     acquisition_adapter.rebaseline_output_if_changed(replayed_ids && !replayed_tail);

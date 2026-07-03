@@ -107,7 +107,7 @@ pub(crate) enum FeedSessionInterestScope {
 }
 
 impl FeedSessionInterestScope {
-    fn key_part(&self) -> String {
+    pub(crate) fn key_part(&self) -> String {
         match self {
             Self::ActiveAccount => "active-account".to_string(),
             Self::Account(pubkey) => format!("account-{}", digest(("account", pubkey))),
@@ -145,7 +145,7 @@ pub(crate) enum FeedSessionRouteProvenance {
 }
 
 impl FeedSessionRouteProvenance {
-    fn key_part(&self) -> &'static str {
+    pub(crate) fn key_part(&self) -> &'static str {
         match self {
             Self::ActiveFollowTimeline => "active-follow-timeline",
             Self::Nip51ListMembers => "nip51-list-members",
@@ -343,18 +343,18 @@ impl HostStatusIdentity {
     }
 }
 
-fn digest(value: impl Hash) -> String {
+pub(crate) fn digest(value: impl Hash) -> String {
     format!("{:016x}", stable_hash64(value))
 }
 
-fn lifecycle_part(value: &InterestLifecycle) -> &'static str {
+pub(crate) fn lifecycle_part(value: &InterestLifecycle) -> &'static str {
     match value {
         InterestLifecycle::Tailing => "tailing",
         InterestLifecycle::OneShot => "one-shot",
     }
 }
 
-fn shape_part(value: &FeedShape) -> &'static str {
+pub(crate) fn shape_part(value: &FeedShape) -> &'static str {
     match value {
         FeedShape::RootIndexed => "root-indexed",
         FeedShape::Flat => "flat",

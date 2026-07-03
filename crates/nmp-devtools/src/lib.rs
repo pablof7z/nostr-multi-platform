@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 mod capsule;
+mod feed_session;
 mod prover;
 mod receipt;
 mod trellis;
@@ -18,6 +19,9 @@ pub mod ownership;
 pub use capsule::{
     redact_receipts, XrayCapsule, XrayCapsuleProducer, XrayCapsuleVersions, XrayRedactionMode,
     XraySymbolicationEntry, XraySymbolicationManifest,
+};
+pub use feed_session::{
+    receipts_from_feed_session_batch, XrayFeedSessionClock, XrayFeedSessionRecorder,
 };
 pub use prover::{XrayProbe, XrayReplaySession, XrayReplayTransaction, XrayScopeInventory};
 pub use receipt::{
