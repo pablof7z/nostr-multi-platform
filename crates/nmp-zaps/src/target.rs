@@ -26,6 +26,17 @@ impl core::fmt::Display for ZapTargetError {
 
 impl std::error::Error for ZapTargetError {}
 
+impl ZapTargetError {
+    /// The stable machine code (crosses the wire as an FFI error code; never
+    /// renumbered or repurposed — #2899 Part A).
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidEventId => "invalid_event_id",
+        }
+    }
+}
+
 impl ZapTarget {
     /// Validate `event_id` as a 64-hex kind:1 note id.
     pub fn event(event_id: impl Into<String>) -> Result<Self, ZapTargetError> {

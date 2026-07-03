@@ -32,3 +32,8 @@ fn rejects_empty_ids() {
     let err = ZapTarget::event("").unwrap_err();
     assert_eq!(err, ZapTargetError::InvalidEventId);
 }
+
+#[test]
+fn error_carries_a_stable_code() {
+    assert_eq!(ZapTargetError::InvalidEventId.code(), "invalid_event_id");
+}

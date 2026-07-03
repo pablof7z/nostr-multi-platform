@@ -270,6 +270,29 @@ impl ZapsReadHandle {
     pub fn projection_key(&self) -> &str {
         &self.0.projection_key
     }
+
+    /// Decompose into the FFI-marshalable scalar parts `(projection_key,
+    /// handle_id)` (#2899 Part A bridge lane). A facade returns this pair
+    /// from its generated `open_zaps` door instead of inventing its own
+    /// handle-map bookkeeping; [`Self::from_parts`] reconstructs the typed
+    /// handle from the same pair to close.
+    #[must_use]
+    pub fn into_parts(self) -> (String, u64) {
+        (self.0.projection_key, self.0.session_id.0)
+    }
+
+    /// Reconstruct the typed close handle from the scalar parts returned by
+    /// [`Self::into_parts`]. The typed-wrapper property is preserved: this
+    /// newtype — never the raw parts — is what [`close_zaps`] accepts, so a
+    /// zap read still cannot be closed with a feed/reply/reaction/repost
+    /// handle.
+    #[must_use]
+    pub fn from_parts(projection_key: String, handle_id: u64) -> Self {
+        Self(nmp_read_session::ReadHandle {
+            projection_key,
+            session_id: nmp_read_session::ReadSessionId(handle_id),
+        })
+    }
 }
 
 /// Open a live zap-summary read for the plain kind:1 note `target_event_id`
@@ -386,6 +409,46 @@ pub fn encode_zap_summary_snapshot(snapshot: &ZapSummarySnapshot) -> Vec<u8> {
     );
     fbb.finish(root, Some(fb::ZAP_SUMMARY_SNAPSHOT_IDENTIFIER));
     fbb.finished_data().to_vec()
+}
+
+/// Decode a [`ZapSummarySnapshot`] from its typed FlatBuffers payload — the
+/// inverse of [`encode_zap_summary_snapshot`] (#2900). A pure-Rust consumer
+/// that links this crate directly (no UniFFI/codegen boundary — e.g. a
+/// TUI/desktop shell) uses this to turn the
+/// `TypedProjectionData::payload` bytes the read-lifecycle engine emits back
+/// into the typed snapshot, mirroring `nmp_core::typed_projections::
+/// decode_relay_diagnostics` / `nmp_nip01::decode_op_feed_snapshot`'s
+/// symmetric encode+decode convention.
+///
+/// # Errors
+///
+/// Returns a formatted `String` when `bytes` does not carry the
+/// `ZAP_SUMMARY_FILE_IDENTIFIER` or fails FlatBuffers verification.
+pub fn decode_zap_summary_snapshot(bytes: &[u8]) -> Result<ZapSummarySnapshot, String> {
+    if bytes.len() < 8 || !fb::zap_summary_snapshot_buffer_has_identifier(bytes) {
+        return Err("missing NZSM file identifier".to_string());
+    }
+    let root = fb::root_as_zap_summary_snapshot(bytes)
+        .map_err(|e| format!("not a valid ZapSummarySnapshot buffer: {e}"))?;
+    let zappers = root
+        .zappers()
+        .map(|zappers| {
+            zappers
+                .iter()
+                .map(|zapper| ZapperTotal {
+                    pubkey: zapper.pubkey().map(str::to_string),
+                    total_msats: zapper.total_msats(),
+                    zap_count: zapper.zap_count(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(ZapSummarySnapshot {
+        target_id: root.target_id().unwrap_or_default().to_string(),
+        total_msats: root.total_msats(),
+        zap_count: root.zap_count(),
+        zappers,
+    })
 }
 
 #[cfg(test)]

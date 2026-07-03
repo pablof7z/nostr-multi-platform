@@ -23,6 +23,17 @@ impl core::fmt::Display for RepostTargetError {
 
 impl std::error::Error for RepostTargetError {}
 
+impl RepostTargetError {
+    /// The stable machine code (crosses the wire as an FFI error code; never
+    /// renumbered or repurposed — #2899 Part A).
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidEventId => "invalid_event_id",
+        }
+    }
+}
+
 impl RepostTarget {
     /// Build a repost target for the plain kind:1 note `event_id`.
     ///
@@ -66,5 +77,10 @@ mod tests {
         let id = "a".repeat(64);
         let target = RepostTarget::note(format!("  {id}  ")).unwrap();
         assert_eq!(target.event_id(), id);
+    }
+
+    #[test]
+    fn error_carries_a_stable_code() {
+        assert_eq!(RepostTargetError::InvalidEventId.code(), "invalid_event_id");
     }
 }

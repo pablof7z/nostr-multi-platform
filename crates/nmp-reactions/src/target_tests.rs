@@ -30,3 +30,11 @@ fn rejects_non_hex_ids() {
         Err(ReactionTargetError::InvalidEventId)
     );
 }
+
+#[test]
+fn error_carries_a_stable_code() {
+    assert_eq!(
+        ReactionTargetError::InvalidEventId.code(),
+        "invalid_event_id"
+    );
+}

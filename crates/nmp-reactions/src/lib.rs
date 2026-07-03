@@ -22,8 +22,8 @@ pub use group::{
 };
 pub use read::reaction_filter_json;
 pub use summary::{
-    close_reactions, encode_reaction_summary_snapshot, open_reactions, ReactionGroupSummary,
-    ReactionSummarySnapshot, ReactionsReadHandle, REACTION_SUMMARY_FILE_IDENTIFIER,
-    REACTION_SUMMARY_SCHEMA_ID, REACTION_SUMMARY_SCHEMA_VERSION,
+    close_reactions, decode_reaction_summary_snapshot, encode_reaction_summary_snapshot,
+    open_reactions, ReactionGroupSummary, ReactionSummarySnapshot, ReactionsReadHandle,
+    REACTION_SUMMARY_FILE_IDENTIFIER, REACTION_SUMMARY_SCHEMA_ID, REACTION_SUMMARY_SCHEMA_VERSION,
 };
 pub use target::{ReactionTarget, ReactionTargetError};

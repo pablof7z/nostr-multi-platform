@@ -287,6 +287,17 @@ impl GalleryApp {
 }
 
 impl GalleryApp {
+    /// Crate-visible accessor to the underlying native runtime, for sibling
+    /// concept-read modules (e.g. `concept_reads_replies`) that need to pass
+    /// `&self.inner` to a concept crate's `open_*`/`close_*` door. Kept out of
+    /// the `#[uniffi::export]` surface — `inner` itself stays private so no
+    /// UniFFI-exported method leaks the raw runtime type.
+    pub(crate) fn runtime(&self) -> &RuntimeApp {
+        &self.inner
+    }
+}
+
+impl GalleryApp {
     fn resolve_event_embed(
         &self,
         key: String,

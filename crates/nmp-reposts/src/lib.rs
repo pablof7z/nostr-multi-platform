@@ -14,8 +14,8 @@ mod target;
 
 pub use read::RepostReadPlan;
 pub use summary::{
-    close_reposts, encode_repost_summary_snapshot, open_reposts, RepostSummaryProjection,
-    RepostSummarySnapshot, RepostsReadHandle, REPOST_SUMMARY_FILE_IDENTIFIER,
-    REPOST_SUMMARY_SCHEMA_ID, REPOST_SUMMARY_SCHEMA_VERSION,
+    close_reposts, decode_repost_summary_snapshot, encode_repost_summary_snapshot, open_reposts,
+    RepostSummaryProjection, RepostSummarySnapshot, RepostsReadHandle,
+    REPOST_SUMMARY_FILE_IDENTIFIER, REPOST_SUMMARY_SCHEMA_ID, REPOST_SUMMARY_SCHEMA_VERSION,
 };
 pub use target::{RepostTarget, RepostTargetError};

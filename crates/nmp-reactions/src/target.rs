@@ -29,6 +29,17 @@ impl core::fmt::Display for ReactionTargetError {
 
 impl std::error::Error for ReactionTargetError {}
 
+impl ReactionTargetError {
+    /// The stable machine code (crosses the wire as an FFI error code; never
+    /// renumbered or repurposed — #2899 Part A).
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::InvalidEventId => "invalid_event_id",
+        }
+    }
+}
+
 impl ReactionTarget {
     /// Validate `event_id` as a reaction target (a bare 64-hex event id).
     ///

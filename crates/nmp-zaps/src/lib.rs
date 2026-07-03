@@ -23,8 +23,8 @@ mod target;
 
 pub use read::ZapReadPlan;
 pub use summary::{
-    close_zaps, encode_zap_summary_snapshot, open_zaps, ZapSummaryProjection, ZapSummarySnapshot,
-    ZapperTotal, ZapsReadHandle, ZAP_SUMMARY_FILE_IDENTIFIER, ZAP_SUMMARY_SCHEMA_ID,
-    ZAP_SUMMARY_SCHEMA_VERSION,
+    close_zaps, decode_zap_summary_snapshot, encode_zap_summary_snapshot, open_zaps,
+    ZapSummaryProjection, ZapSummarySnapshot, ZapperTotal, ZapsReadHandle,
+    ZAP_SUMMARY_FILE_IDENTIFIER, ZAP_SUMMARY_SCHEMA_ID, ZAP_SUMMARY_SCHEMA_VERSION,
 };
 pub use target::{ZapTarget, ZapTargetError};
