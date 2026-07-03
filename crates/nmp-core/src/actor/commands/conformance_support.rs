@@ -88,10 +88,8 @@ impl ConformanceHarness {
         self.kernel.last_error_toast_snapshot().cloned()
     }
 
-    /// Seed a kind:1 note into the kernel read-cache so a subsequent
-    /// `emit_reaction` against `id` exercises the warm path (`event_author`)
-    /// rather than the cold fallback. `tags` carries whatever NIP-10 structure
-    /// the test needs.
+    /// Seed a kind:1 note into the kernel read-cache. `tags` carries whatever
+    /// NIP-10 structure the test needs.
     pub fn seed_note(&mut self, id: &str, author: &str, tags: Vec<Vec<String>>) {
         self.kernel
             .seed_kind1_for_reply_test(id, author, 100, tags, "seeded note");
@@ -113,39 +111,6 @@ impl ConformanceHarness {
             "wss://conformance-seed.test",
             1,
         );
-    }
-
-    /// Drive a kind:7 reaction draft through the owner-certified unsigned
-    /// publish door.
-    /// Returns the emitted `EVENT` JSON object.
-    pub fn emit_reaction(&mut self, target_event_id: &str, reaction: &str) -> Value {
-        let author = self.kernel.event_author(target_event_id);
-        let (tags, content) =
-            crate::tags::reaction_tags(target_event_id, author.as_deref(), reaction)
-                .expect("conformance reaction target must be a 64-hex event id");
-        let unsigned = UnsignedEvent {
-            pubkey: String::new(),
-            kind: 7,
-            tags,
-            content,
-            created_at: self.kernel.now_secs(),
-        };
-        let outbound = publish_unsigned_event(
-            &self.identity,
-            &mut self.kernel,
-            unsigned,
-            Some(nmp_ownership::EventOwnershipProvenance::new(
-                Some(nmp_ownership::ArtifactProvenance::new(
-                    "nmp.nip25",
-                    "nostr.kind.7.reaction",
-                )),
-                &[],
-            )),
-            None,
-            None,
-            &mut crate::actor::pending_sign::ParkedSignerOps::new(),
-        );
-        last_event_json(&outbound)
     }
 
     /// Drive `follow` (kind:3 add/remove). Returns the emitted `EVENT` JSON.

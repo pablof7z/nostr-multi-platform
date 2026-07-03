@@ -1,10 +1,7 @@
 //! NIP golden-tag conformance suite.
 //!
-//! A table of assertions that every event kind NMP *emits* carries exactly the
-//! tags its NIP mandates — and no surprising tags besides. This pins, in one
-//! place, the contract that the NIP-25 `p`-tag bug (reactions missing the
-//! reacted-to author) violated unnoticed despite 450+ unit tests: the bug was
-//! found by inspection, not by a test. A conformance table is that test.
+//! A table of assertions that core-owned event kinds NMP *emits* carry exactly
+//! the tags their NIP mandates — and no surprising tags besides.
 //!
 //! ## What this suite asserts, per emitted kind
 //!
@@ -12,7 +9,6 @@
 //! |-------|---------|--------------------------------------------------------|
 //! | 1     | NIP-01  | top-level note: NO `e`/`p` tags                        |
 //! | 1     | NIP-10  | reply: `e`(root) + `e`(reply) markers, `p`(parent)     |
-//! | 7     | NIP-25  | `e`(reacted event) + `p`(reacted author)               |
 //! | 3     | NIP-02  | one `p` per followed pubkey, nothing else              |
 //! | 0     | NIP-01  | metadata: NO tags (content is JSON)                    |
 //! | 23194 | NIP-47  | `p`(wallet pubkey)                                     |
@@ -56,5 +52,3 @@ mod kind10002_relay_list;
 mod kind1_notes;
 #[path = "nip_tag_conformance/kind3_contacts.rs"]
 mod kind3_contacts;
-#[path = "nip_tag_conformance/kind7_reactions.rs"]
-mod kind7_reactions;

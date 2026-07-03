@@ -46,7 +46,9 @@ use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::{Kernel, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::slots::ReactionDraftBuilder;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -60,6 +62,8 @@ pub struct KernelReducer {
     observer_slot: crate::actor::ObservedProjectionSinkSlot,
     /// Typed snapshot-projection slot.
     snapshot_slot: SnapshotProjectionSlot,
+    /// Protocol-owned reaction draft builder for reducer/browser write paths.
+    reaction_draft_builder: Arc<dyn ReactionDraftBuilder>,
     /// Close recipes for browser/wasm observed-projection sessions.
     observed_projection_sessions:
         HashMap<crate::ObservedProjectionId, (String, String, u32, Option<String>)>,
@@ -85,7 +89,6 @@ impl KernelReducer {
     pub fn new() -> Self {
         use crate::actor::new_event_observer_slot_headless;
         use crate::kernel::new_snapshot_projection_slot;
-        use std::sync::Arc;
 
         let observer_slot = new_event_observer_slot_headless();
         let snapshot_slot = new_snapshot_projection_slot();
@@ -96,6 +99,7 @@ impl KernelReducer {
             kernel,
             observer_slot,
             snapshot_slot,
+            reaction_draft_builder: crate::slots::empty_reaction_draft_builder(),
             observed_projection_sessions: HashMap::new(),
             sign_roundtrip: wasm_signing::SignRoundTripState::default(),
         }

@@ -19,9 +19,12 @@ use std::sync::{Arc, Mutex};
 use zeroize::Zeroizing;
 
 mod contact_list;
+mod reaction;
+
 pub use contact_list::{
     empty_contact_list_reader, ContactListDraft, ContactListEvent, ContactListReader,
 };
+pub use reaction::{empty_reaction_draft_builder, ReactionDraft, ReactionDraftBuilder};
 
 /// Typed slot for the active account's MLS nsec (bech32, zeroized on overwrite).
 ///

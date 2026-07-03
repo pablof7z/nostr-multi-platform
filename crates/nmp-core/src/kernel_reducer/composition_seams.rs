@@ -64,6 +64,7 @@ impl super::KernelReducer {
             kernel,
             observer_slot,
             snapshot_slot,
+            reaction_draft_builder: crate::slots::empty_reaction_draft_builder(),
             observed_projection_sessions: std::collections::HashMap::new(),
             sign_roundtrip: super::wasm_signing::SignRoundTripState::default(),
         }
@@ -82,6 +83,16 @@ impl super::KernelReducer {
         kernel.set_snapshot_projection_handle(Arc::clone(&self.snapshot_slot));
         self.kernel = kernel;
         self.sign_roundtrip = super::wasm_signing::SignRoundTripState::default();
+    }
+
+    /// Install the protocol-owned reaction draft builder used by reducer-hosted
+    /// write paths. Without a registered builder the reaction draft path
+    /// gracefully returns `None`.
+    pub fn set_reaction_draft_builder(
+        &mut self,
+        builder: Arc<dyn crate::slots::ReactionDraftBuilder>,
+    ) {
+        self.reaction_draft_builder = builder;
     }
 
     /// Record a degraded store-open failure reason onto the wrapped kernel so it
