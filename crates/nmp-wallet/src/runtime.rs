@@ -8,7 +8,8 @@
 //!
 //! # Identity-change-driven, not tick-polled
 //!
-//! Every interest this runtime needs is account-scoped (`#p`=self or
+//! Every interest this runtime needs is account-scoped in the sense that it
+//! is re-derived from the active pubkey on every account change (`#p`=self or
 //! `authors`=self), but [`Self::new`] runs during the app's *config* phase —
 //! before the kernel starts, so before any account is known. This mirrors
 //! `nmp-nip51::register_mute_runtime`'s recipe exactly: an
@@ -19,6 +20,35 @@
 //! cold start (the account may already be active before this call runs).
 //! `nmp-wot`'s older tick-per-snapshot polling predates this reconciler and
 //! is not the pattern to follow for new code.
+//!
+//! # `nutzap_receipts` opens `Global`, not `ActiveAccount` (#2942)
+//!
+//! The reconciler's `scope` argument is NOT a per-account privacy boundary —
+//! `InterestScope::ActiveAccount` and `::Global` both key into the exact same
+//! registry `SubScope::Global` slot space
+//! (`nmp-core/src/subs/interest_builder.rs`), and account-switch handling is
+//! entirely this module's own job (the `sync()` calls below, driven by the
+//! identity-change observer). `scope` instead selects which relay-routing
+//! lanes the planner's compiler (`nmp-planner/src/compiler/partition/mod.rs`)
+//! is willing to fire for the interest. `nutzap_receipts_shape` is a `#p`=self
+//! filter with `PTagRouting::Nip65ReadRelays` (the default): the compiler's
+//! Case C routes it to the tagged pubkey's OWN cached kind:10002 read relays
+//! and, when that inbox is not yet cached, fails closed — UNLESS the interest
+//! is `Tailing + Global`, in which case a cold-start gate
+//! (`is_bootstrap_inbox_eligible`) reroutes it onto the app's configured
+//! `bootstrap_content_relays` until the real inbox lands. That gate does not
+//! fire for `ActiveAccount` scope. A fresh account that has never published
+//! (or cached) its own kind:10002 — e.g. two brand-new identities on a single
+//! ad-hoc relay wired via `add_relay`, never a NIP-65 relay list — therefore
+//! got ZERO relay entries for this interest: the kind:9321 REQ was never sent
+//! to any relay, so an inbound nutzap sitting on the relay never reached
+//! `on_wallet_event`, not even as a rejected/unverifiable row (#2942). Opening
+//! `Global` instead mirrors `nmp_nip57::self_zap_receipts_interest` exactly —
+//! the same `#p`=self / `Nip65ReadRelays` / public-content shape, already
+//! proven to need (and get) the cold-start bootstrap lane. `wallet_self_authored_shape`
+//! is an `authors`=self filter (no `#p` tag), which Case A routes via the
+//! account's own write relays / `app_relays` unconditionally (no `Global`-only
+//! gate applies), so it keeps `ActiveAccount` scope — unaffected by this bug.
 //!
 //! # `MintResult` — no live producer yet
 //!
@@ -46,11 +76,18 @@ use crate::projection::WalletProjection;
 use crate::selector::WalletBackendSelector;
 use crate::{WalletBackendId, WalletProjectionScope};
 
-/// `ObservedProjection::scope` — routes the subscription to the active
-/// account's own relay set (`observed.rs`: "0 = ActiveAccount, re-routed on
-/// account switch"). Every interest this runtime opens is for the account's
-/// OWN wallet/nutzap events, so `ActiveAccount` is the correct routing scope.
+/// `ObservedProjection::scope` value for `InterestScope::ActiveAccount`
+/// (`nmp-core/src/subs/interest_builder.rs`: `0 = ActiveAccount`). Used for
+/// `wallet_self_authored_shape`, an `authors`=self interest with no
+/// cold-start bootstrap dependency (see module docs).
 const SCOPE_ACTIVE_ACCOUNT: u32 = 0;
+
+/// `ObservedProjection::scope` value for `InterestScope::Global` (any nonzero
+/// value maps to `Global` — `1` is the conventional choice, mirroring
+/// `nmp_nip57`'s own zap-receipts runtime). Used for `nutzap_receipts_shape`,
+/// a `#p`=self / `Nip65ReadRelays` interest that needs the planner's Case C
+/// cold-start bootstrap-inbox gate — see module docs (#2942).
+const SCOPE_GLOBAL: u32 = 1;
 
 /// Bounded cache replay on (re)open — generous enough to hydrate a returning
 /// account's wallet state and recent nutzap history without an unbounded
@@ -127,7 +164,7 @@ impl WalletRuntime {
             app.observed_projection_registrar_handle(),
             Arc::clone(&sink),
             "nmp.wallet.nutzap_receipts",
-            SCOPE_ACTIVE_ACCOUNT,
+            SCOPE_GLOBAL,
             REPLAY_LIMIT,
             Arc::new(move || {
                 let pubkey = nutzap_pubkey.lock().ok()?.clone()?;

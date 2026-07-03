@@ -1,18 +1,22 @@
 //! PD-033-C planner extension — Case C bootstrap-content inbox fallback.
 //!
 //! Mirrors the matrix in `case_d_no_author.rs::pd033c_*` (Stage 1
-//! precedent): positive route, scope=Account counterpoint, lifecycle=OneShot
-//! counterpoint, p_tag_routing=Nip17DmRelays counterpoint (fail-closed
-//! preserved), partial inbox cache counterpoint (gate refuses), empty
-//! bootstrap counterpoint (fall through to fail-closed), and plan_id
-//! stability under bootstrap toggle.
+//! precedent): positive route (`Global` and, #2942, `ActiveAccount`),
+//! scope=Account counterpoint, lifecycle=OneShot counterpoint,
+//! p_tag_routing=Nip17DmRelays counterpoint (fail-closed preserved), partial
+//! inbox cache counterpoint (gate refuses), empty bootstrap counterpoint
+//! (fall through to fail-closed), and plan_id stability under bootstrap
+//! toggle.
 //!
-//! The headline contract: a `Tailing + Global + #p (Nip65ReadRelays)`
-//! interest whose tagged pubkey has no cached NIP-65 inbox AND
-//! `bootstrap_content_relays` is non-empty routes to the bootstrap content
-//! lane, lane = `UserConfigured(Bootstrap)`. This is the silent-loss
-//! regression Stage 2 of PD-033-C exposes for the kernel's self-zap-receipts
-//! subscription (`kind:9735 #p=[self_pk]` on `RelayRole::Content`).
+//! The headline contract: a `Tailing + #p (Nip65ReadRelays)` interest scoped
+//! to the viewer's own account (`Global` or `ActiveAccount`) whose tagged
+//! pubkey has no cached NIP-65 inbox AND `bootstrap_content_relays` is
+//! non-empty routes to the bootstrap content lane, lane =
+//! `UserConfigured(Bootstrap)`. This is the silent-loss regression Stage 2 of
+//! PD-033-C exposes for the kernel's self-zap-receipts subscription
+//! (`kind:9735 #p=[self_pk]` on `RelayRole::Content`) — and, before
+//! `ActiveAccount` joined the gate (#2942), for any `ActiveAccount`-scoped
+//! `#p` interest such as nmp-wallet's NIP-61 nutzap receipts.
 //!
 //! ## Submodules (file-size gate split)
 //!

@@ -12,15 +12,21 @@
 //! ## PD-033-C planner extension (precursor to Stage 2 — `#p` bootstrap)
 //!
 //! The sibling [`route_bootstrap_content_inbox`] helper handles the cold-start
-//! case where any host-driven `Tailing + Global + #p (Nip65ReadRelays)`
-//! subscription must fly BEFORE the active account's kind:10002 arrives.
-//! Without it the planner would emit no relay entries until kind:10002
-//! arrives — the relevant projection would receive nothing on cold-start
-//! sign-ins. The planner routes the equivalent `LogicalInterest` shape to
-//! `bootstrap_content_relays` exactly when:
+//! case where any host-driven `Tailing + #p (Nip65ReadRelays)` subscription,
+//! scoped to the viewer's own account (`Global` or `ActiveAccount`), must fly
+//! BEFORE the active account's kind:10002 arrives. Without it the planner
+//! would emit no relay entries until kind:10002 arrives — the relevant
+//! projection would receive nothing on cold-start sign-ins (#2942: exactly
+//! this, for an `ActiveAccount`-scoped wallet nutzap-receipts interest,
+//! before `ActiveAccount` was added below). The planner routes the equivalent
+//! `LogicalInterest` shape to `bootstrap_content_relays` exactly when:
 //!
 //! - `lifecycle == Tailing`
-//! - `scope == Global`
+//! - `scope == Global` OR `scope == ActiveAccount` (both describe the
+//!   viewer's own account context; `Account(x)` — a specific, possibly-other
+//!   account — is excluded, since diverting a third party's inbox interest to
+//!   the viewer's own bootstrap relay would mix multi-account contexts on one
+//!   relay)
 //! - `p_tag_routing == Nip65ReadRelays` (NIP-17 DM relays remain fail-closed
 //!   by design — gift-wraps must NEVER leak to a non-DM relay)
 //! - EVERY tagged pubkey has NO NIP-65 inbox cached (`get(pk)` is `None`, or
@@ -79,19 +85,21 @@ pub(super) fn route(
     );
 }
 
-/// PD-033-C planner extension: route a `Tailing + Global + #p` interest to
+/// PD-033-C planner extension: route a `Tailing + #p` interest, scoped to the
+/// viewer's own account (`Global` or `ActiveAccount`), to
 /// `bootstrap_content_relays` when every tagged pubkey lacks a cached
 /// NIP-65 inbox.
 ///
-/// Cold-start fallback for any host-driven `Tailing + Global +
-/// Nip65ReadRelays + #p` subscription. Without it, every such interest
-/// would silently emit no relay entries until kind:10002 arrives — the
-/// relevant projection (e.g. NIP-57 zap receipts, NIP-25 reactions
-/// addressed to the user) would receive nothing on cold-start sign-ins.
+/// Cold-start fallback for any host-driven `Tailing + Nip65ReadRelays + #p`
+/// subscription over the viewer's own account. Without it, every such
+/// interest would silently emit no relay entries until kind:10002 arrives —
+/// the relevant projection (e.g. NIP-57 zap receipts, NIP-25 reactions
+/// addressed to the user, or nmp-wallet's NIP-61 nutzap receipts, #2942)
+/// would receive nothing on cold-start sign-ins.
 ///
 /// Gating happens at the dispatcher ([`super::partition_interest`]); this
 /// helper assumes the caller has already verified:
-/// - `lifecycle == Tailing` AND `scope == Global`
+/// - `lifecycle == Tailing` AND (`scope == Global` OR `scope == ActiveAccount`)
 /// - `p_tag_routing == Nip65ReadRelays` (NIP-17 DM relays must NEVER divert
 ///   to a non-DM relay)
 /// - every tagged pubkey has no cached NIP-65 inbox

@@ -6,7 +6,7 @@ use std::sync::Mutex;
 use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::ObservedProjection;
 use nmp_core::ObservedProjectionId;
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestShape, PTagRouting};
 
 use super::*;
 use crate::backend::{WalletBackend, WalletBackendSnapshot};
@@ -17,6 +17,7 @@ use crate::projection::WalletReadiness;
 struct OpenRecord {
     id: ObservedProjectionId,
     consumer_id: String,
+    scope: u32,
     shape: InterestShape,
     observer: Arc<dyn ObservedProjectionSink>,
 }
@@ -46,6 +47,7 @@ impl ObservedProjectionRegistrar for RecordingRegistrar {
         self.opened.lock().unwrap().push(OpenRecord {
             id,
             consumer_id: decl.consumer_id,
+            scope: decl.scope,
             shape: decl.replay_shapes.into_iter().next().expect("shape"),
             observer: decl.observer,
         });
@@ -266,6 +268,68 @@ fn sign_in_opens_both_interests_and_logout_closes_them() {
     );
     assert!(closed.contains(&nutzap.id));
     assert!(closed.contains(&self_authored.id));
+}
+
+/// #2942 — the nutzap-receipts interest MUST open with `InterestScope::Global`
+/// (`scope == 1`), not `ActiveAccount` (`scope == 0`), or nmp-planner's Case C
+/// cold-start bootstrap-inbox gate
+/// (`nmp-planner/src/compiler/partition/mod.rs`'s `is_bootstrap_inbox_eligible`,
+/// which requires exactly `Tailing + Global + Nip65ReadRelays`) never fires:
+/// a fresh account with no cached kind:10002 gets ZERO relay entries for this
+/// interest and an inbound nutzap sitting on the relay never reaches
+/// `on_wallet_event` — not even as a rejected row (see `runtime.rs`'s module
+/// docs). This mirrors `nmp_nip57`'s own
+/// `interest_shape_matches_planner_bootstrap_gate` test for the exact same
+/// planner requirement on its sibling self-`#p` interest.
+///
+/// Before the fix this interest opened at `scope == 0` (`ActiveAccount`) —
+/// this assertion is RED against that code and GREEN once `runtime.rs` opens
+/// it at `SCOPE_GLOBAL`. `wallet_self_authored_shape` keeps `ActiveAccount`
+/// scope (no `#p` tag, so Case A's unconditional `app_relays`/NIP-65-write
+/// routing applies regardless of scope — see module docs) — asserted here too
+/// so a future regression can't "fix" one interest by breaking the other.
+#[test]
+fn nutzap_receipts_interest_opens_global_scope_for_the_planner_bootstrap_gate() {
+    let selector = Arc::new(WalletBackendSelector::new(Vec::new()));
+    let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
+    let (tx, _rx) = channel();
+    let app = FakeApp::default();
+
+    let _runtime = WalletRuntime::new(selector, Arc::clone(&active_pubkey), tx, &app);
+    *active_pubkey.lock().unwrap() = Some(PK.to_string());
+    app.identity.fire(Some(PK.to_string()));
+
+    let opened = app.observed.opened();
+    let nutzap = opened
+        .iter()
+        .find(|o| o.consumer_id == "nmp.wallet.nutzap_receipts")
+        .expect("nutzap interest must be opened");
+    assert_eq!(
+        nutzap.scope, 1,
+        "nutzap_receipts must open InterestScope::Global (scope=1) so the \
+         planner's Case C cold-start bootstrap-inbox gate can fire; got \
+         scope={} (0 = ActiveAccount, which the gate never fires for)",
+        nutzap.scope
+    );
+    assert_eq!(
+        nutzap.shape.p_tag_routing,
+        PTagRouting::Nip65ReadRelays,
+        "nutzap receipts are public content on the recipient's read inbox, \
+         not private DM relays — the bootstrap gate also requires this \
+         routing mode"
+    );
+
+    let self_authored = opened
+        .iter()
+        .find(|o| o.consumer_id == "nmp.wallet.self_authored")
+        .expect("self-authored interest must be opened");
+    assert_eq!(
+        self_authored.scope, 0,
+        "wallet_self_authored_shape has no #p tag (Case A routing, no \
+         Global-only gate) so it should stay ActiveAccount scope; got \
+         scope={}",
+        self_authored.scope
+    );
 }
 
 #[test]
