@@ -17,8 +17,9 @@ use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot
 use nmp_core::substrate::{
     ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
     IngestParser, IngestParserRegistrar, KernelReaderRegistrar, MailboxCache, OutboxRouter,
-    ProfileLookup, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, RoutingTraceObserver,
+    ProfileLookup, PublishPolicyRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    RoutingTraceObserver,
 };
 use nmp_core::KernelReducer;
 use nmp_coverage_gate::CoverageGate;
@@ -118,7 +119,10 @@ impl SubstrateWiring {
     /// kind:10002 parser writer (see [`Self::mailbox_cache`]).
     pub fn install_on_app_host(
         &self,
-        app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
+        app: &(impl IngestParserRegistrar
+              + KernelReaderRegistrar
+              + PublishPolicyRegistrar
+              + RoutingFactoryRegistrar),
     ) -> Arc<dyn MailboxCache> {
         let mailbox_reader: Arc<dyn MailboxCache> = self.mailbox_cache.clone();
         app.set_mailbox_cache_reader(Arc::clone(&mailbox_reader));
@@ -155,8 +159,12 @@ impl SubstrateWiring {
 
     fn install_reader_parser_pairs(
         &self,
-        app: &(impl IngestParserRegistrar + KernelReaderRegistrar),
+        app: &(impl IngestParserRegistrar + KernelReaderRegistrar + PublishPolicyRegistrar),
     ) {
+        assert!(
+            nmp_nip01::declare_publish_policy(app).is_ok(),
+            "NIP-01 publish policy registration must not collide"
+        );
         let kind10002_parser: Arc<dyn IngestParser> = Arc::new(nmp_router::Kind10002Parser::new(
             Arc::clone(&self.mailbox_cache),
         ));
@@ -185,7 +193,10 @@ impl SubstrateWiring {
 /// installed as the encoder reader, the routing factory cache, and the
 /// kind:10002 parser writer.
 pub fn install_on_app_host(
-    app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
+    app: &(impl IngestParserRegistrar
+          + KernelReaderRegistrar
+          + PublishPolicyRegistrar
+          + RoutingFactoryRegistrar),
 ) -> Arc<dyn MailboxCache> {
     SubstrateWiring::new().install_on_app_host(app)
 }
@@ -210,12 +221,21 @@ pub fn install(
               + CoverageHookRegistrar
               + IngestParserRegistrar
               + KernelReaderRegistrar
+              + PublishPolicyRegistrar
               + RelayConnectedHookRegistrar
               + RelayTextInterceptorRegistrar
               + ReqFrameInterceptorRegistrar
               + RoutingFactoryRegistrar),
     config: SubstrateConfig,
 ) -> SubstrateHandles {
+    assert!(
+        nmp_router::declare_publish_policy(app).is_ok(),
+        "NIP-65 publish policy registration must not collide"
+    );
+    assert!(
+        nmp_nip51::declare_publish_policy(app).is_ok(),
+        "NIP-51 publish policy registration must not collide"
+    );
     nmp_router::register_actions(app);
 
     let mailbox_cache = install_on_app_host(app);

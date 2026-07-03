@@ -80,6 +80,11 @@ pub use engine::{
     PublishQueueTerminal, TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
 };
 pub use fs_store::FsPublishStore;
+pub use policy::PublishPolicyRegistrationError;
+pub(crate) use policy::{
+    register_discovery_indexable_publish_kind, register_discovery_indexable_publish_range,
+    register_reserved_publish_builder,
+};
 pub(crate) use policy::{relay_emit_is_sanctioned, validate_publish_routing};
 // `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The
 // `OutboxResolver` trait stays here (publish-side seam); production

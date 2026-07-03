@@ -64,5 +64,21 @@ pub use publish_relay_list::{
 pub use relay_admission::{PrivateNetworkPolicy, RelayAdmissionPolicy};
 pub use router::GenericOutboxRouter;
 
+pub fn declare_publish_policy(
+    app: &impl nmp_core::substrate::PublishPolicyRegistrar,
+) -> Result<(), nmp_core::publish::PublishPolicyRegistrationError> {
+    app.register_discovery_indexable_publish_kind(nmp_core::kinds::KIND_RELAY_LIST);
+    Ok(())
+}
+
+#[cfg(test)]
+mod publish_policy_tests {
+    #[test]
+    fn registers_relay_list_publish_policy() {
+        crate::declare_publish_policy(&())
+            .expect("NIP-65 relay-list policy registration must be idempotent");
+    }
+}
+
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

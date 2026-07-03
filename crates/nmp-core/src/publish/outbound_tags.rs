@@ -26,6 +26,20 @@ pub(crate) fn finalize_outbound_tags(kind: u32, tags: &mut Vec<Vec<String>>, ker
 mod tests {
     use super::*;
     use crate::kernel::Kernel;
+    use std::sync::Once;
+
+    static REGISTER_OUTBOUND_TAG_POLICIES: Once = Once::new();
+
+    fn register_outbound_tag_policies() {
+        REGISTER_OUTBOUND_TAG_POLICIES.call_once(|| {
+            crate::publish::register_reserved_publish_builder(
+                0,
+                "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+            )
+            .expect("kind:0 policy must register");
+            crate::publish::register_discovery_indexable_publish_kind(10_002);
+        });
+    }
 
     #[test]
     fn appends_on_kind1_public_routable() {
@@ -73,6 +87,7 @@ mod tests {
 
     #[test]
     fn not_appended_on_reserved_profile_0() {
+        register_outbound_tag_policies();
         let mut kernel = Kernel::testing_new(16);
         kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
 
@@ -84,6 +99,7 @@ mod tests {
 
     #[test]
     fn not_appended_on_discovery_10002() {
+        register_outbound_tag_policies();
         let mut kernel = Kernel::testing_new(16);
         kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
 

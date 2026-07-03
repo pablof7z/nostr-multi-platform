@@ -1,8 +1,35 @@
 use super::*;
 use crate::actor::PublishCommand;
 use nmp_signer_iface::UnsignedEvent;
+use std::sync::Once;
+
+static REGISTER_TEST_POLICIES: Once = Once::new();
+
+fn register_test_protocol_policies() {
+    REGISTER_TEST_POLICIES.call_once(|| {
+        crate::publish::register_reserved_publish_builder(
+            0,
+            "use PublishProfile (not PublishRaw) for kind:0 profile updates",
+        )
+        .expect("kind:0 policy must register");
+        crate::publish::register_reserved_publish_builder(
+            3,
+            "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
+             not PublishRaw (the actor owns the follow-list state)",
+        )
+        .expect("kind:3 policy must register");
+        crate::publish::register_reserved_publish_builder(
+            10_003,
+            "kind:10003 bookmark list must be modified via \
+             nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+             (the NIP-51 builder owns the list merge)",
+        )
+        .expect("kind:10003 policy must register");
+    });
+}
 
 fn ctx() -> ActionContext {
+    register_test_protocol_policies();
     ActionContext::default()
 }
 

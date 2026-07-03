@@ -202,6 +202,13 @@ pub(crate) fn register_actions(
     app.register_ingest_parser(10_050, parser);
 }
 
+pub fn declare_publish_policy(
+    app: &impl nmp_core::substrate::PublishPolicyRegistrar,
+) -> Result<(), nmp_core::publish::PublishPolicyRegistrationError> {
+    app.register_discovery_indexable_publish_kind(nmp_kinds::KIND_DM_RELAY_LIST);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,6 +304,11 @@ mod tests {
             rumor.created_at, 0,
             "D7: created_at is the 0 sentinel — the actor re-stamps it"
         );
+    }
+
+    #[test]
+    fn registers_dm_relay_list_publish_policy() {
+        declare_publish_policy(&()).expect("NIP-17 policy registration must be idempotent");
     }
 }
 

@@ -157,3 +157,27 @@ pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,
 };
+
+pub fn declare_publish_policy(
+    app: &impl nmp_core::substrate::PublishPolicyRegistrar,
+) -> Result<(), nmp_core::publish::PublishPolicyRegistrationError> {
+    app.register_reserved_publish_builder(
+        nmp_kinds::KIND_BOOKMARK_LIST,
+        "kind:10003 bookmark list must be modified via \
+         nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
+         (the NIP-51 builder owns the list merge)",
+    )?;
+    app.register_discovery_indexable_publish_range(10_000..=19_999);
+    app.register_discovery_indexable_publish_kind(nmp_kinds::KIND_MUTE_LIST);
+    app.register_discovery_indexable_publish_kind(nmp_kinds::KIND_BOOKMARK_LIST);
+    app.register_discovery_indexable_publish_kind(nmp_kinds::KIND_BLOCKED_RELAYS);
+    Ok(())
+}
+
+#[cfg(test)]
+mod publish_policy_tests {
+    #[test]
+    fn registers_nip51_publish_policy() {
+        crate::declare_publish_policy(&()).expect("NIP-51 policy registration must be idempotent");
+    }
+}

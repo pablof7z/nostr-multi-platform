@@ -5,16 +5,17 @@
 //! Generic publish / outbox routing used to switch on raw NIP **kind literals**
 //! (`if kind == 0`, `if kind == 3`, …) scattered through `publish/action.rs`.
 //! That is the write-side mirror of the ingest-side D0 violation that
-//! ADR-0070 unified: the kernel substrate must not name NIP kind numbers in its
-//! routing logic — the only legal home for a kind→policy mapping is a single
-//! **declared policy table** (the substrate-honest equivalent of the ingest
-//! parser registry).
+//! ADR-0071 unified: the kernel substrate must not name NIP kind numbers in its
+//! routing logic — the only legal home for a kind→policy mapping is this
+//! registrar-backed publish-policy door (the substrate-honest equivalent of
+//! the ingest parser registry).
 //!
-//! This module is that table. [`classify_publish_behavior`] is the ONLY place
+//! This module is that door. [`classify_publish_behavior`] is the ONLY place
 //! in the publish path where a NIP kind number is consulted to decide publish
 //! behaviour; every routing / builder-guard decision elsewhere consults the
 //! returned [`PublishBehavior`] enum instead of re-deriving the policy from a
-//! literal. A regression gate (`policy/tests.rs`) asserts no new raw kind
+//! literal. Protocol crates register their owned public classifications through
+//! [`PublishPolicyRegistrar`](crate::substrate::PublishPolicyRegistrar). A regression gate (`policy/tests.rs`) asserts no new raw kind
 //! literal can drive publish behaviour outside this table.
 //!
 //! # What is NOT classified here (and why)
@@ -36,11 +37,10 @@
 //!   unchanged by this module — this is a refactor of how the policy is
 //!   *expressed*, not a behaviour change.
 
-use crate::kinds::{
-    is_addressable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST, KIND_CHAT_MESSAGE,
-    KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST, KIND_PROFILE_METADATA,
-    KIND_RELAY_LIST,
-};
+use std::ops::RangeInclusive;
+use std::sync::{OnceLock, RwLock};
+
+use crate::kinds::{is_addressable, is_replaceable, KIND_CHAT_MESSAGE, KIND_GIFT_WRAP};
 
 /// Typed behaviour class for a kind on the publish/outbox path.
 ///
@@ -59,7 +59,7 @@ pub(crate) enum PublishBehavior {
     ///
     /// Carries the typed reason the builder owns the kind so the rejection
     /// message is derived from the table, not hand-written per call site.
-    ReservedBuilderOnly(ReservedKind),
+    ReservedBuilderOnly(ReservedBuilderPolicy),
     /// Private / encrypted-envelope event (NIP-59 gift-wrap and the sealed
     /// NIP-17 chat message) that MUST fail closed: it is never routed to
     /// `Auto` / public Content relays — only to a verified recipient-inbox
@@ -78,86 +78,192 @@ pub(crate) enum PublishBehavior {
 
 /// Which dedicated builder reserves a kind, and why a raw publish is refused.
 ///
-/// Each variant maps 1:1 to a `PublishAction` builder variant; the rejection
-/// message is rendered from [`ReservedKind::raw_publish_rejection`] so the
-/// reason lives next to the classification, not inlined at the guard site.
+/// Protocol crates register the rejection message next to the builder/runtime
+/// they own, not inlined at the publish-action guard site.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum ReservedKind {
-    /// kind:0 profile metadata — owned by `PublishAction::PublishProfile`
-    /// (flat-JSON field validation + string-typed content guarantee).
-    Profile,
-    /// kind:3 contact list — owned by `nmp.follow` / `nmp.unfollow`
-    /// (follow-list merge; a raw payload would silently overwrite the follow
-    /// set).
-    Contacts,
-    /// kind:10003 NIP-51 global bookmark list — owned by
-    /// `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`
-    /// (read-modify-write merge; a raw payload would silently overwrite the
-    /// reserved list).
-    Bookmarks,
+pub struct ReservedBuilderPolicy {
+    raw_publish_rejection: &'static str,
 }
 
-impl ReservedKind {
+impl ReservedBuilderPolicy {
+    #[must_use]
+    pub const fn new(raw_publish_rejection: &'static str) -> Self {
+        Self {
+            raw_publish_rejection,
+        }
+    }
+
     /// The rejection message a raw-publish guard surfaces when an app tries to
     /// publish a reserved kind directly. Single source of truth for the
     /// builder-only invariant's wording.
     pub(crate) fn raw_publish_rejection(self) -> String {
-        match self {
-            Self::Profile => {
-                "use PublishProfile (not PublishRaw) for kind:0 profile updates".to_string()
+        self.raw_publish_rejection.to_string()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PublishPolicyRegistrationError {
+    kind: u32,
+    existing: ReservedBuilderPolicy,
+    incoming: ReservedBuilderPolicy,
+}
+
+impl std::fmt::Display for PublishPolicyRegistrationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "publish policy conflict for kind:{}: existing reserved-builder reason {:?}, incoming {:?}",
+            self.kind, self.existing.raw_publish_rejection, self.incoming.raw_publish_rejection
+        )
+    }
+}
+
+impl std::error::Error for PublishPolicyRegistrationError {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct ExactPublishPolicy {
+    kind: u32,
+    reserved_builder: Option<ReservedBuilderPolicy>,
+    discovery_indexable: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PublishPolicyRegistry {
+    exact: Vec<ExactPublishPolicy>,
+    discovery_ranges: Vec<RangeInclusive<u32>>,
+}
+
+impl PublishPolicyRegistry {
+    fn register_reserved_builder(
+        &mut self,
+        kind: u32,
+        policy: ReservedBuilderPolicy,
+    ) -> Result<(), PublishPolicyRegistrationError> {
+        let slot = self.exact_slot(kind);
+        match slot.reserved_builder {
+            Some(existing) if existing != policy => Err(PublishPolicyRegistrationError {
+                kind,
+                existing,
+                incoming: policy,
+            }),
+            Some(_) => Ok(()),
+            None => {
+                slot.reserved_builder = Some(policy);
+                Ok(())
             }
-            Self::Contacts => {
-                "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
-                 not PublishRaw (the actor owns the follow-list state)"
-                    .to_string()
-            }
-            Self::Bookmarks => "kind:10003 bookmark list must be modified via \
-                 nmp.nip51.add_bookmark / nmp.nip51.remove_bookmark, not PublishRaw \
-                 (the NIP-51 builder owns the list merge)"
-                .to_string(),
         }
+    }
+
+    fn register_discovery_kind(&mut self, kind: u32) {
+        self.exact_slot(kind).discovery_indexable = true;
+    }
+
+    fn register_discovery_range(&mut self, range: RangeInclusive<u32>) {
+        if !self
+            .discovery_ranges
+            .iter()
+            .any(|existing| existing == &range)
+        {
+            self.discovery_ranges.push(range);
+        }
+    }
+
+    fn exact_slot(&mut self, kind: u32) -> &mut ExactPublishPolicy {
+        if let Some(index) = self.exact.iter().position(|entry| entry.kind == kind) {
+            return &mut self.exact[index];
+        }
+        self.exact.push(ExactPublishPolicy {
+            kind,
+            reserved_builder: None,
+            discovery_indexable: false,
+        });
+        let index = self.exact.len() - 1;
+        &mut self.exact[index]
+    }
+
+    fn reserved_builder(&self, kind: u32) -> Option<ReservedBuilderPolicy> {
+        self.exact
+            .iter()
+            .find(|entry| entry.kind == kind)
+            .and_then(|entry| entry.reserved_builder)
+    }
+
+    fn is_discovery_indexable(&self, kind: u32) -> bool {
+        self.exact
+            .iter()
+            .any(|entry| entry.kind == kind && entry.discovery_indexable)
+            || self
+                .discovery_ranges
+                .iter()
+                .any(|range| range.contains(&kind))
+    }
+}
+
+static PUBLISH_POLICY_REGISTRY: OnceLock<RwLock<PublishPolicyRegistry>> = OnceLock::new(); // doctrine-allow: D21 - process-wide protocol facts only; no app handles/runtimes/secrets; D10 private fail-closed is hardcoded when registration is absent.
+
+fn registry() -> &'static RwLock<PublishPolicyRegistry> {
+    PUBLISH_POLICY_REGISTRY.get_or_init(|| RwLock::new(PublishPolicyRegistry::default()))
+}
+
+pub fn register_reserved_publish_builder(
+    kind: u32,
+    raw_publish_rejection: &'static str,
+) -> Result<(), PublishPolicyRegistrationError> {
+    registry()
+        .write()
+        .map(|mut registry| {
+            registry
+                .register_reserved_builder(kind, ReservedBuilderPolicy::new(raw_publish_rejection))
+        })
+        .unwrap_or(Ok(()))
+}
+
+pub fn register_discovery_indexable_publish_kind(kind: u32) {
+    if let Ok(mut registry) = registry().write() {
+        registry.register_discovery_kind(kind);
+    }
+}
+
+pub fn register_discovery_indexable_publish_range(range: RangeInclusive<u32>) {
+    if let Ok(mut registry) = registry().write() {
+        registry.register_discovery_range(range);
     }
 }
 
 /// Classify an event kind into its [`PublishBehavior`]. **The single door** for
 /// kind→publish-policy on the write path: every routing / builder-guard
 /// decision consults this, and this is the only function permitted to compare a
-/// publish kind against a named kind constant.
+/// publish kind against a named kind constant or registered protocol policy.
 ///
-/// Most-specific-first: reserved-builder kinds, then private envelopes, then
-/// discovery-indexable replaceables, then the public-routable default.
+/// Most-specific-first: hardcoded private envelopes, then registered
+/// reserved-builder kinds, then registered discovery-indexable replaceables,
+/// then the public-routable default.
 pub(crate) fn classify_publish_behavior(kind: u32) -> PublishBehavior {
-    // 1. Reserved replaceables — a raw app publish is refused so the typed
-    //    builder's protocol processing cannot be bypassed.
-    if kind == KIND_PROFILE_METADATA {
-        return PublishBehavior::ReservedBuilderOnly(ReservedKind::Profile);
-    }
-    if kind == KIND_CONTACT_LIST {
-        return PublishBehavior::ReservedBuilderOnly(ReservedKind::Contacts);
-    }
-    if kind == KIND_BOOKMARK_LIST {
-        return PublishBehavior::ReservedBuilderOnly(ReservedKind::Bookmarks);
-    }
-
-    // 2. Private / encrypted envelopes — fail closed (Explicit-only, D10).
-    //    kind:14 (sealed NIP-17 chat message) and kind:1059 (gift-wrap) are the
+    // 1. Private / encrypted envelopes — fail closed (Explicit-only, D10).
+    //    This security classification is intentionally hardcoded in core, not
+    //    delegated to protocol registration: missing or late composition must
+    //    never downgrade a private envelope into PublicRoutable. kind:14
+    //    (sealed NIP-17 chat message) and kind:1059 (gift-wrap) are the
     //    private envelope kinds the workspace writes; they never route to
     //    public relays via Auto.
     if kind == KIND_GIFT_WRAP || kind == KIND_CHAT_MESSAGE {
         return PublishBehavior::PrivateFailClosed;
     }
 
-    // 3. Discovery-indexable replaceables — relay lists / mute / blocked-relay
-    //    lists and other NIP-51 replaceables (10000–19999) the resolver also
-    //    fans out to indexers. (kind:0 / kind:3 are discovery kinds too but are
-    //    already classified ReservedBuilderOnly above — the reserved-builder
-    //    invariant is the stricter, governing class for them.)
-    if kind == KIND_RELAY_LIST
-        || kind == KIND_DM_RELAY_LIST
-        || kind == KIND_MUTE_LIST
-        || kind == KIND_BLOCKED_RELAYS
-        || (10_000..=19_999).contains(&kind)
-    {
+    let Ok(registry) = registry().read() else {
+        return PublishBehavior::PublicRoutable;
+    };
+
+    // 2. Reserved replaceables — a raw app publish is refused so the typed
+    //    builder's protocol processing cannot be bypassed. Protocol crates own
+    //    these registrations because the reason is protocol-specific.
+    if let Some(policy) = registry.reserved_builder(kind) {
+        return PublishBehavior::ReservedBuilderOnly(policy);
+    }
+
+    // 3. Discovery-indexable replaceables — protocol crates declare which of
+    //    their public kinds the resolver may also fan out to indexers.
+    if registry.is_discovery_indexable(kind) {
         return PublishBehavior::DiscoveryIndexable;
     }
 
@@ -176,7 +282,7 @@ impl PublishBehavior {
     /// `true` when a raw app publish (`PublishRaw`) of this kind must be
     /// rejected in favour of a dedicated typed builder. Returns the typed
     /// reason so the guard renders its message from the table.
-    pub(crate) fn reserved_builder(self) -> Option<ReservedKind> {
+    pub(crate) fn reserved_builder(self) -> Option<ReservedBuilderPolicy> {
         match self {
             Self::ReservedBuilderOnly(reserved) => Some(reserved),
             _ => None,
