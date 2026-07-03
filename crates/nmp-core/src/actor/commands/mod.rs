@@ -128,7 +128,8 @@ mod tests;
 #[cfg(feature = "native")]
 pub(super) use identity::{
     add_signer, bunker_connection_state_changed, bunker_handshake_progress, create_account,
-    remove_account, restore_bunker_session, restore_nip55_session, switch_active, IdentityRuntime,
+    remove_account, restore_bunker_session, restore_nip55_session, switch_active, sync_kernel,
+    IdentityRuntime,
 };
 // ADR-0072 D6: the NIP-55 writer into the shared `signer_state` slot, driven
 // by the `ActorCommand::Nip55SignerStateChanged` dispatch arm (Stage 2 —

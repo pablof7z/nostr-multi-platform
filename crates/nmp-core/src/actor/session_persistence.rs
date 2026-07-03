@@ -58,7 +58,10 @@ pub(super) fn restore_active_session(
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
     restore_app_managed_local_signers(identity, kernel, capability_callback, capability_work_tx);
-    if identity.active_pubkey().is_some() {
+    if let Some(active) = identity.active_pubkey() {
+        if kernel.active_account_pubkey() != Some(active.as_str()) {
+            commands::sync_kernel(identity, kernel);
+        }
         return Vec::new();
     }
     let active_kind = run_keyring(
