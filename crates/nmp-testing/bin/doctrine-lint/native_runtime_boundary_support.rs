@@ -132,6 +132,48 @@ pub(super) fn composition_findings(line: &str) -> Vec<&'static str> {
         .collect()
 }
 
+pub(super) fn misplaced_concept_open_doorway_findings() -> Vec<String> {
+    const CONCEPT_OPEN_DOORS: &[(&str, &str)] = &[
+        ("open_search", "nmp-nip50"),
+        ("open_nip29", "nmp-nip29"),
+        ("open_nip25", "nmp-reactions"),
+        ("open_reactions", "nmp-reactions"),
+        ("open_replies", "nmp-replies"),
+        ("open_reposts", "nmp-reposts"),
+        ("open_zaps", "nmp-zaps"),
+    ];
+
+    let (root, files) = crate_native_rs_files();
+    let mut findings = Vec::new();
+    for path in files {
+        if is_test_source_path(&path) {
+            continue;
+        }
+        let Some(crate_name) = crate_name_for_path(&path) else {
+            continue;
+        };
+        let body = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        for (line_no, live) in rust_live_lines(&body).into_iter().enumerate() {
+            let Some(fn_name) = open_function_name(&live) else {
+                continue;
+            };
+            for (prefix, owner) in CONCEPT_OPEN_DOORS {
+                if (fn_name == *prefix || fn_name.starts_with(&format!("{prefix}_")))
+                    && crate_name != *owner
+                {
+                    findings.push(format!(
+                        "{}:{} `{fn_name}` must live in `{owner}`, not `{crate_name}`",
+                        relative_to(&root, &path).display(),
+                        line_no + 1
+                    ));
+                }
+            }
+        }
+    }
+    findings
+}
+
 pub(super) fn exported_native_nmp_symbol(line: &str) -> Option<&str> {
     if !line.contains("extern \"C\"") {
         return None;
@@ -167,6 +209,48 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+fn crate_name_for_path(path: &Path) -> Option<&str> {
+    let mut components = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str());
+    while let Some(component) = components.next() {
+        if component == "crates" {
+            return components.next();
+        }
+    }
+    None
+}
+
+fn is_test_source_path(path: &Path) -> bool {
+    path.components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .any(|component| component == "tests")
+        || path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| {
+                name == "tests.rs" || name.ends_with("_tests.rs") || name.starts_with("tests_")
+            })
+}
+
+fn open_function_name(line: &str) -> Option<&str> {
+    let mut live = line.trim_start();
+    for prefix in ["pub(crate) ", "pub(super) ", "pub "] {
+        if let Some(rest) = live.strip_prefix(prefix) {
+            live = rest;
+            break;
+        }
+    }
+    if let Some(rest) = live.strip_prefix("async ") {
+        live = rest;
+    }
+    let name = live.strip_prefix("fn open_")?;
+    name.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .next()
+        .filter(|name| !name.is_empty())
+        .map(|suffix| &line[line.find("open_").expect("prefix checked")..][..suffix.len() + 5])
 }
 
 fn strip_rust_comments(line: &str, in_block: &mut bool) -> String {

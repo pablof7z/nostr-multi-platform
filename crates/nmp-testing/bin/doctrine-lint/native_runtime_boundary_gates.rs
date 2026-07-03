@@ -24,7 +24,7 @@ mod support;
 use support::{
     allowed_native_nmp_symbols, cargo_metadata, composition_findings, crate_native_rs_files,
     exported_native_nmp_symbol, forbidden_platform_dep_findings, is_nmp_ffi_export_source,
-    lower_layer_crates, relative_to, rust_live_lines,
+    lower_layer_crates, misplaced_concept_open_doorway_findings, relative_to, rust_live_lines,
 };
 
 #[test]
@@ -229,6 +229,19 @@ fn nmp_native_runtime_does_not_reexport_raw_observed_projection_doors() {
          executor doors as app-facing API; typed sessions and feature handles \
          own app reads:\n{}",
         violations.join("\n")
+    );
+}
+
+#[test]
+fn concept_open_doorways_are_defined_by_concept_crates() {
+    let findings = misplaced_concept_open_doorway_findings();
+
+    assert!(
+        findings.is_empty(),
+        "#2797: concept open doorways must be defined by the concept crate; \
+         runtimes may implement generic host seams but must not define \
+         `open_<concept>` symbols:\n{}",
+        findings.join("\n")
     );
 }
 
