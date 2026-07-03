@@ -223,20 +223,33 @@ pub(super) fn partition_interest(
     // Case C: #p tag values → Inbox (tagged pubkey's read relays).
     if !p_tag_values.is_empty() {
         // PD-033-C planner extension (Stage 2 precursor): the
-        // `Tailing + Global + #p (Nip65ReadRelays)` interest shape — with
-        // EVERY tagged pubkey lacking a cached NIP-65 inbox — routes to
-        // `bootstrap_content_relays` BEFORE the normal Case C body. This is
-        // the cold-start fallback any host-driven `Tailing + Global +
+        // `Tailing + (Global | ActiveAccount) + #p (Nip65ReadRelays)` interest
+        // shape — with EVERY tagged pubkey lacking a cached NIP-65 inbox —
+        // routes to `bootstrap_content_relays` BEFORE the normal Case C body.
+        // This is the cold-start fallback any host-driven `Tailing +
         // Nip65ReadRelays + #p` subscription relies on so events keep flowing
         // until the active account's kind:10002 lands. Without it, every such
-        // interest would silently lose its REQ on cold-start sign-ins. NIP-17
-        // DM routing (`p_tag_routing == Nip17DmRelays`) is intentionally
-        // excluded: those subscriptions carry gift-wrapped private DMs and
-        // MUST stay fail-closed when DM relays are unknown — diverting them
-        // to a bootstrap content relay would leak gift-wraps to a non-DM
-        // relay.
+        // interest would silently lose its REQ on cold-start sign-ins (#2942:
+        // exactly this, for an `ActiveAccount`-scoped wallet interest, before
+        // `ActiveAccount` was added to this gate).
+        //
+        // `Global` and `ActiveAccount` are both eligible: both describe the
+        // VIEWER'S OWN account context (no other party's data is at risk of
+        // leaking onto the shared bootstrap relay). `InterestScope::Account(x)`
+        // — a SPECIFIC, possibly-other, account context — is deliberately
+        // EXCLUDED: diverting a third party's inbox interest to the viewer's
+        // own bootstrap content relay would mix multi-account contexts on one
+        // relay (see `pd033c_p_tag_account_scoped_does_not_trigger_gate`).
+        // NIP-17 DM routing (`p_tag_routing == Nip17DmRelays`) is also
+        // intentionally excluded regardless of scope: those subscriptions
+        // carry gift-wrapped private DMs and MUST stay fail-closed when DM
+        // relays are unknown — diverting them to a bootstrap content relay
+        // would leak gift-wraps to a non-DM relay.
         let is_bootstrap_inbox_eligible = matches!(interest.lifecycle, InterestLifecycle::Tailing)
-            && matches!(interest.scope, InterestScope::Global)
+            && matches!(
+                interest.scope,
+                InterestScope::Global | InterestScope::ActiveAccount
+            )
             && matches!(interest.shape.p_tag_routing, PTagRouting::Nip65ReadRelays)
             && !bootstrap_content_relays.is_empty()
             && case_c_p_tags::every_tagged_pubkey_lacks_nip65_inbox(&p_tag_values, mailbox_cache);

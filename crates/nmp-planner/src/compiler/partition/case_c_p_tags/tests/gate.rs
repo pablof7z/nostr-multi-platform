@@ -61,6 +61,57 @@ fn pd033c_p_tag_tailing_global_no_inbox_routes_to_bootstrap_content() {
     assert!(!plan.per_relay.contains_key("wss://user-app.example"));
 }
 
+/// #2942 — the same headline routing decision, but `ActiveAccount`-scoped
+/// instead of `Global`. Before `ActiveAccount` was added to the gate's scope
+/// match, a `Tailing + ActiveAccount + #p (Nip65ReadRelays)` interest (e.g.
+/// nmp-wallet's NIP-61 nutzap-receipts subscription) fell straight through to
+/// the fail-closed Case C body and got ZERO relay entries on cold start — an
+/// inbound event sitting on the relay never reached the observer at all.
+/// `ActiveAccount` and `Global` both describe the viewer's OWN account
+/// context (unlike `Account(x)`, a specific — possibly other — account,
+/// which stays excluded; see
+/// `pd033c_p_tag_account_scoped_does_not_trigger_gate` below), so both are
+/// eligible for the same cold-start bootstrap lane.
+#[test]
+fn pd033c_p_tag_tailing_active_account_no_inbox_routes_to_bootstrap_content() {
+    let cache = InMemoryMailboxCache::new();
+    let bootstrap_content = vec!["wss://relay.primal.net".to_string()];
+    let indexer = vec!["wss://purplepag.es".to_string()];
+    let aar = vec!["wss://user-read.example".to_string()];
+    let app = vec!["wss://user-app.example".to_string()];
+    let compiler = SubscriptionCompiler::with_relays_and_bootstrap(
+        &cache,
+        &indexer,
+        &aar,
+        &app,
+        &bootstrap_content,
+        /* bootstrap_indexer = */ &[],
+    );
+
+    let interest = p_tag_interest(
+        1,
+        &["self"],
+        PTagRouting::Nip65ReadRelays,
+        InterestLifecycle::Tailing,
+        InterestScope::ActiveAccount,
+    );
+
+    let plan = compiler.compile(&[interest]).expect("compile");
+
+    let landed = plan
+        .per_relay
+        .get("wss://relay.primal.net")
+        .expect("bootstrap content relay must carry the #p Tailing REQ");
+    assert!(
+        landed.role_tags.contains(&RoutingSource::UserConfigured(
+            UserConfiguredCategory::Bootstrap
+        )),
+        "bootstrap content lane must be recorded; got role_tags = {:?}",
+        landed.role_tags
+    );
+    assert_eq!(plan.per_relay.len(), 1);
+}
+
 /// Once kind:10002 arrives for the tagged pubkey, the next recompile re-
 /// routes off the bootstrap content lane onto the real inbox relays. This
 /// is the load-bearing transition that proves the gate is dynamic — a

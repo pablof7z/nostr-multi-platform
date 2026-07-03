@@ -165,6 +165,82 @@ fn missing_privkey_fails_closed() {
     expect_error_code(&errors, ui_codes::NO_CASHU_WALLET);
 }
 
+/// #2942 — the OBSERVER path (`CashuWalletBackend::on_wallet_event`, called
+/// exactly this way by `WalletRuntime`'s `WalletEventSink::on_kernel_event` in
+/// production — see `runtime.rs`) must dispatch the same `RedeemNutzapCommand`
+/// the explicit `nmp.wallet.nutzap.redeem` action reaches, for an inbound
+/// `#p`=self kind:9321 the runtime's reconciler observes. Before #2942's fix
+/// this path never ran at all for a fresh account (the nutzap-receipts
+/// interest opened at the wrong routing scope and got zero relay entries —
+/// see `runtime.rs`'s module docs); this test proves that once the event DOES
+/// reach the sink (live delivery, or a backfill/EOSE replay — both funnel
+/// through the same `ObservedProjectionSink::on_kernel_event` call), a
+/// deliberately-unverifiable nutzap (untrusted mint) lands at `Failed` in the
+/// journal — visibly rejected, never silently absent — matching the design
+/// doc's "Observer counting: unverifiable nutzaps may be shown as
+/// rejected/ignored state, not counted as value"
+/// (`docs/architecture/nip60-nip61-wallet-design.md`).
+#[test]
+fn on_wallet_event_dispatches_redeem_and_a_deliberately_unverifiable_nutzap_lands_failed() {
+    let backend = backend_with_mint();
+    let sender = nostr::Keys::generate();
+    let proofs = vec![locked_proof(21, "02aa", "unused-lock-target")];
+    let event = nutzap_kernel_event(
+        &sender,
+        proofs,
+        "https://untrusted-mint.example",
+        ACCOUNT,
+        None,
+        None,
+        1_699_999_500,
+    );
+    let event_id = event.id.clone();
+
+    // The exact call `WalletEventSink::on_kernel_event` makes in production
+    // (runtime.rs) — NOT `start_intent(RedeemNutzap)`, which is the
+    // explicit-action path the other tests in this file exercise.
+    let commands = backend.on_wallet_event(ctx(Some(ACCOUNT)), &event);
+    let ActorCommand::Protocol(cmd) = commands
+        .into_iter()
+        .next()
+        .expect("on_wallet_event must dispatch a RedeemNutzapCommand for a #p=self kind:9321")
+    else {
+        panic!("expected a Protocol command");
+    };
+
+    let sink = Sink::new();
+    let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
+    let clock = FixedClock(1_700_000_000);
+    let recipients = FixedRecipientLookup(vec!["wss://my-relay.example".to_string()]);
+    let errors = RecordingErrorSurface::default();
+    let (worker_tx, _worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
+    let cached = FixedCachedEvents(vec![event]);
+    {
+        let mut c = ctx_with_cached_events_and_errors(
+            &send,
+            nmp_core::CommandSender::new(worker_tx),
+            &clock,
+            &recipients,
+            &cached,
+            &errors,
+        );
+        cmd.run(&mut c).expect("run returns Ok");
+    }
+    expect_error_code(&errors, ui_codes::NO_TRUSTED_MINT);
+
+    let operation_id = super::super::nutzap_dispatch::redeem_operation_id(&event_id);
+    let state = lock_state(&backend.state);
+    let operation = state.journal.get(&operation_id).expect(
+        "the observer-dispatched operation must be recorded in the journal — never \
+         silently absent, even for a rejected nutzap",
+    );
+    assert_eq!(
+        operation.state,
+        crate::journal::WalletOperationState::Failed,
+        "a deliberately-unverifiable (untrusted mint) nutzap must land Failed, not vanish"
+    );
+}
+
 /// Redeeming the SAME event twice — once already folded as `NutzapRedeemed`
 /// — must fail closed on the second attempt rather than double-count.
 #[test]
