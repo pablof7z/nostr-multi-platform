@@ -19,11 +19,11 @@ use std::sync::Arc;
 use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, DraftBuilderRegistrar, HostCapabilities, IdentityChangeRegistrar,
-    IncrementalApplyError, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
-    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    DmInboxRelayRegistrar, DraftBuilderRegistrar, ExternalIdValidatorRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar, InputScopeRegistrar,
+    KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{AppRelaySlot, CommandSender, ObservedProjectionId, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
@@ -304,6 +304,16 @@ impl<S> DraftBuilderRegistrar for BrowserAppBuilder<S> {
     ) {
         let Ok(g) = self.inner.lock() else { return };
         g.draft_builders.register(kind, builder);
+    }
+}
+
+impl<S> ExternalIdValidatorRegistrar for BrowserAppBuilder<S> {
+    fn set_external_id_validator(
+        &self,
+        validator: Arc<dyn nmp_core::substrate::ExternalIdValidator>,
+    ) {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.external_id_validator = Some(validator);
     }
 }
 

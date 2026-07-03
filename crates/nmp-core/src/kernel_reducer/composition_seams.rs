@@ -361,6 +361,14 @@ impl super::KernelReducer {
         self.kernel.set_contact_list_reader(reader);
     }
 
+    /// Install the protocol-owned external-id validator.
+    pub fn set_external_id_validator(
+        &mut self,
+        validator: Arc<dyn crate::substrate::ExternalIdValidator>,
+    ) {
+        self.kernel.set_external_id_validator(validator);
+    }
+
     /// Register a post-store ingest parser against the wrapped kernel.
     ///
     /// Mirrors `NmpApp::register_ingest_parser` for reducer-owned wasm

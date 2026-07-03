@@ -15,10 +15,10 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, DraftBuilderRegistrar, HostCapabilities, IdentityChangeRegistrar,
-    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    DmInboxRelayRegistrar, DraftBuilderRegistrar, ExternalIdValidatorRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_ownership::ProjectionRegistrationKey;
 
@@ -168,6 +168,15 @@ impl DraftBuilderRegistrar for NmpApp {
         builder: Arc<dyn nmp_core::substrate::DraftBuilder>,
     ) {
         self.composition.draft_builders.register(kind, builder);
+    }
+}
+
+impl ExternalIdValidatorRegistrar for NmpApp {
+    fn set_external_id_validator(
+        &self,
+        validator: Arc<dyn nmp_core::substrate::ExternalIdValidator>,
+    ) {
+        NmpApp::set_external_id_validator(self, validator);
     }
 }
 

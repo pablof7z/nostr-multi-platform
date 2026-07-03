@@ -13,8 +13,8 @@ use crate::slots::{
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
-    BlockedRelayLookup, DmInboxRelayLookup, EventIngestDispatcher, HostOpHandler,
-    HostOpHandlerSlot, ProfileLookup, RelayConnectedHook, RelayConnectedHookSlot,
+    BlockedRelayLookup, DmInboxRelayLookup, EventIngestDispatcher, ExternalIdValidator,
+    HostOpHandler, HostOpHandlerSlot, ProfileLookup, RelayConnectedHook, RelayConnectedHookSlot,
     RelayTextInterceptor, RelayTextInterceptorSlot, ReqFrameInterceptor, ReqFrameInterceptorSlot,
     SearchScopeRegistry,
 };
@@ -70,6 +70,7 @@ pub struct ActorConfigSources {
     pub contact_list_reader: ContactListReaderSlot,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
     pub blocked_relays: Arc<Mutex<Arc<dyn BlockedRelayLookup>>>,
+    pub external_id_validator: Arc<Mutex<Option<Arc<dyn ExternalIdValidator>>>>,
     pub bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
     pub routing_substrate: RoutingSubstrateSlot,
     pub publish_resolver: PublishResolverSlot,
@@ -144,6 +145,11 @@ impl ActorConfigSources {
                 .lock()
                 .map(|guard| Arc::clone(&*guard))
                 .unwrap_or_else(|_| crate::substrate::empty_blocked_relay_lookup()),
+            external_id_validator: self
+                .external_id_validator
+                .lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().map(Arc::clone)),
             bootstrap_self_kinds: self.bootstrap_self_kinds.lock().ok().and_then(|guard| {
                 guard
                     .as_ref()
@@ -202,6 +208,7 @@ pub struct ActorConfig {
     pub contact_list_reader: Arc<dyn ContactListReader>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
     pub blocked_relays: Arc<dyn BlockedRelayLookup>,
+    pub external_id_validator: Option<Arc<dyn ExternalIdValidator>>,
     pub bootstrap_self_kinds: Option<Vec<u32>>,
     pub routing_substrate: Option<Arc<RoutingSubstrateFactory>>,
     pub publish_resolver: Option<Arc<PublishResolverFactory>>,
@@ -280,6 +287,9 @@ impl ActorConfig {
         kernel.set_contact_list_reader(Arc::clone(&self.contact_list_reader));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));
         kernel.set_blocked_relay_lookup(Arc::clone(&self.blocked_relays));
+        if let Some(validator) = &self.external_id_validator {
+            kernel.set_external_id_validator(Arc::clone(validator));
+        }
         kernel.set_bootstrap_self_kinds_override(self.bootstrap_self_kinds.clone());
         kernel.set_outbound_public_tags(self.outbound_public_tags.clone());
         if let Some(hook) = &self.coverage_hook {

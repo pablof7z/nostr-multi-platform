@@ -164,7 +164,7 @@ impl Kernel {
         // NIP-73 external ref `i:<external-id>` (#1654): cached iff any event in
         // the in-memory timeline carries a matching `["i", <external-id>]` tag.
         // The store-side equivalent lives in `views.rs::lookup_for_primary_id`.
-        if let Some(external_id) = external_id_from_key(primary_id) {
+        if let Some(external_id) = external_id_from_key(primary_id, self.external_id_validator()) {
             return self.events.values().any(|e| {
                 e.tags
                     .iter()
@@ -220,7 +220,9 @@ impl Kernel {
             // ran. `release_event_ref` already removes the parked stake on release
             // (`remove_parked_event_claim`); this is the belt-and-suspenders guard
             // so the drain can never resurrect a key whose refcount row is gone.
-            if let Some(primary_id) = parked_event_primary_id(&claim.key) {
+            if let Some(primary_id) =
+                parked_event_primary_id(&claim.key, self.external_id_validator())
+            {
                 let still_claimed = self
                     .event_claims
                     .get(&primary_id)
@@ -268,6 +270,10 @@ impl Kernel {
         primary_id: &str,
         consumer_id: &str,
     ) {
+        let external_id_validator = self
+            .external_id_validator
+            .as_ref()
+            .map(std::sync::Arc::clone);
         self.pending_event_claims.retain(|claim| {
             if claim.consumer_id != consumer_id {
                 return true;
@@ -275,7 +281,8 @@ impl Kernel {
             // Keep entries whose raw key resolves to a DIFFERENT primary_id. A
             // malformed parked key can never have produced this `primary_id`, so
             // keep it.
-            parked_event_primary_id(&claim.key).as_deref() != Some(primary_id)
+            parked_event_primary_id(&claim.key, external_id_validator.as_deref()).as_deref()
+                != Some(primary_id)
         });
     }
 
@@ -352,8 +359,11 @@ impl Kernel {
 /// `parse_event_key` parser (single path) so the derivation MUST match
 /// `resolve_event_ref` / `release_event_ref` exactly and a release reliably
 /// finds the stake its claim parked.
-fn parked_event_primary_id(key: &str) -> Option<String> {
-    super::event_key::parse_event_key(key).map(|t| t.primary_id)
+fn parked_event_primary_id(
+    key: &str,
+    validator: Option<&dyn crate::substrate::ExternalIdValidator>,
+) -> Option<String> {
+    super::event_key::parse_event_key(key, validator).map(|t| t.primary_id)
 }
 
 /// `true` when `s` is exactly 64 lowercase hex chars (a canonical event-id).

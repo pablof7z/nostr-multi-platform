@@ -54,6 +54,7 @@ mod dm_inbox_relays;
 mod draft_builder;
 mod empty_routing;
 pub mod external_event_sink;
+mod external_id;
 mod host_op;
 mod host_op_handler;
 mod identity;
@@ -91,8 +92,8 @@ pub use action_context::{
 };
 pub use app_host::{
     AppHost, BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
-    IngestParserRegistrar, KernelReaderRegistrar, ObservedProjection,
+    DmInboxRelayRegistrar, ExternalIdValidatorRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar, ObservedProjection,
     ObservedProjectionCommandHandle, ObservedProjectionRegistrar, ObservedProjectionSessionMap,
     PreferredRelaySource, PublishPolicyRegistrar, RelayConnectedHookRegistrar,
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
@@ -116,6 +117,7 @@ pub use draft_builder::{
     DraftBuildContext, DraftBuildError, DraftBuilder, DraftBuilderRegistrar, DraftBuilderRegistry,
     DraftIntent, DraftIntentKind,
 };
+pub use external_id::ExternalIdValidator;
 pub use intent::{
     InputIntentCandidate, InputIntentClassification, InputIntentRejection, InputIntentRequest,
     InputIntentTarget, InputScopeDisposition, InputScopeId, InputScopeRecognizer,

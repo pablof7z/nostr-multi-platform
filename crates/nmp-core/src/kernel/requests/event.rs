@@ -148,7 +148,7 @@ impl Kernel {
             replaceable_coord,
             filter,
             author: derived_author,
-        }) = parse_event_key(&key)
+        }) = parse_event_key(&key, self.external_id_validator())
         else {
             self.log(format!(
                 "resolve_event_ref: ignoring malformed key {}",
@@ -367,7 +367,9 @@ impl Kernel {
     ) -> Vec<OutboundMessage> {
         // D6: a malformed raw key parses to `None` — a release of a never-valid
         // key is a silent no-op (it never created a claim row).
-        let Some(EventTarget { primary_id, .. }) = parse_event_key(key) else {
+        let Some(EventTarget { primary_id, .. }) =
+            parse_event_key(key, self.external_id_validator())
+        else {
             self.log(format!(
                 "release_event_ref: ignoring malformed key {}",
                 truncate(key, 80)

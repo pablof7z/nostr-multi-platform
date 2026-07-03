@@ -64,6 +64,7 @@ pub fn spawn_test_actor(
         contact_list_reader: crate::slots::new_contact_list_reader_slot(),
         profile_lookup: Arc::new(Mutex::new(profile_lookup)),
         blocked_relays: Arc::new(Mutex::new(crate::substrate::empty_blocked_relay_lookup())),
+        external_id_validator: Arc::new(Mutex::new(None)),
         bootstrap_self_kinds: Arc::new(Mutex::new(None)),
         routing_substrate: crate::slots::new_routing_substrate_slot(),
         publish_resolver: crate::slots::new_publish_resolver_slot(),

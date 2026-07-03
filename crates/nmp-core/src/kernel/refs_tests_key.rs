@@ -1,5 +1,5 @@
-//! ADR-0070 (#1671 Lane D) — raw event-key parse coverage for the `resolve_ref`
-//! Event seam. The FFI/JNI contract documents the event `key` as a raw 64-char
+//! Raw event-key parse coverage for the `resolve_ref` Event seam.
+//! The FFI/JNI contract documents the event `key` as a raw 64-char
 //! LOWERCASE hex event-id OR a `kind:pubkey:d` coordinate — NOT a `nostr:`/NIP-21
 //! URI. The original Lane D bug parsed the key as a URI, so a host passing the
 //! documented raw key hit a swallowed parse error (D6) and blank-avatared. These
@@ -10,8 +10,10 @@
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
 use super::requests::parse_event_key;
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::substrate::ExternalIdValidator;
 use nmp_network::role::RelayRole;
+use std::sync::Arc;
 
 /// Mirror of the interest-inspection helper in `refs_tests_event.rs` — collect
 /// every active registry interest that addresses the addressable coordinate
@@ -45,6 +47,39 @@ fn hex64(prefix: &str) -> String {
 /// The canonical raw `kind:pubkey:d` coordinate key (ADR-0070 / FFI contract).
 fn coord_key(kind: u32, author: &str, d_tag: &str) -> String {
     format!("{kind}:{author}:{d_tag}")
+}
+
+struct AcceptExternalIdValidator;
+
+impl ExternalIdValidator for AcceptExternalIdValidator {
+    fn is_valid_external_id(&self, _external_id: &str) -> bool {
+        true
+    }
+}
+
+struct RejectExternalIdValidator;
+
+impl ExternalIdValidator for RejectExternalIdValidator {
+    fn is_valid_external_id(&self, _external_id: &str) -> bool {
+        false
+    }
+}
+
+static ACCEPT_EXTERNAL_IDS: AcceptExternalIdValidator = AcceptExternalIdValidator;
+static REJECT_EXTERNAL_IDS: RejectExternalIdValidator = RejectExternalIdValidator;
+
+fn accepting_validator() -> Option<&'static dyn ExternalIdValidator> {
+    Some(&ACCEPT_EXTERNAL_IDS)
+}
+
+fn rejecting_validator() -> Option<&'static dyn ExternalIdValidator> {
+    Some(&REJECT_EXTERNAL_IDS)
+}
+
+fn kernel_with_accepting_external_ids() -> Kernel {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_external_id_validator(Arc::new(AcceptExternalIdValidator));
+    kernel
 }
 
 /// Resolve a malformed raw Event key and assert it failed closed: no refcount
@@ -201,7 +236,7 @@ fn assert_coord_key_accepted(
     expected_d: &str,
 ) {
     // Parse-level assertion: the key must round-trip to the expected coord fields.
-    let target = parse_event_key(key).unwrap_or_else(|| {
+    let target = parse_event_key(key, None).unwrap_or_else(|| {
         panic!("coord key {key:?} was rejected by parse_event_key — expected acceptance")
     });
     let (kind, pubkey, d_tag) = target
@@ -296,7 +331,7 @@ fn external_ref_key_resolves_with_i_tag_filter() {
     let external_id = "podcast:item:guid:e1d2c3b4-0000-0000-0000-aaaabbbbcccc";
     let key = format!("i:{external_id}");
 
-    let target = parse_event_key(&key)
+    let target = parse_event_key(&key, accepting_validator())
         .unwrap_or_else(|| panic!("external-ref key {key:?} must parse, got None"));
     assert_eq!(
         target.primary_id, key,
@@ -323,7 +358,7 @@ fn external_ref_key_resolves_with_i_tag_filter() {
     );
 
     // Kernel-level: resolve_ref records a claim row keyed by the full `i:` form.
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_accepting_external_ids();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -353,7 +388,7 @@ fn external_ref_live_never_tails() {
     // there is no newer-replacement to tail. Proven-red guard against a future
     // change that wires external refs into the addressable Live path.
     let key = "i:isbn:9780375704024".to_string();
-    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    let mut kernel = kernel_with_accepting_external_ids();
     kernel.relay_connected(RelayRole::Content);
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -378,7 +413,7 @@ fn external_ref_live_never_tails() {
 fn malformed_external_ref_empty_id_fails_closed() {
     // #1654: a bare `i:` (present prefix, EMPTY external id) must fail closed —
     // an empty `#i` value would match nothing and pollute the registry. Proven-red:
-    // without the `is_valid_external_id` empty check the `i:` arm would build a
+    // without the core byte-hygiene empty check the `i:` arm would build a
     // `{"#i":[""], limit:1}` filter and record a bogus claim.
     assert_event_key_fails_closed("i:");
 }
@@ -393,70 +428,41 @@ fn malformed_external_ref_whitespace_id_fails_closed() {
 }
 
 #[test]
-fn malformed_external_ref_unknown_scheme_fails_closed() {
-    // codex lead-gate HIGH 1: an `i:<value>` whose scheme is NOT one of the NIP-73
-    // external-id forms must FAIL CLOSED — no `#i` REQ for an arbitrary/unknown id,
-    // no fabricated preview. Proven-red: with the pre-fix `is_valid_external_id`
-    // (non-empty + whitespace-free only, NO scheme allowlist) every one of these
-    // parsed to a `{"#i":[…], limit:1}` filter and recorded a bogus claim row.
-    assert_event_key_fails_closed("i:unknown:whatever");
-    assert_event_key_fails_closed("i:ftp://example.com/file"); // not http/https
-    assert_event_key_fails_closed("i:mailto:nobody@example.com");
-    assert_event_key_fails_closed("i:javascript:alert(1)");
-    assert_event_key_fails_closed("i:bareword"); // no scheme prefix, not a URL
-    assert_event_key_fails_closed("i:isbn:"); // known prefix, EMPTY value
-    assert_event_key_fails_closed("i:#"); // hashtag prefix, empty topic
+fn external_ref_without_registered_validator_fails_closed() {
+    assert_event_key_fails_closed("i:any:external:id");
 }
 
 #[test]
-fn malformed_blockchain_external_ref_fails_closed() {
-    // FIX #1 (codex re-gate): the generic `<blockchain>[:<chainId>]:{tx,address}:`
-    // form must still fail closed when the SELECTOR is missing/garbage or the value
-    // is empty — generalising the chain token must not weaken the selector/value
-    // checks. Proven-red: with the blockchain arm hardcoded to bitcoin/ethereum the
-    // generic positives (solana) were rejected; these negatives stay rejected.
-    // bad middle segment (not tx/address, and no further selector):
-    assert_event_key_fails_closed("i:bitcoin:nonsense:deadbeef");
-    // chainId ok, bad selector:
-    assert_event_key_fails_closed("i:ethereum:1:badselector:0xabc");
-    // selector ok, EMPTY value:
-    assert_event_key_fails_closed("i:bitcoin:tx:");
-    // selector ok, value segment MISSING entirely:
-    assert_event_key_fails_closed("i:bitcoin:tx");
-    // uppercase blockchain token (must be lowercase alnum):
-    assert_event_key_fails_closed("i:Bitcoin:tx:abc");
-    // chainId + selector ok, EMPTY value:
-    assert_event_key_fails_closed("i:ethereum:1:address:");
+fn external_ref_rejected_by_registered_validator_fails_closed() {
+    assert!(
+        parse_event_key("i:any:external:id", rejecting_validator()).is_none(),
+        "validator rejection must fail closed at parse time"
+    );
+
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_external_id_validator(Arc::new(RejectExternalIdValidator));
+    kernel.relay_connected(RelayRole::Content);
+    kernel.resolve_ref(
+        RefNamespace::Event,
+        "i:any:external:id".to_string(),
+        "view".into(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    assert!(
+        kernel.event_claims.is_empty(),
+        "validator rejection records no claim row"
+    );
 }
 
 #[test]
-fn well_formed_external_ref_known_schemes_resolve() {
-    // codex lead-gate HIGH 1 complement: the canonical NIP-73 external-id schemes
-    // MUST still parse — the fail-closed allowlist is not vacuously rejecting every
-    // external ref. One representative per NIP-73 scheme family.
-    for external_id in [
-        "https://blog.example.com/post/hello",
-        "http://example.com/x",
-        "#bitcoin",
-        "isbn:9780765382030",
-        "geo:ezs42e44yx96",
-        "iso3166:US-CA",
-        "isan:0000-0000-401A-0000-7",
-        "doi:10.1000/xyz123",
-        "podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc",
-        "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f",
-        "podcast:publisher:guid:18bcbf10-6701-4ffb-b255-bc057390d738",
-        "bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx", // blockchain, no chainId
-        "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
-        "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045", // blockchain WITH chainId
-        "ethereum:1:tx:0xabc123",
-        "solana:tx:5j7s8...signature", // FIX #1: generic blockchain — solana resolves with no code change
-        "solana:address:7nYa...mintAddr",
-        "ethereum:11155111:tx:0xfeed", // multi-digit (non-mainnet) chainId
-    ] {
+fn external_ref_accepted_by_registered_validator_resolves() {
+    for external_id in ["opaque:external:id", "another-valid-id"] {
         let key = format!("i:{external_id}");
-        let target = parse_event_key(&key).unwrap_or_else(|| {
-            panic!("known NIP-73 scheme {key:?} was rejected by parse_event_key")
+        let target = parse_event_key(&key, accepting_validator()).unwrap_or_else(|| {
+            panic!("validator-accepted external id {key:?} was rejected by parse_event_key")
         });
         assert!(
             target.replaceable_coord.is_none(),

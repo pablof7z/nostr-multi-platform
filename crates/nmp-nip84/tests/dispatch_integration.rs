@@ -5,16 +5,48 @@
 //! running the module's validation.
 
 use nmp_core::__ffi_internal::ActionRegistry;
-use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionRegistrar, ActionRejection,
+    ExternalIdValidator, ExternalIdValidatorRegistrar, RegistrationError,
+};
 use nmp_nip84::PublishHighlightAction;
+use std::sync::{Arc, Mutex};
 
 const NAMESPACE: &str = "nmp.nip84.publish_highlight";
 
 fn registry_with_nip84() -> ActionRegistry {
-    let mut registry = ActionRegistry::new();
-    nmp_nip84::register(&mut registry, nmp_nip84::Config::default())
+    let mut host = TestHost::default();
+    nmp_nip84::register(&mut host, nmp_nip84::Config::default())
         .expect("nmp-nip84 registration must not collide");
-    registry
+    assert!(
+        host.external_id_validator
+            .lock()
+            .expect("validator slot")
+            .is_some(),
+        "nmp-nip84 must register the protocol external-id validator"
+    );
+    host.registry
+}
+
+#[derive(Default)]
+struct TestHost {
+    registry: ActionRegistry,
+    external_id_validator: Mutex<Option<Arc<dyn ExternalIdValidator>>>,
+}
+
+impl ActionRegistrar for TestHost {
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError> {
+        self.registry.register_action(module)
+    }
+}
+
+impl ExternalIdValidatorRegistrar for TestHost {
+    fn set_external_id_validator(&self, validator: Arc<dyn ExternalIdValidator>) {
+        *self.external_id_validator.lock().expect("validator slot") = Some(validator);
+    }
 }
 
 #[test]

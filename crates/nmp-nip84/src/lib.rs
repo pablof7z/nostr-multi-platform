@@ -16,6 +16,7 @@ pub use action::{
     highlight_projection_from_event, HighlightProjection, PublishHighlightAction,
     PublishHighlightCommand, PublishHighlightModule, KIND_HIGHLIGHT,
 };
+pub use external_id::Nip73ExternalIdValidator;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;
@@ -27,9 +28,11 @@ pub struct Config {}
 pub struct Handles {}
 
 pub fn register(
-    app: &mut impl nmp_core::substrate::ActionRegistrar,
+    app: &mut (impl nmp_core::substrate::ActionRegistrar
+              + nmp_core::substrate::ExternalIdValidatorRegistrar),
     _config: Config,
 ) -> Result<Handles, nmp_core::substrate::RegistrationError> {
     action::register_actions(app);
+    app.set_external_id_validator(std::sync::Arc::new(Nip73ExternalIdValidator));
     Ok(Handles {})
 }

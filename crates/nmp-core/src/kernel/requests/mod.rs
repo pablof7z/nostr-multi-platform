@@ -15,21 +15,18 @@ mod event_live;
 // ADR-0070 (#1671 Lane D): the canonical raw event-key parser (lowercase-hex id
 // or `kind:pubkey:d` coordinate), split into its own module so `event.rs` stays
 // under the 500-LOC ceiling.
+// Canonical raw event-key parser. Core owns hex/coordinate parsing plus `i:`
+// prefix and byte hygiene; protocol crates inject external-id grammar.
 mod event_key;
 mod profile;
 mod relay_lifecycle;
 mod startup;
 
-pub use profile::ProfileLiveness;
-// ADR-0070 (#1671 Lane D): the canonical cold-start-parked event target.
-// `parse_event_key` is only consumed by cfg(test) code (refs_tests_key.rs);
-// gate the re-export so a non-test build emits no unused-import warning.
+pub(in crate::kernel) use event_key::has_external_id_byte_hygiene;
 #[cfg(test)]
 pub(in crate::kernel) use event_key::parse_event_key;
-// #1654: NIP-73 external-ref key accessor — consumed by the store/cache lookup
-// paths (`views.rs::lookup_for_primary_id`, `event_live.rs::event_already_known`).
-pub(in crate::kernel) use event_key::external_id_from_key;
 pub(in crate::kernel) use event_key::PendingEventClaim;
+pub use profile::ProfileLiveness;
 
 use super::{
     discovery, json, wire_log, CanonicalRelayUrl, Instant, Kernel, OutboundMessage, RelayRole,

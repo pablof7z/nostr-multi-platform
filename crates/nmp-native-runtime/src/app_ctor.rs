@@ -178,6 +178,10 @@ pub fn new_app() -> NmpApp {
     let blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>> =
         Arc::new(Mutex::new(nmp_core::substrate::empty_blocked_relay_lookup()));
     let actor_blocked_relays = Arc::clone(&blocked_relays_slot);
+    let external_id_validator_slot: Arc<
+        Mutex<Option<Arc<dyn nmp_core::substrate::ExternalIdValidator>>>,
+    > = Arc::new(Mutex::new(None));
+    let actor_external_id_validator = Arc::clone(&external_id_validator_slot);
     // Per-app override for the bootstrap Tailing self-kinds list.
     let bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>> = Arc::new(Mutex::new(None));
     let actor_bootstrap_self_kinds = Arc::clone(&bootstrap_self_kinds);
@@ -237,6 +241,7 @@ pub fn new_app() -> NmpApp {
             contact_list_reader: actor_contact_list_reader,
             profile_lookup: actor_profile_lookup,
             blocked_relays: actor_blocked_relays,
+            external_id_validator: actor_external_id_validator,
             bootstrap_self_kinds: actor_bootstrap_self_kinds,
             routing_substrate: actor_routing_substrate,
             publish_resolver: actor_publish_resolver,
@@ -370,6 +375,7 @@ pub fn new_app() -> NmpApp {
             contact_list_reader_slot,
             profile_lookup_slot,
             blocked_relays_slot,
+            external_id_validator_slot,
             mailbox_cache_reader: Mutex::new(None),
             search_scope_registry,
             input_scope_registry,

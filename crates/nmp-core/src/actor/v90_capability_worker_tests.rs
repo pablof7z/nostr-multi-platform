@@ -160,6 +160,7 @@ fn dispatch_capability_result(
         contact_list_reader: crate::slots::new_contact_list_reader_slot(),
         profile_lookup: profile_lookup_slot,
         blocked_relays: blocked_relays_slot,
+        external_id_validator: Arc::new(Mutex::new(None)),
         bootstrap_self_kinds: bootstrap_self_kinds_slot,
         routing_substrate: crate::slots::new_routing_substrate_slot(),
         publish_resolver: crate::slots::new_publish_resolver_slot(),
