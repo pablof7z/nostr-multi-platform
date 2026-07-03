@@ -20,29 +20,40 @@ impl From<PaymentIntent> for WalletBolt11Payment {
     }
 }
 
-pub trait WalletPaymentCommandFactory: Send + Sync + std::fmt::Debug {
+pub trait WalletBackendPaymentCommandFactory: Send + Sync + std::fmt::Debug {
     fn pay_bolt11(&self, payment: WalletBolt11Payment) -> ActorCommand;
 }
 
+/// Routes payment intents to whichever backend `nmp-wallet` has selected.
+///
+/// This implements `PaymentPort` so it can be handed to
+/// `nmp_nip57::Config::with_payment_port`, but it is a selection indirection
+/// in front of the real backend adapters, not a competing protocol adapter:
+/// each backend still owns its own `PaymentPort` implementation
+/// (`nmp_nip47::WalletPaymentPort` for NWC today) and this type just forwards
+/// to whichever one `nmp-wallet` has selected. Phase-1 item W11 (#2864)
+/// decides whether this indirection is kept at all, or whether backend
+/// selection instead passes the selected backend's `Arc<dyn PaymentPort>`
+/// straight through to `nmp_nip57::Config::with_payment_port`.
 #[derive(Clone)]
-pub struct WalletPaymentPort {
-    factory: Arc<dyn WalletPaymentCommandFactory>,
+pub struct WalletBackendPaymentRouter {
+    factory: Arc<dyn WalletBackendPaymentCommandFactory>,
 }
 
-impl WalletPaymentPort {
+impl WalletBackendPaymentRouter {
     #[must_use]
-    pub fn new(factory: Arc<dyn WalletPaymentCommandFactory>) -> Self {
+    pub fn new(factory: Arc<dyn WalletBackendPaymentCommandFactory>) -> Self {
         Self { factory }
     }
 }
 
-impl std::fmt::Debug for WalletPaymentPort {
+impl std::fmt::Debug for WalletBackendPaymentRouter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("WalletPaymentPort")
+        f.write_str("WalletBackendPaymentRouter")
     }
 }
 
-impl PaymentPort for WalletPaymentPort {
+impl PaymentPort for WalletBackendPaymentRouter {
     fn pay_invoice(&self, intent: PaymentIntent) -> ActorCommand {
         self.factory.pay_bolt11(intent.into())
     }
@@ -59,7 +70,7 @@ mod tests {
         seen: Mutex<Vec<WalletBolt11Payment>>,
     }
 
-    impl WalletPaymentCommandFactory for RecordingFactory {
+    impl WalletBackendPaymentCommandFactory for RecordingFactory {
         fn pay_bolt11(&self, payment: WalletBolt11Payment) -> ActorCommand {
             self.seen.lock().unwrap().push(payment);
             ActorCommand::ShowToast {
@@ -71,8 +82,8 @@ mod tests {
     #[test]
     fn payment_port_delegates_invoice_intent_to_wallet_factory() {
         let factory = Arc::new(RecordingFactory::default());
-        let port_factory: Arc<dyn WalletPaymentCommandFactory> = factory.clone();
-        let port = WalletPaymentPort::new(port_factory);
+        let port_factory: Arc<dyn WalletBackendPaymentCommandFactory> = factory.clone();
+        let port = WalletBackendPaymentRouter::new(port_factory);
 
         let command = port.pay_invoice(PaymentIntent {
             bolt11: "lnbc1".to_string(),

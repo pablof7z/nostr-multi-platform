@@ -100,10 +100,13 @@ selection, or a private operation queue.
 
 `nmp-nwc` owns the pure NWC protocol codec: connection-URI parsing, NIP-04/
 NIP-44 request/response encryption, and the `kind:23194`/`kind:23195` event
-shapes. `nmp-nip47` owns the NWC actor-side runtime, its `nmp.wallet.*` action
-surface, and — per crate-boundaries §8 — the `PaymentPort` implementation
-(`WalletPaymentPort`) injected into the zap chain at composition time. This
-design does not reassign `PaymentPort` ownership away from `nmp-nip47`;
+shapes. `nmp-nip47` owns the NWC actor-side runtime and — per crate-boundaries
+§8 — the `PaymentPort` implementation (`WalletPaymentPort`) injected into the
+zap chain at composition time. The `nmp.wallet.*` action namespaces
+themselves are exclusively owned by `nmp-wallet`; `nmp-nip47` implements
+today's NWC-backed action modules under those namespaces but does not claim
+them. This design does not reassign `PaymentPort` ownership away from
+`nmp-nip47`;
 `nmp-wallet` only selects which backend that port routes to when NWC is one of
 several configured backends. When composed through `nmp-wallet`, `nmp-nip47`'s
 current `"wallet"` projection becomes backend-internal state. Standalone
@@ -471,7 +474,7 @@ Activation requires:
 - `cargo test -p nmp-nip60` clean for any `nmp-nip60` change (the crate is an
   active workspace/CI member as of Phase 0, #2866);
 - `cargo test -p nmp-wallet` for backend selection, journal transitions,
-  projection bounds, and compatibility aliases;
+  projection bounds, and action-name uniqueness (no compat aliases);
 - NIP-60 event tests for wallet, token, history, quote, NIP-09 delete tags, and
   signer-transparent NIP-44 paths;
 - NIP-61 event tests for `kind:10019`, `kind:9321`, accepted mint filtering,

@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Wallet composition owner: backend capabilities, wallet projection shape, operation journal, backend seam, and PaymentPort adapter."
+description = "Wallet composition owner: backend capabilities, wallet projection shape, operation journal, backend seam, and PaymentPort backend selection."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
