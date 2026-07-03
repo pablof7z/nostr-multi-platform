@@ -25,6 +25,7 @@ wallet = [
     "native",
     "dep:nmp-nip47",
     "dep:nmp-nip57",
+    "dep:nmp-wallet",
     "nmp-nip57/native",
 ]
 search = [
@@ -72,6 +73,10 @@ nmp-nip47 = { path = "../nmp-nip47", optional = true, version = "1.0.0-rc.1" }
 nmp-nip50 = { path = "../nmp-nip50", optional = true, version = "1.0.0-rc.1" }
 nmp-nip51 = { path = "../nmp-nip51", optional = true, version = "1.0.0-rc.1" }
 nmp-nip57 = { path = "../nmp-nip57", optional = true, default-features = false, version = "1.0.0-rc.1" }
+# Wallet composition-root entry point (epic #2864 Wave C, #2908): backend
+# selection, the canonical select_backend/cashu.*/nutzap.* actions, and the
+# identity-reactive read-interest/observer wiring `builder/wallet.rs` calls.
+nmp-wallet = { path = "../nmp-wallet", optional = true, version = "1.0.0-rc.1" }
 nmp-marmot = { path = "../nmp-marmot", optional = true, version = "1.0.0-rc.1" }
 nmp-intent = { path = "../nmp-intent", version = "1.0.0-rc.1" }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true, version = "1.0.0-rc.1" }

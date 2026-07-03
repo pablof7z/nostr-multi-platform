@@ -14,6 +14,9 @@
 //!   `dispatch_token_event`'s ledger/journal wiring with synthetic proofs.
 //! - [`snapshot_tests`] — the bounded projection never carries a secret/quote
 //!   id, mirroring `projection.rs`'s own redaction test.
+//! - [`reset_tests`] — `CashuWalletBackend::reset` (epic #2864 Wave C,
+//!   #2908): the cross-account data-leak fix clears created/mints/pubkey/
+//!   pending-operations/balances back to a fresh, never-created wallet.
 
 use std::sync::Mutex;
 
@@ -29,6 +32,7 @@ use super::*;
 mod create_wallet_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
+mod reset_tests;
 mod snapshot_tests;
 
 /// Captures every `ActorCommand` a `run()` call sends synchronously via

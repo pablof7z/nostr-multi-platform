@@ -14,12 +14,19 @@
 
 #![forbid(unsafe_code)]
 
+pub mod action;
 pub mod backend;
 pub mod capability;
+mod fail_closed;
+pub mod interests;
 pub mod journal;
 pub mod ownership;
 pub mod payment_port;
 pub mod projection;
+pub mod register;
+pub mod runtime;
+pub mod selector;
+pub mod ui_codes;
 
 pub use backend::cashu::{CashuWalletBackend, CASHU_BACKEND_ID};
 pub use backend::nwc::{NwcWalletBackend, NWC_BACKEND_ID};
@@ -42,6 +49,9 @@ pub use projection::{
     WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletProjection, WalletReadiness,
     WalletReceiveRow, MAX_WALLET_PROJECTION_ROWS, WALLET_PROJECTION_KEY,
 };
+pub use register::{register, Config, Handles};
+pub use runtime::WalletRuntime;
+pub use selector::{SelectorError, WalletBackendSelector};
 
 pub const ACTION_SELECT_BACKEND: &str = "nmp.wallet.select_backend";
 // `nmp-nip47` is today's only implementation of NWC connect/disconnect, under

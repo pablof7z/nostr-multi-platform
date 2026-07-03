@@ -19,13 +19,23 @@
 //!   own commands/workers write (D4: this backend's commands are the sole
 //!   writer, mirroring `NwcWalletBackend`'s `WalletStatusSlot`).
 //!
-//! # NOT wired here (escalated, not silently skipped)
+//! # Live wiring (epic #2864 W7, #2908) vs. still-deferred behavior
 //!
-//! * `on_wallet_event` — reconciling kind:17375/7375/7376 durable events into
-//!   `WalletLedger::rebuild_from` on cold start is live-wiring work (this
+//! `crate::register::register` now constructs this backend, registers it in
+//! the `WalletBackendSelector`, and (via `crate::runtime::WalletRuntime`)
+//! routes every observed kind:9321/10019/17375/7375/7376/7374 `KernelEvent`
+//! into `on_wallet_event` for real — so the wiring described below as
+//! "not wired here" as of W2 IS wired now. What remains a documented no-op
+//! is each method's OWN internal logic, narrower than "not called at all":
+//!
+//! * `on_wallet_event` is called on every matching observed event, but its
+//!   body still does nothing with them: reconciling kind:17375/7375/7376
+//!   durable events into `WalletLedger::rebuild_from` on cold start needs a
+//!   signer-mediated NIP-44 decrypt this backend does not yet perform (this
 //!   backend's in-memory state today is populated only by its own
-//!   `start_intent`-driven operations, not by replaying the kernel's fetched
-//!   event stream). A documented no-op, not a silent partial read.
+//!   `start_intent`-driven operations). A documented no-op, not a silent
+//!   partial read — reachable and exercised by `runtime`'s tests, just
+//!   inert.
 //! * `on_mint_result` — this backend's own `ProtocolCommand` workers
 //!   (`CashuDepositQuoteCommand`, `CashuCompleteDepositCommand`) own the full
 //!   mint-round-trip -> state/publish mapping directly against the richer
@@ -34,9 +44,6 @@
 //!   carry that shape, and nothing constructs one for this backend today.
 //!   Mirrors `NwcWalletBackend::on_mint_result`'s treatment of the same seam
 //!   for the opposite reason ("not this backend's concept").
-//!
-//! Live actor wiring end-to-end (registering this backend, driving
-//! `on_wallet_event` from the kernel's fetch pipeline) is epic #2864's W7.
 
 mod chain;
 mod create_wallet;
@@ -46,10 +53,11 @@ mod ui_codes;
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{KernelEvent, ProtocolCommandContext};
 use nmp_core::ui_token::UiToken;
 
+use crate::fail_closed::fail_closed;
 use crate::journal::{WalletOperationId, WalletOperationKind, WalletOperationState};
 use crate::projection::{WalletBalanceRow, WalletProjection, WalletReadiness};
 
@@ -78,6 +86,30 @@ impl CashuWalletBackend {
         Self {
             state: Arc::new(Mutex::new(CashuWalletState::new())),
         }
+    }
+
+    /// Discard all in-memory wallet state (created flag, mints, Cashu P2PK
+    /// pubkey, ledger, journal, pending deposits) and start fresh.
+    ///
+    /// Required because this backend, unlike `NwcWalletBackend`'s connection
+    /// state, holds NIP-44-encrypted-to-a-specific-identity material
+    /// (`kind:17375`'s Cashu private key + accepted mints, `kind:7375`
+    /// proofs): it is constructed once per app instance
+    /// (`register.rs`), not once per signed-in account, so without this reset
+    /// a Nostr account switch within one running app would leave the
+    /// PREVIOUS account's balance/mint list/pending deposits visible to
+    /// (and, via `complete_deposit`, completable as) the NEWLY active
+    /// account — a cross-account data/fund leak. Callers wire this to fire
+    /// on every active-account change (`nmp_core::substrate::IdentityChangeRegistrar`),
+    /// mirroring how `nmp-nip51`'s `MuteListProjection` resets on the same
+    /// signal. Losing durable wallet history on account switch is expected
+    /// and safe: nothing here is the source of truth — the durable
+    /// `kind:17375`/`kind:7375`/`kind:7376` events are — cold-start
+    /// reconciliation from that event stream back into this state is a
+    /// separate, already-documented deferral (see `on_wallet_event`'s doc
+    /// comment on this backend), not something this reset regresses.
+    pub fn reset(&self) {
+        *lock_state(&self.state) = CashuWalletState::new();
     }
 }
 
@@ -337,27 +369,6 @@ fn operation_id_for(
         Some(id) => WalletOperationId::new(id.clone()),
         None => WalletOperationId::new(format!("cashu-{label}-{now_secs}")),
     }
-}
-
-/// Fail-closed before any `ActorCommand::Protocol` is dispatched: a structured
-/// `ShowErrorToken` + (when a `correlation_id` was supplied) `RecordActionFailure`.
-fn fail_closed(
-    code: &'static str,
-    correlation_id: Option<String>,
-    reason: String,
-) -> Vec<ActorCommand> {
-    let mut out = vec![ActorCommand::ShowErrorToken {
-        token: UiToken::error(code, reason.clone()),
-    }];
-    if let Some(id) = correlation_id {
-        out.push(ActorCommand::ActionLedger(
-            ActionLedgerCommand::RecordFailure {
-                correlation_id: id,
-                reason,
-            },
-        ));
-    }
-    out
 }
 
 /// [`create_wallet::CreateCashuWalletCommand`]'s pure-computation pre-dispatch
