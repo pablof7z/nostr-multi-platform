@@ -54,6 +54,7 @@ pub fn spawn_actor_with_nip01_profile_cache() -> (
             relay_connected_hook: nmp_core::substrate::new_relay_connected_hook_slot(),
             ingest_dispatcher: Arc::new(RwLock::new(dispatcher)),
             search_scope_registry: Arc::new(nmp_core::substrate::SearchScopeRegistry::new()),
+            draft_builders: Arc::new(nmp_core::substrate::DraftBuilderRegistry::new()),
             dm_inbox_relays: Arc::new(Mutex::new(
                 nmp_core::substrate::empty_dm_inbox_relay_lookup(),
             )),
