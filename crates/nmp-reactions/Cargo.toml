@@ -13,6 +13,7 @@ crate-type = ["rlib"]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip25 = { path = "../nmp-nip25" }
+nmp-nip29 = { path = "../nmp-nip29" }
 nmp-ownership = { workspace = true }
 nmp-planner = { path = "../nmp-planner" }
 nmp-read-session = { path = "../nmp-read-session" }

@@ -17,6 +17,19 @@ nmp_ownership::declare_crate_ownership! {
             ],
         },
         {
+            claim_type: "mechanism",
+            id: "nmp.reactions.group_reaction_aggregate_read",
+            exclusive: true,
+            scope: {
+                kind: "type",
+                value: "Nip25GroupReactionsSession",
+                context: "nip29.group_context",
+            },
+            owns: [
+                "group-scoped reaction aggregate active read composition",
+            ],
+        },
+        {
             claim_type: "projection",
             id: "projection.nmp.reactions.summary",
             exclusive: true,
@@ -47,6 +60,10 @@ nmp_ownership::declare_crate_ownership! {
         {
             claim: "nmp.reactions.reaction_count_read",
             text: "This crate composes the read; nmp-nip25 owns kind:7 reaction semantics and the underlying ReactionAggregateProjection fold (including kind:5 retraction handling), which this crate reuses unmodified.",
+        },
+        {
+            claim: "nmp.reactions.group_reaction_aggregate_read",
+            text: "This crate composes nmp-nip25's reaction aggregate fold with nmp-nip29's h-tag group routing; nmp-nip29 remains kind-blind and owns no kind:7 semantics.",
         },
     ],
 }

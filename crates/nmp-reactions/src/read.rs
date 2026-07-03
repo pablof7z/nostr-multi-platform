@@ -1,8 +1,8 @@
 //! The reaction-read demand: one NIP-01 `REQ` filter per target (#2758).
 //!
-//! Reuses the exact filter shape already proven by the NIP-29-group-scoped
-//! reaction read's reaction side, swapping the group lane's `#h` group-routing
-//! tag for a direct `#e` target tag. Kind:5 retractions are routed by the
+//! Reuses the same kind:7 filter shape as the NIP-29-group-scoped reaction
+//! read, swapping the group lane's `#h` routing tag for a direct `#e` target
+//! tag. Kind:5 retractions are routed by the
 //! read-session engine's dependent-demand stage once concrete reaction ids are
 //! known. This module only builds the primary filter string; admission and
 //! retraction folding are `nmp_nip25::ReactionAggregateProjection`'s job
