@@ -34,10 +34,13 @@ pub(crate) fn install_browser_production_composition(
         nmp_nip84::register(app, nmp_nip84::Config::default()).is_ok(),
         "nmp-nip84 registration must not collide"
     );
-    assert!(
-        nmp_nip29::register(app, nmp_nip29::Config::default()).is_ok(),
-        "nmp-nip29 registration must not collide"
-    );
+    #[cfg(feature = "groups")]
+    {
+        assert!(
+            nmp_nip29::register(app, nmp_nip29::Config::default()).is_ok(),
+            "nmp-nip29 registration must not collide"
+        );
+    }
     assert!(
         nmp_wot::register(app, nmp_wot::Config::default()).is_ok(),
         "nmp-wot registration must not collide"

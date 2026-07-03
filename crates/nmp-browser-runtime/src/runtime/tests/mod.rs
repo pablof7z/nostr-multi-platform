@@ -35,7 +35,9 @@ mod feed_custom_policy;
 mod feed_reactivity;
 mod feed_simple_groups_reactivity;
 mod feed_spec;
+#[cfg(feature = "groups")]
 mod group_discovery;
+#[cfg(feature = "groups")]
 mod group_events;
 mod pump;
 #[cfg(feature = "search")]
