@@ -63,6 +63,7 @@ pub fn spawn_actor_with_nip01_profile_cache() -> (
             bootstrap_self_kinds: Arc::new(Mutex::new(None)),
             routing_substrate: nmp_core::slots::new_routing_substrate_slot(),
             publish_resolver: nmp_core::slots::new_publish_resolver_slot(),
+            relay_list_publish_support: nmp_core::slots::new_relay_list_publish_support_slot(),
             external_event_sink_policy: nmp_core::slots::new_external_event_sink_policy_slot(),
             kernel_clock: nmp_core::slots::new_kernel_clock_slot(),
             gc_budget_ceiling: None,
