@@ -121,7 +121,11 @@ serialization, merge equality, diagnostics, cache-coverage refusal, the
 `SearchScopeRegistry`) that protocol crates populate at composition time and
 the kernel compiles into `nmp-store::CompiledIndexSpec` (the cache-serve hook),
 and the account-config self-kind bootstrap including kind:10007 in
-`SELF_KINDS_TAILING` (`crates/nmp-core/src/kernel/requests/startup.rs`).
+`SELF_KINDS_TAILING` plus the override-governed kind:10050 one-shot lane in
+`SELF_KINDS_ONESHOT` (`crates/nmp-core/src/kernel/requests/startup.rs`).
+The app bootstrap self-kind override selects the shared bootstrap set first;
+the kernel then preserves lifecycle semantics by tailing non-one-shot kinds and
+fetching kind:10050 with `OneShot + limit:1`.
 `nmp-core` does **not** own NIP-50 query semantics, relay-selection policy,
 result ranking, domain target classes, or result projection — those belong to
 `nmp-nip50`. NIP-51 kind:10007 relay-list parsing belongs to `nmp-nip51`

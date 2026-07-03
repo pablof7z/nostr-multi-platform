@@ -136,6 +136,65 @@ fn bootstrap_emits_tailing_self_kinds_plus_dm_relay_oneshot() {
     );
 }
 
+/// #2796 — the host bootstrap self-kind override governs both lifecycle lanes.
+/// If an app omits kind:10050 from the override, the kernel must not emit the
+/// DM-relay one-shot through a separate hardcoded path.
+#[test]
+fn bootstrap_self_kind_override_can_opt_out_of_dm_relay_oneshot() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    install_bootstrap_relays(&mut kernel);
+    kernel.set_bootstrap_self_kinds_override(Some(vec![0, 10002]));
+    kernel.active_account = Some(ALICE.to_string());
+
+    let _ = kernel.active_account_bootstrap_requests();
+    let msgs = kernel.drain_lifecycle_outbound();
+
+    assert!(
+        has_filter_for(&msgs, ALICE, &[0, 10002], None),
+        "override kinds must still tail as the selected self-kind set; \
+         got REQs: {:#?}",
+        req_filters(&msgs),
+    );
+    assert!(
+        !some_req_carries_kind_for(&msgs, ALICE, 10050),
+        "omitting kind:10050 from the override must opt out of the \
+         DM-relay one-shot; got REQs: {:#?}",
+        req_filters(&msgs),
+    );
+}
+
+/// #2796 — including kind:10050 in the override keeps the OneShot semantics,
+/// while the remaining selected self-kinds use the Tailing lane.
+#[test]
+fn bootstrap_self_kind_override_keeps_kind10050_oneshot() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    install_bootstrap_relays(&mut kernel);
+    kernel.set_bootstrap_self_kinds_override(Some(vec![0, 10050, 30078]));
+    kernel.active_account = Some(ALICE.to_string());
+
+    let _ = kernel.active_account_bootstrap_requests();
+    let msgs = kernel.drain_lifecycle_outbound();
+
+    assert!(
+        has_filter_for(&msgs, ALICE, &[10050], Some(1)),
+        "kind:10050 from the override must be emitted as a OneShot with \
+         limit:1; got REQs: {:#?}",
+        req_filters(&msgs),
+    );
+    assert!(
+        has_filter_for(&msgs, ALICE, &[0, 30078], None),
+        "non-one-shot override kinds must be emitted on the Tailing lane; \
+         got REQs: {:#?}",
+        req_filters(&msgs),
+    );
+    assert!(
+        !has_filter_for(&msgs, ALICE, &[0, 10050, 30078], None),
+        "kind:10050 must not be folded into the Tailing filter; got REQs: \
+         {:#?}",
+        req_filters(&msgs),
+    );
+}
+
 /// True iff at least one REQ in `msgs` is author-pinned to `pk` AND its
 /// `kinds` array contains `kind` (membership, not exact-set equality).
 fn some_req_carries_kind_for(msgs: &[OutboundMessage], pk: &str, kind: u32) -> bool {
