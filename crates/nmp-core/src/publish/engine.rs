@@ -96,6 +96,12 @@ pub struct PublishEngine {
     /// `action_results` snapshot projection so the host can resolve every
     /// spinner, not just the most recent.
     pending_terminals: Vec<LastTerminal>,
+    /// #2937 — set once [`Self::set_outbox`] installs a real resolver (vs.
+    /// still running the kernel's fail-closed `NoopOutboxResolver` default).
+    /// Read by `kernel::publish_engine_wire::describe_engine_error` to tell
+    /// "never composed" (write-relays advice is wrong) from "composed, this
+    /// author legitimately has none" (write-relays advice is accurate).
+    resolver_composed: bool,
 }
 
 impl PublishEngine {
@@ -117,6 +123,7 @@ impl PublishEngine {
             store,
             needs_in_flight_rebuild: false,
             pending_terminals: Vec::new(),
+            resolver_composed: false,
         }
     }
 
@@ -131,8 +138,21 @@ impl PublishEngine {
     /// in-flight resolver decisions inconsistent with subsequent retries
     /// (the engine's `dispatch_due` path re-asks the current resolver on
     /// every tick).
+    ///
+    /// #2937: flips [`Self::resolver_composed`] to `true`. Every real caller
+    /// (production composition; the test kernel's own auto-install) calls
+    /// this exactly once, so the flag faithfully tracks "was a real resolver
+    /// ever installed" rather than guessing from behaviour.
     pub fn set_outbox(&mut self, outbox: Arc<dyn OutboxResolver>) {
         self.outbox = outbox;
+        self.resolver_composed = true;
+    }
+
+    /// Whether a real resolver was ever composed via [`Self::set_outbox`]
+    /// (#2937). Read by `kernel::publish_engine_wire::describe_engine_error`.
+    #[must_use]
+    pub fn resolver_composed(&self) -> bool {
+        self.resolver_composed
     }
 
     /// Swap the engine's [`BlockedRelayLookup`] in-place. Production

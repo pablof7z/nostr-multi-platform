@@ -134,6 +134,8 @@ mod refs_tests;
 #[cfg(test)]
 mod relay_score_tests;
 #[cfg(test)]
+mod router_composed_diagnostic_tests;
+#[cfg(test)]
 mod replaceable_ttl_gate_tests;
 #[cfg(test)]
 mod replay_tests;

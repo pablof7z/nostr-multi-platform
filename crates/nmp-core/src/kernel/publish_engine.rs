@@ -252,7 +252,15 @@ impl Kernel {
                 // publish even when no frames went out.
                 self.publish_engine
                     .record_engine_error(&err, &handle, &signed.id, now_ms);
-                let (toast, status, category) = describe_engine_error(&err);
+                // #2937: the `NoTargets` toast is composition-aware — pass
+                // whether a real resolver was ever installed via
+                // `set_outbox` (production composition, or the test
+                // kernel's auto-install) so the message names the missing
+                // `nmp_substrate::install(...)` step instead of the
+                // (provably wrong, under `NoopOutboxResolver`) write-relays
+                // advice.
+                let (toast, status, category) =
+                    describe_engine_error(&err, self.publish_engine.resolver_composed());
                 // S11 slice 2 (#1758): fold any engine-origin terminal the failed
                 // `start_publish` already pushed (the `NoTargets` path's
                 // `emit_no_targets` records a `"failed"` verdict on

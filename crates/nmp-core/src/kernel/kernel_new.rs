@@ -268,6 +268,7 @@ impl Kernel {
             #[cfg(any(test, feature = "test-support"))]
             test_mailbox_cache,
             outbox_router,
+            router_composed: false,
             content_parser,
             draft_builders,
             routing_trace,

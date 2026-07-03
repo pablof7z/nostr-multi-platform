@@ -189,8 +189,18 @@ impl Kernel {
     /// case — the failure surfaces via the trace projection's absence
     /// of a row, exactly the same observability shape the pre-Debt-A
     /// observer recorded.
+    ///
+    /// #2937: when [`Kernel::router_composed`] is `false` (a bare
+    /// `new_app()` still running the fail-closed `EmptyOutboxRouter`
+    /// default, `NmpApp::set_routing_substrate` never called), the empty
+    /// result is ALSO logged via [`Kernel::log`] naming the missing
+    /// composition step — otherwise this degrades identically to the
+    /// legitimate "composed, but nothing routes for this author" case,
+    /// which is silent by design (see the module doc). Composed callers see
+    /// no behaviour change: this is a message-only addition to the existing
+    /// `Err(_)` branch.
     pub(crate) fn route_subscription_relays(
-        &self,
+        &mut self,
         interest_id: u64,
         authors: &[&str],
         kinds: &[u32],
@@ -226,6 +236,19 @@ impl Kernel {
                 let mut out: Vec<String> = routed.urls().cloned().collect();
                 sort_dedup(&mut out);
                 out
+            }
+            Err(_) if !self.router_composed => {
+                // #2937: distinguish "nothing was ever composed" from the
+                // legitimate composed-but-Unroutable case below. Log-only
+                // (D6 — no toast/panic on this internal trace helper; its
+                // only caller discards the return value already).
+                self.log(
+                    "route_subscription_relays: no routing substrate composed — call \
+                     `nmp_substrate::install(...)` (or `NmpApp::set_routing_substrate`) \
+                     at your composition root before subscribing; every subscription \
+                     resolves zero relays until then",
+                );
+                Vec::new()
             }
             Err(_) => Vec::new(),
         }

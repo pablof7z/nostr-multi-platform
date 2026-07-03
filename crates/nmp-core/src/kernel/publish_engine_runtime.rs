@@ -60,7 +60,8 @@ impl Kernel {
         {
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _, category) = describe_engine_error(&err);
+            let (toast, _, category) =
+                describe_engine_error(&err, self.publish_engine.resolver_composed());
             self.set_error_toast_with_category(toast, category);
         }
         self.bump_publish_if_engine_view_changed(engine_rev_before);
@@ -76,7 +77,8 @@ impl Kernel {
         if let Err(err) = self.publish_engine.mark_relay_available(relay_url, now_ms) {
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _, category) = describe_engine_error(&err);
+            let (toast, _, category) =
+                describe_engine_error(&err, self.publish_engine.resolver_composed());
             self.set_error_toast_with_category(toast, category);
             self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
@@ -103,7 +105,8 @@ impl Kernel {
             // plus a toast; never a panic, never a `Result` across FFI.
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _, category) = describe_engine_error(&err);
+            let (toast, _, category) =
+                describe_engine_error(&err, self.publish_engine.resolver_composed());
             self.set_error_toast_with_category(toast, category);
             self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
