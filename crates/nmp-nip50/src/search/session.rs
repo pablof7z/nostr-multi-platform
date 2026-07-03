@@ -60,8 +60,12 @@ pub trait SearchHost: ReadHost {
     /// The host event store used for bounded cache seeding.
     fn search_event_store(&self) -> Option<Arc<dyn EventStore>>;
 
-    /// Pull the latest typed snapshot payload for `projection_key`.
-    fn search_snapshot_payload(&self, projection_key: &str) -> Option<Vec<u8>>;
+    /// Pull the latest typed snapshot payload for `projection_key`, when the
+    /// host exposes a synchronous read surface. Push-frame-only hosts can use
+    /// the default and deliver snapshots through their normal frame pipeline.
+    fn search_snapshot_payload(&self, _projection_key: &str) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 /// Descriptor for one host-driven NIP-50 search read session.

@@ -43,7 +43,22 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
         ),
         (
             "crates/nmp-browser-runtime/src/runtime/search.rs",
-            &["pub fn open_search(", "pub(crate) fn open_search("][..],
+            &[
+                "pub fn open_search(",
+                "pub(crate) fn open_search(",
+                "pub(crate) fn open_search_session(",
+                "pub(crate) fn close_search_session(",
+                "pub(crate) fn open_search_for_key(",
+                "pub(crate) struct BrowserSearchSessionDescriptor",
+                "pub(crate) struct BrowserSearchSessionHandle",
+            ][..],
+        ),
+        (
+            "crates/nmp-browser-runtime/src/runtime.rs",
+            &[
+                "BrowserSearchSessionDescriptor",
+                "BrowserSearchSessionHandle",
+            ][..],
         ),
         (
             "crates/nmp-browser-runtime/src/runtime/notifications/mod.rs",

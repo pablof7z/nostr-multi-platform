@@ -2,12 +2,13 @@ use std::collections::BTreeSet;
 
 use nmp_core::substrate::KernelEvent;
 use nmp_nip50::{
-    decode_search_results_snapshot, SearchHitSource, SearchRequest, SearchScope, SearchTargets,
+    close_search as close_nip50_search, decode_search_results_snapshot,
+    open_search as open_nip50_search, Nip50SearchHandle, Nip50SearchSession, SearchHitSource,
+    SearchRequest, SearchScope, SearchTargets,
 };
 use nmp_store::{RawEvent, VerifiedEvent};
 
 use super::started_handle;
-use crate::runtime::{BrowserSearchSessionDescriptor, BrowserSearchSessionHandle};
 
 const RELAY: &str = "wss://search.example";
 
@@ -24,15 +25,12 @@ fn open_search_handle(
     handle: &mut crate::BrowserRuntimeHandle,
     request: SearchRequest,
     key: &str,
-) -> BrowserSearchSessionHandle {
-    handle.open_search_session(BrowserSearchSessionDescriptor {
-        request,
-        key: key.to_string(),
-    })
+) -> Nip50SearchHandle {
+    open_nip50_search(&*handle, Nip50SearchSession::new(request, key))
 }
 
 fn close_search(handle: &mut crate::BrowserRuntimeHandle, key: &str) {
-    handle.close_search_session(BrowserSearchSessionHandle::for_key(key));
+    close_nip50_search(&*handle, &Nip50SearchHandle::for_key(key));
 }
 
 #[test]
@@ -174,7 +172,7 @@ fn browser_search_session_replace_preserves_new_sidecar() {
 
     let _second_handle = open_search_handle(&mut handle, second, "s1");
     assert_eq!(handle.feed_sessions.live_count(), 1);
-    handle.close_search_session(first_handle);
+    close_nip50_search(&handle, &first_handle);
     assert_eq!(handle.feed_sessions.live_count(), 1);
     assert!(
         has_nonempty_search_payload(&mut handle, &key),
