@@ -6,7 +6,11 @@
 //! stamping their symbol names as text into this app crate.
 
 use nmp_replies::{
-    close_replies, decode_and_validate_reply_target, open_replies, RepliesReadHandle,
+    close_replies,
+    decode_and_validate_reply_target,
+    decode_reply_summary_snapshot,
+    open_replies,
+    RepliesReadHandle,
 };
 
 use crate::facade::GalleryApp;
@@ -19,6 +23,14 @@ pub struct GalleryOpenedReplies {
     pub handle_id: u64,
 }
 
+/// Typed reply-summary output decoded by the generated facade.
+#[derive(uniffi::Record, Debug, Clone, PartialEq, Eq)]
+pub struct GalleryReplySummary {
+    pub target_id: String,
+    pub count: u64,
+    pub reply_event_ids: Vec<String>,
+}
+
 /// Facade-local concept-read error surface for generated read doors.
 #[derive(uniffi::Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GalleryReadError {
@@ -26,6 +38,8 @@ pub enum GalleryReadError {
     InvalidTarget,
     /// The concept crate rejected the compiled read plan.
     OpenFailed,
+    /// The typed summary payload could not be decoded.
+    DecodeFailed,
 }
 
 impl core::fmt::Display for GalleryReadError {
@@ -33,6 +47,7 @@ impl core::fmt::Display for GalleryReadError {
         match self {
             Self::InvalidTarget => write!(f, "invalid concept-read target"),
             Self::OpenFailed => write!(f, "concept read open rejected the read plan"),
+            Self::DecodeFailed => write!(f, "invalid concept-read summary payload"),
         }
     }
 }
@@ -61,6 +76,20 @@ impl GalleryApp {
     pub fn close_replies(&self, opened: GalleryOpenedReplies) -> bool {
         let handle = RepliesReadHandle::from_parts(opened.projection_key, opened.handle_id);
         close_replies(self.runtime(), handle)
+    }
+
+    /// Decode a typed concept-read summary payload emitted by the kernel.
+    pub fn decode_reply_summary(
+        &self,
+        payload: Vec<u8>,
+    ) -> Result<GalleryReplySummary, GalleryReadError> {
+        let snapshot = decode_reply_summary_snapshot(&payload)
+            .map_err(|_| GalleryReadError::DecodeFailed)?;
+        Ok(GalleryReplySummary {
+            target_id: snapshot.target_id,
+            count: snapshot.count,
+            reply_event_ids: snapshot.reply_event_ids,
+        })
     }
 }
 

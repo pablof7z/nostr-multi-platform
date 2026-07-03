@@ -95,7 +95,7 @@ fn help() -> String {
      nmp gen projection-contract --platform ts --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin|ts [--registry <path>] [--out <path>] [--check]\n  \
      nmp gen action-builders   --registry <path> --check\n  \
-     nmp gen concept-reads     --registry <path> --platform rust [--out <path>] [--check]\n  \
+     nmp gen concept-reads     --registry <path> --platform rust|swift|kotlin [--out <path>] [--check]\n  \
      nmp gen concept-reads     --registry <path> --check\n  \
      nmp gen feed-helpers      --platform swift|kotlin|ts --out <path> [--check]\n  \
      nmp gen action-contract-report [--out <path>]\n  \

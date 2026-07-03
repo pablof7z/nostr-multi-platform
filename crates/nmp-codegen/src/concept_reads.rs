@@ -11,20 +11,28 @@ use std::path::{Path, PathBuf};
 
 mod app_registry;
 mod app_registry_format;
+pub mod kotlin;
 pub mod registry;
 pub mod rust;
+pub mod swift;
 
 pub use app_registry::{
     load_app_concept_read_registry, parse_app_concept_read_registry, AppConceptRead,
-    AppConceptReadOutputs, ConceptReadFacade, LoadedAppConceptReadRegistry,
+    AppConceptReadOutputs, AppConceptReadSummary, ConceptReadFacade, LoadedAppConceptReadRegistry,
 };
-pub use registry::{concept_read_for, ConceptRead, TargetInput, CONCEPT_READS};
+pub use registry::{
+    concept_read_for, ConceptRead, SummaryOutput, SummaryShape, TargetInput, CONCEPT_READS,
+};
 
 /// Which host language to emit for concept-read facades.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Platform {
     /// Emit the Rust app-owned UniFFI facade slice.
     Rust,
+    /// Emit Swift host wrappers for generated facade methods.
+    Swift,
+    /// Emit Kotlin host wrappers for generated facade methods.
+    Kotlin,
 }
 
 impl Platform {
@@ -35,7 +43,11 @@ impl Platform {
     pub fn parse(s: &str) -> Result<Self, String> {
         match s {
             "rust" => Ok(Self::Rust),
-            other => Err(format!("unknown --platform `{other}` (expected rust)")),
+            "swift" => Ok(Self::Swift),
+            "kotlin" => Ok(Self::Kotlin),
+            other => Err(format!(
+                "unknown --platform `{other}` (expected rust|swift|kotlin)"
+            )),
         }
     }
 }
@@ -82,6 +94,8 @@ impl AppConceptReadRegistryCheckOutcome {
 pub fn render_from_registry(platform: Platform, registry: &LoadedAppConceptReadRegistry) -> String {
     match platform {
         Platform::Rust => rust::render_registry(registry),
+        Platform::Swift => swift::render_registry(registry),
+        Platform::Kotlin => kotlin::render_registry(registry),
     }
 }
 
@@ -127,16 +141,42 @@ pub fn check_app_concept_read_registry(
     registry_path: &Path,
 ) -> Result<AppConceptReadRegistryCheckOutcome, String> {
     let loaded = load_app_concept_read_registry(registry_path)?;
-    let out_path = resolve_registry_path(registry_path, &loaded.outputs.rust);
-    let outcome = check_concept_reads_from_registry(Platform::Rust, &loaded, &out_path)
-        .map_err(|e| format!("check {}: {e}", out_path.display()))?;
+    let mut outputs = Vec::new();
+    let rust_path = resolve_registry_path(registry_path, &loaded.outputs.rust);
+    outputs.push(check_registry_output(Platform::Rust, &loaded, &rust_path)?);
+    if let Some(swift) = loaded.outputs.swift.as_deref() {
+        let swift_path = resolve_registry_path(registry_path, swift);
+        outputs.push(check_registry_output(
+            Platform::Swift,
+            &loaded,
+            &swift_path,
+        )?);
+    }
+    if let Some(kotlin) = loaded.outputs.kotlin.as_deref() {
+        let kotlin_path = resolve_registry_path(registry_path, kotlin);
+        outputs.push(check_registry_output(
+            Platform::Kotlin,
+            &loaded,
+            &kotlin_path,
+        )?);
+    }
     Ok(AppConceptReadRegistryCheckOutcome {
         read_count: loaded.reads.len(),
-        outputs: vec![AppConceptReadOutputCheck {
-            platform: Platform::Rust,
-            out_path,
-            outcome,
-        }],
+        outputs,
+    })
+}
+
+fn check_registry_output(
+    platform: Platform,
+    loaded: &LoadedAppConceptReadRegistry,
+    out_path: &Path,
+) -> Result<AppConceptReadOutputCheck, String> {
+    let outcome = check_concept_reads_from_registry(platform, loaded, out_path)
+        .map_err(|e| format!("check {}: {e}", out_path.display()))?;
+    Ok(AppConceptReadOutputCheck {
+        platform,
+        out_path: out_path.to_path_buf(),
+        outcome,
     })
 }
 

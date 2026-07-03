@@ -38,6 +38,38 @@ pub struct ConceptRead {
     pub handle_type: &'static str,
     /// Generated target argument shape.
     pub target_input: TargetInput,
+    /// Typed summary output emitted by the read.
+    pub summary: SummaryOutput,
+}
+
+/// Typed summary output emitted by a generated concept read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SummaryOutput {
+    /// Stable schema id carried by `TypedProjectionData`.
+    pub schema_id: &'static str,
+    /// Concept crate decoder function.
+    pub decoder_fn: &'static str,
+    /// Generated facade decoder method.
+    pub facade_decode_fn: &'static str,
+    /// Native constant name for the schema id.
+    pub native_schema_const: &'static str,
+    /// Native lower-camel summary family, e.g. `replySummary`.
+    pub native_family: &'static str,
+    /// Record shape generated into the app facade.
+    pub shape: SummaryShape,
+}
+
+/// Facade-local record shape for a concept summary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SummaryShape {
+    /// `{ target_id, count, reply_event_ids }`.
+    Reply,
+    /// `{ target_id, total, groups: [{ token, count, reactor_pubkeys }] }`.
+    Reaction,
+    /// `{ target_id, count, reposter_pubkeys }`.
+    Repost,
+    /// `{ target_id, total_msats, zap_count, zappers: [{ pubkey, total_msats, zap_count }] }`.
+    Zap,
 }
 
 /// Default NMP concept-read rows. These are codegen facts only, not runtime
@@ -53,6 +85,14 @@ pub const CONCEPT_READS: &[ConceptRead] = &[
             arg_name: "target_json",
             decoder_fn: "decode_and_validate_reply_target",
         },
+        summary: SummaryOutput {
+            schema_id: "nmp.replies.summary",
+            decoder_fn: "decode_reply_summary_snapshot",
+            facade_decode_fn: "decode_reply_summary",
+            native_schema_const: "REPLY_SUMMARY_SCHEMA_ID",
+            native_family: "replySummary",
+            shape: SummaryShape::Reply,
+        },
     },
     ConceptRead {
         id: "reactions",
@@ -62,6 +102,14 @@ pub const CONCEPT_READS: &[ConceptRead] = &[
         handle_type: "ReactionsReadHandle",
         target_input: TargetInput::PlainString {
             arg_name: "target_event_id",
+        },
+        summary: SummaryOutput {
+            schema_id: "nmp.reactions.summary",
+            decoder_fn: "decode_reaction_summary_snapshot",
+            facade_decode_fn: "decode_reaction_summary",
+            native_schema_const: "REACTION_SUMMARY_SCHEMA_ID",
+            native_family: "reactionSummary",
+            shape: SummaryShape::Reaction,
         },
     },
     ConceptRead {
@@ -73,6 +121,14 @@ pub const CONCEPT_READS: &[ConceptRead] = &[
         target_input: TargetInput::PlainString {
             arg_name: "target_event_id",
         },
+        summary: SummaryOutput {
+            schema_id: "nmp.reposts.summary",
+            decoder_fn: "decode_repost_summary_snapshot",
+            facade_decode_fn: "decode_repost_summary",
+            native_schema_const: "REPOST_SUMMARY_SCHEMA_ID",
+            native_family: "repostSummary",
+            shape: SummaryShape::Repost,
+        },
     },
     ConceptRead {
         id: "zaps",
@@ -82,6 +138,14 @@ pub const CONCEPT_READS: &[ConceptRead] = &[
         handle_type: "ZapsReadHandle",
         target_input: TargetInput::PlainString {
             arg_name: "target_event_id",
+        },
+        summary: SummaryOutput {
+            schema_id: "nmp.zaps.summary",
+            decoder_fn: "decode_zap_summary_snapshot",
+            facade_decode_fn: "decode_zap_summary",
+            native_schema_const: "ZAP_SUMMARY_SCHEMA_ID",
+            native_family: "zapSummary",
+            shape: SummaryShape::Zap,
         },
     },
 ];

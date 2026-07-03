@@ -5,12 +5,16 @@
     "runtime_accessor": "runtime",
     "error_type": "GalleryReadError",
     "invalid_target_variant": "InvalidTarget",
-    "open_failed_variant": "OpenFailed"
+    "open_failed_variant": "OpenFailed",
+    "decode_failed_variant": "DecodeFailed"
   },
   "reads": [
     {
       "concept": "replies",
-      "opened_record": "GalleryOpenedReplies"
+      "opened_record": "GalleryOpenedReplies",
+      "summary": {
+        "record": "GalleryReplySummary"
+      }
     }
   ],
   "outputs": {

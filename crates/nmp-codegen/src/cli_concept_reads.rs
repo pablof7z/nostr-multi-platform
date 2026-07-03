@@ -4,9 +4,9 @@
 
 use std::path::{Path, PathBuf};
 
-use nmp_codegen::ConceptReadPlatform;
+use nmp_codegen::{ConceptReadPlatform, LoadedAppConceptReadRegistry};
 
-/// `nmp gen concept-reads --registry <path> --platform rust [--out <path>] [--check]`.
+/// `nmp gen concept-reads --registry <path> --platform rust|swift|kotlin [--out <path>] [--check]`.
 pub fn run_gen_concept_reads(args: Vec<String>, help: &str) -> Result<(), String> {
     let mut platform_arg: Option<String> = None;
     let mut check = false;
@@ -20,7 +20,7 @@ pub fn run_gen_concept_reads(args: Vec<String>, help: &str) -> Result<(), String
                 platform_arg = Some(
                     args.get(index)
                         .cloned()
-                        .ok_or_else(|| "--platform requires rust".to_string())?,
+                        .ok_or_else(|| "--platform requires rust|swift|kotlin".to_string())?,
                 );
             }
             "--out" => {
@@ -55,13 +55,21 @@ pub fn run_gen_concept_reads(args: Vec<String>, help: &str) -> Result<(), String
     }
 
     let platform_arg = platform_arg.ok_or_else(|| {
-        format!("--platform is required (rust), unless registry is checked as a whole\n{help}")
+        format!(
+            "--platform is required (rust|swift|kotlin), unless registry is checked as a whole\n{help}"
+        )
     })?;
     let platform = ConceptReadPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
     let registry_path = registry_path
         .ok_or_else(|| format!("--registry is required for concept-read generation\n{help}"))?;
     let loaded = nmp_codegen::load_app_concept_read_registry(&registry_path)?;
-    let out = out.unwrap_or_else(|| resolve_registry_output(&registry_path, &loaded.outputs.rust));
+    validate_platform_ready(platform, &loaded)?;
+    let out = match out {
+        Some(out) => out,
+        None => {
+            resolve_registry_output(&registry_path, registry_platform_output(platform, &loaded)?)
+        }
+    };
 
     if check {
         let outcome = nmp_codegen::check_concept_reads_from_registry(platform, &loaded, &out)
@@ -79,7 +87,7 @@ pub fn run_gen_concept_reads(args: Vec<String>, help: &str) -> Result<(), String
                 .unwrap_or_else(|| " (file missing)".to_string());
             Err(format!(
                 "concept-reads ({platform_arg}) codegen stale at {}{where_diff}.\n\
-                 Regenerate with:\n  \
+         Regenerate with:\n  \
                  cargo run -p nmp-codegen -- gen concept-reads --registry {} --platform {platform_arg}",
                 out.display(),
                 registry_path.display()
@@ -101,6 +109,37 @@ fn resolve_registry_output(registry_path: &Path, output: &Path) -> PathBuf {
         .parent()
         .unwrap_or_else(|| Path::new("."))
         .join(output)
+}
+
+fn registry_platform_output(
+    platform: ConceptReadPlatform,
+    registry: &LoadedAppConceptReadRegistry,
+) -> Result<&Path, String> {
+    match platform {
+        ConceptReadPlatform::Rust => Ok(&registry.outputs.rust),
+        ConceptReadPlatform::Swift => registry.outputs.swift.as_deref().ok_or_else(|| {
+            "--out is required because outputs.swift is not declared in the registry".to_string()
+        }),
+        ConceptReadPlatform::Kotlin => registry.outputs.kotlin.as_deref().ok_or_else(|| {
+            "--out is required because outputs.kotlin is not declared in the registry".to_string()
+        }),
+    }
+}
+
+fn validate_platform_ready(
+    platform: ConceptReadPlatform,
+    registry: &LoadedAppConceptReadRegistry,
+) -> Result<(), String> {
+    if matches!(platform, ConceptReadPlatform::Kotlin)
+        && (registry.outputs.kotlin_package.is_none()
+            || registry.outputs.kotlin_uniffi_package.is_none())
+    {
+        return Err(
+            "outputs.kotlin_package and outputs.kotlin_uniffi_package are required for --platform kotlin"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn run_check_app_registry(registry_path: &Path) -> Result<(), String> {
@@ -136,9 +175,13 @@ fn run_check_app_registry(registry_path: &Path) -> Result<(), String> {
     Err(format!(
         "app concept-read registry drift for {}:\n{}\n\
          Regenerate with:\n  \
-         cargo run -p nmp-codegen -- gen concept-reads --registry {} --platform rust",
+         cargo run -p nmp-codegen -- gen concept-reads --registry {} --platform rust\n  \
+         cargo run -p nmp-codegen -- gen concept-reads --registry {} --platform swift\n  \
+         cargo run -p nmp-codegen -- gen concept-reads --registry {} --platform kotlin",
         registry_path.display(),
         stale,
+        registry_path.display(),
+        registry_path.display(),
         registry_path.display()
     ))
 }
@@ -146,5 +189,7 @@ fn run_check_app_registry(registry_path: &Path) -> Result<(), String> {
 fn platform_name(platform: ConceptReadPlatform) -> &'static str {
     match platform {
         ConceptReadPlatform::Rust => "rust",
+        ConceptReadPlatform::Swift => "swift",
+        ConceptReadPlatform::Kotlin => "kotlin",
     }
 }

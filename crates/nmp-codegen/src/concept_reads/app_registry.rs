@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use super::app_registry_format::RegistryDocument;
-use super::registry::{concept_read_for, ConceptRead};
+use super::registry::{concept_read_for, ConceptRead, SummaryShape};
 
 const SCHEMA: &str = "nmp.concept-reads/1";
 
@@ -39,6 +39,8 @@ pub struct ConceptReadFacade {
     pub invalid_target_variant: String,
     /// Error variant for open/read-plan rejection after target decoding.
     pub open_failed_variant: String,
+    /// Error variant for invalid typed summary payloads.
+    pub decode_failed_variant: String,
 }
 
 /// One app-selected concept read.
@@ -48,6 +50,19 @@ pub struct AppConceptRead {
     pub concept: &'static ConceptRead,
     /// Facade-local opened-handle record type.
     pub opened_record: String,
+    /// Facade-local typed summary output record names.
+    pub summary: AppConceptReadSummary,
+}
+
+/// App-selected record names for one concept-read summary.
+#[derive(Debug)]
+pub struct AppConceptReadSummary {
+    /// Facade-local summary record type.
+    pub record: String,
+    /// Facade-local reaction group record type.
+    pub group_record: Option<String>,
+    /// Facade-local zapper total record type.
+    pub zapper_record: Option<String>,
 }
 
 /// App-declared generated output paths.
@@ -58,6 +73,14 @@ pub struct AppConceptReadOutputs {
     /// Optional test module path to keep existing in-crate tests attached to the
     /// generated file.
     pub rust_test_module: Option<String>,
+    /// Optional Swift wrapper output path.
+    pub swift: Option<PathBuf>,
+    /// Optional Kotlin wrapper output path.
+    pub kotlin: Option<PathBuf>,
+    /// Kotlin package for the wrapper output.
+    pub kotlin_package: Option<String>,
+    /// UniFFI package containing the generated app facade Kotlin bindings.
+    pub kotlin_uniffi_package: Option<String>,
 }
 
 /// Load and parse an app-local concept-read registry JSON file.
@@ -102,6 +125,11 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
         "facade.open_failed_variant",
         &doc.facade.open_failed_variant,
     )?;
+    validate_upper_ident(
+        "facade.decode_failed_variant",
+        &doc.facade.decode_failed_variant,
+    )?;
+    validate_kotlin_outputs(&doc.outputs)?;
 
     let mut seen = BTreeSet::new();
     let mut records = BTreeSet::new();
@@ -116,9 +144,19 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
         if !records.insert(row.opened_record.clone()) {
             return Err(format!("duplicate opened_record {:?}", row.opened_record));
         }
+        validate_upper_ident("reads[].summary.record", &row.summary.record)?;
+        if !records.insert(row.summary.record.clone()) {
+            return Err(format!("duplicate summary record {:?}", row.summary.record));
+        }
+        validate_summary_nested_records(concept, &row.summary, &mut records)?;
         reads.push(AppConceptRead {
             concept,
             opened_record: row.opened_record,
+            summary: AppConceptReadSummary {
+                record: row.summary.record,
+                group_record: row.summary.group_record,
+                zapper_record: row.summary.zapper_record,
+            },
         });
     }
 
@@ -129,14 +167,92 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
             error_type: doc.facade.error_type,
             invalid_target_variant: doc.facade.invalid_target_variant,
             open_failed_variant: doc.facade.open_failed_variant,
+            decode_failed_variant: doc.facade.decode_failed_variant,
         },
         reads,
         outputs: AppConceptReadOutputs {
             rust: doc.outputs.rust,
             rust_test_module: doc.outputs.rust_test_module,
+            swift: doc.outputs.swift,
+            kotlin: doc.outputs.kotlin,
+            kotlin_package: doc.outputs.kotlin_package,
+            kotlin_uniffi_package: doc.outputs.kotlin_uniffi_package,
         },
         drift_checks: doc.drift_checks,
     })
+}
+
+fn validate_summary_nested_records(
+    concept: &ConceptRead,
+    summary: &super::app_registry_format::SummaryRow,
+    records: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    match concept.summary.shape {
+        SummaryShape::Reaction => {
+            let group_record = summary.group_record.as_deref().ok_or_else(|| {
+                format!(
+                    "concept read {:?} requires summary.group_record",
+                    concept.id
+                )
+            })?;
+            validate_upper_ident("reads[].summary.group_record", group_record)?;
+            if !records.insert(group_record.to_string()) {
+                return Err(format!("duplicate summary group_record {group_record:?}"));
+            }
+            if summary.zapper_record.is_some() {
+                return Err(format!(
+                    "concept read {:?} must not declare summary.zapper_record",
+                    concept.id
+                ));
+            }
+        }
+        SummaryShape::Zap => {
+            let zapper_record = summary.zapper_record.as_deref().ok_or_else(|| {
+                format!(
+                    "concept read {:?} requires summary.zapper_record",
+                    concept.id
+                )
+            })?;
+            validate_upper_ident("reads[].summary.zapper_record", zapper_record)?;
+            if !records.insert(zapper_record.to_string()) {
+                return Err(format!("duplicate summary zapper_record {zapper_record:?}"));
+            }
+            if summary.group_record.is_some() {
+                return Err(format!(
+                    "concept read {:?} must not declare summary.group_record",
+                    concept.id
+                ));
+            }
+        }
+        SummaryShape::Reply | SummaryShape::Repost => {
+            if summary.group_record.is_some() || summary.zapper_record.is_some() {
+                return Err(format!(
+                    "concept read {:?} does not use nested summary records",
+                    concept.id
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_kotlin_outputs(outputs: &super::app_registry_format::OutputsRow) -> Result<(), String> {
+    let has_kotlin = outputs.kotlin.is_some();
+    if has_kotlin != outputs.kotlin_package.is_some()
+        || has_kotlin != outputs.kotlin_uniffi_package.is_some()
+    {
+        return Err(
+            "outputs.kotlin requires outputs.kotlin_package and outputs.kotlin_uniffi_package"
+                .to_string(),
+        );
+    }
+    if let Some(package) = outputs.kotlin_package.as_deref() {
+        validate_dotted_ident("outputs.kotlin_package", package)?;
+    }
+    if let Some(package) = outputs.kotlin_uniffi_package.as_deref() {
+        validate_dotted_ident("outputs.kotlin_uniffi_package", package)?;
+    }
+    Ok(())
 }
 
 fn validate_lower_ident(field: &str, value: &str) -> Result<(), String> {
@@ -167,6 +283,16 @@ fn validate_ident(field: &str, value: &str) -> Result<(), String> {
     }
     if chars.any(|b| !(b.is_ascii_alphanumeric() || *b == b'_')) {
         return Err(format!("{field} must be a Rust identifier, got {value:?}"));
+    }
+    Ok(())
+}
+
+fn validate_dotted_ident(field: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    for part in value.split('.') {
+        validate_lower_ident(field, part)?;
     }
     Ok(())
 }
