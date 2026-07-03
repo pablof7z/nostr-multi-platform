@@ -229,6 +229,33 @@ impl<'a> ProtocolCommandContext<'a> {
         self.zap_profiles
     }
 
+    /// #2917 — the cached event for `id`, or `None` when the
+    /// [`CachedEventLookup`] capability was not attached (test contexts) or
+    /// the store has never seen `id`. D15-wrapped: a panicking adapter falls
+    /// back to `None`, matching the genuinely-absent-event branch.
+    #[must_use]
+    pub fn event_by_id(&self, id: &str) -> Option<crate::substrate::KernelEvent> {
+        let lookup = self.cached_events?;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| lookup.event_by_id(id)))
+            .unwrap_or(None)
+    }
+
+    /// #2917 — the newest cached event authored by `author` with kind `kind`,
+    /// or `None` when the capability is absent or the store holds none.
+    /// D15-wrapped, same fallback as [`Self::event_by_id`].
+    #[must_use]
+    pub fn latest_author_kind(
+        &self,
+        author: &str,
+        kind: u32,
+    ) -> Option<crate::substrate::KernelEvent> {
+        let lookup = self.cached_events?;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            lookup.latest_author_kind(author, kind)
+        }))
+        .unwrap_or(None)
+    }
+
     // ── #1721 slice 3a — typed dispatch ports ──────────────────────────────
     // Thin wrappers so `ProtocolCommand::run` bodies never name `ActorCommand`
     // directly. Each delegates to `self.send(...)` (D15 isolation already there).

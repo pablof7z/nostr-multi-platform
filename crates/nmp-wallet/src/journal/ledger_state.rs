@@ -56,6 +56,15 @@ impl WalletDerivedState {
         self.proof_verdicts.get(proof).copied()
     }
 
+    /// Whether a `NutzapRedeemed` fact has already been folded for `nutzap` —
+    /// #2917's `RedeemNutzap` checks this before spending anything, so a
+    /// retried/duplicate redeem of the same kind:9321 event never
+    /// double-counts.
+    #[must_use]
+    pub fn is_nutzap_redeemed(&self, nutzap: &WalletEventId) -> bool {
+        self.redeemed_nutzaps.contains_key(nutzap)
+    }
+
     /// Balance for one mint/unit pair, excluding any proof reconciled as
     /// spent. A single spent proof does not tombstone its whole token event
     /// — the other proofs on that event may still be good.

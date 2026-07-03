@@ -8,6 +8,7 @@
 //! rather than bouncing through a second actor round-trip.
 
 use std::collections::BTreeMap;
+use std::fmt;
 use std::sync::{Mutex, MutexGuard};
 
 use nmp_nip60::cashu::types::Proof;
@@ -16,6 +17,41 @@ use crate::journal::{
     WalletFact, WalletJournalError, WalletLedger, WalletOperation, WalletOperationId,
     WalletOperationJournal, WalletOperationKind, WalletOperationState,
 };
+
+/// The wallet's Cashu (NUT-11 P2PK) private key — NOT the Nostr identity key
+/// (see `create_wallet.rs`). Held only in this in-memory state, never in a
+/// `WalletFact`/journal/projection/log line: `Debug` is hand-redacted so a
+/// stray `{:?}` on `CashuWalletState` (or anything holding this) can never
+/// print it. Needed to sign received P2PK proofs on redeem (`sign_p2pk_proof`)
+/// — cold-start recovery of this value from the kind:17375 wallet event is a
+/// documented, separate deferral (see `CashuWalletBackend::on_wallet_event`'s
+/// doc comment); without it in live state, `RedeemNutzap` fails closed.
+pub(super) struct CashuP2pkSecret(pub(super) nostr::secp256k1::SecretKey);
+
+impl fmt::Debug for CashuP2pkSecret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("CashuP2pkSecret").field(&"<redacted>").finish()
+    }
+}
+
+/// One real, spendable Cashu proof this wallet currently holds — secret
+/// material (the proof's `secret`/`witness`), never surfaced through
+/// `WalletFact`/`WalletProjection`/a log line. Held ONLY here, alongside
+/// [`CashuP2pkSecret`]; the ledger's `ProofAtom` (proof-ref + amount only) is
+/// the privacy-safe shadow of this same proof for balance/trail purposes —
+/// the two are kept in lockstep by every caller that mutates both (never one
+/// without the other).
+#[derive(Clone)]
+pub(super) struct StoredProof {
+    /// Hex id of the kind:7375 token event this proof currently lives on
+    /// (for building the NIP-09 delete + replacement token event when it is
+    /// spent). `None` for a proof not yet attached to a published token
+    /// event (there is no such producer today, but the field stays optional
+    /// rather than a placeholder string).
+    pub(super) token_event: Option<String>,
+    pub(super) mint: String,
+    pub(super) proof: Proof,
+}
 
 /// Bounded delta-ring capacity for this backend's [`WalletLedger`] — matches
 /// the order of magnitude `WalletProjection`'s own row cap
@@ -64,6 +100,14 @@ pub(super) struct CashuWalletState {
     pub(super) mints: Vec<String>,
     /// The wallet's Cashu P2PK pubkey (NIP-61 receiving key), once created.
     pub(super) cashu_pubkey_hex: Option<String>,
+    /// The Cashu P2PK private key paired with `cashu_pubkey_hex` — see
+    /// [`CashuP2pkSecret`]'s doc comment for why this lives here and not in
+    /// the ledger/facts.
+    pub(super) cashu_privkey: Option<CashuP2pkSecret>,
+    /// Real, spendable proofs this wallet currently holds — the secret-
+    /// bearing counterpart to the ledger's aggregate, ref-only balance.
+    /// `SendNutzap`/`RedeemNutzap` are the only readers/writers.
+    pub(super) proofs: Vec<StoredProof>,
     pub(super) journal: WalletOperationJournal,
     pub(super) ledger: WalletLedger,
     /// quote_id -> pending deposit, keyed by the id `CompleteDepositCashu` carries.
@@ -81,10 +125,58 @@ impl CashuWalletState {
             created: false,
             mints: Vec::new(),
             cashu_pubkey_hex: None,
+            cashu_privkey: None,
+            proofs: Vec::new(),
             journal: WalletOperationJournal::new(),
             ledger: WalletLedger::new(DELTA_RING_CAPACITY),
             pending_deposits: BTreeMap::new(),
         }
+    }
+
+    /// Select proofs from `mint` summing to at least `amount_sats`, greedily
+    /// (no change-minimizing search — matches
+    /// `nip60_wallet::nutzap_send::select_proofs`'s own greedy shape).
+    /// Returns `None` when this mint's held proofs don't cover the amount;
+    /// callers must fail closed on `None` rather than partially spend.
+    /// Read-only — does not remove the proofs; see [`Self::remove_proofs`].
+    pub(super) fn select_proofs(
+        &self,
+        mint: &str,
+        amount_sats: u64,
+    ) -> Option<(Vec<StoredProof>, u64)> {
+        let mut selected = Vec::new();
+        let mut total = 0u64;
+        for stored in self.proofs.iter().filter(|p| p.mint == mint) {
+            if total >= amount_sats {
+                break;
+            }
+            selected.push(stored.clone());
+            total += stored.proof.amount;
+        }
+        if total < amount_sats {
+            return None;
+        }
+        Some((selected, total))
+    }
+
+    /// Remove exactly the proofs in `spent` (matched by the proof's public
+    /// `C` value — unique per proof) from the held inventory. Call this only
+    /// once the mint has actually consumed them (i.e. after a successful
+    /// swap), never speculatively.
+    pub(super) fn remove_proofs(&mut self, spent: &[StoredProof]) {
+        let spent_cs: std::collections::HashSet<&str> =
+            spent.iter().map(|p| p.proof.c.as_str()).collect();
+        self.proofs.retain(|p| !spent_cs.contains(p.proof.c.as_str()));
+    }
+
+    /// Add freshly minted/received proofs to the held inventory, all
+    /// attached to the same `token_event`.
+    pub(super) fn add_proofs(&mut self, token_event: Option<String>, mint: String, proofs: Vec<Proof>) {
+        self.proofs.extend(proofs.into_iter().map(|proof| StoredProof {
+            token_event: token_event.clone(),
+            mint: mint.clone(),
+            proof,
+        }));
     }
 
     /// Insert a fresh operation and drive it Draft -> Prepared, folding the

@@ -63,26 +63,35 @@ pub fn build_nutzap_info_event(
 
 /// Decode a kind:10019 event into [`NutZapInfo`].
 pub fn decode_nutzap_info_event(event: &nostr::Event) -> NutZapInfo {
+    decode_nutzap_info_fields(
+        &event
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Decode a kind:10019 event's raw tag rows into [`NutZapInfo`], without
+/// requiring a verified `nostr::Event`.
+///
+/// A [`crate::kinds::KIND_NIP61_NUTZAP_INFO`] event a caller reads back from
+/// `nmp_core::substrate::KernelEvent` (id/author/kind/tags/content, no
+/// signature — the kernel already verified it before handing it out) cannot
+/// be reconstructed into a real `nostr::Event` (`Event::new` requires a real
+/// [`nostr::secp256k1::schnorr::Signature`], which `KernelEvent` never
+/// carries). This is the tag-rows-only twin of [`decode_nutzap_info_event`]
+/// for exactly that caller — both share this one decode body.
+#[must_use]
+pub fn decode_nutzap_info_fields(tags: &[Vec<String>]) -> NutZapInfo {
     let mut relays = Vec::new();
     let mut mints = Vec::new();
     let mut cashu_pubkey = None;
-    for tag in event.tags.iter() {
-        match tag.kind() {
-            k if k == TagKind::custom("relay") => {
-                if let Some(v) = tag.content() {
-                    relays.push(v.to_owned());
-                }
-            }
-            k if k == TagKind::custom("mint") => {
-                if let Some(v) = tag.content() {
-                    mints.push(v.to_owned());
-                }
-            }
-            k if k == TagKind::custom("pubkey") => {
-                if let Some(v) = tag.content() {
-                    cashu_pubkey = Some(v.to_owned());
-                }
-            }
+    for row in tags {
+        match (row.first().map(String::as_str), row.get(1)) {
+            (Some("relay"), Some(v)) => relays.push(v.clone()),
+            (Some("mint"), Some(v)) => mints.push(v.clone()),
+            (Some("pubkey"), Some(v)) => cashu_pubkey = Some(v.clone()),
             _ => {}
         }
     }
@@ -110,6 +119,24 @@ pub fn p2pk_secret(recipient_pubkey_hex: &str) -> String {
         }
     ])
     .to_string()
+}
+
+/// The pubkey a P2PK proof secret locks to, or `None` if `secret` is not a
+/// well-formed NUT-11 `["P2PK", {..}]` spending condition (e.g. an ordinary
+/// random hex secret on a non-P2PK proof).
+///
+/// Used on receive to verify a nutzap proof is actually locked to THIS
+/// wallet's Cashu pubkey before redeeming it (nip60-nip61-wallet-design.md,
+/// "Receiving": "verify that each P2PK secret locks to the active Cashu P2PK
+/// pubkey") — never trust the sender's claimed lock without checking.
+#[must_use]
+pub fn p2pk_secret_pubkey(secret: &str) -> Option<String> {
+    let parsed: serde_json::Value = serde_json::from_str(secret).ok()?;
+    let arr = parsed.as_array()?;
+    if arr.first()?.as_str()? != "P2PK" {
+        return None;
+    }
+    arr.get(1)?.get("data")?.as_str().map(str::to_string)
 }
 
 /// Sign a P2PK proof (produce the witness signature).
@@ -231,29 +258,52 @@ pub struct ReceivedNutZap {
 
 /// Decode a kind:9321 nutzap event.
 pub fn decode_nutzap_event(event: &nostr::Event) -> Result<ReceivedNutZap, Nip60Error> {
+    decode_nutzap_fields(
+        &event.id.to_hex(),
+        &event.pubkey.to_hex(),
+        &event
+            .tags
+            .iter()
+            .map(|t| t.as_slice().to_vec())
+            .collect::<Vec<_>>(),
+        &event.content,
+    )
+}
+
+/// Decode a kind:9321 nutzap event's raw fields into [`ReceivedNutZap`],
+/// without requiring a verified `nostr::Event`.
+///
+/// The receive-side twin of [`decode_nutzap_event`] for a caller holding an
+/// `nmp_core::substrate::KernelEvent` (id/author/kind/tags/content, no
+/// signature) rather than a `nostr::Event` — see
+/// [`decode_nutzap_info_fields`]'s doc comment for why the two cannot be
+/// unified through a reconstructed `nostr::Event`.
+pub fn decode_nutzap_fields(
+    event_id_hex: &str,
+    sender_pubkey_hex: &str,
+    tags: &[Vec<String>],
+    content: &str,
+) -> Result<ReceivedNutZap, Nip60Error> {
+    let event_id = EventId::from_hex(event_id_hex)
+        .map_err(|e| Nip60Error::Event(format!("nutzap event id: {e}")))?;
+    let sender_pubkey = PublicKey::from_hex(sender_pubkey_hex)
+        .map_err(|e| Nip60Error::Event(format!("nutzap sender pubkey: {e}")))?;
+
     let mut proofs = Vec::new();
     let mut mint_url = None;
     let mut zapped_event_id = None;
 
-    for tag in event.tags.iter() {
-        match tag.kind() {
-            k if k == TagKind::custom("proof") => {
-                if let Some(v) = tag.content() {
-                    let proof: NutZapProof = serde_json::from_str(v)
-                        .map_err(|e| Nip60Error::Event(format!("proof tag parse: {e}")))?;
-                    proofs.push(proof);
-                }
+    for row in tags {
+        match (row.first().map(String::as_str), row.get(1)) {
+            (Some("proof"), Some(v)) => {
+                let proof: NutZapProof = serde_json::from_str(v)
+                    .map_err(|e| Nip60Error::Event(format!("proof tag parse: {e}")))?;
+                proofs.push(proof);
             }
-            k if k == TagKind::custom("u") => {
-                if let Some(v) = tag.content() {
-                    mint_url = Some(v.to_owned());
-                }
-            }
-            TagKind::SingleLetter(sl) if sl.character == nostr::Alphabet::E && !sl.uppercase => {
-                if let Some(v) = tag.content() {
-                    if let Ok(id) = EventId::from_hex(v) {
-                        zapped_event_id = Some(id);
-                    }
+            (Some("u"), Some(v)) => mint_url = Some(v.clone()),
+            (Some("e"), Some(v)) => {
+                if let Ok(id) = EventId::from_hex(v) {
+                    zapped_event_id = Some(id);
                 }
             }
             _ => {}
@@ -268,12 +318,12 @@ pub fn decode_nutzap_event(event: &nostr::Event) -> Result<ReceivedNutZap, Nip60
     let amount_sats = proofs.iter().map(|p| p.amount).sum();
 
     Ok(ReceivedNutZap {
-        event_id: event.id,
-        sender_pubkey: event.pubkey,
+        event_id,
+        sender_pubkey,
         proofs,
         mint_url,
         amount_sats,
-        comment: event.content.clone(),
+        comment: content.to_string(),
         zapped_event_id,
     })
 }
@@ -349,3 +399,52 @@ pub fn verify_nutzap_dleq(nutzap: &ReceivedNutZap) -> Result<(), Nip60Error> {
     }
     Ok(())
 }
+
+/// Raw tag rows for a kind:10019 NutZap info event, without an `EventBuilder`
+/// or a signing keypair — the twin [`build_nutzap_info_event`] needs
+/// underneath, and what a caller building an [`nmp_signer_iface::UnsignedEvent`]
+/// through the signer-transparent sign port (rather than `EventBuilder::
+/// sign_with_keys`) actually needs (`nmp-wallet`'s `PublishNutzapInfo`, #2917).
+#[must_use]
+pub fn nutzap_info_tags(info: &NutZapInfo) -> Vec<Vec<String>> {
+    let mut tags = Vec::new();
+    for relay in &info.relays {
+        tags.push(vec!["relay".to_string(), relay.clone()]);
+    }
+    for mint in &info.mints {
+        tags.push(vec!["mint".to_string(), mint.clone()]);
+    }
+    if let Some(ref pk) = info.cashu_pubkey {
+        tags.push(vec!["pubkey".to_string(), pk.clone()]);
+    }
+    tags
+}
+
+/// Raw tag rows for a kind:9321 nutzap event, without an `EventBuilder` or a
+/// signing keypair — the twin [`build_nutzap_event`] needs underneath, for
+/// the same signer-transparent-port reason as [`nutzap_info_tags`]. Content
+/// (the optional public comment) is `comment.unwrap_or("")`, same as
+/// `build_nutzap_event` — not part of this function's return since it is not
+/// a tag.
+pub fn nutzap_event_tags(
+    proofs: &[NutZapProof],
+    mint_url: &str,
+    recipient_pubkey: &PublicKey,
+    zapped_event_id: Option<&EventId>,
+) -> Result<Vec<Vec<String>>, Nip60Error> {
+    let mut tags: Vec<Vec<String>> = Vec::new();
+    for proof in proofs {
+        let proof_json = serde_json::to_string(proof)?;
+        tags.push(vec!["proof".to_string(), proof_json]);
+    }
+    tags.push(vec!["u".to_string(), mint_url.to_string()]);
+    tags.push(vec!["p".to_string(), recipient_pubkey.to_hex()]);
+    if let Some(event_id) = zapped_event_id {
+        tags.push(vec!["e".to_string(), event_id.to_hex()]);
+    }
+    Ok(tags)
+}
+
+#[cfg(test)]
+#[path = "nutzap_tests.rs"]
+mod tests;

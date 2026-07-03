@@ -327,11 +327,19 @@ pub(super) fn dispatch_token_event(
         account_pubkey,
         KIND_NIP60_TOKEN,
         plaintext,
+        Vec::new(),
         relays,
         created_at,
         correlation_id,
         move |_tx, signed: &SignedEvent| {
             let mut guard = lock_state(&on_signed_state);
+            // #2917 — the real, secret-bearing proofs this deposit minted
+            // must land in the spendable inventory (`select_proofs` is what
+            // `SendNutzap`/`RedeemNutzap` draw from), not just the ledger's
+            // ref-only `TokenAdded` fact below. Both are written from the
+            // SAME `proofs`/`signed.id`, so the inventory and the ledger's
+            // aggregate balance never drift apart.
+            guard.add_proofs(Some(signed.id.clone()), mint_for_fact.clone(), proofs);
             guard.ledger.apply(WalletFact::TokenAdded {
                 token_event: WalletEventId::new(signed.id.clone()),
                 mint: MintUrl::new(mint_for_fact),

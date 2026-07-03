@@ -183,6 +183,27 @@ pub trait ZapProfileLookup {
     fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String>;
 }
 
+/// #2917 (epic #2864 W8) — a narrow, protocol-neutral read of whatever the
+/// kernel's event store already has cached, keyed only by event id or by
+/// `(author, kind)` — no proactive fetch, no NIP-specific concept. This is
+/// the generalized shape of the `ZapProfileLookup` precedent (a cached-read
+/// capability so a `ProtocolCommand` can look at ANOTHER account's data
+/// without the crate reaching a raw store handle): where `ZapProfileLookup`
+/// is hardcoded to "kind:0's lnurl field", this trait lets a caller name any
+/// `(author, kind)` pair, so `nmp-wallet`'s nutzap-send flow can read a
+/// recipient's cached kind:10019 without `nmp-core` ever naming "wallet",
+/// "Cashu", or "nutzap" (D0).
+pub trait CachedEventLookup {
+    /// The cached event for `id` (64-char lowercase hex), or `None` if the
+    /// store has never seen it (or `id` is malformed).
+    fn event_by_id(&self, id: &str) -> Option<crate::substrate::KernelEvent>;
+
+    /// The newest cached event authored by `author` (64-char lowercase hex)
+    /// with kind `kind`, or `None` if the store holds none. A point-in-time
+    /// cache read — it does not open a subscription or wait for a fetch.
+    fn latest_author_kind(&self, author: &str, kind: u32) -> Option<crate::substrate::KernelEvent>;
+}
+
 /// ADR-0072 §D4 — the narrow capability that reaches the actor's configured
 /// [`HostOpHandler`](crate::substrate::HostOpHandler).
 ///

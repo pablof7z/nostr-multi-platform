@@ -29,12 +29,19 @@ use super::ui_codes;
 /// the publish command is enqueued — the caller's chance to record its
 /// durable pre-publish state (journal transition, ledger fact) against the
 /// REAL event id, which is only known once signing succeeds.
+///
+/// `tags` are PLAIN tags on the outer event (never encrypted into
+/// `plaintext`) — kind:17375/7375's two callers pass `Vec::new()` (they carry
+/// no plain tags); kind:7376 (#2917) passes the redeemed `e` + sender `p`
+/// tags NIP-61 requires to stay publicly verifiable alongside the encrypted
+/// `direction`/`amount`/`created`/`destroyed` content.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn launch_self_encrypted_publish(
     worker_tx: CommandSender,
     signer_hex: String,
     kind: u32,
     plaintext: String,
+    tags: Vec<Vec<String>>,
     relays: Vec<String>,
     // D7 — the kernel owns the wall clock; the caller resolves this from
     // `ctx.now_secs()` while it still holds `ctx` (this chain only holds an
@@ -70,7 +77,7 @@ pub(super) fn launch_self_encrypted_publish(
             let unsigned = UnsignedEvent {
                 pubkey: signer_for_unsigned.clone(),
                 kind,
-                tags: Vec::new(),
+                tags,
                 content: ciphertext,
                 created_at,
             };
@@ -93,6 +100,40 @@ pub(super) fn launch_self_encrypted_publish(
             "actor inbox closed before nip44 self-encrypt".to_string(),
         );
     }
+}
+
+/// Launch the chain for one PUBLIC (non-encrypted) NIP-61 event — kind:9321
+/// (nutzap) and kind:10019 (nutzap info) are neither self- nor peer-encrypted
+/// (NIP-61 requires senders/observers to read them directly), so this skips
+/// the NIP-44 step `launch_self_encrypted_publish` has and goes straight to
+/// sign -> publish. `on_signed` has the same pre-publish-state contract as
+/// `launch_self_encrypted_publish`'s.
+pub(super) fn launch_plain_publish(
+    worker_tx: CommandSender,
+    signer_hex: String,
+    kind: u32,
+    tags: Vec<Vec<String>>,
+    content: String,
+    relays: Vec<String>,
+    created_at: u64,
+    correlation_id: Option<String>,
+    on_signed: impl FnOnce(&CommandSender, &SignedEvent) + Send + 'static,
+) {
+    let unsigned = UnsignedEvent {
+        pubkey: signer_hex.clone(),
+        kind,
+        tags,
+        content,
+        created_at,
+    };
+    sign_and_publish(
+        worker_tx,
+        signer_hex,
+        unsigned,
+        relays,
+        correlation_id,
+        on_signed,
+    );
 }
 
 fn sign_and_publish(

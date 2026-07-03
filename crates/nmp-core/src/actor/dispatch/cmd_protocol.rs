@@ -7,8 +7,9 @@ use crate::actor::tick::emit_now;
 use crate::relay::OutboundMessage;
 
 use super::substrate_adapters::{
-    ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
-    LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
+    ActionStageTrackerAdapter, CachedEventLookupAdapter, ErrorSurfaceAdapter,
+    HostOpHandlerAccessAdapter, KernelClockAdapter, LocalSignerAccessAdapter,
+    RecipientRelayLookupAdapter,
 };
 use super::ProtocolPorts;
 use crate::kernel::wallet_access::KernelWalletAccess;
@@ -74,6 +75,11 @@ pub(super) fn protocol(
         kernel: &kernel_cell,
     };
     let recipients = RecipientRelayLookupAdapter {
+        kernel: &kernel_cell,
+    };
+    // #2917 — read-only cached-event lookup, shares the same `kernel_cell`
+    // as every other read adapter above.
+    let cached_events = CachedEventLookupAdapter {
         kernel: &kernel_cell,
     };
     // ADR-0072 §D4 — per-app host-op handler accessor, so the
@@ -152,7 +158,8 @@ pub(super) fn protocol(
                 zap_profiles: &wallet,
             },
         )
-        .with_outbound(&mut outbound);
+        .with_outbound(&mut outbound)
+        .with_cached_events(&cached_events);
         cmd.run(&mut pctx)
     }))
     .unwrap_or_else(|_| {
@@ -181,6 +188,7 @@ pub(super) fn protocol(
     // #1927: `wallet` (the unified `KernelWalletAccess::borrowed`) also borrows
     // `kernel_cell`, so it too must drop before the `emit_now` re-borrow.
     drop(wallet);
+    drop(cached_events);
     drop(recipients);
     drop(stages);
     drop(errors);

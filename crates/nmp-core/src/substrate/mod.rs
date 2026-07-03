@@ -157,12 +157,12 @@ pub use outbound_http::{
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
-    build_record_action_success, build_sign_event_for_account, ActionStageTracker, ErrorSurface,
-    HostOpHandlerAccess, KernelClock, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
-    NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
-    NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext,
-    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess,
-    ZapProfileLookup,
+    build_record_action_success, build_sign_event_for_account, ActionStageTracker,
+    CachedEventLookup, ErrorSurface, HostOpHandlerAccess, KernelClock, LocalSignerAccess,
+    NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess, NoopKernelClock,
+    NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
+    ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
+    RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
 };
 pub use raw_event_forwarding::{RawEventForwardPolicyContext, RawEventForwardTarget};
 pub use relay_connected::{

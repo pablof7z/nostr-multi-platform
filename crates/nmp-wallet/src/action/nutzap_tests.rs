@@ -1,7 +1,6 @@
 use std::sync::Mutex;
 
 use super::*;
-use crate::ui_codes;
 use crate::WalletBackendId;
 use nmp_core::substrate::ActionContext;
 
@@ -15,11 +14,11 @@ fn active_pubkey(pubkey: &str) -> ActiveAccountSlot {
 
 const PK: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
-/// Today's real backends (NWC, Cashu) never advertise the nutzap
-/// capabilities — the Cashu backend's `cashu_wallet_and_deposit()` doc
-/// comment explicitly says it does not implement nutzap send/receive yet —
-/// so every nutzap module must fail closed at `start()` against the crate's
-/// REAL selector composition, not just an empty stub selector.
+/// #2917 — the Cashu backend now advertises `cashu_nutzaps()`, so every
+/// nutzap module's `start()` gate passes against the crate's REAL selector
+/// composition (deep validation — recipient info, mint trust, balance — is
+/// `SendNutzapCommand`/`RedeemNutzapCommand`'s own `run()`-time job, not
+/// `start()`'s capability gate).
 fn real_backend_selector() -> Arc<WalletBackendSelector> {
     Arc::new(WalletBackendSelector::new(vec![Arc::new(
         crate::backend::cashu::CashuWalletBackend::new(),
@@ -27,17 +26,11 @@ fn real_backend_selector() -> Arc<WalletBackendSelector> {
 }
 
 #[test]
-fn publish_info_fails_closed_against_todays_real_backends() {
+fn publish_info_start_passes_the_capability_gate_against_todays_real_backends() {
     let module = NutzapPublishInfoModule::new(real_backend_selector(), active_pubkey(PK));
-    let err = module
+    module
         .start(&mut ctx(), NutzapPublishInfoAction {})
-        .expect_err("no backend advertises publish_nutzap_info today");
-    match err {
-        ActionRejection::InvalidCoded { code, .. } => {
-            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
-        }
-        other => panic!("expected InvalidCoded, got {other:?}"),
-    }
+        .expect("the Cashu backend advertises publish_nutzap_info");
 }
 
 #[test]
@@ -73,9 +66,9 @@ fn send_start_rejects_zero_amount() {
 }
 
 #[test]
-fn send_fails_closed_against_todays_real_backends() {
+fn send_start_passes_the_capability_gate_against_todays_real_backends() {
     let module = NutzapSendModule::new(real_backend_selector(), active_pubkey(PK));
-    let err = module
+    module
         .start(
             &mut ctx(),
             NutzapSendAction {
@@ -84,13 +77,7 @@ fn send_fails_closed_against_todays_real_backends() {
                 target_event_id: None,
             },
         )
-        .expect_err("no backend advertises send_nutzap today");
-    match err {
-        ActionRejection::InvalidCoded { code, .. } => {
-            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
-        }
-        other => panic!("expected InvalidCoded, got {other:?}"),
-    }
+        .expect("the Cashu backend advertises send_nutzap");
 }
 
 #[test]
@@ -108,22 +95,16 @@ fn redeem_start_rejects_empty_event_id() {
 }
 
 #[test]
-fn redeem_fails_closed_against_todays_real_backends() {
+fn redeem_start_passes_the_capability_gate_against_todays_real_backends() {
     let module = NutzapRedeemModule::new(real_backend_selector(), active_pubkey(PK));
-    let err = module
+    module
         .start(
             &mut ctx(),
             NutzapRedeemAction {
                 event_id: "e".repeat(64),
             },
         )
-        .expect_err("no backend advertises redeem_nutzap today");
-    match err {
-        ActionRejection::InvalidCoded { code, .. } => {
-            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
-        }
-        other => panic!("expected InvalidCoded, got {other:?}"),
-    }
+        .expect("the Cashu backend advertises redeem_nutzap");
 }
 
 /// Proves the dispatch point is real plumbing, not dead code: with a stub

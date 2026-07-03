@@ -12,6 +12,7 @@ mod active_timeline_authors;
 mod auth;
 mod auth_sign_state;
 pub(crate) mod cache_serve;
+mod cached_event_lookup; // #2917 — narrow, protocol-neutral cached-event reads for ProtocolCommand.
 pub(crate) mod claim_expansion;
 mod claim_expansion_helpers;
 pub(crate) mod clock;
