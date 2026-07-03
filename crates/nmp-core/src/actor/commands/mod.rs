@@ -84,7 +84,7 @@ mod publish;
 #[cfg(feature = "native")]
 mod publish_contacts;
 #[cfg(feature = "native")]
-mod publish_failures;
+pub(crate) mod publish_failures;
 #[cfg(feature = "native")]
 mod publish_finalize;
 #[cfg(feature = "native")]
@@ -235,9 +235,11 @@ pub(crate) use event_observer::unregister_observer as unregister_observer_intern
 // projection surface re-exported unconditionally from `lib.rs`.
 pub use event_observer::{ObservedProjectionId, ObservedProjectionSink};
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
+#[cfg(test)]
+pub(super) use publish::publish_profile;
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    publish_profile, publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
+    publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
 };
 #[cfg(feature = "native")]
 pub(super) use publish_contacts::{follow, follow_many};

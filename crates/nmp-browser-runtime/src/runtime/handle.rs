@@ -70,6 +70,9 @@ impl BrowserRuntimeHandle {
 
         let relay_slot = Arc::clone(&inner.configured_relays_slot);
         inner.reducer.set_app_relay_slot(Arc::clone(&relay_slot));
+        inner
+            .reducer
+            .set_draft_builder_registry(Arc::clone(&inner.draft_builders));
 
         if let Some(factory) = inner.routing_substrate_factory.take() {
             let trace_observer = NoopRoutingTrace::arc();

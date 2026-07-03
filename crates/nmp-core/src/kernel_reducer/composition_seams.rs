@@ -414,6 +414,14 @@ impl super::KernelReducer {
         self.kernel.set_content_parser(parser);
     }
 
+    /// Install composition-registered draft builders on the wrapped kernel.
+    pub fn set_draft_builder_registry(
+        &mut self,
+        registry: Arc<crate::substrate::DraftBuilderRegistry>,
+    ) {
+        self.kernel.set_draft_builder_registry(registry);
+    }
+
     /// Install the publish outbox resolver on the wrapped kernel.
     ///
     /// App composition roots call this to swap the kernel's default
@@ -448,6 +456,16 @@ impl super::KernelReducer {
             .kernel
             .publish_externally_signed(raw, target, correlation_id);
         self.kernel.partition_auth_paused(outbound)
+    }
+}
+
+impl crate::substrate::DraftBuilderRegistrar for super::KernelReducer {
+    fn register_draft_builder(
+        &self,
+        kind: crate::substrate::DraftIntentKind,
+        builder: Arc<dyn crate::substrate::DraftBuilder>,
+    ) {
+        self.kernel.register_draft_builder(kind, builder);
     }
 }
 

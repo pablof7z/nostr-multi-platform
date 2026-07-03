@@ -64,6 +64,7 @@ pub struct ActorConfigSources {
     /// `ingest_dispatcher`: a shared `Arc` written by host registration,
     /// consumed once at composition.
     pub search_scope_registry: Arc<SearchScopeRegistry>,
+    pub draft_builders: Arc<crate::substrate::DraftBuilderRegistry>,
     pub dm_inbox_relays: Arc<Mutex<Arc<dyn DmInboxRelayLookup>>>,
     pub contact_list_reader: ContactListReaderSlot,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
@@ -120,6 +121,7 @@ impl ActorConfigSources {
                 .unwrap_or_default(),
             ingest_dispatcher: self.ingest_dispatcher,
             search_scope_registry: self.search_scope_registry,
+            draft_builders: self.draft_builders,
             dm_inbox_relays: self
                 .dm_inbox_relays
                 .lock()
@@ -188,6 +190,7 @@ pub struct ActorConfig {
     /// #1811 — crate-registered FTS scope registry (compiled + installed into
     /// the kernel store at `apply_to_kernel`).
     pub search_scope_registry: Arc<SearchScopeRegistry>,
+    pub draft_builders: Arc<crate::substrate::DraftBuilderRegistry>,
     pub dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
     pub contact_list_reader: Arc<dyn ContactListReader>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
@@ -263,6 +266,7 @@ impl ActorConfig {
         // re-runs `apply_to_kernel`, so the fresh store is re-installed.
         self.search_scope_registry
             .install_into(&*kernel.event_store_handle());
+        kernel.set_draft_builder_registry(Arc::clone(&self.draft_builders));
         kernel.set_dm_inbox_relay_lookup(Arc::clone(&self.dm_inbox_relays));
         kernel.set_contact_list_reader(Arc::clone(&self.contact_list_reader));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));

@@ -274,6 +274,8 @@ pub struct Kernel {
     outbox_router: Arc<dyn OutboxRouter>,
     /// Injected content parser (D0 — no NIP noun in `nmp-core`).
     content_parser: Arc<dyn crate::substrate::ContentParser>,
+    /// Composition-registered protocol draft builders.
+    draft_builders: Arc<crate::substrate::DraftBuilderRegistry>,
     /// V-51 routing-trace ring-buffer projection.
     routing_trace: Arc<routing_trace::RoutingTraceProjection>,
     /// NIP-17 DM-inbox relay lookup substrate (D0, V-40).

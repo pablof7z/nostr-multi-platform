@@ -19,7 +19,9 @@ use crate::actor::{
 };
 use crate::publish::{PublishRouteClass, PublishTarget};
 use crate::store::RawEvent;
+use crate::substrate::DraftBuilderRegistrar;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use std::sync::Arc;
 
 // ─── shared constants / helpers ──────────────────────────────────────────────
 
@@ -75,6 +77,104 @@ fn to_raw(s: &SignedEvent) -> RawEvent {
         tags: s.unsigned.tags.clone(),
         content: s.unsigned.content.clone(),
         created_at: s.unsigned.created_at,
+    }
+}
+
+fn install_fixture_draft_builders(r: &KernelReducer) {
+    r.register_draft_builder(
+        crate::substrate::DraftIntentKind::Reply,
+        Arc::new(FixtureReplyBuilder),
+    );
+    r.register_draft_builder(
+        crate::substrate::DraftIntentKind::Profile,
+        Arc::new(FixtureProfileBuilder),
+    );
+}
+
+struct FixtureReplyBuilder;
+
+impl crate::substrate::DraftBuilder for FixtureReplyBuilder {
+    fn build(
+        &self,
+        intent: &crate::substrate::DraftIntent,
+        ctx: crate::substrate::DraftBuildContext<'_>,
+    ) -> Result<UnsignedEvent, crate::substrate::DraftBuildError> {
+        let crate::substrate::DraftIntent::Reply {
+            content,
+            reply_to_event_id,
+        } = intent
+        else {
+            return Err(crate::substrate::DraftBuildError::new("wrong intent"));
+        };
+        let id = hex32(reply_to_event_id)
+            .ok_or_else(|| crate::substrate::DraftBuildError::new("reply_target_invalid_hex"))?;
+        let parent = ctx
+            .event_store
+            .get_by_id(&id)
+            .map_err(|err| crate::substrate::DraftBuildError::new(err.to_string()))?
+            .ok_or_else(|| crate::substrate::DraftBuildError::new("reply_target_unknown"))?;
+        let root = parent
+            .raw
+            .tags
+            .iter()
+            .find(|tag| tag.get(3).map(String::as_str) == Some("root"))
+            .and_then(|tag| tag.get(1))
+            .cloned()
+            .unwrap_or_else(|| reply_to_event_id.clone());
+        Ok(UnsignedEvent {
+            pubkey: ctx.author_pubkey.to_string(),
+            kind: 1,
+            tags: vec![
+                crate::tags::e_tag(&root, None, Some("root")),
+                crate::tags::e_tag(reply_to_event_id, None, Some("reply")),
+                crate::tags::p_tag(&parent.raw.pubkey, None),
+            ],
+            content: content.clone(),
+            created_at: ctx.created_at,
+        })
+    }
+}
+
+struct FixtureProfileBuilder;
+
+impl crate::substrate::DraftBuilder for FixtureProfileBuilder {
+    fn build(
+        &self,
+        intent: &crate::substrate::DraftIntent,
+        ctx: crate::substrate::DraftBuildContext<'_>,
+    ) -> Result<UnsignedEvent, crate::substrate::DraftBuildError> {
+        let crate::substrate::DraftIntent::Profile { fields } = intent else {
+            return Err(crate::substrate::DraftBuildError::new("wrong intent"));
+        };
+        Ok(UnsignedEvent {
+            pubkey: ctx.author_pubkey.to_string(),
+            kind: 0,
+            tags: Vec::new(),
+            content: serde_json::to_string(fields).unwrap(),
+            created_at: ctx.created_at,
+        })
+    }
+}
+
+fn hex32(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        let hi = hex_value(hex.as_bytes()[i * 2])?;
+        let lo = hex_value(hex.as_bytes()[i * 2 + 1])?;
+        *byte = (hi << 4) | lo;
+    }
+    Some(out)
+}
+
+fn hex_value(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -252,6 +352,7 @@ fn reply_needs_sign_with_nip10_tags_from_stored_parent() {
     let parent_author = "b2".repeat(32);
     let root_id = "c3".repeat(32);
     let mut r = KernelReducer::new();
+    install_fixture_draft_builders(&r);
     let _ = r.set_active_account(PK.to_string());
     r.kernel
         .event_store_handle()
@@ -331,6 +432,7 @@ fn reply_needs_sign_with_nip10_tags_from_stored_parent() {
 #[test]
 fn reply_missing_parent_returns_unsupported() {
     let mut r = KernelReducer::new();
+    install_fixture_draft_builders(&r);
     let _ = r.set_active_account(PK.to_string());
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::Reply {
@@ -351,6 +453,7 @@ fn reply_missing_parent_returns_unsupported() {
 fn profile_needs_sign_with_correlation_id() {
     // Profile (kind:0) → NeedsSign with target Auto and the command's cid.
     let mut r = KernelReducer::new();
+    install_fixture_draft_builders(&r);
     let _ = r.set_active_account(PK.to_string());
 
     let cid = Some("profile-cid-3".to_string());

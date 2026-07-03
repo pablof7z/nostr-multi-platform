@@ -19,11 +19,11 @@ use std::sync::Arc;
 use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
-    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection,
-    ObservedProjectionRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
-    SnapshotProjectionRegistrar,
+    DmInboxRelayRegistrar, DraftBuilderRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IncrementalApplyError, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{AppRelaySlot, CommandSender, ObservedProjectionId, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
@@ -293,6 +293,17 @@ impl<S> BlockedRelayLookupRegistrar for BrowserAppBuilder<S> {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.blocked_relay_lookup = Some(lookup);
+    }
+}
+
+impl<S> DraftBuilderRegistrar for BrowserAppBuilder<S> {
+    fn register_draft_builder(
+        &self,
+        kind: nmp_core::substrate::DraftIntentKind,
+        builder: Arc<dyn nmp_core::substrate::DraftBuilder>,
+    ) {
+        let Ok(g) = self.inner.lock() else { return };
+        g.draft_builders.register(kind, builder);
     }
 }
 

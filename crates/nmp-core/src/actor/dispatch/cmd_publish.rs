@@ -94,16 +94,14 @@ pub(super) fn publish_reply(
             None,
         );
     }
-    let Some(tags) =
-        crate::kernel_reducer::reply::build_reply_tags_from_kernel(ctx.kernel, &reply_to_event_id)
-    else {
-        let reason = format!("reply_target_unknown: {reply_to_event_id}");
+    let Some(pubkey) = ctx.identity.active_pubkey() else {
+        let reason = "no active account for publish reply".to_string();
         ctx.kernel.set_last_error_token(
             &crate::ui_token::UiToken::error(
                 crate::ui_token::codes::PUBLISH_REPLY_TARGET_UNKNOWN,
                 reason.clone(),
             )
-            .with_subject(reply_to_event_id),
+            .with_subject("active-account"),
         );
         if let Some(id) = correlation_id {
             ctx.kernel.record_action_failure(id, reason);
@@ -111,12 +109,30 @@ pub(super) fn publish_reply(
         maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
         return Some(Vec::new());
     };
-    let unsigned = nmp_signer_iface::UnsignedEvent {
-        pubkey: String::new(),
-        kind: 1,
-        tags,
+    let intent = crate::substrate::DraftIntent::Reply {
         content,
-        created_at: ctx.kernel.now_secs(),
+        reply_to_event_id: reply_to_event_id.clone(),
+    };
+    let unsigned = match ctx
+        .kernel
+        .build_draft(&intent, &pubkey, ctx.kernel.now_secs())
+    {
+        Ok(unsigned) => unsigned,
+        Err(err) => {
+            let reason = err.to_string();
+            ctx.kernel.set_last_error_token(
+                &crate::ui_token::UiToken::error(
+                    crate::ui_token::codes::PUBLISH_REPLY_TARGET_UNKNOWN,
+                    reason.clone(),
+                )
+                .with_subject(reply_to_event_id),
+            );
+            if let Some(id) = correlation_id {
+                ctx.kernel.record_action_failure(id, reason);
+            }
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            return Some(Vec::new());
+        }
     };
     let outbound = match target {
         crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
@@ -161,13 +177,35 @@ pub(super) fn publish_profile(
             None,
         );
     }
-    let outbound = commands::publish_profile(
-        ctx.identity,
-        ctx.kernel,
-        fields,
-        correlation_id,
-        ctx.parked_ops,
-    );
+    let outbound = match ctx.identity.active_pubkey() {
+        Some(pubkey) => {
+            let intent = crate::substrate::DraftIntent::Profile { fields };
+            match ctx
+                .kernel
+                .build_draft(&intent, &pubkey, ctx.kernel.now_secs())
+            {
+                Ok(unsigned) => commands::publish_unsigned_event(
+                    ctx.identity,
+                    ctx.kernel,
+                    unsigned,
+                    None,
+                    correlation_id,
+                    None,
+                    ctx.parked_ops,
+                ),
+                Err(err) => commands::publish_failures::fail_publish(
+                    ctx.kernel,
+                    format!("profile draft: {err}"),
+                    correlation_id,
+                ),
+            }
+        }
+        None => commands::publish_failures::toast_no_account(
+            ctx.kernel,
+            "publish profile",
+            correlation_id,
+        ),
+    };
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(outbound)
 }

@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ConfiguredRelaysChangeRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
+    DmInboxRelayRegistrar, DraftBuilderRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
     SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
@@ -158,6 +158,16 @@ impl DmInboxRelayRegistrar for NmpApp {
 impl BlockedRelayLookupRegistrar for NmpApp {
     fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         NmpApp::set_blocked_relay_lookup(self, lookup);
+    }
+}
+
+impl DraftBuilderRegistrar for NmpApp {
+    fn register_draft_builder(
+        &self,
+        kind: nmp_core::substrate::DraftIntentKind,
+        builder: Arc<dyn nmp_core::substrate::DraftBuilder>,
+    ) {
+        self.composition.draft_builders.register(kind, builder);
     }
 }
 

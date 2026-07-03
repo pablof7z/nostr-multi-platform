@@ -59,12 +59,12 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
-use nmp_core::tags::parse_nip10;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     admit_all_roots, CardBuilder, EventGate, EventLookup, FeedWindowPolicy, FollowPredicate,
     RootIndexedFeed,
 };
+use nmp_nip01::parse_nip10;
 use nmp_threading::{ParentResolver, ThreadPointer};
 
 use super::attribution::Nip10ReplyAttribution;

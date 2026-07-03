@@ -1,7 +1,6 @@
 use nmp_core::substrate::KernelEvent;
-use nmp_core::tags::Nip10Refs;
 use nmp_kinds::{KIND_NIP22_COMMENT, KIND_SHORT_TEXT_NOTE};
-use nmp_nip01::{try_from_kernel_event as note_from_kernel_event, NoteRecord};
+use nmp_nip01::{try_from_kernel_event as note_from_kernel_event, Nip10Refs, NoteRecord};
 use nmp_nip22::{try_from_kernel_event as comment_from_kernel_event, CommentRecord};
 use serde::{Deserialize, Serialize};
 

@@ -1,7 +1,6 @@
 //! `Nip10ModularTimelineView` — modular threaded timeline over NIP-10
 //! short-note reply graphs. Wraps the agnostic [`nmp_threading::Grouper`]
-//! with a NIP-10 [`ParentResolver`] driven by
-//! [`nmp_core::tags::parse_nip10`].
+//! with a NIP-10 [`ParentResolver`].
 //!
 //! Replaces the doctrine-violating `MetaTimelineViewModule` mention in
 //! `nmp-core/src/planner/interest.rs` — that work now lives here in a

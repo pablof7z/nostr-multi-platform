@@ -4,8 +4,8 @@
 //! ceiling (AGENTS.md). `try_current_follows` is the PR-6b wasm write-path
 //! seam: it looks up the active account's contact list through the registered
 //! protocol reader before the async sign boundary so no `RefCell` borrow lives
-//! across an await point — identical borrow discipline to `build_reply_tags` in
-//! `reply.rs` and `build_reaction_draft` in `react.rs`.
+//! across an await point — identical borrow discipline to
+//! `build_reaction_draft` in `react.rs`.
 
 impl super::KernelReducer {
     /// Read the active account's follow set, cleanly distinguishing "not
@@ -25,7 +25,7 @@ impl super::KernelReducer {
     /// `CapabilityFailure(follow_list_not_loaded)` to the host instead.
     ///
     /// Takes `&self` — the borrow drops before any async boundary (wasm
-    /// `RefCell` borrow discipline, same contract as `build_reply_tags`).
+    /// `RefCell` borrow discipline).
     #[must_use]
     pub fn try_current_follows(&self) -> Option<Vec<String>> {
         self.kernel.try_current_follows()

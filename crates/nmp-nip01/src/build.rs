@@ -3,15 +3,14 @@
 //! The action ledger turns the `UnsignedEvent` into a signed + published event.
 //!
 //! NIP-10 marked-form reply construction lives here exclusively. It uses the
-//! [`nmp_core::tags`] helpers so tag construction is defined once across all
-//! protocol crates.
+//! this crate's NIP-10 helpers so kind:1 grammar stays out of core.
 
-use nmp_core::tags::reply_tags;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::decode::NoteRecord;
 use crate::kinds::KIND_SHORT_TEXT_NOTE;
+use crate::nip10::reply_tags;
 
 /// Structured builder errors per **D6** — never cross FFI as panics.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -57,7 +56,7 @@ impl Note {
 pub struct NoteBuilder {
     content: String,
     /// Pre-computed NIP-10 reply tags from [`Self::reply_to`], delegated to
-    /// [`nmp_core::tags::reply_tags`] — the single canonical implementation.
+    /// [`crate::nip10::reply_tags`] — the single canonical implementation.
     reply_tags: Option<Vec<Vec<String>>>,
     relay_hint: Option<String>,
 }
@@ -82,7 +81,7 @@ impl NoteBuilder {
     /// Per NIP-10: when `parent` already has a `root` reference, the new
     /// root tag carries that id; otherwise `parent` itself is the root.
     ///
-    /// Tag construction is delegated to [`nmp_core::tags::reply_tags`] —
+    /// Tag construction is delegated to [`crate::nip10::reply_tags`] —
     /// the single canonical NIP-10 reply-tag builder shared by native and
     /// wasm paths.
     #[must_use]
@@ -126,7 +125,7 @@ impl NoteBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::tags::{EventRef, Nip10Refs};
+    use crate::nip10::{EventRef, Nip10Refs};
 
     const AUTHOR: &str = "deadbeef";
 
