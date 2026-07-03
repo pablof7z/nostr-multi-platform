@@ -1,6 +1,6 @@
 {
   "name": "@nmpis/components-web",
-  "version": "0.8.4",
+  "version": "1.0.0-rc.1",
   "description": "Solid component host and reusable Nostr UI components for NMP web apps.",
   "license": "MIT",
   "type": "module",
