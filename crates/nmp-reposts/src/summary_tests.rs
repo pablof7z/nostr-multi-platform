@@ -16,7 +16,6 @@ use nmp_read_session::{
     ReadSessionRegistry, TeardownAction,
 };
 
-use super::generated::nmp::reposts::root_as_repost_summary_snapshot;
 use super::*;
 use crate::read::RepostReadPlan;
 use crate::target::RepostTarget;
@@ -192,12 +191,18 @@ fn typed_output_round_trips() {
         reposter_pubkeys: vec![ALICE.to_string(), BOB.to_string()],
     };
     let bytes = encode_repost_summary_snapshot(&snapshot);
-    let decoded = root_as_repost_summary_snapshot(&bytes).unwrap();
-    assert_eq!(decoded.schema_version(), REPOST_SUMMARY_SCHEMA_VERSION);
-    assert_eq!(decoded.target_id(), Some(TARGET));
-    assert_eq!(decoded.count(), 2);
-    let pubkeys: Vec<&str> = decoded.reposter_pubkeys().unwrap().iter().collect();
-    assert_eq!(pubkeys, vec![ALICE, BOB]);
+    assert_eq!(
+        crate::decode_repost_summary_snapshot(&bytes).unwrap(),
+        snapshot
+    );
+}
+
+#[test]
+fn public_decoder_rejects_malformed_payload() {
+    assert_eq!(
+        crate::decode_repost_summary_snapshot(b"not-nrps").unwrap_err(),
+        "missing NRPS file identifier"
+    );
 }
 
 #[test]
@@ -342,8 +347,8 @@ fn open_reposts_drives_the_engine_and_close_withdraws_everything() {
         vec![vec!["e", TARGET]],
     ));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_repost_summary_snapshot(&data.payload).unwrap();
-    assert_eq!(decoded.count(), 1);
+    let decoded = crate::decode_repost_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.count, 1);
 
     // Close withdraws the demand and tombstones the output — reverse order,
     // once — and the engine no longer tracks the read (no leak).
@@ -390,10 +395,9 @@ fn derived_delete_demand_routes_repost_delete_discovered_after_open() {
         REPOST_A,
     ));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_repost_summary_snapshot(&data.payload).unwrap();
+    let decoded = crate::decode_repost_summary_snapshot(&data.payload).unwrap();
     assert_eq!(
-        decoded.count(),
-        0,
+        decoded.count, 0,
         "delete delivered through the derived demand retracts the repost"
     );
 

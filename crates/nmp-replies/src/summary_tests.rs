@@ -14,7 +14,6 @@ use nmp_read_session::{
     ReadSessionRegistry, TeardownAction,
 };
 
-use super::generated::nmp::replies::root_as_reply_summary_snapshot;
 use super::*;
 use crate::read::reply_read_plans;
 use crate::{ReplyProtocol, ReplyTarget};
@@ -172,12 +171,18 @@ fn typed_output_round_trips() {
         reply_event_ids: vec![REPLY_A.to_string(), REPLY_B.to_string()],
     };
     let bytes = encode_reply_summary_snapshot(&snapshot);
-    let decoded = root_as_reply_summary_snapshot(&bytes).unwrap();
-    assert_eq!(decoded.schema_version(), REPLY_SUMMARY_SCHEMA_VERSION);
-    assert_eq!(decoded.target_id(), Some(ROOT));
-    assert_eq!(decoded.count(), 2);
-    let ids: Vec<&str> = decoded.reply_event_ids().unwrap().iter().collect();
-    assert_eq!(ids, vec![REPLY_A, REPLY_B]);
+    assert_eq!(
+        crate::decode_reply_summary_snapshot(&bytes).unwrap(),
+        snapshot
+    );
+}
+
+#[test]
+fn public_decoder_rejects_malformed_payload() {
+    assert_eq!(
+        crate::decode_reply_summary_snapshot(b"not-nrsm").unwrap_err(),
+        "missing NRSM file identifier"
+    );
 }
 
 #[test]
@@ -317,8 +322,8 @@ fn open_replies_drives_the_engine_and_close_withdraws_everything() {
     // Live delivery folds into the typed output the shell will render.
     host.feed(&event(REPLY_A, 1, vec![vec!["e", ROOT, "", "reply"]]));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_reply_summary_snapshot(&data.payload).unwrap();
-    assert_eq!(decoded.count(), 1);
+    let decoded = crate::decode_reply_summary_snapshot(&data.payload).unwrap();
+    assert_eq!(decoded.count, 1);
 
     // Close withdraws every demand and tombstones the output — reverse order,
     // once — and the engine no longer tracks the read (no leak).
@@ -382,7 +387,10 @@ fn open_replies_drives_the_engine_for_a_kind_1111_comment_target_from_the_marsha
         vec![
             vec!["E", ROOT],
             vec!["K", "1"],
-            vec!["e", "8888888888888888888888888888888888888888888888888888888888888888"],
+            vec![
+                "e",
+                "8888888888888888888888888888888888888888888888888888888888888888",
+            ],
             vec!["k", "1111"],
         ],
     );
@@ -390,13 +398,12 @@ fn open_replies_drives_the_engine_for_a_kind_1111_comment_target_from_the_marsha
     host.feed(&reply_to_a_sibling);
 
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_reply_summary_snapshot(&data.payload).unwrap();
+    let decoded = crate::decode_reply_summary_snapshot(&data.payload).unwrap();
     assert_eq!(
-        decoded.count(),
-        1,
+        decoded.count, 1,
         "only the reply that names the comment as its direct parent counts"
     );
-    assert_eq!(decoded.target_id(), Some(COMMENT_ID));
+    assert_eq!(decoded.target_id, COMMENT_ID);
 
     assert!(close_replies(&host, handle));
     assert_eq!(host.registry.live_count(), 0, "no leak after close");
@@ -462,10 +469,9 @@ fn derived_delete_demand_routes_reply_delete_discovered_after_open() {
         REPLY_A,
     ));
     let data = host.run_encoder().expect("output emits");
-    let decoded = root_as_reply_summary_snapshot(&data.payload).unwrap();
+    let decoded = crate::decode_reply_summary_snapshot(&data.payload).unwrap();
     assert_eq!(
-        decoded.count(),
-        0,
+        decoded.count, 0,
         "delete delivered through the derived demand retracts the reply"
     );
 
