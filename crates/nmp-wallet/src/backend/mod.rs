@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{WalletCapabilities, WalletProjection};
 
+pub mod nwc;
+
 #[derive(Clone, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct WalletBackendId(String);
 

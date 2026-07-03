@@ -21,6 +21,7 @@ pub mod ownership;
 pub mod payment_port;
 pub mod projection;
 
+pub use backend::nwc::{NwcWalletBackend, NWC_BACKEND_ID};
 pub use backend::{
     MintResult, WalletBackend, WalletBackendContext, WalletBackendId, WalletBackendSnapshot,
     WalletIntent, WalletProjectionScope,

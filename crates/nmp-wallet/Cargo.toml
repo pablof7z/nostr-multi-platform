@@ -8,6 +8,7 @@ description = "Wallet composition owner: backend capabilities, wallet projection
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-nip47 = { path = "../nmp-nip47" }
 nmp-ownership = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
