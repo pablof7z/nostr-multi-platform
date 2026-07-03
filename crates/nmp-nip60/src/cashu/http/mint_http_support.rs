@@ -28,7 +28,14 @@ pub(crate) fn fixture_keyset() -> (KeySet, SecretKey) {
     }
     (
         KeySet {
-            id: "00keyset".to_string(),
+            // A canonical NUT-02 v1 keyset id ("00" version byte + 14 hex
+            // chars) — not just any string. `cashu::Id::try_from` (used by
+            // `crypto::verify_dleq` to build a real `cashu::BlindSignature`)
+            // parses this strictly; a non-hex placeholder like the old
+            // `"00keyset"` would make DLEQ-rejection tests pass for the
+            // wrong reason (a keyset-id parse error, not a real
+            // cryptographic mismatch).
+            id: "00deadbeefcafe00".to_string(),
             unit: "sat".to_string(),
             keys,
             input_fee_ppk: 0,

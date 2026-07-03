@@ -29,8 +29,31 @@ nmp-ownership = { workspace = true }
 nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# sha2: Cashu hash_to_curve (SHA-256 try-and-increment).
-sha2 = "0.10"
+# cashu: audited Cashu ecash primitives (NUT-00 BDHKE, NUT-12 DLEQ, NUT-01
+# key types) from cashubtc/cdk — the pure primitives layer, NOT the async
+# `cdk` wallet crate (no networking, no storage, no async runtime; confirmed
+# via `cargo tree` — zero tokio/nostr-sdk in this crate's dependency graph).
+# `crates/nmp-nip60/src/cashu/crypto.rs` and `nutzap.rs::sign_p2pk_proof`
+# route BDHKE blind/unblind, NUT-12 DLEQ verification, and NUT-11 P2PK
+# Schnorr signing through it instead of hand-rolling the curve math (#2864 —
+# money-safety reviews found real bugs in the hand-rolled version: #2933
+# DLEQ fail-open, #2951/#2934 proof-strand issues).
+#
+# `default-features = false` drops the "mint"/"wallet" feature flags, which
+# only gate a `#[cfg(test)]` block in `nut11` and a couple of wallet-only
+# convenience types we don't use — the BDHKE/NUT-12/NUT-11 primitives this
+# crate calls are always compiled.
+#
+# wasm32: `cashu`'s own secp256k1 stack (via `bitcoin` v0.32) resolves to the
+# exact same `secp256k1` v0.29.1 / `secp256k1-sys` v0.10.1 this workspace
+# already uses through the `nostr` crate (one deduplicated entry each in
+# Cargo.lock), and this crate + `nmp-wallet` build clean for
+# `wasm32-unknown-unknown` with `cashu` wired in (verified locally with the
+# same `CC_wasm32_unknown_unknown=clang` setup the `wasm32` CI job in
+# `.github/workflows/browser-runtime.yml` uses). See the
+# `[target.'cfg(target_arch = "wasm32")'.dependencies]` table below for the
+# one extra mitigation this pulled in.
+cashu = { version = "0.17", default-features = false }
 # ureq: synchronous HTTP client for Cashu mint API calls. Optional — gated by
 # the `native` feature, matching the pattern used by nmp-nip57 / nmp-nip05.
 ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }
@@ -42,6 +65,20 @@ hex = "0.4"
 # are queued in the handle's outbox and dispatched by the kernel through its
 # `ActorCommand::Publish*` chokepoint. Do NOT re-add a private relay socket here.
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# `cashu`'s own `[target.'cfg(wasm32)'].dependencies.uuid` entry declares the
+# `js` randomness feature but marks it `optional = true`, so it doesn't unify
+# with the mandatory base `uuid` dependency `cashu` also declares (without
+# `js`) unless something else in the graph activates it — without this, the
+# `uuid` crate (used by `cashu`'s quote-id types, unrelated to the primitives
+# we call) fails to compile on `wasm32-unknown-unknown` with "specify a
+# source of randomness". Force the `js` feature directly.
+uuid = { version = "1", features = ["js"] }
+
 [dev-dependencies]
 # nostr Keys generation for the in-memory protocol tests.
 nostr = { version = "0.44", features = ["std", "nip44", "nip60"] }
+# sha2: simulates the mint side of NUT-12 DLEQ proof construction in
+# `cashu/crypto.rs`'s tests (this crate is never a mint, so this is
+# test-only — production DLEQ verification goes through `cashu::nuts::nut12`).
+sha2 = "0.10"

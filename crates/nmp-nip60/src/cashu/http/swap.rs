@@ -104,7 +104,7 @@ pub fn finalize_swap_response(
 mod tests {
     use super::*;
     use crate::cashu::crypto::random_secret;
-    use crate::cashu::http::mint_http_support::{fixture_keyset, ok, secp};
+    use crate::cashu::http::mint_http_support::{fixture_keyset, ok, prove_dleq, secp};
     use crate::cashu::types::{BlindSignature, DleqProofWire};
     use nostr::secp256k1::{PublicKey, SecretKey};
 
@@ -126,6 +126,42 @@ mod tests {
                     id: out.id.clone(),
                     c_prime: hex::encode(c_prime.serialize()),
                     dleq: None,
+                }
+            })
+            .collect()
+    }
+
+    /// Same as [`mint_signatures_for_swap`], but each signature also carries
+    /// a genuine (non-tampered) NUT-12 DLEQ proof, produced by the shared
+    /// mint-side prover fixture (`mint_http_support::prove_dleq`) so the
+    /// transcript-hash formula lives in exactly one place — proves
+    /// `finalize_swap_response` actually *accepts* well-formed DLEQ proofs
+    /// through `crypto::verify_dleq`'s `cashu`-crate-backed path, not just
+    /// that it rejects missing/tampered ones.
+    fn mint_signatures_for_swap_with_dleq(
+        prepared: &PreparedSwapRequest,
+        mint_sk: &SecretKey,
+    ) -> Vec<BlindSignature> {
+        let secp = secp();
+        prepared
+            .outputs
+            .wire
+            .iter()
+            .map(|out| {
+                let b_prime = PublicKey::from_slice(&hex::decode(&out.b_prime).unwrap()).unwrap();
+                let k_scalar = nostr::secp256k1::Scalar::from(*mint_sk);
+                let c_prime = b_prime.mul_tweak(&secp, &k_scalar).unwrap();
+                let (e_hex, s_hex) = prove_dleq(&b_prime, &c_prime, mint_sk, &secp);
+
+                BlindSignature {
+                    amount: out.amount,
+                    id: out.id.clone(),
+                    c_prime: hex::encode(c_prime.serialize()),
+                    dleq: Some(DleqProofWire {
+                        e: e_hex,
+                        s: s_hex,
+                        r: None,
+                    }),
                 }
             })
             .collect()
@@ -208,5 +244,31 @@ mod tests {
             .as_slice());
         let err = finalize_swap_response(&prepared, &raw, DleqPolicy::Require, &secp).unwrap_err();
         assert!(matches!(err, Nip60Error::Crypto(_)));
+    }
+
+    /// The accept-side twin of [`finalize_swap_rejects_tampered_dleq_proof`]:
+    /// a genuine, non-tampered DLEQ proof — through the same `DleqPolicy::Require`
+    /// path — must be accepted, not just rejected-on-tamper. Also proves the
+    /// #2933 fail-closed behavior didn't regress into fail-*always*-closed.
+    #[test]
+    fn finalize_swap_accepts_well_formed_dleq_proof() {
+        let (keyset, mint_sk) = fixture_keyset();
+        let secp = secp();
+        let prepared = prepare_swap_request(
+            vec![fixture_input(&keyset.id)],
+            vec![4],
+            None,
+            &keyset,
+            &secp,
+        )
+        .unwrap();
+        let sigs = mint_signatures_for_swap_with_dleq(&prepared, &mint_sk);
+        let raw = ok(serde_json::to_vec(&SwapResponse { signatures: sigs })
+            .unwrap()
+            .as_slice());
+        let proofs = finalize_swap_response(&prepared, &raw, DleqPolicy::Require, &secp)
+            .expect("well-formed DLEQ proof must be accepted");
+        assert_eq!(proofs.len(), 1);
+        assert_eq!(proofs[0].amount, 4);
     }
 }

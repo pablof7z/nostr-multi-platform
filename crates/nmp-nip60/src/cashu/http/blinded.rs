@@ -151,9 +151,16 @@ pub(super) fn finalize_blinded_outputs(
                 let b_prime_pt = PublicKey::from_slice(&b_prime_bytes)
                     .map_err(|e| Nip60Error::Crypto(format!("B' parse (sig #{i}): {e}")))?;
                 let dleq = wire_to_dleq(dleq_wire)?;
-                verify_dleq(&dleq, &b_prime_pt, &c_prime, mint_pk, secp).map_err(|e| {
-                    Nip60Error::Crypto(format!("DLEQ verify failed (sig #{i}): {e}"))
-                })?;
+                verify_dleq(
+                    &dleq,
+                    &b_prime_pt,
+                    &c_prime,
+                    mint_pk,
+                    expected_amount,
+                    &keyset.id,
+                    secp,
+                )
+                .map_err(|e| Nip60Error::Crypto(format!("DLEQ verify failed (sig #{i}): {e}")))?;
             }
             (None, DleqPolicy::VerifyIfPresent) => {}
         }
