@@ -4,6 +4,8 @@ use crate::{BrowserAppBuilder, BrowserRunConfig};
 use nmp_core::RelayFrame;
 use nostr::JsonUtil;
 
+use super::start_test_browser_builder;
+
 const RELAY: &str = "wss://relay.example";
 const BROWSER_FEED_KEY: &str = "test.browser.feed.attribution";
 
@@ -16,12 +18,13 @@ fn browser_home_feed_projection_exports_reply_attribution() {
     let follow_a_pk = follow_a_keys.public_key().to_hex();
     let follow_b_pk = follow_b_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
+            .decide_providers(BrowserRunConfig::default()),
+    );
 
     let connected = handle.runtime.reducer.handle_relay_connected(
         nmp_network::role::RelayRole::Content,

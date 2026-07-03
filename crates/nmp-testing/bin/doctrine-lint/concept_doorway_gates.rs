@@ -18,6 +18,21 @@ fn browser_runtime_keeps_search_and_group_deps_optional() {
 }
 
 #[test]
+fn browser_runtime_does_not_bundle_default_concept_deps() {
+    let root = super::workspace_root();
+    let cargo = fs::read_to_string(root.join("crates/nmp-browser-runtime/Cargo.toml")).unwrap();
+    for dep in [
+        "nmp-nip17",
+        "nmp-nip18",
+        "nmp-nip57",
+        "nmp-replies",
+        "nmp-wot",
+    ] {
+        assert_no_production_dep(&cargo, dep);
+    }
+}
+
+#[test]
 fn runtime_crates_do_not_define_concept_open_doorways() {
     let root = super::workspace_root();
     let mut findings = Vec::new();

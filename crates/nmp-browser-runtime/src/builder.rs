@@ -1,4 +1,4 @@
-//! `BrowserAppBuilder<S>` — typestate composition root for NMP on browser
+//! `BrowserAppBuilder<S>` — typestate app-composition target for NMP on browser
 //! runtimes (issue #2046 / PR-B of the browser-runtime epic #2045).
 //!
 //! # Typestate ladder (ADR-0070 / ADR-0072, mirrors native `NmpAppBuilder`)
@@ -20,7 +20,7 @@
 //!   │  .decide_providers(config)         ADR-0072 explicit no-providers-yet gate
 //!   ▼
 //! BrowserAppBuilder<ProvidersDecided>   ← capability/signer decision recorded
-//!   │  .start()                         → explicit browser composition + runtime
+//!   │  .start()                         → runtime floor + BrowserRuntimeHandle
 //!   ▼
 //! BrowserRuntimeHandle                  ← pump-driven runtime handle (#2058)
 //! ```
@@ -61,7 +61,7 @@ pub(crate) use state::BrowserBuilderInner;
 mod action_registrar;
 mod app_host_impl;
 mod composition;
-pub(crate) use composition::install_browser_production_composition;
+pub(crate) use composition::install_browser_runtime_floor;
 
 // ── Typestate markers ─────────────────────────────────────────────────────────
 
@@ -92,13 +92,14 @@ pub struct ProvidersDecided;
 
 // ── Builder struct ────────────────────────────────────────────────────────────
 
-/// Browser-platform NMP composition root.
+/// Browser-platform NMP app-composition target.
 ///
 /// Wraps a `KernelReducer` and accumulates the full `AppHost` registration
-/// surface through a `Mutex<BrowserBuilderInner>`. Calling `.start()` on
-/// `BrowserAppBuilder<ProvidersDecided>` installs the browser production
-/// composition explicitly, applies deferred settings, and returns a
-/// `BrowserRuntimeHandle`.
+/// surface through a `Mutex<BrowserBuilderInner>`. App-owned browser crates
+/// register their selected concepts/protocols on this builder before calling
+/// `.start()`. Calling `.start()` on `BrowserAppBuilder<ProvidersDecided>`
+/// installs only the shared browser runtime floor, applies deferred settings,
+/// and returns a `BrowserRuntimeHandle`.
 ///
 /// # Example
 ///
@@ -344,14 +345,16 @@ impl BrowserAppBuilder<ProvidersDecided> {
     /// Finalise composition and return a `BrowserRuntimeHandle`.
     ///
     /// Sequence:
-    /// 1. Install explicit browser substrate/protocol/runtime composition.
+    /// 1. Install the browser runtime floor (`nmp-substrate`) only. App-owned
+    ///    concept/protocol composition must already be registered on the
+    ///    builder.
     /// 2. Apply all deferred `&mut`-kernel settings (routing, coverage hook,
     ///    publish resolver, relay slot, etc.).
     /// 3. Install the search-scope registry into the event store.
     /// 4. Apply the relay bootstrap list.
     /// 5. Build `BrowserRuntime` and wrap in `BrowserRuntimeHandle`.
     pub fn start(mut self) -> BrowserRuntimeHandle {
-        install_browser_production_composition(&mut self);
+        install_browser_runtime_floor(&mut self);
 
         // Step 2 — consume the inner state and build the runtime.
         let inner = match self.inner.into_inner() {

@@ -36,6 +36,7 @@
 //! | `trellis_phase_a_gates.rs`| #2858 devtools Trellis receipt gates  |
 //! | `tests_a6.rs`             | A6                                    |
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
+//! | `browser_composition_gates.rs` | browser app-composition boundary (#2907) |
 //! | `doc_citation_truth_gates.rs` | crate-boundaries.md §N.M / ADR-NNNN content-truth (#2768) |
 
 use std::path::PathBuf;
@@ -43,6 +44,7 @@ use std::process::Command;
 
 mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
 mod browser_boundary_gates; // Browser runtime + runtime-web boundary smoke gates.
+mod browser_composition_gates; // Browser app-owned concept composition gates.
 mod component_host_boundary_gates; // Component host package import/dependency gates.
 mod concept_dependency_gates; // #2899 concept-crate dependency ratchet (binding/codegen layer).
 mod concept_doorway_gates; // Concept read doorways stay in owner crates.

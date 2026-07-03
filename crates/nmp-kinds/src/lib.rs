@@ -56,6 +56,15 @@ pub const KIND_SHORT_TEXT_NOTE: u32 = 1;
 /// NIP-02 contact list / follow set (kind:3).
 pub const KIND_CONTACT_LIST: u32 = 3;
 
+/// NIP-09 deletion event (kind:5). Event deletion semantics live in
+/// `nmp-nip09`; this constant is only Layer-0 integer vocabulary.
+pub const KIND_DELETE: u32 = 5;
+
+/// NIP-18 repost event for kind:1 short-text notes (kind:6). Decode/build
+/// logic lives in `nmp-nip18`; this constant is only Layer-0 integer
+/// vocabulary.
+pub const KIND_REPOST: u32 = 6;
+
 /// NIP-25 reaction (kind:7).
 pub const KIND_REACTION: u32 = 7;
 
@@ -66,6 +75,11 @@ pub const KIND_GROUP_CHAT_MESSAGE: u32 = 9;
 /// NIP-17 chat message rumor (kind:14). The unencrypted inner payload of a
 /// gift-wrap envelope.
 pub const KIND_CHAT_MESSAGE: u32 = 14;
+
+/// NIP-18 generic repost event for non-kind:1 targets (kind:16). Decode/build
+/// logic lives in `nmp-nip18`; this constant is only Layer-0 integer
+/// vocabulary.
+pub const KIND_GENERIC_REPOST: u32 = 16;
 
 /// NIP-22 comment (kind:1111). A threaded comment on any root — an event
 /// (uppercase `E`), an addressable artifact (uppercase `A`), or external

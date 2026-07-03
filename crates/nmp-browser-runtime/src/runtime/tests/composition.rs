@@ -1,9 +1,10 @@
-//! Browser production composition parity gates (#2061).
+//! Browser runtime-floor and test-owned composition gates (#2061 / #2907).
 //!
 //! Native production-composition coverage already asserts
 //! `nmp_codegen::canonical_default_action_namespaces()` through the FFI-backed
-//! app. These browser-runtime tests pin the same canonical namespace source and
-//! the browser builder's deferred substrate slots.
+//! app. Browser-runtime tests pin the same canonical namespace source through
+//! an explicit test-owned concept composition, while also proving bare browser
+//! start installs only the runtime floor.
 
 use std::sync::Arc;
 
@@ -89,14 +90,39 @@ fn healthy_in_memory_start_reports_no_store_open_failure() {
 }
 
 #[test]
-fn browser_start_registers_every_canonical_default_action_namespace() {
+fn bare_browser_start_does_not_register_app_owned_concept_namespaces() {
+    let handle = BrowserAppBuilder::new()
+        .in_memory()
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+    let registered = handle.runtime.action_registry.action_namespaces();
+
+    for ns in [
+        "nmp.follow",
+        "nmp.replies.reply",
+        "nmp.nip17.send",
+        "nmp.nip18.repost",
+        "nmp.nip25.react",
+    ] {
+        assert!(
+            !registered.iter().any(|registered| registered == ns),
+            "bare browser runtime floor must not register app-owned concept \
+             namespace `{ns}`; registered namespaces: {registered:?}"
+        );
+    }
+}
+
+#[test]
+fn test_browser_composition_registers_every_canonical_default_action_namespace() {
     let handle = started_handle();
     let registered = handle.runtime.action_registry.action_namespaces();
 
     for ns in browser_default_action_namespaces() {
         assert!(
             registered.iter().any(|registered| registered == ns),
-            "browser production composition omitted canonical action namespace `{ns}`; \
+            "test browser composition omitted canonical action namespace `{ns}`; \
              registered namespaces: {registered:?}"
         );
     }
@@ -152,21 +178,21 @@ fn assert_registered_action_namespaces(namespaces: &[&str]) {
     for ns in namespaces {
         assert!(
             registered.iter().any(|registered| registered == ns),
-            "browser production composition omitted feature-gated action namespace `{ns}`; \
+            "test browser composition omitted feature-gated action namespace `{ns}`; \
              registered namespaces: {registered:?}"
         );
     }
 }
 
 #[test]
-fn browser_production_composition_defers_required_substrate_slots_before_start() {
+fn browser_runtime_floor_defers_required_substrate_slots_before_start() {
     let mut builder = BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
         .without_initial_relays()
         .decide_providers(BrowserRunConfig::default());
 
-    crate::builder::install_browser_production_composition(&mut builder);
+    crate::builder::install_browser_runtime_floor(&mut builder);
 
     let inner = builder
         .inner
@@ -177,22 +203,20 @@ fn browser_production_composition_defers_required_substrate_slots_before_start()
     assert!(inner.publish_resolver_factory.is_some());
     assert!(inner.mailbox_cache_reader.is_some());
     assert!(inner.profile_lookup.is_some());
-    assert!(inner.dm_inbox_relay_lookup.is_some());
+    assert!(inner.dm_inbox_relay_lookup.is_none());
     assert!(inner.blocked_relay_lookup.is_some());
     assert!(inner.coverage_hook.is_some());
 }
 
 #[test]
-#[should_panic(
-    expected = "BrowserAppBuilder production composition must be installed exactly once"
-)]
-fn browser_production_composition_rejects_duplicate_install() {
+#[should_panic(expected = "BrowserAppBuilder runtime floor must be installed exactly once")]
+fn browser_runtime_floor_rejects_duplicate_install() {
     let mut builder = BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
         .without_initial_relays()
         .decide_providers(BrowserRunConfig::default());
 
-    crate::builder::install_browser_production_composition(&mut builder);
-    crate::builder::install_browser_production_composition(&mut builder);
+    crate::builder::install_browser_runtime_floor(&mut builder);
+    crate::builder::install_browser_runtime_floor(&mut builder);
 }

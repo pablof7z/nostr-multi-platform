@@ -3,18 +3,20 @@ use nmp_core::RelayFrame;
 use nostr::JsonUtil;
 
 use super::{GROUP_RELAY_A, GROUP_RELAY_B, LIST_RELAY};
+use crate::runtime::tests::start_test_browser_builder;
 
 pub(super) fn started_group_feed() -> crate::BrowserRuntimeHandle {
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![
-            (LIST_RELAY.to_string(), "both,indexer".to_string()),
-            (GROUP_RELAY_A.to_string(), "both,indexer".to_string()),
-            (GROUP_RELAY_B.to_string(), "both,indexer".to_string()),
-        ])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![
+                (LIST_RELAY.to_string(), "both,indexer".to_string()),
+                (GROUP_RELAY_A.to_string(), "both,indexer".to_string()),
+                (GROUP_RELAY_B.to_string(), "both,indexer".to_string()),
+            ])
+            .decide_providers(BrowserRunConfig::default()),
+    );
     connect_content_relay(&mut handle, LIST_RELAY);
     connect_content_relay(&mut handle, GROUP_RELAY_A);
     connect_content_relay(&mut handle, GROUP_RELAY_B);

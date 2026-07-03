@@ -65,6 +65,45 @@ fn noop_wake() -> WakeCell {
     Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>))
 }
 
+fn install_test_browser_concepts(app: &mut impl nmp_core::substrate::AppHost) {
+    nmp_nip50::register(app, nmp_nip50::Config::default())
+        .expect("nmp-nip50 registration must not collide");
+    nmp_nip02::register(app, nmp_nip02::Config::default())
+        .expect("nmp-nip02 registration must not collide");
+    nmp_replies::register(app, nmp_replies::Config::default())
+        .expect("nmp-replies registration must not collide");
+    nmp_nip25::register(app, nmp_nip25::Config::default())
+        .expect("nmp-nip25 registration must not collide");
+    nmp_nip18::register(app, nmp_nip18::Config::default())
+        .expect("nmp-nip18 registration must not collide");
+    nmp_nip84::register(app, nmp_nip84::Config::default())
+        .expect("nmp-nip84 registration must not collide");
+    nmp_nip29::register(app, nmp_nip29::Config::default())
+        .expect("nmp-nip29 registration must not collide");
+    nmp_wot::register(app, nmp_wot::Config::default())
+        .expect("nmp-wot registration must not collide");
+    nmp_nip51::register(
+        app,
+        nmp_nip51::Config {
+            search_fallback_relays: nmp_nip50::SearchFallbackRelays::default(),
+        },
+    )
+    .expect("nmp-nip51 registration must not collide");
+    nmp_nip22::register(app, nmp_nip22::Config::default())
+        .expect("nmp-nip22 registration must not collide");
+    nmp_nip17::register(app, nmp_nip17::Config::default())
+        .expect("nmp-nip17 registration must not collide");
+    nmp_nip23::register(app, nmp_nip23::Config::default())
+        .expect("nmp-nip23 registration must not collide");
+}
+
+fn start_test_browser_builder(
+    mut builder: crate::BrowserAppBuilder<crate::ProvidersDecided>,
+) -> crate::BrowserRuntimeHandle {
+    install_test_browser_concepts(&mut builder);
+    builder.start()
+}
+
 fn test_command_sender() -> CommandSender {
     let (tx, _rx) = mpsc::channel::<ActorMail>();
     CommandSender::new(tx)
@@ -91,12 +130,12 @@ fn drain_context<'a>(
 }
 
 fn started_handle() -> crate::BrowserRuntimeHandle {
-    crate::BrowserAppBuilder::new()
+    let builder = crate::BrowserAppBuilder::new()
         .in_memory()
         .consume_all_builtin_projections()
         .without_initial_relays()
-        .decide_providers(crate::BrowserRunConfig::default())
-        .start()
+        .decide_providers(crate::BrowserRunConfig::default());
+    start_test_browser_builder(builder)
 }
 
 fn handle_with_local_key_signer() -> (crate::BrowserRuntimeHandle, String) {
@@ -110,7 +149,7 @@ fn handle_with_local_key_signer() -> (crate::BrowserRuntimeHandle, String) {
         .without_initial_relays()
         .decide_providers(crate::BrowserRunConfig::default());
     builder.with_capability_providers([Arc::clone(&signer)]);
-    let mut handle = builder.start();
+    let mut handle = start_test_browser_builder(builder);
     handle.set_active_account_for_test(pubkey_hex.clone());
     (handle, pubkey_hex)
 }

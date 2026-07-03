@@ -8,7 +8,7 @@ use nmp_nip50::{
 };
 use nmp_store::{RawEvent, VerifiedEvent};
 
-use super::started_handle;
+use super::{start_test_browser_builder, started_handle};
 
 const RELAY: &str = "wss://search.example";
 
@@ -81,15 +81,13 @@ fn browser_search_session_emits_n50s_results_from_live_relay_hits() {
 
 #[test]
 fn browser_search_session_emits_n50s_results_from_cache_hits() {
-    let builder = crate::BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections();
-    nmp_nip50::register(&builder, nmp_nip50::Config::default())
-        .expect("nmp-nip50 registration must not collide");
-    let mut handle = builder
-        .without_initial_relays()
-        .decide_providers(crate::BrowserRunConfig::default())
-        .start();
+    let mut handle = start_test_browser_builder(
+        crate::BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .without_initial_relays()
+            .decide_providers(crate::BrowserRunConfig::default()),
+    );
     handle
         .event_store_handle()
         .insert(

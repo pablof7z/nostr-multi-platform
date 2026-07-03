@@ -5,7 +5,7 @@
 //! - the browser WebSocket transport adapter (transport-only);
 //! - the capability/signer provider registry;
 //! - browser timer/clock seams;
-//! - the `BrowserAppBuilder` typed composition root.
+//! - the `BrowserAppBuilder` typed app-composition target.
 //! - the wasm-bindgen Worker entry point (`wasm::NmpWasmRuntime`).
 //!
 //! # Does NOT own
@@ -16,7 +16,7 @@
 //!
 //! # Public API (issues #2046 / #2057 / #2058)
 //!
-//! - [`BrowserAppBuilder<S>`] — typestate composition root (5 stages).
+//! - [`BrowserAppBuilder<S>`] — typestate app-composition target (5 stages).
 //! - [`BrowserRunConfig`] — runtime config passed at the `decide_providers` gate.
 //! - [`BrowserRuntimeHandle`] — pump-driven runtime handle (hides raw reducer).
 //! - [`PumpOutcome`] / [`BrowserRuntimeEvent`] — the result of one `pump()` turn.
@@ -52,7 +52,7 @@ mod smoke_tests {
     /// Smoke test: verify nmp-browser-runtime can depend on composition/protocol
     /// layer crates (nmp-store, nmp-network, nmp-signer-iface) without inverting
     /// the dependency graph to the retired nmp-wasm. This proves the crate-graph allows browser
-    /// runtime composition roots to wire up Nostr protocol behaviour.
+    /// runtime app-composition targets to wire up Nostr protocol behaviour.
     #[test]
     fn composition_crates_accessible() {
         // Reference public types from composition/protocol crates to prove availability.
