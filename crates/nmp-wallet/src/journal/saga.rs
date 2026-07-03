@@ -249,6 +249,24 @@ impl WalletOperationJournal {
             .collect()
     }
 
+    /// The terminal (`Settled`/`Failed`) counterpart to
+    /// [`Self::pending_operations`] — every operation whose outcome is
+    /// final, in insertion order. An operation disappears from
+    /// `pending_operations` the moment it reaches a terminal state; from then
+    /// on this is the only journal-level view that still sees it.
+    /// `CashuWalletBackend::snapshot()` folds these into
+    /// `WalletProjection`'s `recent_history`/`receive_rows` (#2949) — without
+    /// this, a settled or rejected operation was invisible to the projection
+    /// forever.
+    #[must_use]
+    pub fn terminal_operations(&self) -> Vec<WalletOperation> {
+        self.operations
+            .iter()
+            .filter(|operation| operation.state.is_terminal())
+            .cloned()
+            .collect()
+    }
+
     #[must_use]
     pub fn get(&self, operation_id: &WalletOperationId) -> Option<&WalletOperation> {
         self.operations
@@ -364,6 +382,37 @@ mod tests {
         let pending = journal.pending_operations();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].id.as_str(), "pending");
+    }
+
+    #[test]
+    fn journal_lists_only_terminal_operations_as_the_complement_of_pending() {
+        let mut journal = WalletOperationJournal::new();
+        journal
+            .insert(WalletOperation::new(
+                WalletOperationId::new("pending"),
+                WalletOperationKind::DepositCashu,
+                WalletOperationState::MintPending,
+            ))
+            .unwrap();
+        journal
+            .insert(WalletOperation::new(
+                WalletOperationId::new("settled"),
+                WalletOperationKind::DepositCashu,
+                WalletOperationState::Settled,
+            ))
+            .unwrap();
+        journal
+            .insert(WalletOperation::new(
+                WalletOperationId::new("failed"),
+                WalletOperationKind::RedeemNutzap,
+                WalletOperationState::Failed,
+            ))
+            .unwrap();
+
+        let terminal = journal.terminal_operations();
+        let mut ids: Vec<&str> = terminal.iter().map(|op| op.id.as_str()).collect();
+        ids.sort_unstable();
+        assert_eq!(ids, vec!["failed", "settled"]);
     }
 
     #[test]
