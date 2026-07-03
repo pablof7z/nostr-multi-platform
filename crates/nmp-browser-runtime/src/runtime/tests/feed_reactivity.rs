@@ -4,6 +4,8 @@ use crate::{BrowserAppBuilder, BrowserRunConfig};
 use nmp_core::RelayFrame;
 use nostr::JsonUtil;
 
+use super::start_test_browser_builder;
+
 const RELAY: &str = "wss://relay.example";
 const BROWSER_FEED_KEY: &str = "test.browser.feed.reactivity";
 
@@ -18,12 +20,13 @@ fn active_follow_feed_retargets_on_account_switch_without_app_intervention() {
     let follow_one_pk = follow_one_keys.public_key().to_hex();
     let follow_two_pk = follow_two_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
+            .decide_providers(BrowserRunConfig::default()),
+    );
 
     connect_content_relay(&mut handle);
     open_test_feed(&mut handle);
@@ -134,12 +137,13 @@ fn active_follow_feed_replaces_follow_list_without_stale_rows() {
     let follow_a_pk = follow_a_keys.public_key().to_hex();
     let follow_b_pk = follow_b_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
+            .decide_providers(BrowserRunConfig::default()),
+    );
 
     connect_content_relay(&mut handle);
     open_test_feed(&mut handle);

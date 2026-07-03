@@ -491,8 +491,8 @@ real `*_SUMMARY_SCHEMA_ID`/`*_VERSION`/`*_FILE_IDENTIFIER` source consts. See
 [builder-guide 15](../builder-guide/15-codegen-and-ffi.md) for the registry
 JSON shape and CLI.
 
-`nmp-browser-runtime` is the browser composition-root delivery surface
-described in §10a. It owns the wasm-bindgen Worker export
+`nmp-browser-runtime` is the browser runtime delivery surface described in
+§10a. It owns the wasm-bindgen Worker export
 (`nmp-browser-runtime::wasm` is the sole browser ABI glue) and the serializable
 browser Worker protocol types. Browser stays wasm-bindgen inside
 `nmp-browser-runtime`; it is not part of the UniFFI facade pattern above.
@@ -509,12 +509,13 @@ gate when it affects reusable framework behavior.
 ## 10a. Browser Platform Adapter (nmp-browser-runtime)
 
 `nmp-browser-runtime` is the browser platform adapter per ADR-0072: a Layer-6
-runtime adapter, sibling to `nmp-native-runtime`. Unlike pure ABI-glue binding
-crates, it is a **composition root**: it composes `nmp-substrate` and protocol
-crates into a typed builder (`BrowserAppBuilder`), exactly as a native runtime
-does. It thus may depend on the substrate/protocol composition surface needed
-to start the browser runtime, breaking the usual binding-crate rule that all
-siblings avoid each other.
+runtime adapter, sibling to `nmp-native-runtime`. It exposes a typed
+app-composition target (`BrowserAppBuilder`) and installs only the shared
+browser runtime floor needed to start the worker-backed runtime. Leaf browser
+apps own concept/protocol composition by registering their selected owner
+crates on that builder before `start()`. This mirrors native app-owned
+composition: if a browser app does not compose a concept, that concept's action
+namespace and read doorway do not exist in that app.
 
 `nmp-browser-runtime` owns:
 
@@ -523,8 +524,8 @@ siblings avoid each other.
 - Browser storage initialization and lifecycle.
 - Capability provider registry and browser signer provider mapping.
 - Browser timer and clock seams for `nmp-core` injection.
-- The typed `BrowserAppBuilder` composition root (browser twin of the native
-  runtime's `NmpAppBuilder`).
+- The typed `BrowserAppBuilder` app-composition target (browser twin of the
+  native runtime's builder surface).
 - The wasm-bindgen Worker ABI surface (`NmpWasmRuntime`) and JS callback
   registration.
 
@@ -534,10 +535,12 @@ siblings avoid each other.
 - Signing policy or signer-provider semantics (that is `nmp-signers`).
 - NIP modules, protocol defaults, app defaults, projection policy, persistence policy.
 
-Dependency direction: `nmp-browser-runtime` depends on `nmp-substrate` and
-protocol crates in Layers 0–5. Leaf web apps depend on `nmp-browser-runtime`
-for the typed builder and Worker export. No Layer 0-5 crate depends on
-`nmp-browser-runtime`.
+Dependency direction: `nmp-browser-runtime` depends on the substrate/runtime
+mechanics it needs to boot the browser worker. Concept/protocol crates remain
+owned by the leaf app or optional browser feature adapters, not by default
+runtime composition. Leaf web apps depend on `nmp-browser-runtime` for the
+typed builder and Worker export, then depend on the NMP concept crates they
+explicitly compose. No Layer 0-5 crate depends on `nmp-browser-runtime`.
 
 ### Shared composition target: reuse `AppHost` (#2059, ADR-0072)
 
@@ -549,8 +552,8 @@ snapshot projections, declared observed projections, routing/publish factories,
 kernel-reader slots, capability seams), and platform capabilities (storage, sockets, OS
 keychains) are deliberately excluded. Native (`nmp-native-runtime::NmpAppBuilder`)
 and browser (`BrowserAppBuilder`) implement the same narrow registrars and obtain
-`AppHost` through the blanket impl; only a composition root names `AppHost`,
-while protocol modules continue to take the narrow trait(s) they use.
+`AppHost` through the blanket impl; only app/runtime composition targets name
+`AppHost`, while protocol modules continue to take the narrow trait(s) they use.
 
 Layer ownership of registered facts (all browser-relevant; none native-only):
 

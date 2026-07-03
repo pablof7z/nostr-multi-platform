@@ -4,6 +4,8 @@ use crate::{BrowserAppBuilder, BrowserRunConfig};
 use nmp_core::{substrate::KernelEvent, RelayFrame};
 use nostr::JsonUtil;
 
+use super::start_test_browser_builder;
+
 const ACCOUNT_PK: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const FOLLOW_A_PK: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const FOLLOW_NOTE_ID: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
@@ -38,12 +40,7 @@ fn browser_home_feed_has_no_production_register_path() {
 
 #[test]
 fn browser_home_feed_close_tears_down_projection_and_provider() {
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .without_initial_relays()
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_without_relays();
 
     let feed_handle = open_test_feed(&mut handle);
     assert_eq!(handle.feed_sessions.live_count(), 1);
@@ -99,12 +96,7 @@ fn browser_home_feed_close_tears_down_projection_and_provider() {
 
 #[test]
 fn browser_home_feed_observer_opens_on_active_account_change() {
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_with_relays("both");
 
     open_test_feed(&mut handle);
     for role in [
@@ -145,12 +137,7 @@ fn browser_home_feed_observer_opens_on_active_account_change() {
 fn browser_home_feed_fails_closed_before_sign_in() {
     let note_keys = nostr::Keys::generate();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_with_relays("both,indexer");
 
     let connected = handle.runtime.reducer.handle_relay_connected(
         nmp_network::role::RelayRole::Content,
@@ -190,12 +177,7 @@ fn browser_home_feed_fails_closed_before_sign_in() {
 
 #[test]
 fn browser_home_feed_projection_renders_followed_note() {
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .without_initial_relays()
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_without_relays();
 
     open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(ACCOUNT_PK.to_string());
@@ -228,12 +210,7 @@ fn browser_home_feed_reads_follow_set_from_stored_kind3() {
     let viewer_pk = viewer_keys.public_key().to_hex();
     let follow_pk = follow_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .without_initial_relays()
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_without_relays();
 
     open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
@@ -268,12 +245,7 @@ fn browser_home_feed_projection_renders_followed_note_from_relay_frames() {
     let viewer_pk = viewer_keys.public_key().to_hex();
     let follow_pk = follow_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .without_initial_relays()
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_without_relays();
 
     open_test_feed(&mut handle);
     let outbound = handle.apply_set_active_account(viewer_pk.clone());
@@ -321,12 +293,7 @@ fn browser_home_feed_projection_renders_followed_note_from_runtime_wire_subs() {
     let viewer_pk = viewer_keys.public_key().to_hex();
     let follow_pk = follow_keys.public_key().to_hex();
 
-    let mut handle = BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start();
+    let mut handle = test_handle_with_relays("both,indexer");
 
     let connected = handle.runtime.reducer.handle_relay_connected(
         nmp_network::role::RelayRole::Content,
@@ -389,6 +356,26 @@ fn contact_list_event() -> KernelEvent {
         content: String::new(),
         relay_provenance: Vec::new(),
     }
+}
+
+fn test_handle_without_relays() -> crate::BrowserRuntimeHandle {
+    start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .without_initial_relays()
+            .decide_providers(BrowserRunConfig::default()),
+    )
+}
+
+fn test_handle_with_relays(roles: &str) -> crate::BrowserRuntimeHandle {
+    start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![(RELAY.to_string(), roles.to_string())])
+            .decide_providers(BrowserRunConfig::default()),
+    )
 }
 
 fn follow_note_event() -> KernelEvent {

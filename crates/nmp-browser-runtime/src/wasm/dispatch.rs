@@ -117,13 +117,6 @@ impl NmpRuntimeCore {
             None => storage.in_memory(),
         }
         .consume_all_builtin_projections();
-        #[cfg(feature = "search")]
-        {
-            assert!(
-                nmp_nip50::register(&builder, nmp_nip50::Config::default()).is_ok(),
-                "nmp-nip50 registration must not collide"
-            );
-        }
 
         // Degraded-open diagnostic (#1007 PR-8): if `prepare_store` classified an
         // OPFS open failure and parked the stable reason, thread it onto the

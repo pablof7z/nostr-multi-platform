@@ -5,8 +5,10 @@ use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent};
 use nmp_core::ObservedProjectionSink;
-use nmp_kinds::{KIND_NIP22_COMMENT, KIND_REACTION, KIND_SHORT_TEXT_NOTE, KIND_ZAP_RECEIPT};
-use nmp_nip18::{is_repost_kind, try_from_kernel_event};
+use nmp_kinds::{
+    KIND_GENERIC_REPOST, KIND_NIP22_COMMENT, KIND_REACTION, KIND_REPOST, KIND_SHORT_TEXT_NOTE,
+    KIND_ZAP_RECEIPT,
+};
 use nmp_planner::InterestShape;
 use serde::{Deserialize, Serialize};
 
@@ -166,13 +168,7 @@ impl NotificationsProjection {
             _ => return None,
         };
 
-        let target_event_id = if is_repost_kind(event.kind) {
-            try_from_kernel_event(event).and_then(|repost| repost.target_event_id)
-        } else if event.kind == KIND_ZAP_RECEIPT {
-            nmp_nip57::try_from_kernel_event(event).and_then(|zap| zap.zapped_event_id)
-        } else {
-            first_event_tag(&event.tags)
-        };
+        let target_event_id = first_event_tag(&event.tags);
 
         Some(NotificationRow {
             event_id: event.id.clone(),
@@ -205,8 +201,8 @@ pub fn notifications_interest_shape(viewer_pubkey: &str) -> InterestShape {
     InterestShape {
         kinds: [
             KIND_SHORT_TEXT_NOTE,
-            nmp_nip18::KIND_REPOST,
-            nmp_nip18::KIND_GENERIC_REPOST,
+            KIND_REPOST,
+            KIND_GENERIC_REPOST,
             KIND_REACTION,
             KIND_ZAP_RECEIPT,
             KIND_NIP22_COMMENT,
@@ -217,6 +213,10 @@ pub fn notifications_interest_shape(viewer_pubkey: &str) -> InterestShape {
         limit: Some(NOTIFICATIONS_LIMIT),
         ..Default::default()
     }
+}
+
+const fn is_repost_kind(kind: u32) -> bool {
+    kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
 }
 
 fn has_p_tag(tags: &[Vec<String>], pubkey: &str) -> bool {

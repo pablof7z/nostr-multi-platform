@@ -3769,7 +3769,6 @@ dependencies = [
  "nmp-nip46-runtime",
  "nmp-nip50",
  "nmp-nip51",
- "nmp-nip57",
  "nmp-nip84",
  "nmp-nostr-id",
  "nmp-note-feed",

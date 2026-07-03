@@ -191,13 +191,14 @@ fn injected_clock_is_observed_after_start() {
     let call_count = Arc::new(AtomicU64::new(0));
     let clock = Arc::new(StubClock(Arc::clone(&call_count)));
 
-    let mut handle = crate::BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .without_initial_relays()
-        .decide_providers(crate::BrowserRunConfig::default())
-        .with_clock(clock)
-        .start();
+    let mut handle = start_test_browser_builder(
+        crate::BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .without_initial_relays()
+            .decide_providers(crate::BrowserRunConfig::default())
+            .with_clock(clock),
+    );
 
     let _ = handle.next_frame(true);
 
@@ -282,7 +283,7 @@ fn sole_provider_seeds_ready_signer_state() {
         .without_initial_relays()
         .decide_providers(crate::BrowserRunConfig::default());
     builder.with_capability_providers([Arc::clone(&signer)]);
-    let handle = builder.start();
+    let handle = start_test_browser_builder(builder);
 
     let diag = handle.diagnostics();
     assert_eq!(

@@ -1,14 +1,17 @@
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 
+use super::start_test_browser_builder;
+
 const RELAY: &str = "wss://relay.example";
 
 fn browser_handle() -> crate::BrowserRuntimeHandle {
-    BrowserAppBuilder::new()
-        .in_memory()
-        .consume_all_builtin_projections()
-        .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
-        .decide_providers(BrowserRunConfig::default())
-        .start()
+    start_test_browser_builder(
+        BrowserAppBuilder::new()
+            .in_memory()
+            .consume_all_builtin_projections()
+            .set_relays(vec![(RELAY.to_string(), "both,indexer".to_string())])
+            .decide_providers(BrowserRunConfig::default()),
+    )
 }
 
 fn tag(term: &str) -> nmp_feed::FeedScope {

@@ -70,8 +70,7 @@ pub(crate) fn open_browser_feed_session(
     access: FeedRuntimeAccess<'_>,
     params: FeedParams,
 ) -> Option<OpenedBrowserFeedSession> {
-    let acquisition_kinds =
-        nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied()).ok()?;
+    let acquisition_kinds = nmp_feed_session::validate_feed_params(&params).ok()?;
     let projection = params.key.clone();
     let build = nmp_feed_session::compile_feed_params(&access, &params, &acquisition_kinds).ok()?;
     let session_id = sessions.open(build);
