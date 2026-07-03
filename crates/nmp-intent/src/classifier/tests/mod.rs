@@ -10,6 +10,7 @@ use nmp_nip50::SearchRequest;
 
 use super::classify_impl;
 
+mod ad;
 mod nip05;
 mod recognizer;
 mod reference;

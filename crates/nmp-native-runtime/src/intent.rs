@@ -43,14 +43,28 @@ impl NmpApp {
                 InputIntentDispatch::Rejection(rejection)
             }
             InputIntentClassification::Candidates(candidates) => {
-                match candidates.into_iter().next() {
+                let mut iter = candidates.into_iter();
+                match iter.next() {
                     // The classifier normally emits a `Rejection` instead of an
                     // empty candidate list. Stay total if a future recognizer path
                     // changes that invariant.
                     None => InputIntentDispatch::Rejection(InputIntentRejection::Unparseable),
-                    Some(candidate) => {
-                        self.act_on_input_intent_candidate(&candidate, session_id);
-                        InputIntentDispatch::Dispatched(candidate)
+                    Some(primary) => {
+                        // D1 (#2927): a NIP-AD candidate is emitted alongside the
+                        // free-text search candidates for the same input. Fire
+                        // those in parallel so the user is never blocked on the AD
+                        // `.well-known` fetch — an AD URL still yields search
+                        // results today; a direct AD-resolved view is a strictly
+                        // later upgrade.
+                        if matches!(primary.target, InputIntentTarget::AdCandidate { .. }) {
+                            for sibling in iter {
+                                if matches!(sibling.target, InputIntentTarget::TextQuery { .. }) {
+                                    self.act_on_input_intent_candidate(&sibling, session_id);
+                                }
+                            }
+                        }
+                        self.act_on_input_intent_candidate(&primary, session_id);
+                        InputIntentDispatch::Dispatched(primary)
                     }
                 }
             }
@@ -73,6 +87,18 @@ impl NmpApp {
             }
             InputIntentTarget::Nip05 { identifier } => {
                 self.act_on_nip05_intent(identifier);
+            }
+            InputIntentTarget::AdCandidate { .. } => {
+                // #2927 moment-2: the AD `.well-known` resolution + relay-pinned
+                // collection delivery is the deferred hand-off — it needs the
+                // arbitrary-filter, relay-pinned collection interest primitive
+                // the kernel does not yet expose (no `KernelAction` /
+                // `ActorCommand` opens a plain-`nostr::Filter` interest with
+                // one-shot `relay_pin` into a 0..N-event view; the owner override
+                // forbids reducing a NIP-AD filter to the single-pointer refs
+                // seam). The parallel free-text search (D1) is dispatched from
+                // `dispatch_input_intent`, so an AD URL still yields results; only
+                // the direct AD-resolved collection view is pending.
             }
             InputIntentTarget::RelayUrl { .. } | InputIntentTarget::Registered { .. } => {}
         }
