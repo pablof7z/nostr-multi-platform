@@ -78,6 +78,7 @@ mod app_host_impl; // ADR-0070: `impl AppHost for NmpAppBuilder` child submodule
 #[cfg(feature = "marmot")]
 mod marmot;
 mod transitions;
+#[cfg(feature = "wallet")]
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 
 // ── Type-state markers ───────────────────────────────────────────────────────
