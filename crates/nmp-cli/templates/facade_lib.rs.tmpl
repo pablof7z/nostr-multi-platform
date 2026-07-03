@@ -8,6 +8,11 @@
 //! framework binding crate (#2763 deleted `nmp-uniffi`) — this facade IS the
 //! native binding surface, modeled on
 //! `apps/nmp-gallery/crates/nmp-app-gallery` (`GalleryApp`).
+//!
+//! App/operator configuration needed by native UI should be exposed here as
+//! facade-local accessors backed by the leaf app crate. Do not route static
+//! defaults through kernel projections or protocol crates just to cross UniFFI.
+//! A value that only pre-fills an editable field is app config, not actor state.
 
 use std::sync::{Arc, Mutex};
 

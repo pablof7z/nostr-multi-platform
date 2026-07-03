@@ -81,9 +81,11 @@ producer for each `nmp.nip29.*` projection key.
 - **No app-owned persistence schema in `nmp-core`.** NIP-29 read models are
   protocol-owned Rust state surfaced through projections.
 - **No group-create-defaults projection.** A prior `GroupDefaultsProjection`
-  (suggested relay URL for the create-group form, #626) had no live host
-  composition-root consumer and was removed; a leaf app that wants to pre-fill
-  a suggested relay owns that as ordinary app config, not a kernel snapshot.
+  (suggested relay URL for the create-group form, #626) was removed because it
+  laundered static app/operator config through protocol projection machinery.
+  A leaf app that wants to pre-fill a suggested relay owns that as ordinary app
+  config and exposes it through its app facade if a native shell needs it, not
+  as an `nmp.nip29.*` snapshot.
 
 ## 4. The load-bearing constraint: host-relay-pin
 

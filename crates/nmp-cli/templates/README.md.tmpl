@@ -35,7 +35,7 @@ The generated app demonstrates the boring v1 path:
 | `crates/{{pkg}}/src/lib.rs` | The composition shell: `register` → explicit substrate/protocol/app composition, plus an example app-owned domain (`EntryRecord`). **App nouns never go in `nmp-core`** (doctrine D0). |
 | `crates/{{pkg}}/src/entry_action.rs` | The app-owned typed action module and `ActionPayload` decoder reached by generated builders. |
 | `crates/{{pkg}}/src/entry_view.rs` | The app-owned reactive read model: declared dependencies, bounded state, event handlers, and snapshot shape. |
-| `crates/{{facade_pkg}}/src/lib.rs` | The app-owned UniFFI facade: `setup_scaffolding!`, facade-local callbacks/records, and delegation to `nmp-uniffi-support`. |
+| `crates/{{facade_pkg}}/src/lib.rs` | The app-owned UniFFI facade: `setup_scaffolding!`, facade-local callbacks/records, app/operator config accessors, and delegation to `nmp-uniffi-support`. |
 | `ci/check-uniffi-bindings.sh` | Builds `crates/{{facade_pkg}}` and runs `uniffi-bindgen --library` for Swift/Kotlin bindings. |
 | `crates/{{pkg}}/examples/shell.rs` | Headless shell: `NmpAppBuilder` → `register` → `start`. |
 
@@ -71,13 +71,16 @@ nmp upgrade --to 0.4.0    # bump the pinned rev + rewrite nmp-* deps
 
 1. Add your app-specific module registrations inside `register` in
    `crates/{{pkg}}/src/lib.rs`.
-2. Replace the example `Entry` domain with your real nouns.
-3. Install a component host with fixtures while wiring UI tests, for example
+2. Expose native-needed app/operator config through facade methods in
+   `crates/{{facade_pkg}}/src/lib.rs`; do not turn static defaults into kernel
+   projections.
+3. Replace the example `Entry` domain with your real nouns.
+4. Install a component host with fixtures while wiring UI tests, for example
    `nmp add component swiftui/component-host --with fixture`.
-4. Run `bash ci/check-uniffi-bindings.sh` and put the generated UniFFI bindings
+5. Run `bash ci/check-uniffi-bindings.sh` and put the generated UniFFI bindings
    plus action builders in the host target that dispatches bytes.
-5. Build a platform shell (SwiftUI / Compose / web / TUI) over the public
+6. Build a platform shell (SwiftUI / Compose / web / TUI) over the public
    binding for that platform: this app facade for native Swift/Kotlin,
    wasm-bindgen for browser Workers, or direct Rust for Rust-native shells.
-6. Read the v1 runtime/component migration guide in the NMP checkout:
+7. Read the v1 runtime/component migration guide in the NMP checkout:
    `docs/migration.md`.
