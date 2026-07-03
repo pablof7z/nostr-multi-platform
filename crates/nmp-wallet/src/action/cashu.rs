@@ -33,7 +33,7 @@ use crate::{
     ACTION_CASHU_RECOVER,
 };
 
-use super::dispatch_and_forward;
+use super::{dispatch_and_forward, require_capable_backend};
 
 // ── nmp.wallet.cashu.create ─────────────────────────────────────────────────
 
@@ -279,25 +279,6 @@ impl ActionModule for CashuCompleteDepositModule {
         );
         Ok(())
     }
-}
-
-/// Shared `start()` gate: reject before dispatch when zero registered
-/// backends could ever satisfy `intent`'s capability — absent capability is
-/// a structured rejection, never a silent no-op reached via `execute()`.
-fn require_capable_backend(
-    selector: &WalletBackendSelector,
-    intent: &WalletIntent,
-) -> Result<(), ActionRejection> {
-    let Some(capability) = crate::selector::capability_for(intent) else {
-        return Ok(());
-    };
-    if selector.candidates_for(capability).is_empty() {
-        return Err(ActionRejection::InvalidCoded {
-            code: ui_codes::NO_CAPABLE_BACKEND,
-            message: "no registered wallet backend supports this operation".to_string(),
-        });
-    }
-    Ok(())
 }
 
 #[cfg(test)]

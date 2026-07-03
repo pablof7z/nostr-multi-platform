@@ -1,13 +1,30 @@
 use super::*;
 use crate::backend::cashu::CashuWalletBackend;
 use crate::backend::MintResult;
+use nmp_core::actor::ActionLedgerCommand;
 use nmp_core::substrate::KernelEvent;
 
-/// A stub backend with a caller-controlled capability set, for testing
-/// selection without a real NWC/Cashu adapter.
+/// A stub backend with a caller-controlled capability set and readiness, for
+/// testing selection/merge without a real NWC/Cashu adapter.
 struct StubBackend {
     id: &'static str,
     caps: WalletCapabilities,
+    readiness: crate::projection::WalletReadiness,
+}
+
+impl StubBackend {
+    fn new(id: &'static str, caps: WalletCapabilities) -> Self {
+        Self {
+            id,
+            caps,
+            readiness: crate::projection::WalletReadiness::Ready,
+        }
+    }
+
+    fn with_readiness(mut self, readiness: crate::projection::WalletReadiness) -> Self {
+        self.readiness = readiness;
+        self
+    }
 }
 
 impl WalletBackend for StubBackend {
@@ -21,11 +38,7 @@ impl WalletBackend for StubBackend {
 
     fn snapshot(&self, _scope: WalletProjectionScope) -> WalletBackendSnapshot {
         WalletBackendSnapshot {
-            projection: WalletProjection::new(
-                Some(self.id()),
-                crate::projection::WalletReadiness::Ready,
-                self.caps,
-            ),
+            projection: WalletProjection::new(Some(self.id()), self.readiness, self.caps),
         }
     }
 
@@ -109,14 +122,8 @@ fn resolve_picks_the_sole_capable_backend_without_a_preference() {
 #[test]
 fn resolve_is_ambiguous_with_two_capable_backends_and_no_preference() {
     let selector = WalletBackendSelector::new(vec![
-        Arc::new(StubBackend {
-            id: "a",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
-        Arc::new(StubBackend {
-            id: "b",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
+        Arc::new(StubBackend::new("a", WalletCapabilities::nwc_payments())),
+        Arc::new(StubBackend::new("b", WalletCapabilities::nwc_payments())),
     ]);
     assert!(matches!(
         selector.resolve(WalletCapability::PayBolt11),
@@ -127,14 +134,8 @@ fn resolve_is_ambiguous_with_two_capable_backends_and_no_preference() {
 #[test]
 fn preference_breaks_a_tie_between_two_capable_backends() {
     let selector = WalletBackendSelector::new(vec![
-        Arc::new(StubBackend {
-            id: "a",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
-        Arc::new(StubBackend {
-            id: "b",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
+        Arc::new(StubBackend::new("a", WalletCapabilities::nwc_payments())),
+        Arc::new(StubBackend::new("b", WalletCapabilities::nwc_payments())),
     ]);
     selector
         .set_preferred(WalletBackendId::new("b"))
@@ -157,10 +158,10 @@ fn set_preferred_fails_closed_for_an_unregistered_backend_id() {
 
 #[test]
 fn dispatch_routes_to_the_capable_backend() {
-    let selector = WalletBackendSelector::new(vec![Arc::new(StubBackend {
-        id: "a",
-        caps: WalletCapabilities::nwc_payments(),
-    })]);
+    let selector = WalletBackendSelector::new(vec![Arc::new(StubBackend::new(
+        "a",
+        WalletCapabilities::nwc_payments(),
+    ))]);
     let commands = selector.dispatch(
         ctx(),
         WalletIntent::PayBolt11 {
@@ -195,10 +196,7 @@ fn dispatch_fails_closed_with_an_error_token_and_ledger_failure_when_no_backend_
 #[test]
 fn union_capabilities_surfaces_every_backend_action_namespace() {
     let selector = WalletBackendSelector::new(vec![
-        Arc::new(StubBackend {
-            id: "nwc",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
+        Arc::new(StubBackend::new("nwc", WalletCapabilities::nwc_payments())),
         Arc::new(CashuWalletBackend::new()),
     ]);
     let union = selector.union_capabilities();
@@ -217,22 +215,94 @@ fn snapshot_merges_active_backend_from_the_sole_registered_backend() {
     );
 }
 
+/// With no preference set, the merged view shows whichever backend is
+/// currently the MOST ready, not `NotConfigured` forever — see
+/// `WalletBackendSelector::snapshot`'s doc comment on why a fixed
+/// "ambiguous means None" merge (the pre-fix behavior) was wrong: nothing
+/// requires a user to ever call `select_backend`, so a merge that only
+/// reports readiness once a preference is set would leave the top-level
+/// wallet indicator permanently `NotConfigured` even once a backend is
+/// genuinely ready.
 #[test]
-fn snapshot_has_no_active_backend_when_ambiguous_and_unpreferred() {
+fn snapshot_reports_the_most_ready_backend_when_unpreferred() {
     let selector = WalletBackendSelector::new(vec![
-        Arc::new(StubBackend {
-            id: "a",
-            caps: WalletCapabilities::nwc_payments(),
-        }),
-        Arc::new(StubBackend {
-            id: "b",
-            caps: WalletCapabilities::cashu_wallet_and_deposit(),
-        }),
+        Arc::new(
+            StubBackend::new("a", WalletCapabilities::nwc_payments())
+                .with_readiness(crate::projection::WalletReadiness::NotConfigured),
+        ),
+        Arc::new(
+            StubBackend::new("b", WalletCapabilities::cashu_wallet_and_deposit())
+                .with_readiness(crate::projection::WalletReadiness::Ready),
+        ),
     ]);
     let projection = selector.snapshot(WalletProjectionScope::default());
-    assert_eq!(projection.active_backend_id, None);
+    assert_eq!(
+        projection.active_backend_id.as_ref().map(|id| id.as_str()),
+        Some("b")
+    );
     assert_eq!(
         projection.readiness,
-        crate::projection::WalletReadiness::NotConfigured
+        crate::projection::WalletReadiness::Ready
+    );
+}
+
+/// A preference wins even when it names a LESS-ready backend than another
+/// registered one — the user's explicit choice is authoritative, not just a
+/// tie-breaker for equally-ready candidates.
+#[test]
+fn snapshot_respects_an_explicit_preference_over_a_more_ready_backend() {
+    let selector = WalletBackendSelector::new(vec![
+        Arc::new(
+            StubBackend::new("a", WalletCapabilities::nwc_payments())
+                .with_readiness(crate::projection::WalletReadiness::Activating),
+        ),
+        Arc::new(
+            StubBackend::new("b", WalletCapabilities::cashu_wallet_and_deposit())
+                .with_readiness(crate::projection::WalletReadiness::Ready),
+        ),
+    ]);
+    selector
+        .set_preferred(WalletBackendId::new("a"))
+        .expect("a is registered");
+    let projection = selector.snapshot(WalletProjectionScope::default());
+    assert_eq!(
+        projection.active_backend_id.as_ref().map(|id| id.as_str()),
+        Some("a")
+    );
+    assert_eq!(
+        projection.readiness,
+        crate::projection::WalletReadiness::Activating
+    );
+}
+
+/// Every registered backend unconditionally reports itself as
+/// `active_backend_id` from its OWN `snapshot()` (see
+/// `NwcWalletBackend`/`CashuWalletBackend`'s impls) — the merge must not be
+/// fooled by that self-report into picking a stale/wrong backend; it must
+/// derive the merged `active_backend_id` from which backend actually won
+/// the readiness comparison, zipped by registration order.
+#[test]
+fn snapshot_merge_ignores_each_backends_self_reported_active_id_and_uses_actual_readiness() {
+    let selector = WalletBackendSelector::new(vec![
+        Arc::new(
+            StubBackend::new("a", WalletCapabilities::nwc_payments())
+                .with_readiness(crate::projection::WalletReadiness::Degraded),
+        ),
+        Arc::new(
+            StubBackend::new("b", WalletCapabilities::cashu_wallet_and_deposit())
+                .with_readiness(crate::projection::WalletReadiness::Activating),
+        ),
+    ]);
+    let projection = selector.snapshot(WalletProjectionScope::default());
+    // "a" is Degraded (rank 2) and "b" is Activating (rank 1) — "a" must win
+    // even though both backends' own snapshots equally claim
+    // `active_backend_id: Some(self.id())`.
+    assert_eq!(
+        projection.active_backend_id.as_ref().map(|id| id.as_str()),
+        Some("a")
+    );
+    assert_eq!(
+        projection.readiness,
+        crate::projection::WalletReadiness::Degraded
     );
 }

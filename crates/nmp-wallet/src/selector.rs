@@ -15,19 +15,20 @@
 //!
 //! Fail-closed everywhere: zero capable backends, or (today-unreachable)
 //! ambiguity between more than one with no preference set, both produce a
-//! structured [`UiToken`] error rather than a panic or a silent no-op.
+//! structured `UiToken` error (see `crate::fail_closed::fail_closed`) rather
+//! than a panic or a silent no-op.
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
-use nmp_core::ui_token::UiToken;
+use nmp_core::actor::ActorCommand;
 
 use crate::backend::{
     WalletBackend, WalletBackendContext, WalletBackendId, WalletBackendSnapshot, WalletIntent,
     WalletProjectionScope,
 };
 use crate::capability::{WalletCapabilities, WalletCapability};
-use crate::projection::WalletProjection;
+use crate::fail_closed::fail_closed;
+use crate::projection::{WalletProjection, WalletReadiness};
 use crate::ui_codes;
 
 /// Fail-closed reasons [`WalletBackendSelector::resolve`] can reject a
@@ -214,32 +215,32 @@ impl WalletBackendSelector {
     /// Fold every registered backend's [`WalletBackendSnapshot`] into one
     /// bounded [`WalletProjection`].
     ///
-    /// Merge policy: `active_backend_id`/`readiness` come from the resolved
-    /// "active" backend — the preferred one if set, else the sole backend if
-    /// exactly one is registered, else `None`/`NotConfigured` (ambiguous, no
-    /// preference — mirrors `resolve`'s fail-closed stance rather than
-    /// guessing which backend's readiness to show). `capabilities` is the
-    /// union from `union_capabilities`. Balances/pending
-    /// operations/history/receive rows concatenate across every backend,
-    /// bounded by the existing `MAX_WALLET_PROJECTION_ROWS` machinery in
-    /// `projection.rs`. `cashu_p2pk_pubkey`/`accepted_mint_count`/
-    /// `accepted_relay_count` are Cashu-shaped fields with no NWC analogue —
-    /// take the first non-default value/sum across backends respectively.
+    /// Merge policy: every backend's own `snapshot()` unconditionally
+    /// reports `active_backend_id: Some(self.id())` regardless of
+    /// connection/readiness (see `NwcWalletBackend`/`CashuWalletBackend`'s
+    /// impls) — that field identifies WHO produced a snapshot, not whether
+    /// it is the merged view's "active" one, so this merge does not read it.
+    /// Instead: with a preference set (and registered), `active_backend_id`/
+    /// `readiness` are that backend's own, respecting the explicit choice
+    /// even if another backend happens to be more "ready". Without one,
+    /// `readiness` is the best (most-ready) readiness among ALL registered
+    /// backends (`readiness_rank`) — so with today's two backends, the
+    /// merged view shows `Ready` the moment EITHER is ready, rather than
+    /// getting stuck at `NotConfigured` forever pending an explicit
+    /// `select_backend` call nothing requires a user to ever make.
+    /// `capabilities` is the union from `union_capabilities`. Balances/
+    /// pending operations/history/receive rows concatenate across every
+    /// backend, bounded by the existing `MAX_WALLET_PROJECTION_ROWS`
+    /// machinery in `projection.rs`. `cashu_p2pk_pubkey`/
+    /// `accepted_mint_count`/`accepted_relay_count` are Cashu-shaped fields
+    /// with no NWC analogue — take the first non-default value/sum across
+    /// backends respectively.
     #[must_use]
     pub fn snapshot(&self, scope: WalletProjectionScope) -> WalletProjection {
         let snapshots: Vec<WalletBackendSnapshot> =
             self.backends.iter().map(|b| b.snapshot(scope)).collect();
 
-        let active_id = self.active_backend_id();
-        let readiness = active_id
-            .as_ref()
-            .and_then(|id| {
-                snapshots
-                    .iter()
-                    .find(|s| s.projection.active_backend_id.as_ref() == Some(id))
-            })
-            .map(|s| s.projection.readiness)
-            .unwrap_or_default();
+        let (active_id, readiness) = self.merged_active_backend(&snapshots);
 
         let mut projection = WalletProjection::new(active_id, readiness, self.union_capabilities());
 
@@ -276,20 +277,31 @@ impl WalletBackendSelector {
         projection
     }
 
-    /// The "active" backend for merged-projection purposes: the preferred
-    /// backend if set, else the sole registered backend, else `None` when
-    /// zero or ambiguous (more than one, no preference).
-    #[must_use]
-    fn active_backend_id(&self) -> Option<WalletBackendId> {
+    /// The "active" backend id + readiness for merged-projection purposes.
+    /// See [`Self::snapshot`]'s doc comment for the merge policy. `snapshots`
+    /// must be `self.backends.iter().map(|b| b.snapshot(..))` in the same
+    /// order (zipped by index, not by any self-reported id) — the only
+    /// caller, `snapshot`, upholds this.
+    fn merged_active_backend(
+        &self,
+        snapshots: &[WalletBackendSnapshot],
+    ) -> (Option<WalletBackendId>, WalletReadiness) {
         if let Some(preferred) = self.preferred() {
-            if self.has_backend(&preferred) {
-                return Some(preferred);
+            if let Some((backend, snap)) = self
+                .backends
+                .iter()
+                .zip(snapshots)
+                .find(|(b, _)| b.id() == preferred)
+            {
+                return (Some(backend.id()), snap.projection.readiness);
             }
         }
-        match self.backends.as_slice() {
-            [only] => Some(only.id()),
-            _ => None,
-        }
+        self.backends
+            .iter()
+            .zip(snapshots)
+            .max_by_key(|(_, snap)| readiness_rank(snap.projection.readiness))
+            .map(|(backend, snap)| (Some(backend.id()), snap.projection.readiness))
+            .unwrap_or((None, WalletReadiness::NotConfigured))
     }
 
     /// Registered backends, exposed for the runtime/observer to route
@@ -313,6 +325,19 @@ impl WalletBackendSelector {
     }
 }
 
+/// Ranks readiness from least to most "the wallet is doing something useful"
+/// for [`WalletBackendSelector::merged_active_backend`]'s best-of-N merge.
+/// `Degraded` outranks `Activating`: a backend that WAS ready and is now
+/// degraded still has more state/history behind it than one still coming up.
+fn readiness_rank(readiness: WalletReadiness) -> u8 {
+    match readiness {
+        WalletReadiness::NotConfigured => 0,
+        WalletReadiness::Activating => 1,
+        WalletReadiness::Degraded => 2,
+        WalletReadiness::Ready => 3,
+    }
+}
+
 fn union_capabilities(acc: WalletCapabilities, next: WalletCapabilities) -> WalletCapabilities {
     WalletCapabilities {
         pay_bolt11: acc.pay_bolt11 || next.pay_bolt11,
@@ -324,29 +349,6 @@ fn union_capabilities(acc: WalletCapabilities, next: WalletCapabilities) -> Wall
         melt_cashu: acc.melt_cashu || next.melt_cashu,
         observe_nutzap_receipts: acc.observe_nutzap_receipts || next.observe_nutzap_receipts,
     }
-}
-
-/// Fail-closed before any backend is reached: a structured `ShowErrorToken` +
-/// (when a `correlation_id` was supplied) `RecordActionFailure`. Mirrors
-/// `backend::cashu::fail_closed`'s shape at the selection layer, one level up
-/// from where a backend's own fail-closed paths fire.
-fn fail_closed(
-    code: &'static str,
-    correlation_id: Option<String>,
-    reason: String,
-) -> Vec<ActorCommand> {
-    let mut out = vec![ActorCommand::ShowErrorToken {
-        token: UiToken::error(code, reason.clone()),
-    }];
-    if let Some(id) = correlation_id {
-        out.push(ActorCommand::ActionLedger(
-            ActionLedgerCommand::RecordFailure {
-                correlation_id: id,
-                reason,
-            },
-        ));
-    }
-    out
 }
 
 #[cfg(test)]

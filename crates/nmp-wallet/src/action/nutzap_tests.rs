@@ -1,6 +1,7 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::ui_codes;
 use crate::WalletBackendId;
 use nmp_core::substrate::ActionContext;
 

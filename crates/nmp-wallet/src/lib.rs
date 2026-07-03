@@ -17,6 +17,7 @@
 pub mod action;
 pub mod backend;
 pub mod capability;
+mod fail_closed;
 pub mod interests;
 pub mod journal;
 pub mod ownership;

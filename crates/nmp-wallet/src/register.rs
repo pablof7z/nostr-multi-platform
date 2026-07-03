@@ -85,10 +85,20 @@ pub struct Handles {
     /// existed (see `crates/nmp-native-runtime/src/builder/wallet.rs`).
     pub nwc_wallet: nmp_nip47::WalletRuntimeHandle,
     /// The installed wallet runtime — owns backend selection and drives
-    /// `on_wallet_event`/`on_mint_result` (see `runtime.rs`). The caller
-    /// keeps this alive for the app's lifetime (e.g. stored in the builder
-    /// state) so a future typed-projection registration or `MintResult`
-    /// producer can reach `WalletRuntime::snapshot`/`deliver_mint_result`.
+    /// `on_wallet_event`/`on_mint_result` (see `runtime.rs`). The identity-
+    /// reactive read-interest wiring keeps working regardless of what the
+    /// caller does with this handle (each reconciler's closure holds its own
+    /// `Arc` clones, captured by `app.register_identity_change_observer`
+    /// — see `WalletRuntime::new`). This handle is offered ADDITIONALLY so a
+    /// caller that DOES retain it can reach `WalletRuntime::snapshot`/
+    /// `deliver_mint_result` later (e.g. to wire a typed "wallet" snapshot
+    /// projection once one exists). `nmp-native-runtime`'s
+    /// `NmpAppBuilder::with_wallet` — the only production caller today —
+    /// does not retain it: the builder's fluent `Result<Self>` step shape has
+    /// no slot to stash an extra handle in without a larger, out-of-scope
+    /// change to that type, and nothing calls `snapshot`/`deliver_mint_result`
+    /// in production yet. A caller that needs them must plumb this handle
+    /// through on its own for now.
     pub runtime: Arc<WalletRuntime>,
 }
 
@@ -114,8 +124,29 @@ pub fn register(
         nip47_handles.wallet.clone(),
         nip47_handles.status.clone(),
     ));
-    let cashu_backend: Arc<dyn WalletBackend> = Arc::new(CashuWalletBackend::new());
-    let selector = Arc::new(WalletBackendSelector::new(vec![nwc_backend, cashu_backend]));
+    // Kept as a concrete `Arc<CashuWalletBackend>` (not yet erased to
+    // `Arc<dyn WalletBackend>`) so step 3a below can call its
+    // Cashu-specific `reset()` — the `WalletBackend` trait itself has no
+    // (and should have no) generic "forget everything" method; NWC's
+    // connection state is not identity-scoped the same way, so nothing
+    // analogous is needed for `nwc_backend`.
+    let cashu_backend = Arc::new(CashuWalletBackend::new());
+    let selector = Arc::new(WalletBackendSelector::new(vec![
+        nwc_backend,
+        Arc::clone(&cashu_backend) as Arc<dyn WalletBackend>,
+    ]));
+
+    // 3a. Cross-account data-leak fix: `CashuWalletBackend` is constructed
+    //    once per app instance (above), not once per signed-in account, but
+    //    its state (mints, Cashu P2PK pubkey, balances, pending deposits) is
+    //    NIP-44-encrypted-to-a-specific-identity material. Without this, a
+    //    Nostr account switch within one running app would leave the
+    //    previous account's wallet state visible to — and, via
+    //    `complete_deposit`, completable as — the newly active account.
+    //    Reset on every active-account change, mirroring how
+    //    `nmp-nip51::register_mute_runtime` resets `MuteListProjection` on
+    //    the same signal.
+    app.register_identity_change_observer(move |_| cashu_backend.reset());
 
     // 3. Canonical `nmp.wallet.*` action modules this crate owns this wave
     //    (W5) — `select_backend` plus the Cashu/nutzap families. Each holds

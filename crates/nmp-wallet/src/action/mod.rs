@@ -72,3 +72,24 @@ pub(crate) fn dispatch_and_forward(
         send(cmd);
     }
 }
+
+/// Shared `start()` gate every Cashu/nutzap `ActionModule` (except
+/// `cashu.recover` — see `action::cashu`'s module docs) uses: reject before
+/// dispatch when zero registered backends could ever satisfy `intent`'s
+/// capability. Absent capability is a structured rejection, never a silent
+/// no-op reached via `execute()`.
+pub(crate) fn require_capable_backend(
+    selector: &crate::selector::WalletBackendSelector,
+    intent: &crate::backend::WalletIntent,
+) -> Result<(), nmp_core::substrate::ActionRejection> {
+    let Some(capability) = crate::selector::capability_for(intent) else {
+        return Ok(());
+    };
+    if selector.candidates_for(capability).is_empty() {
+        return Err(nmp_core::substrate::ActionRejection::InvalidCoded {
+            code: crate::ui_codes::NO_CAPABLE_BACKEND,
+            message: "no registered wallet backend supports this operation".to_string(),
+        });
+    }
+    Ok(())
+}

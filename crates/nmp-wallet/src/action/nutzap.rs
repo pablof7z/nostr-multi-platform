@@ -7,10 +7,10 @@
 //! nutzap flags — see that constructor's doc comment). That makes these
 //! three modules fail closed through the SAME generic
 //! `require_capable_backend`/`selector.dispatch` path `action::cashu`'s
-//! implemented actions use — an absent capability, not a panic and not a
-//! special-cased rejection. The moment a future wave (#2864 W8/W9/W13)
-//! makes a backend advertise one of these flags, these modules start
-//! reaching it with no code change here.
+//! implemented actions use (shared via `action::mod`'s `require_capable_backend`)
+//! — an absent capability, not a panic and not a special-cased rejection.
+//! The moment a future wave (#2864 W8/W9/W13) makes a backend advertise one
+//! of these flags, these modules start reaching it with no code change here.
 
 use std::sync::Arc;
 
@@ -22,32 +22,9 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, Declared
 
 use crate::backend::WalletIntent;
 use crate::selector::WalletBackendSelector;
-use crate::ui_codes;
 use crate::{ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM, ACTION_NUTZAP_SEND};
 
-use super::dispatch_and_forward;
-
-/// Shared `start()` gate — identical to `action::cashu`'s
-/// `require_capable_backend`, duplicated here rather than made `pub(crate)`
-/// in one place because the two families independently reference distinct
-/// `ui_codes` (today the same code, `NO_CAPABLE_BACKEND`, but the families
-/// are not guaranteed to stay symmetric — nutzap flows may grow
-/// nutzap-specific fail-closed reasons `action::cashu` never needs).
-fn require_capable_backend(
-    selector: &WalletBackendSelector,
-    intent: &WalletIntent,
-) -> Result<(), ActionRejection> {
-    let Some(capability) = crate::selector::capability_for(intent) else {
-        return Ok(());
-    };
-    if selector.candidates_for(capability).is_empty() {
-        return Err(ActionRejection::InvalidCoded {
-            code: ui_codes::NO_CAPABLE_BACKEND,
-            message: "no registered wallet backend supports this operation".to_string(),
-        });
-    }
-    Ok(())
-}
+use super::{dispatch_and_forward, require_capable_backend};
 
 // ── nmp.wallet.nutzap.publish_info ──────────────────────────────────────────
 
