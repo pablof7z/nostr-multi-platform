@@ -8,9 +8,16 @@ use crate::substrate::{
 use super::Kernel;
 
 impl Kernel {
+    /// #2937: flips [`Kernel::router_composed`] to `true`. Every real
+    /// caller — production composition (`NmpApp::set_routing_substrate`)
+    /// and every in-tree test that exercises real routing — calls this
+    /// exactly once before issuing routing decisions, so the flag faithfully
+    /// tracks "was a real router ever installed" rather than guessing from
+    /// behaviour.
     pub fn set_routing(&mut self, router: Arc<dyn OutboxRouter>, cache: Arc<dyn MailboxCache>) {
         self.outbox_router = router;
         self.mailbox_cache = cache;
+        self.router_composed = true;
     }
 
     pub fn set_content_parser(&mut self, parser: Arc<dyn ContentParser>) {

@@ -275,6 +275,14 @@ pub struct Kernel {
     test_mailbox_cache: Arc<TestInMemoryMailboxCache>,
     /// Outbox router substrate (see crate-boundaries.md §3).
     outbox_router: Arc<dyn OutboxRouter>,
+    /// #2937 — set once [`Kernel::set_routing`] installs a real router (vs.
+    /// still running the fail-closed `EmptyOutboxRouter` default a bare
+    /// `new_app()` leaves in place). Read by
+    /// [`Kernel::route_subscription_relays`] to distinguish "no routing
+    /// substrate was ever composed" from "composed, and this subscription
+    /// legitimately has no known relays" — same rationale as
+    /// `PublishEngine::resolver_composed`.
+    router_composed: bool,
     /// Injected content parser (D0 — no NIP noun in `nmp-core`).
     content_parser: Arc<dyn crate::substrate::ContentParser>,
     /// Composition-registered protocol draft builders.

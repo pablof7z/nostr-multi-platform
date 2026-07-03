@@ -119,7 +119,8 @@ impl Kernel {
             }
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
-            let (toast, _, _) = describe_engine_error(&err);
+            let (toast, _, _) =
+                describe_engine_error(&err, self.publish_engine.resolver_composed());
             self.set_last_error_token(
                 &crate::ui_token::UiToken::error(
                     crate::ui_token::codes::PUBLISH_RETRY_FAILED,
