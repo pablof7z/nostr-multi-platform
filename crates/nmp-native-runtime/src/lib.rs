@@ -72,13 +72,7 @@ pub use feed_params::{
     FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
-pub use group_feed::{
-    Nip25GroupReactionsHandle, Nip25GroupReactionsSession, Nip29GroupDiscoveryHandle,
-    Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
-    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
-    Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, GROUP_REACTIONS_KEY,
-    GROUP_ROSTER_KEY, JOINED_GROUPS_KEY,
-};
+pub use group_feed::{Nip25GroupReactionsHandle, Nip25GroupReactionsSession, GROUP_REACTIONS_KEY};
 pub use intent::InputIntentDispatch;
 pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_nip18::PrimaryKindError;

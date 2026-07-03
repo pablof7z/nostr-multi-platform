@@ -354,7 +354,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `NmpApp::open_nip29_joined_groups_session` (NIP-29 native-runtime read session,
+        // Registered by `nmp_nip29::open_nip29_joined_groups_session` (NIP-29 concept-owned read session,
         // #2088 — moved off the prior bare-observer `nmp_nip29::wire_joined_groups`
         // so the view hydrates already-cached membership snapshots). A real
         // Tier-1 projection key with no iOS Swift consumer yet.
@@ -371,7 +371,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `NmpApp::open_nip29_group_roster_session` (NIP-29
+        // Registered by `nmp_nip29::open_nip29_group_roster_session` (NIP-29
         // per-group member roster read session). RETAINS the 39001/39002 member
         // pubkeys + 39003 role catalog the count-only joined/discovered views
         // discard. A real Tier-1 projection key with no iOS Swift consumer yet.

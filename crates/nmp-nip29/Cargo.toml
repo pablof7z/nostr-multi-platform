@@ -9,6 +9,7 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Kind-blind tr
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-read-session = { path = "../nmp-read-session" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # `nmp-relay-url` is a Layer-0 (dependency-free) crate that owns the `RelayUrl`
 # alias (#2648) — re-export it rather than redefining a competing copy.

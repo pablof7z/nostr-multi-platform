@@ -2,8 +2,9 @@
 //!
 //! A local WebSocket relay records the actual `REQ` frames and serves a signed
 //! kind:39000 group-metadata event. The test drives only public app-facing
-//! NMP surfaces: crate-level `nmp_nip29::register`, the native runtime
-//! discovery session, and the typed dispatch envelope for `nmp.nip29.discover`.
+//! NMP surfaces: crate-level `nmp_nip29::register`, the concept-owned discovery
+//! session opened against the native runtime host, and the typed dispatch
+//! envelope for `nmp.nip29.discover`.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -16,11 +17,12 @@ use std::time::{Duration, Instant};
 use common::recording_relay::{has_kind, RecordingRelay};
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
-use nmp_native_runtime::{
-    dispatch_action_bytes_typed, Nip29GroupDiscoverySession, NmpApp, NmpAppBuilder, RunConfig,
-};
+use nmp_native_runtime::{dispatch_action_bytes_typed, NmpApp, NmpAppBuilder, RunConfig};
 use nmp_nip29::action::DiscoverGroupsInput;
-use nmp_nip29::DiscoveredGroup;
+use nmp_nip29::{
+    close_nip29_group_discovery_session, open_nip29_group_discovery_session_with_reader,
+    DiscoveredGroup, Nip29GroupDiscoverySession,
+};
 use nostr::{Event, EventBuilder, Keys, Kind, Tag, Timestamp};
 
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -88,7 +90,8 @@ fn discovery_session_dispatch_receives_group_metadata_from_relay() {
     let app = DiscoveryApp::boot(relay.url());
     let app_ref = unsafe { &*app.app };
 
-    let (handle, reader) = app_ref.open_nip29_group_discovery_session_with_reader(
+    let (handle, reader) = open_nip29_group_discovery_session_with_reader(
+        app_ref,
         Nip29GroupDiscoverySession::new(relay.url().to_string()),
     );
     let payload = DiscoverGroupsInput {
@@ -120,7 +123,7 @@ fn discovery_session_dispatch_receives_group_metadata_from_relay() {
         || reader.snapshot().groups,
         Duration::from_secs(10),
     );
-    app_ref.close_nip29_group_discovery_session(handle);
+    assert!(close_nip29_group_discovery_session(app_ref, handle));
 
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].group_id, "room");
