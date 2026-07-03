@@ -19,8 +19,13 @@
 //!   `docs/architecture/crate-boundaries.md` §5 for the full lane contract.
 //! * [`Kernel::recipient_publish_relays`] drives the same router through
 //!   `route_publish` with a synthetic [`UnsignedEvent`] so a downstream
-//!   publisher (e.g. NIP-57's LN provider) can resolve a recipient's
-//!   publish-side relay set without reading the cache directly.
+//!   publisher (e.g. NIP-57's LN provider, or a wallet backend's terminal
+//!   self-publish) can resolve a recipient's publish-side relay set
+//!   without reading the cache directly. When `recipient` is the caller's
+//!   own active account, it also feeds lane 4 from
+//!   `local_write_relays_handle` (#2923) so a fresh account with a
+//!   configured write relay but no observed kind:10002 can still publish
+//!   its own non-discovery-kind events.
 //! * [`Kernel::bootstrap_seed_urls`] resolves the [`BootstrapSeed`]
 //!   discriminant to the concrete cold-start URL list passed as
 //!   `app_relays`. `BootstrapSeed::Discovery` is currently the only
@@ -129,8 +134,8 @@ impl Kernel {
     /// Build a [`RoutingContext`] from the kernel's substrate state and
     /// the supplied bookkeeping references. The lifetime of the returned
     /// context is tied to the borrows in `app_relays` / `indexer_relays`
-    /// / `blocked` — callers stack-allocate all three then drop the
-    /// context before the next kernel-mutating call.
+    /// / `active_write` / `blocked` — callers stack-allocate all four then
+    /// drop the context before the next kernel-mutating call.
     ///
     /// `indexer_relays` is the operator-configured indexer URL set the
     /// router consults for spec §3.1 lane 6 (discovery-kind always-on
@@ -138,10 +143,18 @@ impl Kernel {
     /// 10000–19999 routing to defeat the kind:10002 self-sealing loop
     /// (V-50); production wires it from
     /// `Kernel::bootstrap_urls_for_role(RelayRole::Indexer)`.
+    ///
+    /// `active_write` feeds lane 4 (`UserConfigured::ActiveAccountWrite`),
+    /// which only contributes URLs when the routed event's pubkey equals
+    /// `active_account` — passing a non-empty slice here is a no-op for
+    /// every other author. Most call sites have no self-publish concern
+    /// and pass `&[]`; see [`Self::recipient_publish_relays`] for the one
+    /// call site that populates it from the local-write-relays slot.
     pub(crate) fn build_routing_context<'a>(
         &'a self,
         app_relays: &'a [String],
         indexer_relays: &'a [String],
+        active_write: &'a [String],
         blocked: &'a BlockedRelaySet,
     ) -> RoutingContext<'a> {
         RoutingContext {
@@ -149,6 +162,7 @@ impl Kernel {
             session_keys: SessionKeySet {
                 app_relays,
                 indexer_relays,
+                active_write,
                 ..SessionKeySet::default()
             },
             mailbox_cache: &*self.mailbox_cache,
@@ -206,7 +220,7 @@ impl Kernel {
         // consults the slice when `is_discovery_kind` matches.
         let indexer_relays = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
         let blocked = self.snapshot_blocked_relays();
-        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &[], &blocked);
         match self.outbox_router.route_subscription(&interest, &ctx) {
             Ok(routed) => {
                 let mut out: Vec<String> = routed.urls().cloned().collect();
@@ -218,12 +232,15 @@ impl Kernel {
     }
 
     /// Resolve the relay URLs a downstream publisher (NIP-57 LN provider,
-    /// etc.) should publish a `kind`-typed event authored by `recipient`
-    /// to, via the kernel's `outbox_router` slot. Drives the router with a
-    /// synthetic publish-direction [`UnsignedEvent`] so lane 1 returns the
-    /// recipient's NIP-65 write set; lane 6 stacks the indexer URLs when
-    /// `kind` is a discovery kind; lane 7 fires the Discovery cold-start
-    /// seed when neither earlier lane resolved anything.
+    /// a wallet backend's terminal self-publish, etc.) should publish a
+    /// `kind`-typed event authored by `recipient` to, via the kernel's
+    /// `outbox_router` slot. Drives the router with a synthetic
+    /// publish-direction [`UnsignedEvent`] so lane 1 returns the
+    /// recipient's NIP-65 write set; lane 4 stacks the locally-configured
+    /// write relays when `recipient` IS the active account (see below);
+    /// lane 6 stacks the indexer URLs when `kind` is a discovery kind;
+    /// lane 7 fires the Discovery cold-start seed when no earlier lane
+    /// resolved anything.
     ///
     /// This is the substrate seam the [`crate::substrate::RecipientRelayLookup`]
     /// capability is wired through. The Debt-C-follow-up replaced the
@@ -231,9 +248,27 @@ impl Kernel {
     /// `nmp-nip57::lnurl::inject_recipient_relays` consumed — the routing
     /// decision now belongs to the router, not a cache read.
     ///
+    /// Self-publish fallback (#2923): when `recipient` is the caller's own
+    /// active account, lane 1 is empty for a fresh account — it has never
+    /// published or observed its own kind:10002 — and the account has no
+    /// `#p`/hint tags pointing at itself either, so lane 2 is empty too.
+    /// Without a fallback, a non-discovery kind (kind:7375, kind:17375,
+    /// kind:10019 before it round-trips) is unroutable. Feeding
+    /// `local_write_relays_handle` — the same locally-configured
+    /// write-relay slot [`nmp_router::Nip65OutboxResolver`] already
+    /// consults for `PublishTarget::Auto` self-publishes between "the user
+    /// edited relay rows" and "the just-published kind:10002 came back" —
+    /// into lane 4 lets an account with a configured write relay (e.g. via
+    /// `NmpApp::add_relay`) publish its own wallet events before any
+    /// kind:10002 exists, matching the contract that publish path already
+    /// honours. Any other `recipient` (the common LNURL case) gets an
+    /// empty `active_write` slice, so lane 4 stays a no-op for them exactly
+    /// as before.
+    ///
     /// Returns an empty `Vec` on `RoutingError::Unroutable` (no NIP-65
-    /// cache hit, no AppRelay seed) — caller (the LNURL fetcher) decides
-    /// whether to surface an empty `relays` tag or fall back further.
+    /// cache hit, no AppRelay seed) — caller (the LNURL fetcher, or the
+    /// wallet backend) decides whether to surface an empty `relays` tag or
+    /// fall back further.
     pub(crate) fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
         let synthetic = UnsignedEvent {
             pubkey: recipient.to_string(),
@@ -244,8 +279,16 @@ impl Kernel {
         };
         let app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
         let indexer_relays = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
+        let active_write: Vec<String> = if self.active_account.as_deref() == Some(recipient) {
+            self.local_write_relays_handle()
+                .lock()
+                .map(|guard| guard.as_slice().to_vec())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let blocked = self.snapshot_blocked_relays();
-        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
+        let ctx = self.build_routing_context(&app_relays, &indexer_relays, &active_write, &blocked);
         match self.outbox_router.route_publish(&synthetic, &ctx) {
             Ok(routed) => {
                 let mut out: Vec<String> = routed.urls().cloned().collect();
