@@ -43,15 +43,16 @@ Rust/CLI surface first.
   handle.close_feed()?;
   ```
 
-- **`NmpApp::open_observed_feed_source` deleted (#2770).** The `#[deprecated]`
-  public doorway (and its doc claim that it "remains the correct doorway") is
-  removed entirely — no alias, no shim, no deprecation period. The repo now
-  hard-bans `#[deprecated]` in workspace source (doctrine-lint ratchet;
-  generated FlatBuffers files exempt). `ObservedProjectionSink` is no longer
-  reachable from any app-facing/public surface. If you previously used the raw
-  observed-projection-sink escape hatch, replace it with a named
-  concept-owned read (see below) or file an app-owned recipe issue — do not
-  reintroduce a generic session/observed doorway.
+- **`NmpApp::open_observed_feed_source` deleted (#2770).** This deprecated,
+  app-facing raw feed-source read doorway (and its doc claim that it "remains
+  the correct doorway") is removed entirely — no alias, no shim, no deprecation
+  period. The repo now hard-bans `#[deprecated]` in workspace source
+  (doctrine-lint ratchet; generated FlatBuffers files exempt). The raw
+  internal read-machinery that doorway exposed is no longer reachable from any
+  app-facing/public surface. If you previously depended on it, replace it with
+  a named concept-owned read (see below) or a typed read session, or file an
+  app-owned recipe issue — do not reintroduce a generic session/source-reducer
+  doorway.
 
 - **Concept doorways relocated out of `nmp-native-runtime` (#2797).** A
   concept's doorway symbol now lives only in its concept crate — "if you
@@ -115,8 +116,8 @@ Rust/CLI surface first.
 - Replace `FeedSessions`/`FeedSessionHandle`/`session_id`/
   `close_feed_session()` call sites with `Feeds`/`FeedHandle`/`handle_id`/
   `close_feed()`.
-- Delete any use of `NmpApp::open_observed_feed_source` or a raw
-  `ObservedProjectionSink` handle; replace with `open_replies`/
+- Delete any use of `NmpApp::open_observed_feed_source` or the raw internal
+  read-machinery handle it exposed; replace with `open_replies`/
   `open_reactions`/`open_reposts` (and, only if you already depend on the
   private post-v1 zap crates, `open_zaps`), or file an app-owned recipe issue
   for anything not yet covered.
