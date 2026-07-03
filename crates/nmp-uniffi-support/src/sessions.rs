@@ -70,8 +70,8 @@ pub enum FeedError {
 /// * [`FeedError::InvalidParams`] — invalid JSON or invalid primary kinds.
 /// * [`FeedError::OpenFailed`] — the runtime could not register the feed.
 pub fn open_feed(app: &NmpApp, params_json: &str) -> Result<OpenedFeed, FeedError> {
-    let (params, _acquisition_kinds) = decode_and_validate_feed_params(params_json)
-        .map_err(|_| FeedError::InvalidParams)?;
+    let (params, _acquisition_kinds) =
+        decode_and_validate_feed_params(params_json).map_err(|_| FeedError::InvalidParams)?;
 
     app.open_feed(&params)
         .map(|handle| OpenedFeed {
@@ -168,10 +168,7 @@ mod tests {
     #[test]
     fn open_rejects_malformed_json() {
         let app = nmp_native_runtime::new_app();
-        assert_eq!(
-            open_feed(&app, "{not json}"),
-            Err(FeedError::InvalidParams)
-        );
+        assert_eq!(open_feed(&app, "{not json}"), Err(FeedError::InvalidParams));
     }
 
     #[test]
@@ -187,10 +184,7 @@ mod tests {
             "key": "app.feed.support.invalid",
             "item_projection": "FeedRows"
         }"#;
-        assert_eq!(
-            open_feed(&app, json),
-            Err(FeedError::InvalidParams)
-        );
+        assert_eq!(open_feed(&app, json), Err(FeedError::InvalidParams));
     }
 
     #[test]
@@ -210,10 +204,7 @@ mod tests {
             close_feed(&app, &opened),
             "first close tears down the live feed"
         );
-        assert!(
-            !close_feed(&app, &opened),
-            "second close is a no-op (D6)"
-        );
+        assert!(!close_feed(&app, &opened), "second close is a no-op (D6)");
     }
 
     #[test]

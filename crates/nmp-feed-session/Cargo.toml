@@ -21,4 +21,4 @@ nmp-ownership = { workspace = true }
 nmp-planner = { path = "../nmp-planner", default-features = false }
 nmp-store = { path = "../nmp-store" }
 nmp-wot = { path = "../nmp-wot" }
-trellis-core = "0.1.2"
+trellis-core = "0.2.1"

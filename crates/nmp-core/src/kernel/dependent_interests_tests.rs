@@ -1,4 +1,6 @@
-use super::{DependentInterestChild, Kernel};
+use super::{
+    DependentInterestChild, DependentInterestDelta, DependentInterestDeltaCommand, Kernel,
+};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -163,4 +165,119 @@ fn shared_child_dedups_until_last_source_owner_closes() {
     assert_eq!(last_close.closed_slots, 1);
     assert!(kernel.lifecycle.registry().is_empty());
     assert_eq!(pending_triggers(&kernel) - before, 1);
+}
+
+#[test]
+fn delta_opens_replaces_and_closes_without_full_owner_replacement() {
+    let mut kernel = Kernel::testing_new(80);
+    let owner = SubOwnerKey::new("source-owner");
+    let other_owner = SubOwnerKey::new("other-source");
+    let shared_key = SubKey::new("shared-child");
+    let author_a = hex(1);
+    let author_b = hex(2);
+    let child_a = child_with_key(shared_key, 1, std::slice::from_ref(&author_a));
+    let child_b = child_with_key(shared_key, 2, std::slice::from_ref(&author_b));
+    let unrelated = child("unrelated", 3, &[hex(3)]);
+
+    kernel.replace_dependent_interest_set(
+        other_owner,
+        vec![unrelated.clone()],
+        "test-unrelated-owner",
+    );
+    let before = pending_triggers(&kernel);
+    let opened = kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(child_a.clone())],
+        },
+        "test-delta-open",
+    );
+    assert_eq!(opened.registered_children, 1);
+    assert_eq!(opened.changed_registrations, 1);
+    assert_eq!(kernel.lifecycle.registry().len(), 2);
+    assert_eq!(pending_triggers(&kernel) - before, 1);
+
+    let before = pending_triggers(&kernel);
+    let replaced = kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Replace(child_b.clone())],
+        },
+        "test-delta-replace",
+    );
+    assert_eq!(replaced.registered_children, 1);
+    assert_eq!(replaced.changed_registrations, 1);
+    let active = kernel.lifecycle.registry().iter_active();
+    assert!(
+        active
+            .iter()
+            .any(|interest| interest.shape.authors == BTreeSet::from([author_b.clone()]))
+    );
+    assert_eq!(pending_triggers(&kernel) - before, 1);
+
+    let before = pending_triggers(&kernel);
+    let closed = kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Close(child_b)],
+        },
+        "test-delta-close",
+    );
+    assert_eq!(closed.withdrawn_children, 1);
+    assert_eq!(closed.closed_slots, 1);
+    assert_eq!(kernel.lifecycle.registry().len(), 1);
+    assert_eq!(
+        kernel.lifecycle.registry().owner_count(
+            &unrelated.scope,
+            &unrelated.key,
+        ),
+        1
+    );
+    assert_eq!(pending_triggers(&kernel) - before, 1);
+}
+
+#[test]
+fn delta_with_open_before_close_withdraws_before_upserting() {
+    let mut kernel = Kernel::testing_new(80);
+    let owner = SubOwnerKey::new("source-owner");
+    let shared_key = SubKey::new("follow-feed");
+    let author_a = hex(1);
+    let author_b = hex(2);
+    let child_a = child_with_key(shared_key, 1, std::slice::from_ref(&author_a));
+    let child_b = child_with_key(shared_key, 2, std::slice::from_ref(&author_b));
+
+    kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(child_a.clone())],
+        },
+        "test-delta-open",
+    );
+
+    let outcome = kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![
+                DependentInterestDeltaCommand::Open(child_b.clone()),
+                DependentInterestDeltaCommand::Close(child_a),
+            ],
+        },
+        "test-delta-replace-order",
+    );
+
+    assert_eq!(outcome.withdrawn_children, 1);
+    assert_eq!(outcome.closed_slots, 1);
+    assert_eq!(outcome.registered_children, 1);
+    let active = kernel.lifecycle.registry().iter_active();
+    assert!(
+        active
+            .iter()
+            .all(|interest| !interest.shape.authors.contains(&author_a)),
+        "closed author must not survive an open-before-close delta"
+    );
+    assert!(
+        active
+            .iter()
+            .any(|interest| interest.shape.authors == BTreeSet::from([author_b.clone()]))
+    );
 }

@@ -35,7 +35,7 @@ struct HostReadSession {
 }
 
 impl HostReadSession {
-    fn apply(&mut self, frame: &OutputFrame<ReadSessionOutput>) {
+    fn apply(&mut self, frame: &OutputFrame) {
         assert_eq!(
             self.key
                 .replace(frame.output_key)
@@ -52,9 +52,13 @@ impl HostReadSession {
         self.revision = Some(frame.revision);
 
         match &frame.kind {
-            OutputFrameKind::Baseline(value)
-            | OutputFrameKind::Delta(value)
-            | OutputFrameKind::Rebaseline(value, _) => {
+            OutputFrameKind::Baseline(_)
+            | OutputFrameKind::Delta(_)
+            | OutputFrameKind::Rebaseline(_, _) => {
+                let value = frame
+                    .kind
+                    .payload::<ReadSessionOutput>()
+                    .expect("read-session output payload must be typed");
                 self.state = Some(value.clone());
             }
             OutputFrameKind::Clear(_) => {
@@ -95,7 +99,7 @@ fn materialize(source: &ReadSessionSource) -> ReadSessionOutput {
     }
 }
 
-fn single_frame(frames: &[OutputFrame<ReadSessionOutput>]) -> &OutputFrame<ReadSessionOutput> {
+fn single_frame(frames: &[OutputFrame]) -> &OutputFrame {
     assert_eq!(
         frames.len(),
         1,
@@ -106,7 +110,7 @@ fn single_frame(frames: &[OutputFrame<ReadSessionOutput>]) -> &OutputFrame<ReadS
 
 #[test]
 fn trellis_read_session_output_clear_rebaseline_delta_coherence() {
-    let mut graph = Graph::<(), ReadSessionOutput>::new_with_output_type();
+    let mut graph = Graph::<()>::new();
 
     let mut tx = graph.begin_transaction().expect("begin open transaction");
     let scope = tx.create_scope("read-session").expect("create scope");
@@ -134,7 +138,7 @@ fn trellis_read_session_output_clear_rebaseline_delta_coherence() {
     assert_eq!(frame.scope, scope);
     assert!(matches!(
         &frame.kind,
-        OutputFrameKind::Baseline(value) if value == &expected_initial
+        OutputFrameKind::Baseline(_) if frame.kind.payload::<ReadSessionOutput>() == Some(&expected_initial)
     ));
 
     let mut host = HostReadSession::default();
@@ -152,7 +156,7 @@ fn trellis_read_session_output_clear_rebaseline_delta_coherence() {
     let frame = single_frame(&changed.output_frames);
     assert!(matches!(
         &frame.kind,
-        OutputFrameKind::Delta(value) if value == &expected_delta
+        OutputFrameKind::Delta(_) if frame.kind.payload::<ReadSessionOutput>() == Some(&expected_delta)
     ));
     host.apply(frame);
     assert_eq!(
@@ -172,8 +176,8 @@ fn trellis_read_session_output_clear_rebaseline_delta_coherence() {
     let frame = single_frame(&rebaselined.output_frames);
     assert!(matches!(
         &frame.kind,
-        OutputFrameKind::Rebaseline(value, trellis_core::RebaselineReason::Requested)
-            if value == &expected_delta
+        OutputFrameKind::Rebaseline(_, trellis_core::RebaselineReason::Requested)
+            if frame.kind.payload::<ReadSessionOutput>() == Some(&expected_delta)
     ));
     host.apply(frame);
     assert_eq!(
@@ -195,7 +199,8 @@ fn trellis_read_session_output_clear_rebaseline_delta_coherence() {
     let frame = single_frame(&post_rebaseline.output_frames);
     assert!(matches!(
         &frame.kind,
-        OutputFrameKind::Delta(value) if value == &expected_post_rebaseline
+        OutputFrameKind::Delta(_)
+            if frame.kind.payload::<ReadSessionOutput>() == Some(&expected_post_rebaseline)
     ));
     host.apply(frame);
     assert_eq!(host.state.as_ref(), Some(&expected_post_rebaseline));

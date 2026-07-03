@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{DependentInterestChild, ObservedProjectionId};
+use nmp_core::ObservedProjectionId;
 use nmp_feed::{FollowPredicate, RootAdmission, TeardownAction};
 use nmp_planner::{InterestScope, InterestShape};
 
@@ -100,10 +100,6 @@ impl AcquisitionInterest {
     pub(super) fn resource_key(&self) -> FeedSessionResourceKey {
         self.demand().resource_key()
     }
-
-    pub(super) fn to_child(&self) -> DependentInterestChild {
-        DependentInterestChild::tailing(self.shape.clone(), self.scope.clone())
-    }
 }
 
 /// The compiled product of one reduced feed source.
@@ -132,7 +128,7 @@ pub(super) struct ReducedSource {
     /// Extra acquisition that may change as the source projection changes.
     pub extra_acquisition: ExtraAcquisition,
     /// Source-change installers. These carry source-set changes through the
-    /// Trellis dependent-acquisition replacement and feed reset/rebaseline path.
+    /// Trellis dependent-acquisition delta and feed reset/rebaseline path.
     pub reactivity_hooks: Vec<SessionReactivityHook>,
     /// Resolver observer ids the session must revoke on close.
     pub resolver_observer_ids: Vec<ObservedProjectionId>,

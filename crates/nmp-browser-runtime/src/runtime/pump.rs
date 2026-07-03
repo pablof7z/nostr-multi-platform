@@ -22,7 +22,7 @@
 //! [`DrainOutcome::yielded`] is set when the budget was hit, telling the host to
 //! pump again; any leftover mail stays queued in the channel (never dropped).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, TryRecvError};
 
 use nmp_core::actor::{ActorCommand, ActorMail, SignCommand};
@@ -189,6 +189,108 @@ pub(super) fn drain_inbox(
         outbound,
         events,
         yielded: true,
+    }
+}
+
+pub(super) fn coalesce_transient_subscriptions(
+    outbound: Vec<OutboundMessage>,
+) -> Vec<OutboundMessage> {
+    let mut opened = HashMap::<(String, String), Vec<usize>>::new();
+    let mut drop_indexes = HashSet::new();
+
+    for (index, message) in outbound.iter().enumerate() {
+        let Some(frame) = subscription_frame(message.text()) else {
+            continue;
+        };
+        let key = (message.relay_url().to_string(), frame.sub_id);
+        match frame.kind {
+            SubscriptionFrameKind::Req => {
+                opened.entry(key).or_default().push(index);
+            }
+            SubscriptionFrameKind::Close => {
+                if let Some(open_indexes) = opened.remove(&key) {
+                    drop_indexes.extend(open_indexes);
+                    drop_indexes.insert(index);
+                }
+            }
+        }
+    }
+
+    if drop_indexes.is_empty() {
+        return outbound;
+    }
+
+    outbound
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, message)| (!drop_indexes.contains(&index)).then_some(message))
+        .collect()
+}
+
+struct SubscriptionFrame {
+    kind: SubscriptionFrameKind,
+    sub_id: String,
+}
+
+enum SubscriptionFrameKind {
+    Req,
+    Close,
+}
+
+fn subscription_frame(text: &str) -> Option<SubscriptionFrame> {
+    let value = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    let arr = value.as_array()?;
+    let kind = arr.first()?.as_str()?;
+    let sub_id = arr.get(1)?.as_str()?.to_string();
+    match kind {
+        "REQ" => Some(SubscriptionFrame {
+            kind: SubscriptionFrameKind::Req,
+            sub_id,
+        }),
+        "CLOSE" => Some(SubscriptionFrame {
+            kind: SubscriptionFrameKind::Close,
+            sub_id,
+        }),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nmp_network::role::RelayRole;
+
+    use super::*;
+
+    fn frame(text: &str) -> OutboundMessage {
+        OutboundMessage::new(
+            RelayRole::Content,
+            "wss://relay.example".to_string(),
+            text.to_string(),
+        )
+    }
+
+    #[test]
+    fn coalesces_req_closed_in_same_pump_without_dropping_existing_close() {
+        let outbound = vec![
+            frame(r#"["CLOSE","old-sub"]"#),
+            frame(r#"["REQ","transient-sub",{"kinds":[1]}]"#),
+            frame(r#"["REQ","transient-sub",{"kinds":[1],"authors":["a"]}]"#),
+            frame(r#"["REQ","kept-sub",{"kinds":[1]}]"#),
+            frame(r#"["CLOSE","transient-sub"]"#),
+        ];
+
+        let texts = coalesce_transient_subscriptions(outbound)
+            .into_iter()
+            .map(|message| message.text().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            texts,
+            vec![
+                r#"["CLOSE","old-sub"]"#.to_string(),
+                r#"["REQ","kept-sub",{"kinds":[1]}]"#.to_string(),
+            ]
+        );
     }
 }
 

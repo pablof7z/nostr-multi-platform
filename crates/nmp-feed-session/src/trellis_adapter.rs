@@ -5,7 +5,7 @@ use std::sync::Arc;
 use nmp_core::actor::{ActorCommand, InterestsCommand};
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use nmp_core::{CommandSender, DependentInterestChild};
+use nmp_core::{CommandSender, DependentInterestDelta};
 use nmp_feed::{FeedShape, ProjectionKey, TeardownAction};
 #[cfg(test)]
 use trellis_core::ResourceCommand;
@@ -15,7 +15,8 @@ use trellis_core::{
 };
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
-use crate::trellis_owner_cell::ActorThreadCell;
+use crate::trellis_adapter_delta::FeedSessionResourceLedger;
+use crate::trellis_owner_cell::TrellisGraphCell;
 use crate::trellis_resources::{
     FeedSessionResourceCommand, FeedSessionResourceKey, FeedSessionScopeKey, ProjectionAttachment,
 };
@@ -26,25 +27,26 @@ type FeedSessionOutput = ProjectionAttachment;
 
 /// Private NMP/Trellis adapter for feed-session resource reconciliation.
 ///
-/// Callers pass NMP-owned acquisition interests and receive the same actor
-/// replacement command the session engine already uses. The adapter also owns
-/// the session's output lifecycle ledger: Trellis emits output baseline,
-/// rebaseline, and clear frames internally; NMP still owns typed projection
-/// encoding and registry mutation. Trellis graph/scope/node/output identities
-/// stay inside this module.
+/// Callers pass NMP-owned acquisition interests and Trellis emits precise
+/// dependent-interest deltas. The adapter also owns the session's output
+/// lifecycle ledger: Trellis emits output baseline, rebaseline, and clear
+/// frames internally; NMP still owns typed projection encoding and registry
+/// mutation. Trellis graph/scope/node/output identities stay inside this
+/// module.
 #[derive(Clone)]
 pub(super) struct FeedSessionTrellisAdapter {
-    inner: Arc<ActorThreadCell<FeedSessionTrellisInner>>,
+    inner: Arc<TrellisGraphCell<FeedSessionTrellisInner>>,
     sender: CommandSender,
     owner: SubOwnerKey,
 }
 
 struct FeedSessionTrellisInner {
-    graph: Graph<FeedSessionResourceCommand, FeedSessionOutput>,
+    graph: Graph<FeedSessionResourceCommand>,
     scope: ScopeId,
     demand_input: InputNode<DemandMap>,
     output: MaterializedOutput<FeedSessionOutput>,
     fixed: Vec<AcquisitionInterest>,
+    resource_ledger: FeedSessionResourceLedger,
     closed: bool,
     #[cfg(test)]
     output_frames: Vec<FeedSessionOutputFrameKind>,
@@ -79,6 +81,7 @@ pub(super) struct FeedSessionResourceTrace {
 
 struct FeedSessionCloseOutcome {
     output_cleared: bool,
+    interest_delta: Option<DependentInterestDelta>,
 }
 
 impl FeedSessionTrellisAdapter {
@@ -92,8 +95,7 @@ impl FeedSessionTrellisAdapter {
             .map_err(|_| FeedOpenError::RegistryUnavailable)?;
         let output_attachment = ProjectionAttachment::new(projection.clone(), shape);
 
-        let mut graph =
-            Graph::<FeedSessionResourceCommand, FeedSessionOutput>::new_with_command_type();
+        let mut graph = Graph::<FeedSessionResourceCommand>::new_with_command_type();
         let mut tx = graph
             .begin_transaction()
             .map_err(|_| FeedOpenError::RegistryUnavailable)?;
@@ -165,12 +167,13 @@ impl FeedSessionTrellisAdapter {
         let output_frames = output_frame_kinds(&_result.output_frames);
 
         Ok(Self {
-            inner: Arc::new(ActorThreadCell::new(FeedSessionTrellisInner {
+            inner: Arc::new(TrellisGraphCell::new(FeedSessionTrellisInner {
                 graph,
                 scope,
                 demand_input,
                 output,
                 fixed,
+                resource_ledger: FeedSessionResourceLedger::default(),
                 closed: false,
                 #[cfg(test)]
                 output_frames,
@@ -183,10 +186,10 @@ impl FeedSessionTrellisAdapter {
     }
 
     pub(super) fn sync(&self, extra: &ExtraAcquisition, reason: &'static str) -> bool {
-        let Some(children) = self.inner.with_mut("sync", |inner| inner.sync(extra)) else {
+        let Some(delta) = self.inner.with_mut("sync", |inner| inner.sync(extra)) else {
             return false;
         };
-        self.replace_children(children, reason);
+        self.apply_delta(delta, reason);
         true
     }
 
@@ -234,7 +237,9 @@ impl FeedSessionTrellisAdapter {
             if outcome.output_cleared {
                 remove_projection();
             }
-            adapter.replace_children(Vec::new(), "feed-session-acquisition-close");
+            if let Some(delta) = outcome.interest_delta {
+                adapter.apply_delta(delta, "feed-session-acquisition-close");
+            }
         })
     }
 
@@ -252,11 +257,14 @@ impl FeedSessionTrellisAdapter {
         })
     }
 
-    fn replace_children(&self, children: Vec<DependentInterestChild>, reason: &'static str) {
+    fn apply_delta(&self, delta: DependentInterestDelta, reason: &'static str) {
+        if delta.is_empty() {
+            return;
+        }
         let _ = self.sender.send(ActorCommand::Interests(
-            InterestsCommand::ReplaceDependentInterestSet {
+            InterestsCommand::ApplyDependentInterestDelta {
                 owner: self.owner,
-                children,
+                delta,
                 reason: reason.to_string(),
             },
         ));
@@ -312,20 +320,21 @@ impl ProtocolCommand for FeedSessionTrellisCommand {
 }
 
 impl FeedSessionTrellisInner {
-    fn sync(&mut self, extra: &ExtraAcquisition) -> Option<Vec<DependentInterestChild>> {
+    fn sync(&mut self, extra: &ExtraAcquisition) -> Option<DependentInterestDelta> {
         if self.closed {
             return None;
         }
         let demand = demand_map(&self.fixed, extra);
         let mut tx = self.graph.begin_transaction().ok()?;
-        tx.set_input(self.demand_input, demand.clone()).ok()?;
+        tx.set_input(self.demand_input, demand).ok()?;
         let result = tx.commit().ok()?;
         drop(tx);
         #[cfg(test)]
         self.record_output_frames(&result.output_frames);
         #[cfg(test)]
         self.record_resource_traces(result.resource_plan.commands());
-        (!result.resource_plan.commands().is_empty()).then(|| children_from_demand(&demand))
+        let delta = self.resource_ledger.delta(result.resource_plan.commands());
+        (!delta.is_empty()).then_some(delta)
     }
 
     fn rebaseline_output(&mut self) -> bool {
@@ -373,13 +382,18 @@ impl FeedSessionTrellisInner {
         self.record_output_frames(&result.output_frames);
         #[cfg(test)]
         self.record_resource_traces(result.resource_plan.commands());
+        let interest_delta = {
+            let delta = self.resource_ledger.delta(result.resource_plan.commands());
+            (!delta.is_empty()).then_some(delta)
+        };
         Some(FeedSessionCloseOutcome {
             output_cleared: output_cleared(&result.output_frames),
+            interest_delta,
         })
     }
 
     #[cfg(test)]
-    fn record_output_frames(&mut self, frames: &[OutputFrame<FeedSessionOutput>]) {
+    fn record_output_frames(&mut self, frames: &[OutputFrame]) {
         self.output_frames.extend(output_frame_kinds(frames));
     }
 
@@ -393,6 +407,7 @@ impl FeedSessionCloseOutcome {
     fn best_effort() -> Self {
         Self {
             output_cleared: true,
+            interest_delta: None,
         }
     }
 }
@@ -410,24 +425,18 @@ fn demand_map(fixed: &[AcquisitionInterest], extra: &ExtraAcquisition) -> Demand
         .collect()
 }
 
-fn children_from_demand(demand: &DemandMap) -> Vec<DependentInterestChild> {
-    demand.values().map(AcquisitionInterest::to_child).collect()
-}
-
 fn trellis_key(key: &FeedSessionResourceKey) -> ResourceKey {
     ResourceKey::new(key.as_str().to_string())
 }
 
-fn output_cleared(frames: &[OutputFrame<FeedSessionOutput>]) -> bool {
+fn output_cleared(frames: &[OutputFrame]) -> bool {
     frames
         .iter()
         .any(|frame| matches!(frame.kind, OutputFrameKind::Clear(_)))
 }
 
 #[cfg(test)]
-fn output_frame_kinds(
-    frames: &[OutputFrame<FeedSessionOutput>],
-) -> Vec<FeedSessionOutputFrameKind> {
+fn output_frame_kinds(frames: &[OutputFrame]) -> Vec<FeedSessionOutputFrameKind> {
     frames
         .iter()
         .map(|frame| match frame.kind {

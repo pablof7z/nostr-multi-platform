@@ -8,7 +8,7 @@ use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
 use crate::subs::{CompileTrigger, InvalidateReason, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// One child interest produced by reducing another source.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DependentInterestChild {
     pub key: SubKey,
     pub scope: SubScope,
@@ -57,6 +57,28 @@ fn scope_key_part(scope: &InterestScope) -> u32 {
     }
 }
 
+/// Ordered dependent-interest mutation produced by a private reconciler.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DependentInterestDelta {
+    pub commands: Vec<DependentInterestDeltaCommand>,
+}
+
+impl DependentInterestDelta {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.commands.is_empty()
+    }
+}
+
+/// One precise mutation for a dependent-interest owner.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum DependentInterestDeltaCommand {
+    Open(DependentInterestChild),
+    Replace(DependentInterestChild),
+    Refresh(DependentInterestChild),
+    Close(DependentInterestChild),
+}
+
 /// Diagnostics returned by one replacement pass.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DependentInterestSetOutcome {
@@ -73,6 +95,7 @@ impl Kernel {
     /// identities that disappeared, upserts current children through the same
     /// sealed `register_interest` machinery as `open_interest`, and emits at
     /// most one compile invalidation for the whole replacement.
+    #[allow(dead_code)] // Retained for the full-set command/API while Trellis callers use deltas.
     pub(crate) fn replace_dependent_interest_set(
         &mut self,
         owner: SubOwnerKey,
@@ -135,6 +158,67 @@ impl Kernel {
             self.dependent_interest_sets.remove(&owner);
         } else {
             self.dependent_interest_sets.insert(owner, next);
+        }
+
+        outcome
+    }
+
+    /// Apply an ordered dependent-interest delta for one source owner.
+    ///
+    /// This is the authoritative path for private reconcilers such as Trellis:
+    /// callers provide exact open/replace/close commands, while the kernel
+    /// keeps the lifecycle registry, cache-serve, and compile invalidation
+    /// mechanics centralized.
+    pub(crate) fn apply_dependent_interest_delta(
+        &mut self,
+        owner: SubOwnerKey,
+        delta: DependentInterestDelta,
+        reason: &str,
+    ) -> DependentInterestSetOutcome {
+        let mut outcome = DependentInterestSetOutcome::default();
+        let mut upserts = Vec::new();
+        for command in delta.commands {
+            match command {
+                DependentInterestDeltaCommand::Open(child)
+                | DependentInterestDeltaCommand::Replace(child)
+                | DependentInterestDeltaCommand::Refresh(child) => {
+                    upserts.push(child);
+                }
+                DependentInterestDeltaCommand::Close(child) => {
+                    outcome.withdrawn_children += 1;
+                    let identity = child.identity(owner);
+                    if self.lifecycle.registry_mut().drop_owner(&identity) {
+                        outcome.closed_slots += 1;
+                        self.cancel_pending_interest_cache_serve(
+                            &identity.key,
+                            &child.interest.shape,
+                        );
+                    }
+                }
+            }
+        }
+
+        for child in upserts {
+            outcome.registered_children += 1;
+            let registration = InterestRegistration {
+                identity: child.identity(owner),
+                interest: child.interest,
+                policy: InterestWrite::Replace,
+            };
+            let registration_outcomes = self.apply_interest_registrations(&[registration]);
+            if registration_outcomes[0].changed {
+                outcome.changed_registrations += 1;
+            }
+        }
+
+        if outcome.changed_registrations > 0 {
+            self.run_cache_serve_step();
+        }
+        if outcome.closed_slots > 0 || outcome.changed_registrations > 0 {
+            self.lifecycle
+                .enqueue_trigger(CompileTrigger::InvalidateCompile {
+                    reason: InvalidateReason::External(reason.to_string()),
+                });
         }
 
         outcome

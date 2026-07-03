@@ -16,6 +16,7 @@
 //!
 //! **Handled set (Group A → `Applied`):**
 //! `Interests(EnsureInterest)`, `Interests(DropInterestOwner)`,
+//! `Interests(ApplyDependentInterestDelta)`,
 //! `Interests(OpenInterest)`, `Interests(OpenObservedInterest)`,
 //! `Interests(CloseInterest)`,
 //! `Relay(SetRelayInfo)`, `Lifecycle(MarkChangedSinceEmit)`,
@@ -76,6 +77,16 @@ impl super::KernelReducer {
             // EnsureInterest: register-if-absent, shared Kernel method.
             ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
                 self.kernel.ensure_interest(identity, interest);
+                Applied(Vec::new())
+            }
+
+            ActorCommand::Interests(InterestsCommand::ApplyDependentInterestDelta {
+                owner,
+                delta,
+                reason,
+            }) => {
+                self.kernel
+                    .apply_dependent_interest_delta(owner, delta, &reason);
                 Applied(Vec::new())
             }
 

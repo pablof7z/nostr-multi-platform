@@ -2,7 +2,7 @@
 //!
 //! Runtime composition roots drive this compiler through [`FeedSessionHost`].
 //! The compiler owns feed-scope semantics, OP/flat session wiring, source
-//! effects, dependent acquisition replacement, and typed sidecar registration.
+//! effects, Trellis-backed acquisition deltas, and typed sidecar registration.
 //! Native and browser runtimes adapt their slots/registries into the host trait
 //! instead of carrying separate feed-source policy.
 //!
@@ -52,6 +52,7 @@ mod set_algebra;
 mod source;
 mod source_replay;
 mod trellis_adapter;
+mod trellis_adapter_delta;
 #[cfg(test)]
 mod trellis_adapter_equivalence_support;
 #[cfg(test)]

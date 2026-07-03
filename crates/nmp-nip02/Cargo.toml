@@ -19,7 +19,7 @@ nmp-ownership = { workspace = true }
 # / event-store slots the follow projections read.
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-nip25 = { path = "../nmp-nip25" }
-trellis-core = "0.1.2"
+trellis-core = "0.2.1"
 # Typed FlatBuffers codec for the `nmp.follow_list` snapshot sidecar (ADR-0072).
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

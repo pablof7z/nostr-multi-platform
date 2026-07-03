@@ -19,7 +19,7 @@ struct ActiveFollowPerspective {
 }
 
 pub(super) struct ActiveFollowGraph {
-    graph: Graph<(), ()>,
+    graph: Graph<()>,
     active_account: InputNode<Option<String>>,
     contact_follows: InputNode<BTreeSet<String>>,
     active_follows: DerivedNode<BTreeSet<String>>,
@@ -28,7 +28,7 @@ pub(super) struct ActiveFollowGraph {
 
 impl ActiveFollowGraph {
     pub(super) fn new(active_account: Option<String>, contact_follows: BTreeSet<String>) -> Self {
-        let mut graph = Graph::<(), ()>::new_with_command_type();
+        let mut graph = Graph::<()>::new_with_command_type();
         let mut tx = graph
             .begin_transaction()
             .expect("static active-follow graph transaction opens");

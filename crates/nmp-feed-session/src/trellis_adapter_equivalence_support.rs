@@ -5,7 +5,7 @@ use std::sync::{
 };
 
 use nmp_core::actor::{ActorCommand, ActorMail, InterestsCommand, LifecycleCommand};
-use nmp_core::{CommandSender, DependentInterestChild};
+use nmp_core::{CommandSender, DependentInterestChild, DependentInterestDeltaCommand};
 use nmp_planner::InterestShape;
 
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
@@ -17,10 +17,11 @@ use crate::trellis_resources::FeedSessionRouteProvenance;
 #[derive(Default)]
 pub(super) struct OldReplacementPath {
     current: BTreeSet<String>,
+    authority: BTreeSet<String>,
 }
 
 struct StepResult {
-    replacement: Option<BTreeSet<String>>,
+    old_recompute: Option<BTreeSet<String>>,
     resource_traces: BTreeSet<FeedSessionResourceTrace>,
 }
 
@@ -69,16 +70,14 @@ pub(super) fn command_receiver() -> (CommandSender, mpsc::Receiver<ActorMail>) {
     (CommandSender::new(tx), rx)
 }
 
-pub(super) fn drain_replacement_authors(
+pub(super) fn drain_delta_commands(
     rx: &mpsc::Receiver<ActorMail>,
-) -> Vec<(BTreeSet<String>, String)> {
+) -> Vec<(Vec<DependentInterestDeltaCommand>, String)> {
     std::iter::from_fn(|| rx.try_recv().ok())
         .map(|mail| match mail {
             ActorMail::Command(ActorCommand::Interests(
-                InterestsCommand::ReplaceDependentInterestSet {
-                    children, reason, ..
-                },
-            )) => (authors(&children), reason),
+                InterestsCommand::ApplyDependentInterestDelta { delta, reason, .. },
+            )) => (delta.commands, reason),
             _ => panic!("unexpected actor mail"),
         })
         .collect()
@@ -102,6 +101,36 @@ fn authors(children: &[DependentInterestChild]) -> BTreeSet<String> {
         .collect()
 }
 
+pub(super) fn delta_close_authors(commands: &[DependentInterestDeltaCommand]) -> BTreeSet<String> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            DependentInterestDeltaCommand::Close(child) => Some(child),
+            DependentInterestDeltaCommand::Open(_)
+            | DependentInterestDeltaCommand::Replace(_)
+            | DependentInterestDeltaCommand::Refresh(_) => None,
+        })
+        .flat_map(|child| authors(std::slice::from_ref(child)))
+        .collect()
+}
+
+fn apply_delta(current: &mut BTreeSet<String>, commands: &[DependentInterestDeltaCommand]) {
+    for command in commands {
+        match command {
+            DependentInterestDeltaCommand::Open(child)
+            | DependentInterestDeltaCommand::Replace(child)
+            | DependentInterestDeltaCommand::Refresh(child) => {
+                current.extend(authors(std::slice::from_ref(child)));
+            }
+            DependentInterestDeltaCommand::Close(child) => {
+                for author in authors(std::slice::from_ref(child)) {
+                    current.remove(&author);
+                }
+            }
+        }
+    }
+}
+
 fn sync_step(
     adapter: &FeedSessionTrellisAdapter,
     rx: &mpsc::Receiver<ActorMail>,
@@ -115,21 +144,22 @@ fn sync_step(
     assert_eq!(
         changed,
         old_result.is_some(),
-        "Trellis adapter and old replacement path disagree for {reason}"
+        "Trellis adapter and old recompute path disagree for {reason}"
     );
 
-    let replacements = drain_replacement_authors(rx);
+    let deltas = drain_delta_commands(rx);
     match old_result {
-        Some(expected) => {
-            assert_eq!(replacements.len(), 1, "{reason} must emit one replacement");
+        Some(ref expected) => {
+            assert_eq!(deltas.len(), 1, "{reason} must emit one delta");
+            apply_delta(&mut old.authority, &deltas[0].0);
             assert_eq!(
-                replacements[0].0, expected,
-                "{reason} replacement must equal full recompute"
+                old.authority, *expected,
+                "{reason} delta-applied authority must equal full recompute"
             );
-            assert_eq!(replacements[0].1, reason);
+            assert_eq!(deltas[0].1, reason);
         }
         None => assert!(
-            replacements.is_empty(),
+            deltas.is_empty(),
             "{reason} must not emit shell-visible churn"
         ),
     }
@@ -140,7 +170,7 @@ fn sync_step(
         .skip(trace_start)
         .collect();
     StepResult {
-        replacement: replacements.into_iter().next().map(|(authors, _)| authors),
+        old_recompute: old_result,
         resource_traces,
     }
 }
@@ -155,9 +185,9 @@ pub(super) fn assert_changed_step(
 ) {
     let step = sync_step(adapter, rx, old, authors, reason);
     assert_eq!(
-        step.replacement,
+        step.old_recompute,
         Some(full_recompute(authors)),
-        "{reason} replacement must equal full recompute"
+        "{reason} old recompute must equal full recompute"
     );
     assert_eq!(step.resource_traces, expected_traces, "{reason} traces");
 }
@@ -171,8 +201,8 @@ pub(super) fn assert_unchanged_step(
 ) {
     let step = sync_step(adapter, rx, old, authors, reason);
     assert!(
-        step.replacement.is_none(),
-        "{reason} must not emit a replacement"
+        step.old_recompute.is_none(),
+        "{reason} must not emit a delta"
     );
     assert!(
         step.resource_traces.is_empty(),
