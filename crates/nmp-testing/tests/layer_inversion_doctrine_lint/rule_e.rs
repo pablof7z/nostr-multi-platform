@@ -50,6 +50,7 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         | "nmp-reactions"
         | "nmp-replies"
         | "nmp-reposts"
+        | "nmp-wallet"
         | "nmp-zaps" => Some(CrateClass::Layer(4)),
         // L5 — app/runtime composition floor.
         "nmp-substrate" => Some(CrateClass::Layer(5)),

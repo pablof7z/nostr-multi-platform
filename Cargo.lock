@@ -4821,6 +4821,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-wallet"
+version = "0.8.4"
+dependencies = [
+ "nmp-core",
+ "nmp-ownership",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-wot"
 version = "0.8.4"
 dependencies = [
