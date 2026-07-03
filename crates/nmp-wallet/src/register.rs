@@ -90,15 +90,14 @@ pub struct Handles {
     /// caller does with this handle (each reconciler's closure holds its own
     /// `Arc` clones, captured by `app.register_identity_change_observer`
     /// — see `WalletRuntime::new`). This handle is offered ADDITIONALLY so a
-    /// caller that DOES retain it can reach `WalletRuntime::snapshot`/
+    /// caller that retains it can reach `WalletRuntime::snapshot`/
     /// `deliver_mint_result` later (e.g. to wire a typed "wallet" snapshot
     /// projection once one exists). `nmp-native-runtime`'s
-    /// `NmpAppBuilder::with_wallet` — the only production caller today —
-    /// does not retain it: the builder's fluent `Result<Self>` step shape has
-    /// no slot to stash an extra handle in without a larger, out-of-scope
-    /// change to that type, and nothing calls `snapshot`/`deliver_mint_result`
-    /// in production yet. A caller that needs them must plumb this handle
-    /// through on its own for now.
+    /// `NmpAppBuilder::with_wallet` (#2919) stashes it in a builder-level
+    /// slot and re-exposes it via `NmpAppBuilder::wallet_runtime()`, so a
+    /// Rust composition root going through the builder can retrieve a clone
+    /// and call `.snapshot()` — the same access a caller that invokes this
+    /// `register` fn directly (e.g. as its own composition root) already had.
     pub runtime: Arc<WalletRuntime>,
 }
 

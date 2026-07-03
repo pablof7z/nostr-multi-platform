@@ -38,10 +38,14 @@ impl NmpAppBuilder<Unstarted> {
         // both transfers to the returned builder.
         let app = self.app;
         let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        #[cfg(feature = "wallet")]
+        let wallet_runtime = unsafe { std::ptr::read(&self.wallet_runtime) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
             user_relays,
+            #[cfg(feature = "wallet")]
+            wallet_runtime,
             _state: std::marker::PhantomData,
         }
     }
@@ -69,10 +73,14 @@ impl NmpAppBuilder<Unstarted> {
         // including why `user_relays` needs `ptr::read`).
         let app = self.app;
         let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        #[cfg(feature = "wallet")]
+        let wallet_runtime = unsafe { std::ptr::read(&self.wallet_runtime) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
             user_relays,
+            #[cfg(feature = "wallet")]
+            wallet_runtime,
             _state: std::marker::PhantomData,
         }
     }
@@ -145,10 +153,14 @@ impl NmpAppBuilder<StorageSet> {
     fn into_projections_declared(self) -> NmpAppBuilder<ProjectionsDeclared> {
         let app = self.app;
         let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        #[cfg(feature = "wallet")]
+        let wallet_runtime = unsafe { std::ptr::read(&self.wallet_runtime) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
             user_relays,
+            #[cfg(feature = "wallet")]
+            wallet_runtime,
             _state: std::marker::PhantomData,
         }
     }
@@ -215,10 +227,14 @@ impl NmpAppBuilder<ProjectionsDeclared> {
     fn into_relays_declared(self) -> NmpAppBuilder<RelaysDeclared> {
         let app = self.app;
         let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        #[cfg(feature = "wallet")]
+        let wallet_runtime = unsafe { std::ptr::read(&self.wallet_runtime) };
         std::mem::forget(self);
         NmpAppBuilder {
             app,
             user_relays,
+            #[cfg(feature = "wallet")]
+            wallet_runtime,
             _state: std::marker::PhantomData,
         }
     }
@@ -250,6 +266,13 @@ impl NmpAppBuilder<RelaysDeclared> {
         // Move the non-Copy `user_relays` out before forgetting `self` (same
         // E0509 rationale as the storage transitions).
         let user_relays = unsafe { std::ptr::read(&self.user_relays) };
+        // `wallet_runtime` has no further use past this terminal transition —
+        // a caller that wants it must have already retrieved a clone via
+        // `.wallet_runtime()` before calling `.start()`. Reading it out here
+        // (rather than leaving it for `mem::forget` to skip) just lets this
+        // local drop the `Arc` normally at the end of the function.
+        #[cfg(feature = "wallet")]
+        let _wallet_runtime = unsafe { std::ptr::read(&self.wallet_runtime) };
         // Prevent `Drop` from double-freeing: consume `self` without running
         // the drop glue. The caller takes ownership of `app`.
         std::mem::forget(self);

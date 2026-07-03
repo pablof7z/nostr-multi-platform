@@ -248,6 +248,16 @@ pub struct NmpAppBuilder<S> {
     /// `start()`. NMP carries no relay fallback — what the app declares here is
     /// exactly what the kernel starts with.
     user_relays: Vec<(String, String)>,
+    /// The wallet composition-root runtime handle `.with_wallet()` stashes
+    /// here (epic #2864 Wave C, #2908; #2919). `nmp_wallet::register`'s
+    /// returned `Handles::runtime` is the only handle exposing
+    /// `WalletRuntime::snapshot()` (the merged bounded `"wallet"`
+    /// projection) — without this slot `.with_wallet()` had nowhere to keep
+    /// it and dropped it at the end of the function, leaving no way for a
+    /// builder-path consumer to read wallet state at all. Retrieve it with
+    /// `.wallet_runtime()` any time between `.with_wallet()` and `.start()`.
+    #[cfg(feature = "wallet")]
+    wallet_runtime: Option<std::sync::Arc<nmp_wallet::WalletRuntime>>,
     _state: PhantomData<S>,
 }
 
@@ -267,6 +277,8 @@ impl NmpAppBuilder<Unstarted> {
         Self {
             app,
             user_relays: Vec::new(),
+            #[cfg(feature = "wallet")]
+            wallet_runtime: None,
             _state: PhantomData,
         }
     }

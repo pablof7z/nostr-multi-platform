@@ -65,6 +65,12 @@ impl NmpAppBuilder<Unstarted> {
         // those bounds and wires every registration against its app.
         let wallet_handles =
             nmp_wallet::register(&mut self, nmp_wallet::Config::new(storage_path))?;
+        // Stash `Handles::runtime` (issue #2919): it's the only handle that
+        // exposes `WalletRuntime::snapshot()` — the merged bounded "wallet"
+        // projection (balances, pending ops, history, receive candidates,
+        // capabilities). Without this, a builder-path consumer had no way to
+        // read wallet state at all. Retrieve a clone with `.wallet_runtime()`.
+        self.wallet_runtime = Some(wallet_handles.runtime);
         // Inject a NIP-47-backed `PaymentPort` into the NIP-57 zap auto-chain:
         // the app-path override of the port-less zap default `explicit owner composition`
         // installs (ADR-0069), so a zap pays through this builder's wallet. The
@@ -81,5 +87,24 @@ impl NmpAppBuilder<Unstarted> {
             )),
         )?;
         Ok(self)
+    }
+}
+
+// ── Wallet runtime handle retrieval (all states) ────────────────────────────
+
+impl<S> NmpAppBuilder<S> {
+    /// Clone the wallet runtime handle `.with_wallet()` stashed, if wired.
+    ///
+    /// Returns `None` if `.with_wallet()` has not (yet) been called on this
+    /// builder. Mirrors the `marmot_local_credential_slot`/`marmot_config`
+    /// getters in the sibling `builder/marmot.rs`: a non-consuming read of a
+    /// slot the builder wires, available in every typestate. Call it any time
+    /// between `.with_wallet()` and `.start()` — `Arc<WalletRuntime>` outlives
+    /// the builder, so the clone keeps working after `start()` consumes
+    /// `self`.
+    #[cfg(feature = "wallet")]
+    #[must_use]
+    pub fn wallet_runtime(&self) -> Option<std::sync::Arc<nmp_wallet::WalletRuntime>> {
+        self.wallet_runtime.clone()
     }
 }
