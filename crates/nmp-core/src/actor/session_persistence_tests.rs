@@ -150,6 +150,52 @@ fn restores_imported_nsec_without_swift_cache() {
 }
 
 #[test]
+fn start_resyncs_kernel_after_reset_preserves_identity_runtime() {
+    let _g = SERIAL.lock().unwrap();
+    *STORE.lock().unwrap() = Some(HashMap::new());
+    let slot = registered_slot();
+    let (inbox_tx, _cmd_rx): (Sender<ActorMail>, Receiver<ActorMail>) = channel();
+    let work_tx = spawn_capability_worker(Arc::clone(&slot), CommandSender::new(inbox_tx));
+
+    let (mut identity, mut kernel) = fresh();
+    commands::add_signer(
+        &mut identity,
+        &mut kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
+        true,
+        false,
+    );
+    let expected = identity
+        .active_pubkey()
+        .expect("active account after sign-in");
+    let active_slot = kernel.active_account_handle();
+
+    // Mirrors Reset: rebuild a fresh kernel over the same FFI-visible slot and
+    // clear the slot to match the rebuilt kernel's empty active projection.
+    let mut reset_kernel =
+        Kernel::with_storage_path_and_account_slot(DEFAULT_VISIBLE_LIMIT, None, active_slot);
+    *reset_kernel
+        .active_account_handle()
+        .lock()
+        .expect("active account slot") = None;
+
+    restore_active_session(&mut identity, &mut reset_kernel, &slot, &work_tx, false);
+
+    let (accounts, active) = reset_kernel.account_snapshot();
+    assert_eq!(identity.active_pubkey(), Some(expected.clone()));
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(active, Some(&expected));
+    assert_eq!(
+        reset_kernel
+            .active_account_handle()
+            .lock()
+            .expect("active account slot")
+            .as_deref(),
+        Some(expected.as_str())
+    );
+}
+
+#[test]
 fn persists_generated_account_for_next_launch() {
     let _g = SERIAL.lock().unwrap();
     *STORE.lock().unwrap() = Some(HashMap::new());

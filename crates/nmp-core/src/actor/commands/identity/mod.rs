@@ -33,7 +33,7 @@ pub(crate) use dto::{BunkerHandshakeDto, BunkerStageKind, SignerStateDto};
 
 pub(crate) use runtime::IdentityRuntime;
 
-pub(crate) use account_ops::{add_signer, remove_account, switch_active};
+pub(crate) use account_ops::{add_signer, remove_account, switch_active, sync_kernel};
 pub(crate) use create_account::create_account;
 
 pub(crate) use signer_state::{
