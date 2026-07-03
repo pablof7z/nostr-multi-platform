@@ -1,8 +1,9 @@
 //! Trellis public-surface leak ratchets (#2634).
 //!
-//! Trellis may be used by private NMP internals and validation tests. Public
-//! app/native/web surfaces must continue to expose NMP typed sessions,
-//! projections, actions, and outputs rather than raw Trellis graph primitives.
+//! Trellis may be used by private NMP internals, validation tests, and the
+//! dev-build-only `nmp-devtools` diagnostic surface. Public app/native/web
+//! surfaces must continue to expose NMP typed sessions, projections, actions,
+//! and outputs rather than raw Trellis graph primitives.
 
 use std::path::{Path, PathBuf};
 
@@ -23,6 +24,8 @@ const BUILDER_SURFACE_ROOTS: &[&str] = &[
     "web/packages/components-web/src",
     "web/packages/runtime-web/src",
 ];
+
+const DIAGNOSTIC_TRELLIS_SURFACE_ROOTS: &[&str] = &["crates/nmp-devtools/src"];
 
 const ALLOWED_PRIVATE_TRELLIS_PATHS: &[&str] = &[
     "crates/nmp-nip02/src/active_follow_set/reactive_graph.rs",
@@ -96,6 +99,26 @@ fn private_trellis_internals_are_not_part_of_the_public_surface_scan() {
              pulled into the public-surface leak scan"
         );
     }
+}
+
+#[test]
+fn diagnostic_trellis_surface_is_narrowly_exempt() {
+    let root = workspace_root();
+    assert!(
+        is_diagnostic_trellis_surface(&root, &root.join("crates/nmp-devtools/src/lib.rs")),
+        "`nmp-devtools` is the only Trellis-visible diagnostic surface"
+    );
+    assert!(
+        !is_diagnostic_trellis_surface(
+            &root,
+            &root.join("crates/nmp-native-runtime/src/devtools.rs")
+        ),
+        "runtime/native app surfaces must not inherit the diagnostic exemption"
+    );
+    assert!(
+        !is_diagnostic_trellis_surface(&root, &root.join("docs/builder-guide/devtools.md")),
+        "builder-facing docs must continue to hide raw Trellis vocabulary"
+    );
 }
 
 #[test]
@@ -188,6 +211,9 @@ fn is_test_file(path: &Path) -> bool {
 fn scan_files_for_trellis_tokens(root: &Path, files: &[PathBuf], mode: SurfaceMode) -> Vec<String> {
     let mut violations = Vec::new();
     for path in files {
+        if is_diagnostic_trellis_surface(root, path) {
+            continue;
+        }
         let body = std::fs::read_to_string(path)
             .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
         let mut in_block_comment = false;
@@ -206,6 +232,14 @@ fn scan_files_for_trellis_tokens(root: &Path, files: &[PathBuf], mode: SurfaceMo
         }
     }
     violations
+}
+
+fn is_diagnostic_trellis_surface(root: &Path, path: &Path) -> bool {
+    let normalized = normalize_path(path);
+    DIAGNOSTIC_TRELLIS_SURFACE_ROOTS
+        .iter()
+        .map(|rel| normalize_path(&root.join(rel)))
+        .any(|surface_root| normalized.starts_with(surface_root))
 }
 
 fn trellis_token_hits(line: &str) -> Vec<&'static str> {
