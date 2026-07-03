@@ -11,16 +11,16 @@ crate-type = ["rlib"]
 
 [dependencies]
 flatbuffers = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
-nmp-nip09 = { path = "../nmp-nip09", default-features = false, version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-nip09 = { path = "../nmp-nip09", default-features = false, version = "1.0.0-rc.1" }
 # `native` gates nmp-nip57's LNURL-pay HTTP worker (ureq + std::thread::spawn);
 # this crate only reads + aggregates already-minted kind:9735 receipts, so it
 # never needs that leg.
-nmp-nip57 = { path = "../nmp-nip57", default-features = false, version = "0.8.4" }
+nmp-nip57 = { path = "../nmp-nip57", default-features = false, version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
-nmp-read-session = { path = "../nmp-read-session", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

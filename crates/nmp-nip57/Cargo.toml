@@ -21,17 +21,17 @@ nmp-ownership = { workspace = true }
 # Pure-kernel traits only (no I/O layer needed for decode/view/FlatBuffers).
 # `native` feature on nmp-core is opted-in by callers that need it via
 # feature unification — no explicit re-export required here.
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestShape / LogicalInterest /
 # stable_hash64 — the nmp_core::planner compat facade is deleted (#1608).
-nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for StoredEvent / RawEvent — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 # Layer-0 kind-constant registry — re-exports KIND_ZAP_REQUEST / KIND_ZAP_RECEIPT
 # so this crate no longer duplicates those values (V-57).
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 # #1728: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
 # emits a payment through the injected `nmp_core::substrate::PaymentPort`

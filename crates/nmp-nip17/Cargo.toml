@@ -18,21 +18,21 @@ nmp-ownership = { workspace = true }
 # `DmInboxProjection` plugs into and the `ActionModule` substrate trait the
 # `nmp.nip17.send` action implements, plus the app-neutral `AppHost`
 # registration seam.
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608). nmp-planner is already in the dep graph through nmp-core.
-nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
 # compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 # Layer-0 kind-constant registry — re-exports KIND_DM_RELAY_LIST
 # so this crate no longer duplicates that value (V-57).
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 # `nmp-nip59` owns the gift-wrap primitives — the inbox calls
 # `unwrap_gift_wrap` to unseal an incoming kind:1059 envelope.
-nmp-nip59 = { path = "../nmp-nip59", version = "0.8.4" }
+nmp-nip59 = { path = "../nmp-nip59", version = "1.0.0-rc.1" }
 # Typed FlatBuffers sidecar codecs for the dm_inbox / dm_relay_list snapshot
 # projections (ADR-0072). Workspace-pinned to 25.12.19, enforced by
 # ci/check-flatbuffers-version-pins.sh.

@@ -8,18 +8,18 @@ description = "Client-side web-of-trust primitives for NMP: follow/mute graph sc
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-network = { path = "../nmp-network", default-features = false, version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "1.0.0-rc.1" }
 # Layer-4 sibling dep: nmp-nip51 owns the canonical kind:10000 `p`-tag parser
 # (`mute_pubkeys_from_tags`). This consolidates both consumers (timeline
 # suppression + trust scoring) onto a single parse (#964). Legal per the
 # crate-boundary spec: Layer-4 siblings may depend on each other when the
 # dependency is part of the consuming crate's declared responsibility.
-nmp-nip51 = { path = "../nmp-nip51", version = "0.8.4" }
+nmp-nip51 = { path = "../nmp-nip51", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608).
-nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # Typed FlatBuffers sidecar codec for the `nmp.wot.bootstrap` snapshot
 # projection (ADR-0072). Workspace-pinned to 25.12.19, enforced by
 # ci/check-flatbuffers-version-pins.sh.

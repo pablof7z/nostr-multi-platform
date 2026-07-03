@@ -12,9 +12,9 @@ path = "src/main.rs"
 [dependencies]
 nmp-ownership = { workspace = true }
 iced = { version = "0.14", features = ["tokio", "image-without-codecs", "advanced"] }
-nmp-app-gallery = { path = "../crates/nmp-app-gallery", version = "0.8.4" }
-nmp-content = { path = "../../../crates/nmp-content", version = "0.8.4" }
-nmp-core = { path = "../../../crates/nmp-core", version = "0.8.4" }
-nmp-gallery-tui = { path = "../tui", version = "0.8.4" }
+nmp-app-gallery = { path = "../crates/nmp-app-gallery", version = "1.0.0-rc.1" }
+nmp-content = { path = "../../../crates/nmp-content", version = "1.0.0-rc.1" }
+nmp-core = { path = "../../../crates/nmp-core", version = "1.0.0-rc.1" }
+nmp-gallery-tui = { path = "../tui", version = "1.0.0-rc.1" }
 tokio = { version = "1", features = ["sync"] }
 ureq = { version = "2", default-features = false, features = ["tls"] }

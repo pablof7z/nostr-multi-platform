@@ -11,16 +11,16 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for the FTS seam (text_search_visit / TextSearchQuery /
 # SearchScopeId / StoredEvent / SearchField) the cache-search path and scope
 # providers build against. #1811.
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
-nmp-read-session = { path = "../nmp-read-session", version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for bounded_search_query / InterestShape —
 # the nmp_core::planner compat facade is deleted (#1608).
-nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # S9 typed FlatBuffers sidecar for the SearchResultsSnapshot projection

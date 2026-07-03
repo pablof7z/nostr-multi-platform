@@ -11,28 +11,28 @@ description = "Canonical DX worked example: login → following-timeline render 
 [dependencies]
 nmp-ownership = { workspace = true }
 # Native runtime owner: typestate builder plus OP-feed registration.
-nmp-native-runtime = { path = "../nmp-native-runtime", version = "0.8.4" }
+nmp-native-runtime = { path = "../nmp-native-runtime", version = "1.0.0-rc.1" }
 # Kernel substrate — the `AppHost` trait `register` takes.
-nmp-core = { path = "../nmp-core", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
 # Feed declaration model — the app-owned projection key passed to the opener.
-nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
-nmp-note-feed = { path = "../nmp-note-feed", version = "0.8.4" }
-nmp-nip02 = { path = "../nmp-nip02", version = "0.8.4" }
-nmp-nip17 = { path = "../nmp-nip17", version = "0.8.4" }
-nmp-nip18 = { path = "../nmp-nip18", version = "0.8.4" }
-nmp-nip23 = { path = "../nmp-nip23", version = "0.8.4" }
-nmp-nip22 = { path = "../nmp-nip22", version = "0.8.4" }
-nmp-nip25 = { path = "../nmp-nip25", version = "0.8.4" }
-nmp-nip29 = { path = "../nmp-nip29", version = "0.8.4" }
-nmp-nip50 = { path = "../nmp-nip50", version = "0.8.4" }
-nmp-nip51 = { path = "../nmp-nip51", version = "0.8.4" }
-nmp-nip84 = { path = "../nmp-nip84", version = "0.8.4" }
-nmp-replies = { path = "../nmp-replies", version = "0.8.4" }
-nmp-substrate = { path = "../nmp-substrate", version = "0.8.4" }
-nmp-wot = { path = "../nmp-wot", version = "0.8.4" }
+nmp-note-feed = { path = "../nmp-note-feed", version = "1.0.0-rc.1" }
+nmp-nip02 = { path = "../nmp-nip02", version = "1.0.0-rc.1" }
+nmp-nip17 = { path = "../nmp-nip17", version = "1.0.0-rc.1" }
+nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
+nmp-nip23 = { path = "../nmp-nip23", version = "1.0.0-rc.1" }
+nmp-nip22 = { path = "../nmp-nip22", version = "1.0.0-rc.1" }
+nmp-nip25 = { path = "../nmp-nip25", version = "1.0.0-rc.1" }
+nmp-nip29 = { path = "../nmp-nip29", version = "1.0.0-rc.1" }
+nmp-nip50 = { path = "../nmp-nip50", version = "1.0.0-rc.1" }
+nmp-nip51 = { path = "../nmp-nip51", version = "1.0.0-rc.1" }
+nmp-nip84 = { path = "../nmp-nip84", version = "1.0.0-rc.1" }
+nmp-replies = { path = "../nmp-replies", version = "1.0.0-rc.1" }
+nmp-substrate = { path = "../nmp-substrate", version = "1.0.0-rc.1" }
+nmp-wot = { path = "../nmp-wot", version = "1.0.0-rc.1" }
 # App-private typed write payload codec and action event construction.
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 

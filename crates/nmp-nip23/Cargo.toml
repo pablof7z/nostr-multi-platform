@@ -12,12 +12,12 @@ name = "nmp_nip23"
 [dependencies]
 nmp-ownership = { workspace = true }
 flatbuffers = { workspace = true }
-nmp-content = { path = "../nmp-content", version = "0.8.4" }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
-nmp-nip09 = { path = "../nmp-nip09", version = "0.8.4" }
-nmp-nip18 = { path = "../nmp-nip18", version = "0.8.4" }
+nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
+nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

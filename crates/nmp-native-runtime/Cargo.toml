@@ -55,27 +55,27 @@ marmot = ["native", "dep:nmp-marmot"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-router = { path = "../nmp-router", default-features = false, version = "0.8.4" }
-nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
-nmp-content = { path = "../nmp-content", version = "0.8.4" }
-nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
-nmp-feed-session = { path = "../nmp-feed-session", version = "0.8.4" }
-nmp-read-session = { path = "../nmp-read-session", version = "0.8.4" }
-nmp-note-feed = { path = "../nmp-note-feed", optional = true, version = "0.8.4" }
-nmp-nip02 = { path = "../nmp-nip02", optional = true, version = "0.8.4" }
-nmp-nip05 = { path = "../nmp-nip05", optional = true, version = "0.8.4" }
-nmp-nip46 = { path = "../nmp-nip46", optional = true, version = "0.8.4" }
-nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true, version = "0.8.4" }
-nmp-nip47 = { path = "../nmp-nip47", optional = true, version = "0.8.4" }
-nmp-nip50 = { path = "../nmp-nip50", optional = true, version = "0.8.4" }
-nmp-nip51 = { path = "../nmp-nip51", optional = true, version = "0.8.4" }
-nmp-nip57 = { path = "../nmp-nip57", optional = true, default-features = false, version = "0.8.4" }
-nmp-marmot = { path = "../nmp-marmot", optional = true, version = "0.8.4" }
-nmp-intent = { path = "../nmp-intent", version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", optional = true, version = "0.8.4" }
-nmp-signers = { path = "../nmp-signers", optional = true, version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-router = { path = "../nmp-router", default-features = false, version = "1.0.0-rc.1" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
+nmp-feed-session = { path = "../nmp-feed-session", version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
+nmp-note-feed = { path = "../nmp-note-feed", optional = true, version = "1.0.0-rc.1" }
+nmp-nip02 = { path = "../nmp-nip02", optional = true, version = "1.0.0-rc.1" }
+nmp-nip05 = { path = "../nmp-nip05", optional = true, version = "1.0.0-rc.1" }
+nmp-nip46 = { path = "../nmp-nip46", optional = true, version = "1.0.0-rc.1" }
+nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true, version = "1.0.0-rc.1" }
+nmp-nip47 = { path = "../nmp-nip47", optional = true, version = "1.0.0-rc.1" }
+nmp-nip50 = { path = "../nmp-nip50", optional = true, version = "1.0.0-rc.1" }
+nmp-nip51 = { path = "../nmp-nip51", optional = true, version = "1.0.0-rc.1" }
+nmp-nip57 = { path = "../nmp-nip57", optional = true, default-features = false, version = "1.0.0-rc.1" }
+nmp-marmot = { path = "../nmp-marmot", optional = true, version = "1.0.0-rc.1" }
+nmp-intent = { path = "../nmp-intent", version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", optional = true, version = "1.0.0-rc.1" }
+nmp-signers = { path = "../nmp-signers", optional = true, version = "1.0.0-rc.1" }
 nostr = { workspace = true, features = ["nip44", "nip59"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }

@@ -13,11 +13,11 @@ description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:2
 nmp-ownership = { workspace = true }
 # Substrate seams: ProtocolCommand / ProtocolCommandContext, ActorCommand,
 # UnsignedEvent / SignedEvent, the generic SignEventForAccount sign port.
-nmp-core = { path = "../nmp-core", version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Layer-0 canonical kind registry — re-exports KIND_BLOSSOM_AUTH (24242)
 # so this crate does not duplicate the value (V-57 / workspace-canonical-kinds).
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 flatbuffers = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

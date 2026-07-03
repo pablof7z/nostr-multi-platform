@@ -8,11 +8,11 @@ description = "NIP-46 actor-lane runtime — drives the nmp-nip46 reducer over t
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core    = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-network = { path = "../nmp-network", default-features = false, version = "0.8.4" }
-nmp-nip46   = { path = "../nmp-nip46", version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
-nmp-signers = { path = "../nmp-signers", default-features = false, version = "0.8.4" }
+nmp-core    = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "1.0.0-rc.1" }
+nmp-nip46   = { path = "../nmp-nip46", version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
+nmp-signers = { path = "../nmp-signers", default-features = false, version = "1.0.0-rc.1" }
 nostr       = { version = "0.44", features = ["std"] }
 serde_json  = { workspace = true }
 tracing     = "0.1"

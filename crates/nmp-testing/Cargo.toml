@@ -17,17 +17,17 @@ real-relay = []
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", features = ["test-support"], version = "0.8.4" }
+nmp-core = { path = "../nmp-core", features = ["test-support"], version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / CompiledPlan / RelayPlan / RelayAttribution — the
 # nmp_core::planner compat facade is deleted (#1608).
-nmp-planner = { path = "../nmp-planner", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent / EventStore /
 # InsertOutcome / MemEventStore — the nmp_core::store compat facade is
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
-nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
-nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"], version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"], version = "1.0.0-rc.1" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
 serde = { workspace = true, features = ["derive"] }

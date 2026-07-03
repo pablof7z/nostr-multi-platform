@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Dev-only NMP diagnostic receipt surface."
 
 [dependencies]
-nmp-feed-session = { path = "../nmp-feed-session", version = "0.8.4" }
+nmp-feed-session = { path = "../nmp-feed-session", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 trellis-core = "0.2.1"

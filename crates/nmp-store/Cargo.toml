@@ -31,12 +31,12 @@ test-support = []
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 # Layer-0 relay-URL canonicalization authority (#967, #2648). `nmp-store`'s
 # `RelayUrl` alias re-exports this rather than redefining it; `nmp-relay-url`
 # is dependency-free, so this does not violate the "Layer 1 may depend on
 # Layer 0" rule.
-nmp-relay-url = { path = "../nmp-relay-url", version = "0.8.4" }
+nmp-relay-url = { path = "../nmp-relay-url", version = "1.0.0-rc.1" }
 nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
@@ -57,7 +57,7 @@ web-time = "1.1"
 # LMDB backend deps — feature-gated. The fork at crates/nmp-nostr-lmdb carries
 # the env-injection seam (ADR-0072); heed / nostr-database are the underlying
 # storage and event-encoding crates.
-nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true, version = "0.8.4" }
+nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true, version = "1.0.0-rc.1" }
 heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
 nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
 
@@ -66,7 +66,7 @@ nostr-database = { version = "0.44", default-features = false, features = ["flat
 # engine only builds for the browser, so its crate lives here. Optional +
 # enabled via the `opfs-sqlite-backend` feature.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-nmp-sqlite-wasm = { path = "../nmp-sqlite-wasm", optional = true, version = "0.8.4" }
+nmp-sqlite-wasm = { path = "../nmp-sqlite-wasm", optional = true, version = "1.0.0-rc.1" }
 
 [dev-dependencies]
 tempfile = "3"

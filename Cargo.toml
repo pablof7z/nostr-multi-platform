@@ -111,7 +111,7 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/pablof7z/nostr-multi-platform"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 
 # Shared third-party dependency versions. Declare the *version* and the
 # default-features posture here only; each member crate adds its own
@@ -145,7 +145,7 @@ flatbuffers = "25.12.19"
 nostr = "0.44"
 serde = "1.0"
 serde_json = "1.0"
-nmp-ownership = { path = "crates/nmp-ownership", version = "0.8.4" }
+nmp-ownership = { path = "crates/nmp-ownership", version = "1.0.0-rc.1" }
 rustls = { version = "0.23", default-features = false }
 tungstenite = { version = "0.24", default-features = false }
 # Secret-material zeroization. `derive` enables `#[derive(ZeroizeOnDrop)]`.

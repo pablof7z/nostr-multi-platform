@@ -12,6 +12,6 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-ownership = { workspace = true }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-native-runtime = { path = "../nmp-native-runtime", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-native-runtime = { path = "../nmp-native-runtime", version = "1.0.0-rc.1" }
 serde_json = { workspace = true }

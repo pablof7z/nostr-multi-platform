@@ -3696,7 +3696,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-app-gallery"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-content",
  "nmp-core",
@@ -3727,7 +3727,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-blossom"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "base64",
  "flatbuffers",
@@ -3745,7 +3745,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-browser-runtime"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
  "flatbuffers",
@@ -3796,7 +3796,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-browser-runtime-conformance"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -3811,7 +3811,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-chat"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -3824,7 +3824,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-cli"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-codegen",
  "nmp-component-registry",
@@ -3836,7 +3836,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-codegen"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "serde",
@@ -3846,7 +3846,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-component-registry"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "serde",
@@ -3856,7 +3856,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-content"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -3878,7 +3878,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-content-fixtures"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-content",
  "nmp-core",
@@ -3894,7 +3894,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-core"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "chrono",
  "flatbuffers",
@@ -3924,14 +3924,14 @@ dependencies = [
 
 [[package]]
 name = "nmp-coverage-gate"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
 ]
 
 [[package]]
 name = "nmp-devtools"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-feed-session",
  "nmp-ownership",
@@ -3942,7 +3942,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-example-login-timeline"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -3970,7 +3970,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-feed"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-feed-session"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-content",
  "nmp-core",
@@ -4006,7 +4006,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-gallery-desktop"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "iced",
  "nmp-app-gallery",
@@ -4020,7 +4020,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-gallery-tui"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "crossterm",
  "nmp-app-gallery",
@@ -4037,7 +4037,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-intent"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-nip05",
@@ -4049,14 +4049,14 @@ dependencies = [
 
 [[package]]
 name = "nmp-kinds"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
 ]
 
 [[package]]
 name = "nmp-marmot"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "mdk-core",
@@ -4075,7 +4075,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-native-runtime"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-content",
  "nmp-core",
@@ -4110,7 +4110,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-network"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "gloo-timers",
  "js-sys",
@@ -4127,7 +4127,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip01"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4142,7 +4142,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip02"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4159,7 +4159,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip05"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
@@ -4170,7 +4170,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip09"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
@@ -4180,7 +4180,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip11"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
@@ -4191,7 +4191,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip17"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4209,7 +4209,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip18"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4224,7 +4224,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip22"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
@@ -4235,7 +4235,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip23"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-content",
@@ -4251,7 +4251,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip25"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4265,7 +4265,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip29"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4282,7 +4282,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip42"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-nip42-types",
  "nmp-ownership",
@@ -4292,7 +4292,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip42-types"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "serde",
@@ -4301,7 +4301,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip46"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "nostr",
@@ -4310,7 +4310,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip46-runtime"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-network",
@@ -4325,7 +4325,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip47"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4343,7 +4343,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip50"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4358,7 +4358,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip51"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4378,7 +4378,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip57"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "bech32",
  "flatbuffers",
@@ -4398,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip59"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-kinds",
  "nmp-ownership",
@@ -4407,7 +4407,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip60"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "hex",
  "nmp-kinds",
@@ -4422,7 +4422,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip65-types"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-kinds",
  "nmp-ownership",
@@ -4431,7 +4431,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip68"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-feed",
@@ -4449,7 +4449,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip77"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "negentropy",
  "nmp-core",
@@ -4464,7 +4464,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip78"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
@@ -4475,7 +4475,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip84"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4486,7 +4486,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip89"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "nostr",
@@ -4494,7 +4494,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip92-types"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "serde",
@@ -4502,7 +4502,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nostr-id"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "bech32",
  "nmp-ownership",
@@ -4512,7 +4512,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nostr-lmdb"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "async-utility",
  "flume",
@@ -4528,7 +4528,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-note-feed"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-content",
@@ -4546,7 +4546,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-nwc"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "base64",
  "nmp-ownership",
@@ -4560,11 +4560,11 @@ dependencies = [
 
 [[package]]
 name = "nmp-ownership"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 
 [[package]]
 name = "nmp-planner"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "nmp-relay-url",
@@ -4574,7 +4574,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-reactions"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4589,7 +4589,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-read-session"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
@@ -4598,14 +4598,14 @@ dependencies = [
 
 [[package]]
 name = "nmp-relay-url"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
 ]
 
 [[package]]
 name = "nmp-replies"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4624,7 +4624,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-reposts"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4640,7 +4640,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-router"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4659,7 +4659,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-signer-iface"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-ownership",
  "serde",
@@ -4668,7 +4668,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-signers"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "js-sys",
  "nmp-ownership",
@@ -4687,7 +4687,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-sqlite-wasm"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "js-sys",
  "nmp-kinds",
@@ -4700,7 +4700,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-sqlite-wasm-conformance"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -4712,7 +4712,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-store"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "heed",
  "nmp-kinds",
@@ -4732,7 +4732,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-substrate"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-coverage-gate",
@@ -4747,7 +4747,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-testing"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "dhat",
  "libc",
@@ -4800,7 +4800,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-threading"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4812,7 +4812,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-uniffi-support"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-native-runtime",
@@ -4822,7 +4822,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-wallet"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
  "nmp-ownership",
@@ -4832,7 +4832,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-wot"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
@@ -4848,7 +4848,7 @@ dependencies = [
 
 [[package]]
 name = "nmp-zaps"
-version = "0.8.4"
+version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",

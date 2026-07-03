@@ -27,15 +27,15 @@ crate-type = ["cdylib", "rlib"]
 # `test-support` seam needed.
 nmp-browser-runtime = { path = "../nmp-browser-runtime", features = [
   "opfs-sqlite-backend",
-], version = "0.8.4" }
+], version = "1.0.0-rc.1" }
 # The durable OPFS-SQLite EventStore + the read/insert surface the proofs assert.
-nmp-store = { path = "../nmp-store", features = ["opfs-sqlite-backend"], version = "0.8.4" }
+nmp-store = { path = "../nmp-store", features = ["opfs-sqlite-backend"], version = "1.0.0-rc.1" }
 # The durable publish queue (DomainPublishStore / PublishStore / PublishRecord).
 # default-features = false keeps the wasm32 build free of native-only crates,
 # matching nmp-browser-runtime's own nmp-core dependency.
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 # SignedEvent / UnsignedEvent for the durable publish record.
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 wasm-bindgen = "0.2.121"
 # `#[wasm_bindgen] pub async fn` lowers to `wasm_bindgen_futures::future_to_promise`,
 # so the async entry point needs this crate in the graph directly.

@@ -48,12 +48,12 @@ tungstenite = { workspace = true, default-features = false, features = ["handsha
 # crate cycle. This crate only uses `parse_auth_frame` — it does NOT
 # import the FSM (`AuthGate`) or the kind:22242 builder; those live in
 # `nmp-core::subs::AuthGate` and `nmp-nip42::builder` respectively.
-nmp-nip42-types = { path = "../nmp-nip42-types", version = "0.8.4" }
+nmp-nip42-types = { path = "../nmp-nip42-types", version = "1.0.0-rc.1" }
 # Layer-0 relay-URL canonicalization authority (#967). The pool keys slots on
 # the canonical relay URL; sharing the one normalization keeps the pool's slot
 # key identical to the kernel/router key. `nmp-relay-url` is dependency-free, so
 # this does not violate the "no nmp-core" rule above (Layer 1 may depend on L0).
-nmp-relay-url = { path = "../nmp-relay-url", version = "0.8.4" }
+nmp-relay-url = { path = "../nmp-relay-url", version = "1.0.0-rc.1" }
 serde_json = { workspace = true }
 
 # Step 8 phase C — `BrowserRelayDriver` owns the `web_sys::WebSocket`

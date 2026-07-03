@@ -16,11 +16,11 @@ path = "src/main.rs"
 [dependencies]
 nmp-ownership = { workspace = true }
 crossterm = "0.29"
-nmp-app-gallery = { path = "../crates/nmp-app-gallery", version = "0.8.4" }
-nmp-content = { path = "../../../crates/nmp-content", version = "0.8.4" }
-nmp-core = { path = "../../../crates/nmp-core", version = "0.8.4" }
-nmp-nostr-id = { path = "../../../crates/nmp-nostr-id", version = "0.8.4" }
-nmp-native-runtime = { path = "../../../crates/nmp-native-runtime", version = "0.8.4" }
+nmp-app-gallery = { path = "../crates/nmp-app-gallery", version = "1.0.0-rc.1" }
+nmp-content = { path = "../../../crates/nmp-content", version = "1.0.0-rc.1" }
+nmp-core = { path = "../../../crates/nmp-core", version = "1.0.0-rc.1" }
+nmp-nostr-id = { path = "../../../crates/nmp-nostr-id", version = "1.0.0-rc.1" }
+nmp-native-runtime = { path = "../../../crates/nmp-native-runtime", version = "1.0.0-rc.1" }
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
 serde_json = { workspace = true }

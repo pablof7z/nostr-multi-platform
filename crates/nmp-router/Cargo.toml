@@ -18,20 +18,20 @@ nmp-ownership = { workspace = true }
 # LMDB/tungstenite/mio I/O. Native consumers re-enable it through this crate's
 # own `native` passthrough feature (default-on, so existing builds are
 # unchanged); wasm consumers depend with `default-features = false`.
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-network = { path = "../nmp-network", default-features = false, version = "0.8.4" }
-nmp-signer-iface = { path = "../nmp-signer-iface", version = "0.8.4" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-network = { path = "../nmp-network", default-features = false, version = "1.0.0-rc.1" }
+nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # InterestShape / LogicalInterest / HintSource — the nmp_core::planner compat
 # facade is deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is
 # already in the dep graph through nmp-core.
-nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 # Direct dep on nmp-store for EventStore / VerifiedEvent / RawEvent / StoredEvent
 # / MemEventStore / PubKey — the nmp_core::store compat facade is deleted (#1608).
-nmp-store = { path = "../nmp-store", version = "0.8.4" }
+nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 # Layer-0 kind helpers used by routing discovery and p-tag recipient handling.
-nmp-kinds = { path = "../nmp-kinds", version = "0.8.4" }
-nmp-nip65-types = { path = "../nmp-nip65-types", version = "0.8.4" }
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-nip65-types = { path = "../nmp-nip65-types", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 # Typed FlatBuffers action payloads (ADR-0071 / #1756) for the router-owned
 # NIP-65 publish relay-list action. Pinned

@@ -8,17 +8,17 @@ description = "Reusable note-feed composition: OP/flat feed projections that com
 
 [dependencies]
 flatbuffers = { workspace = true }
-nmp-content = { path = "../nmp-content", version = "0.8.4" }
-nmp-core = { path = "../nmp-core", default-features = false, version = "0.8.4" }
-nmp-feed = { path = "../nmp-feed", version = "0.8.4" }
-nmp-nip01 = { path = "../nmp-nip01", version = "0.8.4" }
+nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
+nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
+nmp-nip01 = { path = "../nmp-nip01", version = "1.0.0-rc.1" }
 # Canonical DeleteRecord (kind:5 decode) for kind:1 note delete-folding —
 # nmp-nip18 is not the generic deletion owner (ADR-0074, widened by #2589).
-nmp-nip09 = { path = "../nmp-nip09", version = "0.8.4" }
-nmp-nip18 = { path = "../nmp-nip18", version = "0.8.4" }
+nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
+nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
-nmp-planner = { path = "../nmp-planner", default-features = false, version = "0.8.4" }
-nmp-threading = { path = "../nmp-threading", version = "0.8.4" }
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+nmp-threading = { path = "../nmp-threading", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
