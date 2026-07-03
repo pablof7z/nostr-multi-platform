@@ -167,6 +167,18 @@ pub use action_builders::{
     AppActionBuilderRegistryCheckOutcome, AppActionBuilderSchema, LoadedAppActionBuilderRegistry,
     Platform as ActionBuilderPlatform,
 };
+/// #2899 — app-owned concept-read facade codegen. Emits Rust UniFFI facade
+/// slices from app-local registries without adding concept-crate dependencies to
+/// `nmp-codegen` or support/runtime crates.
+pub mod concept_reads;
+pub use concept_reads::{
+    check_app_concept_read_registry, check_concept_reads_from_registry, concept_read_for,
+    generate_concept_reads_from_registry, load_app_concept_read_registry,
+    parse_app_concept_read_registry, render_from_registry as render_concept_reads_from_registry,
+    AppConceptRead, AppConceptReadOutputCheck, AppConceptReadOutputs,
+    AppConceptReadRegistryCheckOutcome, ConceptRead, ConceptReadFacade, ConceptReadsCheckOutcome,
+    LoadedAppConceptReadRegistry, Platform as ConceptReadPlatform, TargetInput, CONCEPT_READS,
+};
 /// #1626 — generated app-facing native feed helpers over the canonical
 /// `FeedParams` JSON doorway. These emit Swift/Kotlin/TS convenience helpers;
 /// Rust/NMP still owns feed declaration, compilation, reactivity, and session

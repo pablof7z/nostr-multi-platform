@@ -93,15 +93,14 @@ fn open_replies_then_close_replies_round_trips_through_the_generated_shape_expor
         TestSupportCommand::IngestPreVerifiedEvents(vec![reply_event()]),
     ));
     assert!(
-        app.runtime()
-            .wait_barrier_for_test(Duration::from_secs(5)),
+        app.runtime().wait_barrier_for_test(Duration::from_secs(5)),
         "the actor must drain the injected reply before we re-read the projection"
     );
 
     // DECODE (after the reply) — the reducer's admission folds it in and the
     // typed output reflects it on the next synchronous read.
-    let after = find_projection(&app, &opened.projection_key)
-        .expect("the read is still live after ingest");
+    let after =
+        find_projection(&app, &opened.projection_key).expect("the read is still live after ingest");
     let after_snapshot = nmp_replies::decode_reply_summary_snapshot(&after.payload)
         .expect("a valid REPLY_SUMMARY payload decodes");
     assert_eq!(after_snapshot.count, 1, "the injected reply is admitted");

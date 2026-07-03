@@ -4,6 +4,7 @@ mod cli;
 mod cli_action_builders;
 mod cli_action_contract;
 mod cli_builtin;
+mod cli_concept_reads;
 mod cli_feed_helpers;
 mod cli_read_side;
 
@@ -49,6 +50,10 @@ fn run() -> Result<(), String> {
         // static `--registry` contract; emits the host-facing typed write
         // builders that construct `DispatchEnvelope` bytes for the byte doorway.
         "action-builders" => cli_action_builders::run_gen_action_builders(args, &h),
+        // #2899 — generated app-owned concept-read facade slices. Writes a Rust
+        // UniFFI impl block from an app-local registry listing only the concept
+        // reads that app composes.
+        "concept-reads" => cli_concept_reads::run_gen_concept_reads(args, &h),
         // #1626 — generated app-facing feed helpers. Writes Swift/Kotlin/TS
         // helpers over the canonical FeedParams JSON bridge; the helpers call
         // existing runtime feed-session doors and do not introduce a runtime path.
@@ -90,6 +95,8 @@ fn help() -> String {
      nmp gen projection-contract --platform ts --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin|ts [--registry <path>] [--out <path>] [--check]\n  \
      nmp gen action-builders   --registry <path> --check\n  \
+     nmp gen concept-reads     --registry <path> --platform rust [--out <path>] [--check]\n  \
+     nmp gen concept-reads     --registry <path> --check\n  \
      nmp gen feed-helpers      --platform swift|kotlin|ts --out <path> [--check]\n  \
      nmp gen action-contract-report [--out <path>]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \

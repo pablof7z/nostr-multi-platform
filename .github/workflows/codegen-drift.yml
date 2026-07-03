@@ -84,6 +84,10 @@ jobs:
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
+      - name: Check nmp-gallery concept-read codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-codegen -- gen concept-reads --registry apps/nmp-gallery/concept-reads.json --check
+
       - name: Check web feed-helper codegen is up to date
         run: |
           cargo run --quiet -p nmp-codegen -- gen feed-helpers --platform ts --check \
