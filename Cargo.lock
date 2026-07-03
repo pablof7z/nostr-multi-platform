@@ -4825,6 +4825,7 @@ name = "nmp-wallet"
 version = "0.8.4"
 dependencies = [
  "nmp-core",
+ "nmp-nip47",
  "nmp-ownership",
  "serde",
  "serde_json",
