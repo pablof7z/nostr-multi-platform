@@ -130,6 +130,10 @@ fn swift_presented_contract_keys_match_registry() {
         "nmp.wot.bootstrap",
         "nmp.notifications",
         "nmp.chat.presence",
+        // The merged multi-backend wallet projection (#2915): a Tier-1 sidecar
+        // (NWMP) registered by nmp-wallet with no iOS Swift `SnapshotProjections`
+        // field yet. Hosts that want it decode the typed payload directly.
+        "wallet.merged",
     ];
 
     let registry_keys: std::collections::BTreeSet<&str> =

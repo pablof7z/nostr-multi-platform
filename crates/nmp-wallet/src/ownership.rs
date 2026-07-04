@@ -18,6 +18,19 @@ nmp_ownership::declare_crate_ownership! {
         },
         {
             claim_type: "namespace",
+            id: "projection.wallet.merged",
+            exclusive: true,
+            scope: {
+                kind: "projection",
+                value: "wallet.merged",
+                context: "",
+            },
+            owns: [
+                "merged multi-backend wallet projection key and typed FlatBuffers sidecar shape (NWMP)",
+            ],
+        },
+        {
+            claim_type: "namespace",
             id: "action.nmp.wallet.select_backend",
             exclusive: true,
             scope: {

@@ -47,6 +47,7 @@ export const PROJECTION_CONTRACT: Readonly<Record<string, ProjectionContractEntr
   "refs.profile": { schemaId: "refs.profile", fileIdentifier: "NRRD" },
   "refs.event": { schemaId: "refs.event", fileIdentifier: "NRRD" },
   "wallet": { schemaId: "nmp.nip47.wallet", fileIdentifier: "NWST" },
+  "wallet.merged": { schemaId: "nmp.wallet.merged", fileIdentifier: "NWMP" },
   "bunker_handshake": { schemaId: "bunker_handshake", fileIdentifier: "KBHS" },
   "nip46_onboarding": { schemaId: "nip46_onboarding", fileIdentifier: "KN46" },
   "signer_state": { schemaId: "signer_state", fileIdentifier: "KSST" },

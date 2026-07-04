@@ -243,3 +243,22 @@ fn register_builds_a_working_merged_projection_snapshot() {
         "Cashu's deposit_cashu capability"
     );
 }
+
+#[test]
+fn merged_typed_projection_encodes_a_decodable_nwmp_sidecar() {
+    let mut app = FakeApp::new();
+    let handles = register(&mut app, Config::default()).expect("register must succeed");
+
+    // The typed sidecar builder the registered `"wallet.merged"` closure calls:
+    // its envelope identity is the `NWMP` schema, and its payload round-trips
+    // back to exactly the runtime's merged snapshot.
+    let entry = wallet_merged_typed_projection(&handles.runtime);
+    assert_eq!(entry.key, crate::projection_wire::PROJECTION_KEY);
+    assert_eq!(entry.schema_id, crate::projection_wire::SCHEMA_ID);
+    assert_eq!(entry.schema_version, crate::projection_wire::SCHEMA_VERSION);
+    assert_eq!(entry.file_identifier, "NWMP");
+
+    let decoded = crate::projection_wire::decode_wallet_projection(&entry.payload)
+        .expect("registered sidecar payload must decode as NWMP");
+    assert_eq!(decoded, handles.runtime.snapshot());
+}

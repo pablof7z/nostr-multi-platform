@@ -31,6 +31,7 @@ pub mod mint_discovery;
 pub mod ownership;
 pub mod payment_port;
 pub mod projection;
+pub mod projection_wire;
 pub mod register;
 pub mod runtime;
 pub mod selector;
@@ -66,6 +67,11 @@ pub use payment_port::{
 pub use projection::{
     WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletProjection, WalletReadiness,
     WalletReceiveRow, MAX_WALLET_PROJECTION_ROWS, WALLET_PROJECTION_KEY,
+};
+pub use projection_wire::{
+    decode_wallet_projection, encode_wallet_projection,
+    PROJECTION_KEY as WALLET_MERGED_PROJECTION_KEY, SCHEMA_ID as WALLET_MERGED_SCHEMA_ID,
+    SCHEMA_VERSION as WALLET_MERGED_SCHEMA_VERSION,
 };
 pub use register::{register, Config, Handles};
 pub use runtime::WalletRuntime;

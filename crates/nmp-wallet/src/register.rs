@@ -28,23 +28,27 @@
 //! selector (`nmp-wallet::payment_port`'s zap wiring is a separate,
 //! not-yet-connected wave — see that module's doc comment).
 //!
-//! # No typed `"wallet"` snapshot projection registered here yet
+//! # Typed `"wallet.merged"` snapshot projection (#2915)
 //!
-//! `SnapshotProjectionRegistrar` (required transitively, to satisfy
-//! `nmp_nip47::register`'s own bound) is part of this function's bound, but
-//! this wave does not call `register_typed_snapshot_projection` for a merged
-//! multi-backend wallet projection: every existing typed projection in this
-//! workspace is a hand-authored FlatBuffers schema
-//! (`crates/<crate>/schema/*.fbs`) processed by the pinned-`flatc` codegen
-//! script (`ci/regenerate-flatbuffers.sh`) — schema design, not composition
-//! wiring, and a new `wallet_projection.fbs` covering `WalletProjection`'s
-//! nested balance/history/receive-row vectors is a properly-sized follow-up
-//! on its own. [`WalletRuntime::snapshot`] already builds the correct merged
-//! [`crate::projection::WalletProjection`] and is unit-tested; wiring it into
-//! a typed sidecar is the deferred piece (tracked as a fast-follow issue —
-//! see the PR this landed in). `nmp-nip47`'s own existing `"wallet"` typed
-//! projection (its `WalletStatus` shape) keeps being registered by
-//! `nmp_nip47::register` above, unaffected either way.
+//! This function registers a typed FlatBuffers snapshot projection for the
+//! MERGED multi-backend [`crate::projection::WalletProjection`] that
+//! [`WalletRuntime::snapshot`] builds (backend selection + capability union +
+//! concatenated bounded rows). It is registered under the DISTINCT key
+//! `"wallet.merged"` — deliberately NOT `"wallet"`, which `nmp-nip47` still owns
+//! for its single-backend NWC `WalletStatus` (`NWST`) shape. Choosing a fresh
+//! key means nothing has to be moved out of / broken in `nmp-nip47`: the two
+//! typed sidecars coexist, each host decoding whichever it understands (an
+//! NWC-only host keeps reading `NWST` `"wallet"`; a merged-wallet host reads
+//! `NWMP` `"wallet.merged"`). The `nmp.wallet.*` action namespaces and the
+//! `wallet` projection family are owned by this crate's `ownership.rs`; the new
+//! `"wallet.merged"` key adds its own exclusive `projection.wallet.merged`
+//! claim there, cited by the `DeclaredProjectionKey` this function passes and by
+//! the `PROJECTION_CONTRACT` row (`crates/nmp-codegen`). The schema
+//! (`crates/nmp-wallet/schema/wallet_projection.fbs`) and its encode/decode
+//! codec (`crate::projection_wire`) follow the `NotificationsSnapshot` /
+//! `ModularTimelineSnapshot` vector-of-tables precedent, generated ONLY through
+//! `ci/regenerate-flatbuffers.sh`. `nmp-nip47`'s own existing `"wallet"` typed
+//! projection keeps being registered by `nmp_nip47::register` above, unaffected.
 
 use std::sync::Arc;
 
@@ -236,7 +240,22 @@ pub fn register(
         app,
     ));
 
-    // 7. NIP-87 mint discovery (#2880): identity-reactive read interests for
+    // 7. Typed `"wallet.merged"` snapshot projection (#2915) — the merged
+    //    multi-backend projection `WalletRuntime::snapshot` builds, emitted as a
+    //    typed FlatBuffers sidecar under a DISTINCT key from `nmp-nip47`'s
+    //    single-backend `"wallet"` (`NWST`) sidecar (see module docs). The
+    //    closure holds its own `Arc<WalletRuntime>` clone (no process-global) and
+    //    is a read-only, non-blocking snapshot producer (D8).
+    let projection_runtime = Arc::clone(&runtime);
+    app.register_typed_snapshot_projection(
+        nmp_ownership::DeclaredProjectionKey::framework(
+            crate::projection_wire::PROJECTION_KEY,
+            "projection.wallet.merged",
+        ),
+        move || Some(wallet_merged_typed_projection(&projection_runtime)),
+    );
+
+    // 8. NIP-87 mint discovery (#2880): identity-reactive read interests for
     //    kind:38172 announcements + kind:38000 recommendations plus the
     //    account's follow/mute graph, aggregated (WoT-scoped, fail-closed on
     //    mints missing the nutzap NUTs) into the discovered-mints projection.
@@ -247,6 +266,33 @@ pub fn register(
         runtime,
         mint_discovery,
     })
+}
+
+/// Build the typed `"wallet.merged"` sidecar entry from the live runtime's
+/// merged snapshot (#2915). Extracted from the
+/// `register_typed_snapshot_projection` closure so the registration's schema
+/// identity (`key` / `schema_id` / `file_identifier` / version) and the encode
+/// are unit-testable without spinning the actor.
+///
+/// Unlike `nmp-nip47`'s `wallet_typed_projection` (which returns `None` when no
+/// wallet is connected), this always emits a row: `WalletRuntime::snapshot`
+/// yields a well-formed empty/`NotConfigured` projection when nothing is
+/// configured, and emitting it keeps the host cache authoritative (an omitted
+/// key retains the last decoded value under incremental apply — see ADR-0070).
+#[must_use]
+pub fn wallet_merged_typed_projection(
+    runtime: &WalletRuntime,
+) -> nmp_core::TypedProjectionData {
+    let projection = runtime.snapshot();
+    nmp_core::TypedProjectionData {
+        key: crate::projection_wire::PROJECTION_KEY.to_string(),
+        schema_id: crate::projection_wire::SCHEMA_ID.to_string(),
+        schema_version: crate::projection_wire::SCHEMA_VERSION,
+        file_identifier: String::from_utf8_lossy(crate::projection_wire::FILE_IDENTIFIER)
+            .into_owned(),
+        payload: crate::projection_wire::encode_wallet_projection(&projection),
+        ..Default::default()
+    }
 }
 
 #[cfg(test)]

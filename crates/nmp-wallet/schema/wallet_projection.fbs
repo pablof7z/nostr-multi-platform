@@ -1,0 +1,176 @@
+namespace nmp.wallet;
+
+// Typed FlatBuffers wire for the MERGED multi-backend `nmp_wallet::WalletProjection`
+// (#2915, epic #2864). This is the typed sidecar for the product wallet noun the
+// composition root (`nmp_wallet::register`) projects under the DISTINCT key
+// `"wallet.merged"` — NOT `"wallet"`, which `nmp-nip47` still owns for its
+// single-backend NWC `WalletStatus` shape (see
+// `crates/nmp-nip47/schema/wallet_status.fbs`). The two coexist: an NWC-only host
+// keeps decoding the `NWST` `"wallet"` sidecar; a host that wants the merged
+// backend-selection + capability-union + concatenated bounded rows decodes this
+// `NWMP` `"wallet.merged"` sidecar.
+//
+// RAW-DATA DOCTRINE (aim.md §2 / ADR-0072): this buffer carries ONLY raw semantic
+// tokens — protocol enums, raw hex pubkeys/ids, raw integer amounts and mint/unit
+// strings. Never pre-rendered English labels, tone strings, or display-formatted
+// numbers. Shells render readiness labels, capability affordances, and
+// thousands-separated balances themselves from these raw values.
+//
+// Field-for-field mirror of the Rust structs in
+// `crates/nmp-wallet/src/projection.rs`:
+//   * String fields on the vector-of-tables rows are required (non-optional in
+//     the serde structs).
+//   * `Option<...>` fields carry a `has_*` presence flag plus the value, so
+//     absent (`None`) round-trips distinctly from a present default — the same
+//     optional-fields convention used by wallet_status.fbs / content_tree.fbs.
+//   * The nested `balances` / `pending_operations` / `recent_history` /
+//     `receive_rows` vectors follow the vector-of-tables precedent of
+//     `NotificationsSnapshot` (notifications.fbs) and `ModularTimelineSnapshot`
+//     (timeline_snapshot.fbs).
+//
+// Regenerate the checked-in Rust bindings ONLY through `ci/regenerate-flatbuffers.sh`
+// (pinned flatc 25.12.19 + repo rustfmt), NEVER raw flatc — a raw-flatc run passes
+// the version-pin check but red-fails `ci/check-rust-flatc-drift.sh`. The schema has
+// no `include`, so the script generates it plainly into
+// `crates/nmp-wallet/src/wire/generated/wallet_projection_generated.rs`.
+
+// `WalletReadiness` — the coarse-grained readiness of the merged wallet surface.
+enum WalletReadiness:ubyte {
+  NotConfigured = 0,
+  Activating = 1,
+  Ready = 2,
+  Degraded = 3,
+}
+
+// `WalletHistoryKind` — the class of a recent-history row.
+enum WalletHistoryKind:ubyte {
+  Deposit = 0,
+  SendNutzap = 1,
+  RedeemNutzap = 2,
+  PayBolt11 = 3,
+}
+
+// `WalletOperationKind` — the class of a pending operation-journal saga.
+enum WalletOperationKind:ubyte {
+  SelectBackend = 0,
+  PayBolt11 = 1,
+  CreateCashuWallet = 2,
+  PublishNutzapInfo = 3,
+  SendNutzap = 4,
+  RedeemNutzap = 5,
+  DepositCashu = 6,
+  MeltCashu = 7,
+}
+
+// `WalletOperationState` — the money-safety saga state of a pending operation.
+enum WalletOperationState:ubyte {
+  Draft = 0,
+  Prepared = 1,
+  MintPending = 2,
+  MintSettled = 3,
+  PublishPending = 4,
+  Settled = 5,
+  Unknown = 6,
+  Failed = 7,
+}
+
+// `WalletCapabilities` — the capability union across selected backends. A nested
+// table (always present) so the presence bit-set is self-describing.
+table WalletCapabilities {
+  pay_bolt11:bool;
+  create_cashu_wallet:bool;
+  publish_nutzap_info:bool;
+  send_nutzap:bool;
+  redeem_nutzap:bool;
+  deposit_cashu:bool;
+  melt_cashu:bool;
+  observe_nutzap_receipts:bool;
+}
+
+// `WalletBalanceRow` — one per (mint, unit) balance.
+table WalletBalanceRow {
+  mint:string;
+  unit:string;
+  amount:uint64;
+}
+
+// `WalletConsumedInput` — one proof-input a pending operation records as consumed
+// BEFORE its value-moving mint request (the at-most-once pre-record).
+table WalletConsumedInput {
+  event_id:string;
+  mint:string;
+  unit:string;
+  amount:uint64;
+}
+
+// `WalletOperation` — one pending operation-journal saga.
+table WalletOperation {
+  id:string;
+  kind:WalletOperationKind;
+  state:WalletOperationState;
+  // correlation_id: Option<String>
+  has_correlation_id:bool;
+  correlation_id:string;
+  consumed_inputs:[WalletConsumedInput];
+  // recorded_amount: Option<u64> (#2966)
+  has_recorded_amount:bool;
+  recorded_amount:uint64;
+  // recorded_sender: Option<String> (#2966)
+  has_recorded_sender:bool;
+  recorded_sender:string;
+  // recorded_at: Option<u64> (#2966)
+  has_recorded_at:bool;
+  recorded_at:uint64;
+}
+
+// `WalletHistoryRow` — one recent-history row. `state` is a raw protocol token
+// (e.g. "settled") the shell maps to a label itself.
+table WalletHistoryRow {
+  operation_id:string;
+  kind:WalletHistoryKind;
+  amount:uint64;
+  unit:string;
+  // sender: Option<String> (#2966)
+  has_sender:bool;
+  sender:string;
+  // timestamp: Option<u64> (#2966)
+  has_timestamp:bool;
+  timestamp:uint64;
+  state:string;
+}
+
+// `WalletReceiveRow` — one observed nutzap-receipt row.
+table WalletReceiveRow {
+  event_id:string;
+  mint:string;
+  amount:uint64;
+  unit:string;
+  // sender: Option<String> (#2966)
+  has_sender:bool;
+  sender:string;
+  // timestamp: Option<u64> (#2966)
+  has_timestamp:bool;
+  timestamp:uint64;
+  accepted:bool;
+}
+
+table WalletProjection {
+  schema_version:uint32 = 2;   // mirrors projection_wire::SCHEMA_VERSION
+  // active_backend_id: Option<WalletBackendId> (a String newtype)
+  has_active_backend_id:bool;
+  active_backend_id:string;
+  readiness:WalletReadiness;
+  capabilities:WalletCapabilities;
+  balances:[WalletBalanceRow];
+  // cashu_p2pk_pubkey: Option<String>
+  has_cashu_p2pk_pubkey:bool;
+  cashu_p2pk_pubkey:string;
+  accepted_mint_count:uint32;
+  accepted_relay_count:uint32;
+  pending_operations:[WalletOperation];
+  recent_history:[WalletHistoryRow];
+  receive_rows:[WalletReceiveRow];
+}
+
+root_type WalletProjection;
+file_identifier "NWMP";
