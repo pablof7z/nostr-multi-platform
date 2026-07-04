@@ -21,14 +21,20 @@ use super::runtime::IdentityRuntime;
 /// the refreshed projection could sit unemitted until an unrelated kernel
 /// mutation triggered a tick.
 pub(crate) fn bunker_connection_state_changed(
-    identity: &IdentityRuntime,
+    identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
+    identity_id: Option<String>,
     state: String,
     reason: Option<String>,
 ) {
-    identity.set_signer_state(Some(SignerStateDto::from_nip46_connection_state(
-        &state, reason,
-    )));
+    // #2976: attribute the health to the ORIGINATING identity (threaded from
+    // the NIP-46 runtime), not the currently-active account. `None` means the
+    // handshake has not learned the identity yet (pre-`SignerReady`) → the
+    // transient onboarding lane.
+    identity.record_signer_health(
+        identity_id.as_deref(),
+        SignerStateDto::from_nip46_connection_state(&state, reason),
+    );
     kernel.mark_changed_since_emit();
 }
 
@@ -38,16 +44,19 @@ pub(crate) fn bunker_connection_state_changed(
 /// reports a NIP-55 operation outcome that affects the long-lived signer
 /// health (e.g. signer unavailable, rejected, awaiting approval).
 pub(crate) fn nip55_signer_state_changed(
-    identity: &IdentityRuntime,
+    identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
+    identity_id: Option<String>,
     state: String,
     reason: Option<String>,
 ) {
-    identity.set_signer_state(Some(SignerStateDto::new(
-        "nip55".to_string(),
-        state,
-        reason,
-    )));
+    // #2976: post-connect NIP-55 events carry the signer's pubkey (learned via
+    // `signer.pubkey_hex()`); first-connect events (`awaiting_approval` before
+    // any account exists) carry `None` → the transient onboarding lane.
+    identity.record_signer_health(
+        identity_id.as_deref(),
+        SignerStateDto::new("nip55".to_string(), state, reason),
+    );
     kernel.mark_changed_since_emit();
 }
 
@@ -151,16 +160,22 @@ pub(crate) fn restore_bunker_session(
 /// the actor. A missing hook degrades to a toast (D6) — defence against
 /// init-order bugs, exactly like the bunker path.
 pub(crate) fn restore_nip55_session(
-    identity: &IdentityRuntime,
+    identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
     payload_json: &str,
 ) {
     if !identity.invoke_external_signer_restore_hook(payload_json) {
-        identity.set_signer_state(Some(SignerStateDto::new(
-            "nip55".to_string(),
-            "unavailable".to_string(),
-            Some("NIP-55 driver not initialised".to_string()),
-        )));
+        // #2976: the account is not (yet) in the runtime — the restore hook
+        // is missing, so there is nothing to key against. Surface the degraded
+        // state through the transient onboarding lane (`None`).
+        identity.record_signer_health(
+            None,
+            SignerStateDto::new(
+                "nip55".to_string(),
+                "unavailable".to_string(),
+                Some("NIP-55 driver not initialised".to_string()),
+            ),
+        );
         kernel.set_last_error_token(&crate::ui_token::UiToken::error(
             crate::ui_token::codes::SIGNER_NIP55_DRIVER_NOT_INITIALISED,
             "NIP-55 driver not initialised — call nmp_external_signer_init",

@@ -129,9 +129,12 @@ impl Nip55Driver {
         }
     }
 
-    fn set_signer_state(&self, state: &str, reason: Option<String>) {
+    /// #2976 — post a NIP-55 signer-health change. `identity_id` is the signer's
+    /// pubkey hex once known (post-connect); `None` for first-connect / degraded
+    /// events that fire before any account exists (→ onboarding lane).
+    fn set_signer_state(&self, identity_id: Option<String>, state: &str, reason: Option<String>) {
         self.tx
-            .nip55_signer_state_changed(state.to_string(), reason);
+            .nip55_signer_state_changed(identity_id, state.to_string(), reason);
     }
 
     /// Record the app-declared NIP-55 first-connect permission batch.
@@ -154,6 +157,7 @@ impl Nip55Driver {
             // app-declared batch is a composition bug, not a framework gap
             // to paper over.
             self.set_signer_state(
+                None,
                 "failed",
                 Some(
                     "no external-signer permission batch declared; app must call \
@@ -168,6 +172,7 @@ impl Nip55Driver {
         if let Ok(mut guard) = self.pending_connect.lock() {
             if guard.is_some() {
                 self.set_signer_state(
+                    None,
                     "awaiting_approval",
                     Some("external signer approval already pending".to_string()),
                 );
@@ -176,17 +181,18 @@ impl Nip55Driver {
             *guard = Some(connect);
         } else {
             self.set_signer_state(
+                None,
                 "failed",
                 Some("external signer pending state poisoned".to_string()),
             );
             return;
         }
-        self.set_signer_state("awaiting_approval", None);
+        self.set_signer_state(None, "awaiting_approval", None);
         if let Err(e) = self.transport.send_request(request) {
             if let Ok(mut guard) = self.pending_connect.lock() {
                 guard.take();
             }
-            self.set_signer_state("unavailable", Some(e.to_string()));
+            self.set_signer_state(None, "unavailable", Some(e.to_string()));
         }
     }
 
@@ -230,6 +236,8 @@ impl Nip55Driver {
         match connect.complete(response, transport) {
             Ok(signer) => {
                 let signer = Arc::new(signer);
+                // #2976 — the account identity for this signer (post-connect).
+                let identity_id = RemoteSignerHandle::pubkey_hex(&*signer);
                 if let Ok(mut signers) = self.signers.lock() {
                     signers.push(Arc::clone(&signer));
                 }
@@ -237,16 +245,16 @@ impl Nip55Driver {
                     nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
                     true,
                 );
-                self.set_signer_state("ready", None);
+                self.set_signer_state(Some(identity_id), "ready", None);
             }
             Err(SignerError::Rejected(reason)) => {
-                self.set_signer_state("failed", Some(reason));
+                self.set_signer_state(None, "failed", Some(reason));
             }
             Err(SignerError::Unavailable(reason)) => {
-                self.set_signer_state("unavailable", Some(reason));
+                self.set_signer_state(None, "unavailable", Some(reason));
             }
             Err(e) => {
-                self.set_signer_state("failed", Some(e.to_string()));
+                self.set_signer_state(None, "failed", Some(e.to_string()));
             }
         }
     }
@@ -258,13 +266,14 @@ impl Nip55Driver {
             Ok(SignerPayload::Nip55(p)) => p,
             Ok(_) => {
                 self.set_signer_state(
+                    None,
                     "failed",
                     Some("stored signer payload is not nip55".to_string()),
                 );
                 return;
             }
             Err(e) => {
-                self.set_signer_state("failed", Some(format!("parse signer payload: {e}")));
+                self.set_signer_state(None, "failed", Some(format!("parse signer payload: {e}")));
                 return;
             }
         };
@@ -273,6 +282,8 @@ impl Nip55Driver {
         match Nip55Signer::from_payload(&payload, transport) {
             Ok(signer) => {
                 let signer = Arc::new(signer);
+                // #2976 — the account identity for this restored signer.
+                let identity_id = RemoteSignerHandle::pubkey_hex(&*signer);
                 if let Ok(mut signers) = self.signers.lock() {
                     signers.push(Arc::clone(&signer));
                 }
@@ -280,10 +291,10 @@ impl Nip55Driver {
                     nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
                     true,
                 );
-                self.set_signer_state("ready", None);
+                self.set_signer_state(Some(identity_id), "ready", None);
             }
             Err(e) => {
-                self.set_signer_state("failed", Some(e.to_string()));
+                self.set_signer_state(None, "failed", Some(e.to_string()));
             }
         }
     }

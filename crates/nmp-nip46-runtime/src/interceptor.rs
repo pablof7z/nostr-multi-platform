@@ -181,7 +181,11 @@ impl Nip46Interceptor {
                         Some(error.to_string()),
                     );
                     // ConnectionStateChanged preservation (V-14 / signer_broker:76).
+                    // #2976 — attribute to the account this session belongs to
+                    // (known post-`SignerReady`); `None` during the handshake
+                    // routes the failure to the transient onboarding lane.
                     self.sender.bunker_connection_state_changed(
+                        self.current_user_pubkey_hex(),
                         "failed".to_string(),
                         Some(error.to_string()),
                     );
@@ -203,6 +207,10 @@ impl Nip46Interceptor {
     /// `DeliverSignerResponse` path (§D3b fan-out) and resolves parked sign
     /// operations via `ingest_rpc_response`.
     fn handle_signer_ready(&self, ready: SignerReady, _kernel: &mut Kernel) {
+        // #2976 — capture the account's user pubkey before `ready` is consumed
+        // by `complete_signer_from_ready`; it identifies WHICH account the
+        // subsequent "connected" health event belongs to.
+        let ready_user_pubkey_hex = ready.user_pubkey_hex.clone();
         let signer = match complete_signer_from_ready(&self.runtime, ready, self.sender.clone()) {
             Ok(signer) => signer,
             Err(reason) => {
@@ -218,17 +226,36 @@ impl Nip46Interceptor {
         // (which calls `ingest_rpc_response`) both refer to the SAME instance.
         let signer_source = SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(Arc::new(signer))));
 
-        // Report progress before handing off the signer.
+        // #2976 ORDERING FIX: post `add_signer` FIRST so the account exists in
+        // the actor's `IdentityRuntime` before the `bunker_connection_state_changed`
+        // health event is processed. The inbox is FIFO, so the prior ordering
+        // (state-change before add_signer) meant the `contains_account` guard in
+        // `record_signer_health` dropped the very first "connected" event for a
+        // freshly-added signer. Add first → the guard passes → health recorded.
+        self.sender.add_signer(signer_source, true);
+
+        // Report progress (bunker_handshake slot — independent of signer_state).
         self.sender.bunker_handshake_progress(
             "ready".to_string(),
             None,
             Some("NIP-46 signer ready".to_string()),
         );
-        // ConnectionStateChanged preservation (V-14 / signer_broker:76).
-        self.sender
-            .bunker_connection_state_changed("connected".to_string(), None);
+        // ConnectionStateChanged preservation (V-14 / signer_broker:76), now
+        // attributed to this account's user pubkey (#2976).
+        self.sender.bunker_connection_state_changed(
+            Some(ready_user_pubkey_hex),
+            "connected".to_string(),
+            None,
+        );
+    }
 
-        self.sender.add_signer(signer_source, true);
+    /// #2976 — the current session's account user pubkey hex, if the handshake
+    /// has learned it (`None` before `SignerReady`). Used to attribute later
+    /// health callbacks (errors) to the correct identity.
+    fn current_user_pubkey_hex(&self) -> Option<String> {
+        let guard = self.runtime.lock().ok()?;
+        let rt = guard.as_ref()?;
+        rt.user_pubkey().map(|pk| pk.to_hex())
     }
 }
 

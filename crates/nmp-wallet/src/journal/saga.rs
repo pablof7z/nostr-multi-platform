@@ -115,6 +115,28 @@ pub struct WalletOperation {
     pub state: WalletOperationState,
     pub correlation_id: Option<String>,
     pub consumed_inputs: Vec<WalletConsumedInput>,
+    /// The operation's own logical amount, recorded once by the command that
+    /// creates it (#2966) — distinct from `consumed_inputs`, which name
+    /// proofs actually spent in wallet-internal denominations, not what the
+    /// operation was *for*. Today only `SendNutzap` populates this (the
+    /// amount the sender intended to deliver, known up front, before proof
+    /// selection ever runs) — `consumed_inputs.last()` names the last
+    /// selected proof's own face value, which is never the same number and
+    /// is unset entirely for a send that fails before proof selection.
+    pub recorded_amount: Option<u64>,
+    /// The counterparty pubkey for a receive, set once `RedeemNutzapCommand`
+    /// resolves the kind:9321 event (#2966) — a nutzap feed's "from
+    /// <pubkey>" needs this and nothing upstream carried it into the journal
+    /// before now. `None` for kinds with no external counterparty
+    /// (`DepositCashu`, `SendNutzap`: the account itself is the sender).
+    pub recorded_sender: Option<String>,
+    /// When this operation was recorded, in unix seconds (#2966) — a nutzap
+    /// feed's "at <time>" needs a timestamp on every history/receive row,
+    /// not just a settled/failed state. Set once at `begin_operation` from
+    /// the caller's already-available `ctx.now_secs`, never re-derived
+    /// later, so it reads as "when this wallet started the operation"
+    /// consistently across every kind.
+    pub recorded_at: Option<u64>,
 }
 
 impl WalletOperation {
@@ -130,6 +152,9 @@ impl WalletOperation {
             state,
             correlation_id: None,
             consumed_inputs: Vec::new(),
+            recorded_amount: None,
+            recorded_sender: None,
+            recorded_at: None,
         }
     }
 
@@ -213,6 +238,33 @@ impl WalletOperationJournal {
     ) -> Result<(), WalletJournalError> {
         let operation = self.operation_mut(operation_id)?;
         operation.record_consumed_input(input);
+        Ok(())
+    }
+
+    /// Record `SendNutzap`'s intended send amount (#2966) — see
+    /// [`WalletOperation::recorded_amount`]'s doc comment for why this,
+    /// rather than `consumed_inputs`, is the correct source for a send
+    /// history row's display amount.
+    pub fn record_amount(
+        &mut self,
+        operation_id: &WalletOperationId,
+        amount: u64,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_amount = Some(amount);
+        Ok(())
+    }
+
+    /// Record a `RedeemNutzap`'s sender pubkey (#2966) once the kind:9321
+    /// event resolves — see [`WalletOperation::recorded_sender`]'s doc
+    /// comment.
+    pub fn record_sender(
+        &mut self,
+        operation_id: &WalletOperationId,
+        sender: impl Into<String>,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_sender = Some(sender.into());
         Ok(())
     }
 
@@ -310,139 +362,5 @@ fn validate_transition(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn input() -> WalletConsumedInput {
-        WalletConsumedInput {
-            event_id: "event-1".to_string(),
-            mint: "https://mint.example".to_string(),
-            unit: "sat".to_string(),
-            amount: 21,
-        }
-    }
-
-    #[test]
-    fn value_moving_mint_request_requires_recorded_inputs() {
-        let mut operation = WalletOperation::new(
-            WalletOperationId::new("op-send"),
-            WalletOperationKind::SendNutzap,
-            WalletOperationState::Prepared,
-        );
-
-        assert_eq!(
-            operation.transition(WalletOperationState::MintPending),
-            Err(WalletJournalError::MissingConsumedInputs {
-                operation_id: "op-send".to_string(),
-                kind: WalletOperationKind::SendNutzap,
-            })
-        );
-
-        operation.record_consumed_input(input());
-        assert!(operation
-            .transition(WalletOperationState::MintPending)
-            .is_ok());
-    }
-
-    #[test]
-    fn terminal_operations_do_not_transition_again() {
-        let mut operation = WalletOperation::new(
-            WalletOperationId::new("op-settled"),
-            WalletOperationKind::PayBolt11,
-            WalletOperationState::Settled,
-        );
-
-        assert_eq!(
-            operation.transition(WalletOperationState::Failed),
-            Err(WalletJournalError::InvalidTransition {
-                from: WalletOperationState::Settled,
-                to: WalletOperationState::Failed,
-            })
-        );
-    }
-
-    #[test]
-    fn journal_lists_only_pending_operations() {
-        let mut journal = WalletOperationJournal::new();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("pending"),
-                WalletOperationKind::DepositCashu,
-                WalletOperationState::MintPending,
-            ))
-            .unwrap();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("done"),
-                WalletOperationKind::DepositCashu,
-                WalletOperationState::Settled,
-            ))
-            .unwrap();
-
-        let pending = journal.pending_operations();
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].id.as_str(), "pending");
-    }
-
-    #[test]
-    fn journal_lists_only_terminal_operations_as_the_complement_of_pending() {
-        let mut journal = WalletOperationJournal::new();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("pending"),
-                WalletOperationKind::DepositCashu,
-                WalletOperationState::MintPending,
-            ))
-            .unwrap();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("settled"),
-                WalletOperationKind::DepositCashu,
-                WalletOperationState::Settled,
-            ))
-            .unwrap();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("failed"),
-                WalletOperationKind::RedeemNutzap,
-                WalletOperationState::Failed,
-            ))
-            .unwrap();
-
-        let terminal = journal.terminal_operations();
-        let mut ids: Vec<&str> = terminal.iter().map(|op| op.id.as_str()).collect();
-        ids.sort_unstable();
-        assert_eq!(ids, vec!["failed", "settled"]);
-    }
-
-    #[test]
-    fn journal_transition_emits_a_saga_event_for_the_trail() {
-        let mut journal = WalletOperationJournal::new();
-        journal
-            .insert(WalletOperation::new(
-                WalletOperationId::new("op-1"),
-                WalletOperationKind::PayBolt11,
-                WalletOperationState::Draft,
-            ))
-            .unwrap();
-
-        let event = journal
-            .transition(
-                &WalletOperationId::new("op-1"),
-                WalletOperationState::Prepared,
-            )
-            .unwrap();
-
-        assert_eq!(event.op.as_str(), "op-1");
-        assert_eq!(event.from, WalletOperationState::Draft);
-        assert_eq!(event.to, WalletOperationState::Prepared);
-    }
-
-    #[test]
-    fn reconciling_an_unknown_operation_can_never_reach_mint_pending_again() {
-        // This is the no-double-spend guarantee: restart reconciliation may
-        // only move an `Unknown` operation toward publish/settle/fail, never
-        // back into a fresh mint request.
-        assert!(!WalletOperationState::Unknown.can_transition_to(WalletOperationState::MintPending));
-    }
-}
+#[path = "saga_tests.rs"]
+mod tests;

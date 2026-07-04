@@ -64,6 +64,7 @@ use crate::action::{
 use crate::backend::cashu::CashuWalletBackend;
 use crate::backend::nwc::NwcWalletBackend;
 use crate::backend::WalletBackend;
+use crate::discovery_runtime::MintDiscoveryRuntime;
 use crate::runtime::WalletRuntime;
 use crate::selector::WalletBackendSelector;
 
@@ -103,6 +104,14 @@ pub struct Handles {
     /// and call `.snapshot()` — the same access a caller that invokes this
     /// `register` fn directly (e.g. as its own composition root) already had.
     pub runtime: Arc<WalletRuntime>,
+    /// The installed NIP-87 mint discovery runtime (#2880). Owns the
+    /// identity-reactive read interests for kind:38172 announcements +
+    /// kind:38000 recommendations and the viewer's follow/mute graph, and
+    /// produces the web-of-trust-scoped, capability-fail-closed
+    /// discovered-mints projection via [`MintDiscoveryRuntime::snapshot`]. Held
+    /// so a composition root can query discovered mints (the same
+    /// runtime-holds-projection access as `runtime` above).
+    pub mint_discovery: Arc<MintDiscoveryRuntime>,
 }
 
 /// Register the wallet composition stack on `app`. See module docs for what
@@ -192,7 +201,7 @@ pub fn register(
     //    registered backend's `on_wallet_event`.
     let runtime = Arc::new(WalletRuntime::new(
         Arc::clone(&selector),
-        active_pubkey,
+        Arc::clone(&active_pubkey),
         app.actor_sender(),
         app,
     ));
@@ -212,9 +221,16 @@ pub fn register(
         move || Some(wallet_merged_typed_projection(&projection_runtime)),
     );
 
+    // 8. NIP-87 mint discovery (#2880): identity-reactive read interests for
+    //    kind:38172 announcements + kind:38000 recommendations plus the
+    //    account's follow/mute graph, aggregated (WoT-scoped, fail-closed on
+    //    mints missing the nutzap NUTs) into the discovered-mints projection.
+    let mint_discovery = Arc::new(MintDiscoveryRuntime::new(active_pubkey, app));
+
     Ok(Handles {
         nwc_wallet: nip47_handles.wallet,
         runtime,
+        mint_discovery,
     })
 }
 

@@ -13,7 +13,11 @@
 //!   unspent proofs, kind:7376 spending history, kind:7374 deposit quote).
 //! - **NIP-61** — NutZap send/receive (kind:9321 nutzap event, kind:10019
 //!   NutZap info event).
-//! - **NIP-88** — Cashu mint announcement (kind:38172) for mint discovery.
+//!
+//! NIP-87 mint discoverability (kind:38172 announcement / kind:38000
+//! recommendation) is **not** owned here — it moved to the sibling `nmp-nip87`
+//! crate (one crate per NIP). The Cashu backend adapter reaches those codecs
+//! through `nmp-nip87` when it needs mint discovery.
 //!
 //! # Relay I/O lives in the kernel, not here
 //!
@@ -60,7 +64,6 @@ pub mod cashu;
 pub mod error;
 pub mod history_event;
 pub mod kinds;
-pub mod mint_announce;
 pub mod nip60_wallet;
 pub mod nutzap;
 pub mod ownership;
@@ -69,9 +72,6 @@ pub mod wallet_event;
 
 pub use error::Nip60Error;
 pub use kinds::*;
-pub use mint_announce::{
-    decode_mint_announce_event, mint_announce_filter, MintAnnouncement,
-};
 #[cfg(feature = "native")]
 pub use nip60_wallet::DepositRequest;
 pub use nip60_wallet::Nip60WalletHandle;

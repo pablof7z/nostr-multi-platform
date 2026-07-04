@@ -88,7 +88,7 @@ mod tests {
             None,
             Some("NIP-46: timeout".to_string()),
         );
-        sender.bunker_connection_state_changed("failed".to_string(), Some("timeout".to_string()));
+        sender.bunker_connection_state_changed(None, "failed".to_string(), Some("timeout".to_string()));
 
         let mails = drain(&rx);
         assert_eq!(mails.len(), 2, "error must post two commands");
@@ -156,14 +156,14 @@ mod tests {
 
         // Simulate what the interceptor does after building the signer:
         sender.bunker_handshake_progress("ready".to_string(), None, None);
-        sender.bunker_connection_state_changed("connected".to_string(), None);
+        sender.bunker_connection_state_changed(None, "connected".to_string(), None);
 
         let mails = drain(&rx);
         assert_eq!(mails.len(), 2);
 
         match &mails[1] {
             ActorMail::Command(ActorCommand::Identity(
-                IdentityCommand::BunkerConnectionStateChanged { state, reason },
+                IdentityCommand::BunkerConnectionStateChanged { state, reason, .. },
             )) => {
                 assert_eq!(state, "connected");
                 assert!(reason.is_none(), "connected state must have no reason");

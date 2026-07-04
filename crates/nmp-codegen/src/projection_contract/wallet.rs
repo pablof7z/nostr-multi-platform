@@ -30,7 +30,7 @@ pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     schema_id: "nmp.wallet.merged",
     file_identifier: "NWMP",
     // nmp-wallet projection_wire::SCHEMA_VERSION
-    version: 1,
+    version: 2,
     declaration_policy: DeclarationPolicy::RegistrationGated,
     dependency_versions: &[],
     presence_policy: PresencePolicy::None,

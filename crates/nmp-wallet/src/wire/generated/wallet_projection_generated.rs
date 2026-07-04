@@ -1138,6 +1138,12 @@ pub mod nmp {
             pub const VT_HAS_CORRELATION_ID: ::flatbuffers::VOffsetT = 10;
             pub const VT_CORRELATION_ID: ::flatbuffers::VOffsetT = 12;
             pub const VT_CONSUMED_INPUTS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_RECORDED_AMOUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_RECORDED_AMOUNT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HAS_RECORDED_SENDER: ::flatbuffers::VOffsetT = 20;
+            pub const VT_RECORDED_SENDER: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_RECORDED_AT: ::flatbuffers::VOffsetT = 24;
+            pub const VT_RECORDED_AT: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1154,6 +1160,11 @@ pub mod nmp {
                 args: &'args WalletOperationArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletOperation<'bldr>> {
                 let mut builder = WalletOperationBuilder::new(_fbb);
+                builder.add_recorded_at(args.recorded_at);
+                builder.add_recorded_amount(args.recorded_amount);
+                if let Some(x) = args.recorded_sender {
+                    builder.add_recorded_sender(x);
+                }
                 if let Some(x) = args.consumed_inputs {
                     builder.add_consumed_inputs(x);
                 }
@@ -1163,6 +1174,9 @@ pub mod nmp {
                 if let Some(x) = args.id {
                     builder.add_id(x);
                 }
+                builder.add_has_recorded_at(args.has_recorded_at);
+                builder.add_has_recorded_sender(args.has_recorded_sender);
+                builder.add_has_recorded_amount(args.has_recorded_amount);
                 builder.add_has_correlation_id(args.has_correlation_id);
                 builder.add_state(args.state);
                 builder.add_kind(args.kind);
@@ -1248,6 +1262,73 @@ pub mod nmp {
                     >>(WalletOperation::VT_CONSUMED_INPUTS, None)
                 }
             }
+            #[inline]
+            pub fn has_recorded_amount(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletOperation::VT_HAS_RECORDED_AMOUNT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recorded_amount(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletOperation::VT_RECORDED_AMOUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_recorded_sender(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletOperation::VT_HAS_RECORDED_SENDER, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recorded_sender(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletOperation::VT_RECORDED_SENDER,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_recorded_at(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletOperation::VT_HAS_RECORDED_AT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recorded_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletOperation::VT_RECORDED_AT, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for WalletOperation<'_> {
@@ -1272,6 +1353,24 @@ pub mod nmp {
                             ::flatbuffers::ForwardsUOffset<WalletConsumedInput>,
                         >,
                     >>("consumed_inputs", Self::VT_CONSUMED_INPUTS, false)?
+                    .visit_field::<bool>(
+                        "has_recorded_amount",
+                        Self::VT_HAS_RECORDED_AMOUNT,
+                        false,
+                    )?
+                    .visit_field::<u64>("recorded_amount", Self::VT_RECORDED_AMOUNT, false)?
+                    .visit_field::<bool>(
+                        "has_recorded_sender",
+                        Self::VT_HAS_RECORDED_SENDER,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "recorded_sender",
+                        Self::VT_RECORDED_SENDER,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_recorded_at", Self::VT_HAS_RECORDED_AT, false)?
+                    .visit_field::<u64>("recorded_at", Self::VT_RECORDED_AT, false)?
                     .finish();
                 Ok(())
             }
@@ -1290,6 +1389,12 @@ pub mod nmp {
                     >,
                 >,
             >,
+            pub has_recorded_amount: bool,
+            pub recorded_amount: u64,
+            pub has_recorded_sender: bool,
+            pub recorded_sender: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_recorded_at: bool,
+            pub recorded_at: u64,
         }
         impl<'a> Default for WalletOperationArgs<'a> {
             #[inline]
@@ -1301,6 +1406,12 @@ pub mod nmp {
                     has_correlation_id: false,
                     correlation_id: None,
                     consumed_inputs: None,
+                    has_recorded_amount: false,
+                    recorded_amount: 0,
+                    has_recorded_sender: false,
+                    recorded_sender: None,
+                    has_recorded_at: false,
+                    recorded_at: 0,
                 }
             }
         }
@@ -1365,6 +1476,50 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_has_recorded_amount(&mut self, has_recorded_amount: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletOperation::VT_HAS_RECORDED_AMOUNT,
+                    has_recorded_amount,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_recorded_amount(&mut self, recorded_amount: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletOperation::VT_RECORDED_AMOUNT, recorded_amount, 0);
+            }
+            #[inline]
+            pub fn add_has_recorded_sender(&mut self, has_recorded_sender: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletOperation::VT_HAS_RECORDED_SENDER,
+                    has_recorded_sender,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_recorded_sender(
+                &mut self,
+                recorded_sender: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletOperation::VT_RECORDED_SENDER,
+                    recorded_sender,
+                );
+            }
+            #[inline]
+            pub fn add_has_recorded_at(&mut self, has_recorded_at: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletOperation::VT_HAS_RECORDED_AT,
+                    has_recorded_at,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_recorded_at(&mut self, recorded_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletOperation::VT_RECORDED_AT, recorded_at, 0);
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletOperationBuilder<'a, 'b, A> {
@@ -1390,6 +1545,12 @@ pub mod nmp {
                 ds.field("has_correlation_id", &self.has_correlation_id());
                 ds.field("correlation_id", &self.correlation_id());
                 ds.field("consumed_inputs", &self.consumed_inputs());
+                ds.field("has_recorded_amount", &self.has_recorded_amount());
+                ds.field("recorded_amount", &self.recorded_amount());
+                ds.field("has_recorded_sender", &self.has_recorded_sender());
+                ds.field("recorded_sender", &self.recorded_sender());
+                ds.field("has_recorded_at", &self.has_recorded_at());
+                ds.field("recorded_at", &self.recorded_at());
                 ds.finish()
             }
         }
@@ -1415,7 +1576,11 @@ pub mod nmp {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
             pub const VT_AMOUNT: ::flatbuffers::VOffsetT = 8;
             pub const VT_UNIT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_STATE: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HAS_SENDER: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SENDER: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_TIMESTAMP: ::flatbuffers::VOffsetT = 16;
+            pub const VT_TIMESTAMP: ::flatbuffers::VOffsetT = 18;
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1432,9 +1597,13 @@ pub mod nmp {
                 args: &'args WalletHistoryRowArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletHistoryRow<'bldr>> {
                 let mut builder = WalletHistoryRowBuilder::new(_fbb);
+                builder.add_timestamp(args.timestamp);
                 builder.add_amount(args.amount);
                 if let Some(x) = args.state {
                     builder.add_state(x);
+                }
+                if let Some(x) = args.sender {
+                    builder.add_sender(x);
                 }
                 if let Some(x) = args.unit {
                     builder.add_unit(x);
@@ -1442,6 +1611,8 @@ pub mod nmp {
                 if let Some(x) = args.operation_id {
                     builder.add_operation_id(x);
                 }
+                builder.add_has_timestamp(args.has_timestamp);
+                builder.add_has_sender(args.has_sender);
                 builder.add_kind(args.kind);
                 builder.finish()
             }
@@ -1496,6 +1667,51 @@ pub mod nmp {
                 }
             }
             #[inline]
+            pub fn has_sender(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletHistoryRow::VT_HAS_SENDER, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn sender(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletHistoryRow::VT_SENDER,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_timestamp(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletHistoryRow::VT_HAS_TIMESTAMP, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn timestamp(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletHistoryRow::VT_TIMESTAMP, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
             pub fn state(&self) -> Option<&'a str> {
                 // Safety:
                 // Created from valid Table for this object
@@ -1528,6 +1744,14 @@ pub mod nmp {
                         Self::VT_UNIT,
                         false,
                     )?
+                    .visit_field::<bool>("has_sender", Self::VT_HAS_SENDER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "sender",
+                        Self::VT_SENDER,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_timestamp", Self::VT_HAS_TIMESTAMP, false)?
+                    .visit_field::<u64>("timestamp", Self::VT_TIMESTAMP, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "state",
                         Self::VT_STATE,
@@ -1542,6 +1766,10 @@ pub mod nmp {
             pub kind: WalletHistoryKind,
             pub amount: u64,
             pub unit: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_sender: bool,
+            pub sender: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_timestamp: bool,
+            pub timestamp: u64,
             pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
         impl<'a> Default for WalletHistoryRowArgs<'a> {
@@ -1552,6 +1780,10 @@ pub mod nmp {
                     kind: WalletHistoryKind::Deposit,
                     amount: 0,
                     unit: None,
+                    has_sender: false,
+                    sender: None,
+                    has_timestamp: false,
+                    timestamp: 0,
                     state: None,
                 }
             }
@@ -1590,6 +1822,31 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_has_sender(&mut self, has_sender: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletHistoryRow::VT_HAS_SENDER, has_sender, false);
+            }
+            #[inline]
+            pub fn add_sender(&mut self, sender: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletHistoryRow::VT_SENDER,
+                    sender,
+                );
+            }
+            #[inline]
+            pub fn add_has_timestamp(&mut self, has_timestamp: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletHistoryRow::VT_HAS_TIMESTAMP,
+                    has_timestamp,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_timestamp(&mut self, timestamp: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletHistoryRow::VT_TIMESTAMP, timestamp, 0);
+            }
+            #[inline]
             pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     WalletHistoryRow::VT_STATE,
@@ -1620,6 +1877,10 @@ pub mod nmp {
                 ds.field("kind", &self.kind());
                 ds.field("amount", &self.amount());
                 ds.field("unit", &self.unit());
+                ds.field("has_sender", &self.has_sender());
+                ds.field("sender", &self.sender());
+                ds.field("has_timestamp", &self.has_timestamp());
+                ds.field("timestamp", &self.timestamp());
                 ds.field("state", &self.state());
                 ds.finish()
             }
@@ -1646,7 +1907,11 @@ pub mod nmp {
             pub const VT_MINT: ::flatbuffers::VOffsetT = 6;
             pub const VT_AMOUNT: ::flatbuffers::VOffsetT = 8;
             pub const VT_UNIT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_ACCEPTED: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HAS_SENDER: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SENDER: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_TIMESTAMP: ::flatbuffers::VOffsetT = 16;
+            pub const VT_TIMESTAMP: ::flatbuffers::VOffsetT = 18;
+            pub const VT_ACCEPTED: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1663,7 +1928,11 @@ pub mod nmp {
                 args: &'args WalletReceiveRowArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletReceiveRow<'bldr>> {
                 let mut builder = WalletReceiveRowBuilder::new(_fbb);
+                builder.add_timestamp(args.timestamp);
                 builder.add_amount(args.amount);
+                if let Some(x) = args.sender {
+                    builder.add_sender(x);
+                }
                 if let Some(x) = args.unit {
                     builder.add_unit(x);
                 }
@@ -1674,6 +1943,8 @@ pub mod nmp {
                     builder.add_event_id(x);
                 }
                 builder.add_accepted(args.accepted);
+                builder.add_has_timestamp(args.has_timestamp);
+                builder.add_has_sender(args.has_sender);
                 builder.finish()
             }
 
@@ -1725,6 +1996,51 @@ pub mod nmp {
                 }
             }
             #[inline]
+            pub fn has_sender(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletReceiveRow::VT_HAS_SENDER, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn sender(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletReceiveRow::VT_SENDER,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_timestamp(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletReceiveRow::VT_HAS_TIMESTAMP, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn timestamp(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletReceiveRow::VT_TIMESTAMP, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
             pub fn accepted(&self) -> bool {
                 // Safety:
                 // Created from valid Table for this object
@@ -1760,6 +2076,14 @@ pub mod nmp {
                         Self::VT_UNIT,
                         false,
                     )?
+                    .visit_field::<bool>("has_sender", Self::VT_HAS_SENDER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "sender",
+                        Self::VT_SENDER,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_timestamp", Self::VT_HAS_TIMESTAMP, false)?
+                    .visit_field::<u64>("timestamp", Self::VT_TIMESTAMP, false)?
                     .visit_field::<bool>("accepted", Self::VT_ACCEPTED, false)?
                     .finish();
                 Ok(())
@@ -1770,6 +2094,10 @@ pub mod nmp {
             pub mint: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub amount: u64,
             pub unit: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_sender: bool,
+            pub sender: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_timestamp: bool,
+            pub timestamp: u64,
             pub accepted: bool,
         }
         impl<'a> Default for WalletReceiveRowArgs<'a> {
@@ -1780,6 +2108,10 @@ pub mod nmp {
                     mint: None,
                     amount: 0,
                     unit: None,
+                    has_sender: false,
+                    sender: None,
+                    has_timestamp: false,
+                    timestamp: 0,
                     accepted: false,
                 }
             }
@@ -1817,6 +2149,31 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_has_sender(&mut self, has_sender: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletReceiveRow::VT_HAS_SENDER, has_sender, false);
+            }
+            #[inline]
+            pub fn add_sender(&mut self, sender: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletReceiveRow::VT_SENDER,
+                    sender,
+                );
+            }
+            #[inline]
+            pub fn add_has_timestamp(&mut self, has_timestamp: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletReceiveRow::VT_HAS_TIMESTAMP,
+                    has_timestamp,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_timestamp(&mut self, timestamp: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletReceiveRow::VT_TIMESTAMP, timestamp, 0);
+            }
+            #[inline]
             pub fn add_accepted(&mut self, accepted: bool) {
                 self.fbb_
                     .push_slot::<bool>(WalletReceiveRow::VT_ACCEPTED, accepted, false);
@@ -1845,6 +2202,10 @@ pub mod nmp {
                 ds.field("mint", &self.mint());
                 ds.field("amount", &self.amount());
                 ds.field("unit", &self.unit());
+                ds.field("has_sender", &self.has_sender());
+                ds.field("sender", &self.sender());
+                ds.field("has_timestamp", &self.has_timestamp());
+                ds.field("timestamp", &self.timestamp());
                 ds.field("accepted", &self.accepted());
                 ds.finish()
             }
@@ -1933,7 +2294,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -2185,7 +2546,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 WalletProjectionArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     has_active_backend_id: false,
                     active_backend_id: None,
                     readiness: WalletReadiness::NotConfigured,
@@ -2210,7 +2571,7 @@ pub mod nmp {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
-                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 1);
+                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 2);
             }
             #[inline]
             pub fn add_has_active_backend_id(&mut self, has_active_backend_id: bool) {

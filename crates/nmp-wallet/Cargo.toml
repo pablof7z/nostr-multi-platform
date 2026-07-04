@@ -14,6 +14,13 @@ nmp-nip47 = { path = "../nmp-nip47", version = "1.0.0-rc.1" }
 # and kind constants — never its own relay socket (nip60 owns zero relay I/O;
 # see nip60's own module docs).
 nmp-nip60 = { path = "../nmp-nip60", version = "1.0.0-rc.1" }
+# #2880 (NIP-87 mint discoverability): kind:38172 announcement + kind:38000
+# recommendation codecs and NUT-capability parsing for the discovered-mints
+# projection. Thin codec crate — no relay I/O, no wot, no wallet policy.
+nmp-nip87 = { path = "../nmp-nip87", version = "1.0.0-rc.1" }
+# #2880: web-of-trust scoring engine (`WotGraph`) reused — not reinvented — to
+# weight/filter mint recommendations by the active account's follow graph.
+nmp-wot = { path = "../nmp-wot", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
 # #2917: `nostr::secp256k1::SecretKey` is the wire shape
 # `nmp_nip60::nutzap::sign_p2pk_proof` takes for signing P2PK proofs on

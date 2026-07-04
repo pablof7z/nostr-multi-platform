@@ -87,6 +87,10 @@ pub(super) fn encode_operations<'a>(
             .correlation_id
             .as_ref()
             .map(|value| fbb.create_string(value));
+        let recorded_sender = op
+            .recorded_sender
+            .as_ref()
+            .map(|value| fbb.create_string(value));
 
         offsets.push(fb::WalletOperation::create(
             fbb,
@@ -97,6 +101,12 @@ pub(super) fn encode_operations<'a>(
                 has_correlation_id: op.correlation_id.is_some(),
                 correlation_id,
                 consumed_inputs: Some(consumed_inputs),
+                has_recorded_amount: op.recorded_amount.is_some(),
+                recorded_amount: op.recorded_amount.unwrap_or(0),
+                has_recorded_sender: op.recorded_sender.is_some(),
+                recorded_sender,
+                has_recorded_at: op.recorded_at.is_some(),
+                recorded_at: op.recorded_at.unwrap_or(0),
             },
         ));
     }
@@ -112,6 +122,7 @@ pub(super) fn encode_history<'a>(
         let operation_id = fbb.create_string(&row.operation_id);
         let unit = fbb.create_string(&row.unit);
         let state = fbb.create_string(&row.state);
+        let sender = row.sender.as_ref().map(|value| fbb.create_string(value));
         offsets.push(fb::WalletHistoryRow::create(
             fbb,
             &fb::WalletHistoryRowArgs {
@@ -119,6 +130,10 @@ pub(super) fn encode_history<'a>(
                 kind: history_kind_to_fb(row.kind),
                 amount: row.amount,
                 unit: Some(unit),
+                has_sender: row.sender.is_some(),
+                sender,
+                has_timestamp: row.timestamp.is_some(),
+                timestamp: row.timestamp.unwrap_or(0),
                 state: Some(state),
             },
         ));
@@ -135,6 +150,7 @@ pub(super) fn encode_receive_rows<'a>(
         let event_id = fbb.create_string(&row.event_id);
         let mint = fbb.create_string(&row.mint);
         let unit = fbb.create_string(&row.unit);
+        let sender = row.sender.as_ref().map(|value| fbb.create_string(value));
         offsets.push(fb::WalletReceiveRow::create(
             fbb,
             &fb::WalletReceiveRowArgs {
@@ -142,6 +158,10 @@ pub(super) fn encode_receive_rows<'a>(
                 mint: Some(mint),
                 amount: row.amount,
                 unit: Some(unit),
+                has_sender: row.sender.is_some(),
+                sender,
+                has_timestamp: row.timestamp.is_some(),
+                timestamp: row.timestamp.unwrap_or(0),
                 accepted: row.accepted,
             },
         ));
@@ -204,12 +224,25 @@ pub(super) fn decode_operations(
         } else {
             None
         };
+        let recorded_amount = row.has_recorded_amount().then(|| row.recorded_amount());
+        let recorded_sender = if row.has_recorded_sender() {
+            Some(str_field(
+                row.recorded_sender(),
+                "WalletOperation.recorded_sender",
+            )?)
+        } else {
+            None
+        };
+        let recorded_at = row.has_recorded_at().then(|| row.recorded_at());
         out.push(WalletOperation {
             id: WalletOperationId::new(str_field(row.id(), "WalletOperation.id")?),
             kind: operation_kind_from_fb(row.kind())?,
             state: operation_state_from_fb(row.state())?,
             correlation_id,
             consumed_inputs: decode_consumed_inputs(row.consumed_inputs())?,
+            recorded_amount,
+            recorded_sender,
+            recorded_at,
         });
     }
     Ok(out)
@@ -241,11 +274,18 @@ pub(super) fn decode_history(
     };
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        let sender = if row.has_sender() {
+            Some(str_field(row.sender(), "WalletHistoryRow.sender")?)
+        } else {
+            None
+        };
         out.push(WalletHistoryRow {
             operation_id: str_field(row.operation_id(), "WalletHistoryRow.operation_id")?,
             kind: history_kind_from_fb(row.kind())?,
             amount: row.amount(),
             unit: str_field(row.unit(), "WalletHistoryRow.unit")?,
+            sender,
+            timestamp: row.has_timestamp().then(|| row.timestamp()),
             state: str_field(row.state(), "WalletHistoryRow.state")?,
         });
     }
@@ -260,11 +300,18 @@ pub(super) fn decode_receive_rows(
     };
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        let sender = if row.has_sender() {
+            Some(str_field(row.sender(), "WalletReceiveRow.sender")?)
+        } else {
+            None
+        };
         out.push(WalletReceiveRow {
             event_id: str_field(row.event_id(), "WalletReceiveRow.event_id")?,
             mint: str_field(row.mint(), "WalletReceiveRow.mint")?,
             amount: row.amount(),
             unit: str_field(row.unit(), "WalletReceiveRow.unit")?,
+            sender,
+            timestamp: row.has_timestamp().then(|| row.timestamp()),
             accepted: row.accepted(),
         });
     }

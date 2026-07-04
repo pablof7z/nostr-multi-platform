@@ -86,6 +86,7 @@ pub fn init_bunker(
         sub_id,
         local_keys,
         remote_pubkey,
+        user_pubkey: None,
         persistent_sub_registered: false,
     };
     match handle.lock() {
@@ -134,6 +135,7 @@ pub fn init_nostrconnect(
         sub_id,
         local_keys,
         remote_pubkey: local_pk,
+        user_pubkey: None,
         persistent_sub_registered: false,
     };
     match handle.lock() {
@@ -173,6 +175,7 @@ pub fn init_restore(
         sub_id,
         local_keys,
         remote_pubkey,
+        user_pubkey: None,
         persistent_sub_registered: false,
     };
     match handle.lock() {
@@ -214,6 +217,22 @@ pub fn record_signer_ready(handle: &Nip46RuntimeHandle, remote_pubkey: PublicKey
     if let Ok(mut guard) = handle.lock() {
         if let Some(rt) = guard.as_mut() {
             rt.remote_pubkey = remote_pubkey;
+        }
+    }
+}
+
+/// #2976 — persist the ACCOUNT's user pubkey learned at `SignerReady`.
+///
+/// Later health callbacks from this runtime instance (reconnect `connected`,
+/// post-`SignerReady` errors) read [`Nip46Runtime::user_pubkey`] so the
+/// `signer_state` health is attributed to the correct identity rather than
+/// clobbering whatever account happens to be active.
+///
+/// No-op when the handle is empty or the mutex is poisoned.
+pub fn record_user_pubkey(handle: &Nip46RuntimeHandle, user_pubkey: PublicKey) {
+    if let Ok(mut guard) = handle.lock() {
+        if let Some(rt) = guard.as_mut() {
+            rt.user_pubkey = Some(user_pubkey);
         }
     }
 }
@@ -263,6 +282,9 @@ pub fn complete_signer_from_ready(
         .map_err(|_| "invalid user pubkey in SignerReady".to_string())?;
 
     record_signer_ready(handle, remote_signer_pubkey);
+    // #2976 — remember WHICH account this session belongs to so later health
+    // callbacks (reconnect / error) can attribute their `signer_state` to it.
+    record_user_pubkey(handle, user_pubkey);
 
     let (relay_urls, local_keys) = {
         let guard = handle

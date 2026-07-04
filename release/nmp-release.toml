@@ -267,6 +267,15 @@ path = "crates/nmp-blossom"
 name = "nmp-nip60"
 path = "crates/nmp-nip60"
 
+# nmp-nip87 (NIP-87 ecash mint discoverability codecs — kind:38172 Cashu mint
+# announcement + kind:38000 recommendation) is protocol mechanics alongside its
+# NIP-adapter siblings (nmp-nip60/nmp-nip57), consumed by nmp-wallet for the
+# WoT-scoped discovered-mints projection (epic #2864, issue #2880). Classified
+# public so external wallet consumers pinning by git rev can resolve it.
+[[public_crates]]
+name = "nmp-nip87"
+path = "crates/nmp-nip87"
+
 # nmp-wallet is release-classified public in #2882 to unblock the external
 # nutsack NIP-60/NIP-61 consumer's B1 blocker (SPEC.md §9): external consumers
 # pin only public_crates by git rev, and nutsack cannot even resolve/package

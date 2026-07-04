@@ -48,6 +48,7 @@ mod deposit_concurrency_tests;
 mod deposit_mint_race_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
+mod fail_reentrancy_tests;
 mod ingest_tests;
 mod mint_url_canonicalize_tests;
 mod publish_info_tests;
@@ -56,6 +57,7 @@ mod redeem_tests;
 mod redeem_worker_tests;
 mod reset_tests;
 mod send_tests;
+mod send_worker_tests;
 mod snapshot_tests;
 
 /// Captures every `ActorCommand` a `run()` call sends synchronously via

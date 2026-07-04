@@ -254,11 +254,18 @@ pub const KIND_NIP61_NUTZAP_INFO: u32 = 10019;
 /// NIP-61 Cashu nutzap event (kind:9321). Sends ecash proofs to a recipient.
 pub const KIND_NIP61_NUTZAP: u32 = 9321;
 
-// ─── NIP-88 — Cashu mint announcement ──────────────────────────────────────
+// ─── NIP-87 — Ecash mint discoverability ────────────────────────────────────
 
-/// NIP-88 mint announcement (kind:38172, addressable). A mint publishes its
-/// metadata to Nostr.
+/// NIP-87 Cashu mint announcement (kind:38172, addressable). A mint publishes
+/// its metadata (URLs, supported NUTs, units) to Nostr so wallets can discover
+/// it instead of hardcoding a mint list. The `d` tag identifies the mint.
 pub const KIND_MINT_ANNOUNCE: u32 = 38172;
+
+/// NIP-87 mint recommendation / review (kind:38000, addressable). A user vouches
+/// for a mint; a `k` tag names the recommended announcement kind (`38172` for
+/// Cashu — kind:38173 Fedimint is out of scope for NMP). Recommendations are
+/// web-of-trust-scoped by the reading account at aggregation time.
+pub const KIND_MINT_RECOMMEND: u32 = 38000;
 
 // ─── NIP-01 replaceable / addressable / ephemeral predicates ───────────────
 

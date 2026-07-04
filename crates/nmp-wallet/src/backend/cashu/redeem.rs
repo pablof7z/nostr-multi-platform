@@ -95,6 +95,15 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 "nutzap event not found in this backend's cache".to_string(),
             );
         };
+        // #2966 — record the sender as soon as the event resolves, before
+        // any of the checks below can fail this operation: a nutzap feed's
+        // "from <pubkey>" needs this on a rejected/unverifiable receive row
+        // exactly as much as on a settled one (see `snapshot.rs`'s
+        // `receive_rows`/`history_row`), and `event.author` is already this
+        // wallet's own verified copy of who authored the kind:9321.
+        let _ = lock_state(&state)
+            .journal
+            .record_sender(&operation_id, event.author.clone());
         if event.kind != KIND_NIP61_NUTZAP {
             return fail(
                 ctx,
@@ -262,6 +271,14 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 },
             );
             if let Err(e) = s.transition(&operation_id, WalletOperationState::MintPending) {
+                // `return EXPR;` evaluates `fail(..)` BEFORE unwinding this
+                // block and dropping `s`, and `fail` re-locks the same
+                // non-reentrant mutex — so the guard must be released
+                // explicitly first or this branch self-deadlocks (#2953). This
+                // branch is reachable when a concurrent `reset()` wipes the
+                // journal entry out from under this in-flight redeem, making
+                // the transition return `MissingOperation`.
+                drop(s);
                 return fail(
                     ctx,
                     &state,

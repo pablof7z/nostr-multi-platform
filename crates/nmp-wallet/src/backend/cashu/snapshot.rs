@@ -52,6 +52,13 @@ pub(super) fn receive_rows(terminal: &[WalletOperation]) -> Vec<WalletReceiveRow
                 mint,
                 amount,
                 unit,
+                // #2966 — set by `RedeemNutzapCommand::run` (`redeem.rs`)
+                // the moment the kind:9321 event resolves, and by
+                // `begin_operation_at` at dispatch time respectively; see
+                // `WalletOperation::recorded_sender`/`recorded_at`'s doc
+                // comments.
+                sender: op.recorded_sender.clone(),
+                timestamp: op.recorded_at,
                 accepted: op.state == WalletOperationState::Settled,
             }
         })
@@ -75,15 +82,27 @@ pub(super) fn recent_history(
 
 fn history_row(state: &CashuWalletState, op: &WalletOperation) -> Option<WalletHistoryRow> {
     let kind = history_kind(op.kind)?;
-    let (amount, unit) = match op.consumed_inputs.last() {
-        Some(input) => (input.amount, input.unit.clone()),
-        None => deposit_amount(state, op).unwrap_or((0, "sat".to_string())),
+    // #2966 — `SendNutzap` is special-cased to `recorded_amount` (the
+    // amount the sender intended to deliver, recorded up front by
+    // `nutzap_dispatch.rs`'s `start_send_nutzap`): `consumed_inputs` names
+    // whichever wallet-internal proof denominations got selected to cover
+    // it, which is a different number (and empty entirely for a send that
+    // fails before proof selection) — see
+    // `WalletOperation::recorded_amount`'s doc comment.
+    let (amount, unit) = match (op.kind, op.recorded_amount) {
+        (WalletOperationKind::SendNutzap, Some(amount)) => (amount, "sat".to_string()),
+        _ => match op.consumed_inputs.last() {
+            Some(input) => (input.amount, input.unit.clone()),
+            None => deposit_amount(state, op).unwrap_or((0, "sat".to_string())),
+        },
     };
     Some(WalletHistoryRow {
         operation_id: op.id.as_str().to_string(),
         kind,
         amount,
         unit,
+        sender: op.recorded_sender.clone(),
+        timestamp: op.recorded_at,
         state: format!("{:?}", op.state),
     })
 }

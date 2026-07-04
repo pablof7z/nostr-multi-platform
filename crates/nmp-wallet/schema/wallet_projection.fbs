@@ -112,6 +112,15 @@ table WalletOperation {
   has_correlation_id:bool;
   correlation_id:string;
   consumed_inputs:[WalletConsumedInput];
+  // recorded_amount: Option<u64> (#2966)
+  has_recorded_amount:bool;
+  recorded_amount:uint64;
+  // recorded_sender: Option<String> (#2966)
+  has_recorded_sender:bool;
+  recorded_sender:string;
+  // recorded_at: Option<u64> (#2966)
+  has_recorded_at:bool;
+  recorded_at:uint64;
 }
 
 // `WalletHistoryRow` — one recent-history row. `state` is a raw protocol token
@@ -121,6 +130,12 @@ table WalletHistoryRow {
   kind:WalletHistoryKind;
   amount:uint64;
   unit:string;
+  // sender: Option<String> (#2966)
+  has_sender:bool;
+  sender:string;
+  // timestamp: Option<u64> (#2966)
+  has_timestamp:bool;
+  timestamp:uint64;
   state:string;
 }
 
@@ -130,11 +145,17 @@ table WalletReceiveRow {
   mint:string;
   amount:uint64;
   unit:string;
+  // sender: Option<String> (#2966)
+  has_sender:bool;
+  sender:string;
+  // timestamp: Option<u64> (#2966)
+  has_timestamp:bool;
+  timestamp:uint64;
   accepted:bool;
 }
 
 table WalletProjection {
-  schema_version:uint32 = 1;
+  schema_version:uint32 = 2;   // mirrors projection_wire::SCHEMA_VERSION
   // active_backend_id: Option<WalletBackendId> (a String newtype)
   has_active_backend_id:bool;
   active_backend_id:string;

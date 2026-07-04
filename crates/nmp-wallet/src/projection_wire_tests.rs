@@ -37,6 +37,9 @@ fn fully_populated() -> WalletProjection {
                 amount: 42,
             },
         ],
+        recorded_amount: Some(63),
+        recorded_sender: Some("cc".repeat(32)),
+        recorded_at: Some(1_700_000_000),
     };
 
     WalletProjection {
@@ -64,6 +67,8 @@ fn fully_populated() -> WalletProjection {
             kind: WalletHistoryKind::Deposit,
             amount: 500,
             unit: "sat".to_string(),
+            sender: Some("dd".repeat(32)),
+            timestamp: Some(1_700_000_100),
             state: "settled".to_string(),
         }],
         receive_rows: vec![WalletReceiveRow {
@@ -71,6 +76,8 @@ fn fully_populated() -> WalletProjection {
             mint: "https://mint.example".to_string(),
             amount: 64,
             unit: "sat".to_string(),
+            sender: Some("ee".repeat(32)),
+            timestamp: Some(1_700_000_200),
             accepted: true,
         }],
     }
@@ -111,6 +118,9 @@ fn round_trips_operation_with_no_correlation_id_or_inputs() {
     let op = &decoded.pending_operations[0];
     assert!(op.correlation_id.is_none());
     assert!(op.consumed_inputs.is_empty());
+    assert!(op.recorded_amount.is_none());
+    assert!(op.recorded_sender.is_none());
+    assert!(op.recorded_at.is_none());
 }
 
 #[test]
@@ -142,6 +152,8 @@ fn each_history_kind_variant_round_trips() {
             kind: variant,
             amount: 1,
             unit: "sat".to_string(),
+            sender: None,
+            timestamp: None,
             state: "settled".to_string(),
         }]);
         let bytes = encode_wallet_projection(&projection);
@@ -202,5 +214,5 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.wallet.merged");
     assert_eq!(PROJECTION_KEY, "wallet.merged");
-    assert_eq!(SCHEMA_VERSION, 1);
+    assert_eq!(SCHEMA_VERSION, 2);
 }

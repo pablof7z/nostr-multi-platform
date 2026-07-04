@@ -67,7 +67,11 @@ pub const PROJECTION_KEY: &str = "wallet.merged";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const FILE_IDENTIFIER: &[u8; 4] = b"NWMP";
 /// Wire schema version. Bump on any breaking change to `wallet_projection.fbs`.
-pub const SCHEMA_VERSION: u32 = 1;
+/// v2 (#2966 follow-up): `WalletOperation` gains `recorded_amount`/
+/// `recorded_sender`/`recorded_at`; `WalletHistoryRow`/`WalletReceiveRow` gain
+/// `sender`/`timestamp` — mirroring the fields #2966 added to the domain
+/// structs this codec serializes.
+pub const SCHEMA_VERSION: u32 = 2;
 
 // --- encode ---------------------------------------------------------------
 

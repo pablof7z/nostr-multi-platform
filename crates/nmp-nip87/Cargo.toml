@@ -1,0 +1,21 @@
+[package]
+name = "nmp-nip87"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-87 ecash mint discoverability: kind:38172 Cashu mint-announcement and kind:38000 mint-recommendation event codecs plus NUT capability parsing. Thin protocol mechanics only — the discovered/recommended-mints projection, read interests, and WoT-scoped aggregation live in nmp-wallet."
+
+[dependencies]
+# nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind
+# integers. KIND_MINT_ANNOUNCE (38172) / KIND_MINT_RECOMMEND (38000) live there
+# so this crate declares zero kind literals.
+nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
+nmp-ownership = { workspace = true }
+# nostr: event/tag/filter primitives for build + convenience decode paths.
+nostr = { version = "0.44", features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+nostr = { version = "0.44", features = ["std"] }

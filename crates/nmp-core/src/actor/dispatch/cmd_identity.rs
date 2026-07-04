@@ -239,24 +239,26 @@ pub(super) fn bunker_handshake_progress(
 
 /// Dispatch `ActorCommand::BunkerConnectionStateChanged`.
 pub(super) fn bunker_connection_state_changed(
+    identity_id: Option<String>,
     state: String,
     reason: Option<String>,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::emit_now;
-    commands::bunker_connection_state_changed(ctx.identity, ctx.kernel, state, reason);
+    commands::bunker_connection_state_changed(ctx.identity, ctx.kernel, identity_id, state, reason);
     emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(Vec::new())
 }
 
 /// Dispatch `ActorCommand::Nip55SignerStateChanged`.
 pub(super) fn nip55_signer_state_changed(
+    identity_id: Option<String>,
     state: String,
     reason: Option<String>,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::emit_now;
-    commands::nip55_signer_state_changed(ctx.identity, ctx.kernel, state, reason);
+    commands::nip55_signer_state_changed(ctx.identity, ctx.kernel, identity_id, state, reason);
     emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(Vec::new())
 }
@@ -333,12 +335,16 @@ pub(super) fn dispatch(
             code,
             message,
         } => bunker_handshake_progress(stage, code, message, ctx),
-        IdentityCommand::BunkerConnectionStateChanged { state, reason } => {
-            bunker_connection_state_changed(state, reason, ctx)
-        }
-        IdentityCommand::Nip55SignerStateChanged { state, reason } => {
-            nip55_signer_state_changed(state, reason, ctx)
-        }
+        IdentityCommand::BunkerConnectionStateChanged {
+            identity_id,
+            state,
+            reason,
+        } => bunker_connection_state_changed(identity_id, state, reason, ctx),
+        IdentityCommand::Nip55SignerStateChanged {
+            identity_id,
+            state,
+            reason,
+        } => nip55_signer_state_changed(identity_id, state, reason, ctx),
         IdentityCommand::DeliverSignerResponse { response_json } => {
             use crate::actor::signer_port_dispatch;
             signer_port_dispatch::deliver_signer_response(ctx, &response_json)

@@ -27,7 +27,7 @@ pub(super) fn dispatch_due(
     dispatcher: &dyn RelayDispatcher,
     frame: &str,
     relay_filter: Option<&str>,
-    unavailable_relays: &BTreeSet<RelayUrl>,
+    unavailable_relays: &BTreeMap<RelayUrl, Option<u64>>,
 ) -> Vec<RelayAck> {
     let mut acks = Vec::new();
     // Workstream C — THE universal D10 fail-closed emit gate. Every publish
@@ -46,7 +46,7 @@ pub(super) fn dispatch_due(
                 continue;
             }
         }
-        if unavailable_relays.contains(relay_url) {
+        if unavailable_relays.contains_key(relay_url) {
             continue;
         }
         let ready = match state {
@@ -249,13 +249,25 @@ pub(super) fn collect_p_tags(event: &SignedEvent) -> Vec<String> {
 #[must_use]
 pub(super) fn next_deadline_ms(
     in_flight: &InFlight,
-    unavailable_relays: &BTreeSet<RelayUrl>,
+    unavailable_relays: &BTreeMap<RelayUrl, Option<u64>>,
     now_ms: u64,
     policy: RetryPolicy,
 ) -> Option<u64> {
     let mut next: Option<u64> = None;
     for (relay_url, state) in &in_flight.per_relay {
-        if unavailable_relays.contains(relay_url) {
+        if let Some(unavailable_since) = unavailable_relays.get(relay_url) {
+            // #2967 — a relay parked unavailable ages out on its OWN
+            // wall-clock deadline (`sweep_unavailable_timeouts`), overriding
+            // whatever per-state candidate the ladder below would otherwise
+            // compute. `None` (NIP-42 auth park) deliberately contributes no
+            // deadline — see `PublishEngine::unavailable_relays`'s doc comment.
+            if !state.is_terminal() {
+                if let Some(became_unavailable_ms) = unavailable_since {
+                    let candidate =
+                        became_unavailable_ms.saturating_add(policy.inflight_deadline_ms);
+                    next = Some(next.map_or(candidate, |current| current.min(candidate)));
+                }
+            }
             continue;
         }
         let candidate = match state {
@@ -275,6 +287,47 @@ pub(super) fn next_deadline_ms(
         }
     }
     next
+}
+
+/// Force-settle any row still targeting a relay that has been continuously
+/// unavailable (genuine connectivity loss — see
+/// [`PublishEngine::unavailable_relays`]'s doc comment) for at least
+/// `deadline_ms`. `dispatch_due` and `next_deadline_ms` both skip relays
+/// present in `unavailable_relays` (no point re-dialing a socket we already
+/// know is down), which means nothing else ever ages a `Pending` row out —
+/// without this sweep a single permanently-dead relay in a multi-relay
+/// publish set would park that row `Pending` forever, blocking
+/// `PublishEngine::in_flight` from ever reaching `is_complete` even after
+/// every OTHER relay already settled `Ok` (#2967). Exempts relays parked
+/// `None` (NIP-42 auth handshake in progress) — those are deliberately
+/// unbounded.
+pub(super) fn sweep_unavailable_timeouts(
+    in_flight: &mut InFlight,
+    now_ms: u64,
+    deadline_ms: u64,
+    unavailable_relays: &BTreeMap<RelayUrl, Option<u64>>,
+) -> bool {
+    let mut changed = false;
+    for (relay_url, state) in &mut in_flight.per_relay {
+        if state.is_terminal() {
+            continue;
+        }
+        let Some(became_unavailable_ms) = unavailable_relays.get(relay_url).copied().flatten()
+        else {
+            continue;
+        };
+        if now_ms.saturating_sub(became_unavailable_ms) >= deadline_ms {
+            *state = PerRelayState::FailedAfterRetries {
+                reason: "relay unreachable past the publish deadline".to_string(),
+                last_at_ms: now_ms,
+            };
+            changed = true;
+        }
+    }
+    if changed {
+        in_flight.dirty = true;
+    }
+    changed
 }
 
 /// Transition any `InFlight` relay whose send predates `now_ms - deadline_ms`.

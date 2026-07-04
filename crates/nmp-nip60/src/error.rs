@@ -24,7 +24,7 @@ pub enum Nip60Error {
     InsufficientBalance { have: u64, need: u64 },
     /// P2PK spending condition error.
     SpendingCondition(String),
-    /// NIP-88 mint discovery failed.
+    /// NIP-87 mint discovery failed.
     MintDiscovery(String),
     /// General validation error.
     Invalid(String),

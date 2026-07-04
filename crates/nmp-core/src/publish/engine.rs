@@ -41,7 +41,7 @@ pub use types::{LastTerminal, PublishQueueTerminal, TerminalOutcome};
 // (S11 slice 4, #1758) for the kernel's single terminal fold.
 pub(super) use types::InFlight;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -72,7 +72,11 @@ pub enum PublishEngineError {
 
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
-    unavailable_relays: BTreeSet<RelayUrl>,
+    /// Relays currently unable to take a dispatch, keyed by canonical URL.
+    /// `Some(since_ms)` = bounded connectivity loss (ages out via
+    /// `helpers::sweep_unavailable_timeouts`, #2967); `None` = unbounded NIP-42
+    /// auth park — see `dispatch::mark_relay_unavailable`/`park_relay_awaiting_auth`.
+    unavailable_relays: BTreeMap<RelayUrl, Option<u64>>,
     pub view: PublishStatusState,
     policy: RetryPolicy,
     outbox: Arc<dyn OutboxResolver>,
@@ -114,7 +118,7 @@ impl PublishEngine {
     ) -> Self {
         Self {
             in_flight: HashMap::new(),
-            unavailable_relays: BTreeSet::new(),
+            unavailable_relays: BTreeMap::new(),
             view: PublishStatusState::new(&super::view::PublishStatusSpec::default()),
             policy,
             outbox,
@@ -292,10 +296,13 @@ impl PublishEngine {
     pub fn tick(&mut self, now_ms: u64) {
         let deadline_ms = self.policy.inflight_deadline_ms;
         let policy = self.policy;
+        let unavailable = &self.unavailable_relays;
         let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
         for handle in &handles {
             if let Some(row) = self.in_flight.get_mut(handle) {
                 helpers::sweep_inflight_timeouts(row, now_ms, deadline_ms, policy);
+                // #2967: age out a row parked behind an unavailable relay.
+                helpers::sweep_unavailable_timeouts(row, now_ms, deadline_ms, unavailable);
             }
         }
         for handle in &handles {
@@ -370,16 +377,8 @@ impl PublishEngine {
         let verdict = apply_ack(&state, &ack, self.policy, now_ms);
         let park_awaiting_auth = helpers::apply_verdict(in_flight, &relay_url, verdict, now_ms);
         if park_awaiting_auth {
-            // The relay refused the EVENT pending NIP-42 auth. Route it through
-            // the single availability gate: `mark_relay_unavailable` demotes the
-            // InFlight send back to durable `Pending`, drops any scheduled
-            // retry, persists, and parks the relay in `unavailable_relays` so no
-            // retry tick re-dispatches it. The publish stays in-flight; it
-            // re-dispatches event-driven when the kernel calls
-            // `mark_relay_available` on the `RelayAuthState::Authenticated`
-            // transition (no budget spent, no sleep/poll — D8). Borrow of
-            // `in_flight` ends above, so the `&mut self` call is sound.
-            if let Err(err) = self.mark_relay_unavailable(&relay_url, now_ms) {
+            // NIP-42 auth required: park UNBOUNDED (see `park_relay_awaiting_auth`).
+            if let Err(err) = self.park_relay_awaiting_auth(&relay_url, now_ms) {
                 self.record_engine_error(&err, handle, "", now_ms);
             }
             self.flush_view();

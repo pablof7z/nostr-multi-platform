@@ -341,13 +341,27 @@ fn handle_signer_ready(
 
     let signer = std::sync::Arc::new(signer_handle.complete(Arc::new(transport), user_pubkey));
 
-    // Progress + connection state (V-14).
+    // #2976: attribute the "connected" health to this account's user pubkey.
+    //
+    // NOTE: the production ordering fix (add_signer BEFORE the connection-state
+    // signal, so the actor's `contains_account` guard is satisfied) lives in
+    // `interceptor::handle_signer_ready` and is regression-tested in nmp-core.
+    // This harness posts to a bare test inbox that never runs
+    // `record_signer_health`, so the guard is irrelevant here; keeping the
+    // original order (handshake/connection commands BEFORE AddSigner) preserves
+    // the drain contract the serial `recv_*` helpers in the backfill/lane tests
+    // rely on (they consume pre-AddSigner mail via `wait_for_add_remote_signer`,
+    // then expect only Sign commands afterward).
     external_tx.bunker_handshake_progress(
         "ready".to_string(),
         None,
         Some("NIP-46 signer ready".to_string()),
     );
-    external_tx.bunker_connection_state_changed("connected".to_string(), None);
+    external_tx.bunker_connection_state_changed(
+        Some(user_pubkey.to_hex()),
+        "connected".to_string(),
+        None,
+    );
 
     // Hand off to the test's actor inbox.
     let source = SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer)));
