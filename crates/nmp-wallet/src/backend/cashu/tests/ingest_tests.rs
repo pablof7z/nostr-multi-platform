@@ -4,7 +4,7 @@
 //! take already-decrypted plaintext, see `ingest.rs`'s module docs).
 
 use super::*;
-use nmp_nip60::cashu::types::Proof;
+use nmp_nip60::cashu::types::{Proof, ProofSpendState};
 
 /// A fresh secp256k1 keypair's (privkey hex, derived pubkey hex) — mirrors
 /// `WalletConfig::generate`'s own key derivation so the expected pubkey in
@@ -192,6 +192,121 @@ fn ingest_token_event_del_field_supersedes_regardless_of_arrival_order() {
         );
         assert_eq!(state.proofs[0].proof.c, "proof-new");
     }
+}
+
+// ─── check-state on recovered proofs (#2977) ────────────────────────────────
+
+/// A `Proof` with a distinct `secret`/`c` (unlike `synthetic_proof`'s fixed
+/// placeholder) — the NUT-07 check-state pass keys verdicts on `c` and hashes
+/// `secret`, so a test that must tell two recovered proofs apart needs both to
+/// differ.
+fn recoverable_proof(amount: u64, secret: &str, c: &str) -> Proof {
+    Proof {
+        amount,
+        id: "keyset-1".to_string(),
+        secret: secret.to_string(),
+        c: c.to_string(),
+        dleq: None,
+        witness: None,
+    }
+}
+
+fn sat_balance(backend: &CashuWalletBackend) -> u64 {
+    lock_state(&backend.state).ledger.state().balance(
+        &crate::journal::MintUrl::new(MINT),
+        &crate::journal::WalletUnit::new("sat"),
+    )
+}
+
+/// #2977 — the core money-relevant assertion: once the mint reports a
+/// recovered proof `Spent`, folding that verdict drops it from BOTH the
+/// spendable ledger balance AND the secret-bearing inventory, while an
+/// `Unspent` sibling keeps counting. This is the exact `MintProbed{Spent}`
+/// mechanism `send_worker.rs` folds post-swap, reused rather than reinvented.
+#[test]
+fn recovered_proof_reported_spent_is_dropped_from_spendable_balance() {
+    let backend = backend_with_mint();
+    let spent = recoverable_proof(21, "secret-spent", "c-spent");
+    let unspent = recoverable_proof(8, "secret-unspent", "c-unspent");
+    let plaintext = token_event_json(MINT, &[spent.clone(), unspent.clone()], &[]);
+
+    ingest::ingest_token_event(&backend.state, "token-recovered", &plaintext, "")
+        .expect("ingest must succeed");
+    // Before reconciliation both proofs count (the transiently-optimistic
+    // balance #2977 describes).
+    assert_eq!(sat_balance(&backend), 29_000);
+
+    ingest::fold_check_state_verdicts(
+        &backend.state,
+        &[
+            ("c-spent".to_string(), ProofSpendState::Spent),
+            ("c-unspent".to_string(), ProofSpendState::Unspent),
+        ],
+    );
+
+    // The already-spent proof no longer counts; the unspent one still does.
+    assert_eq!(
+        sat_balance(&backend),
+        8_000,
+        "a recovered proof the mint reports spent must not count toward spendable balance"
+    );
+    let state = lock_state(&backend.state);
+    let held: Vec<&str> = state.proofs.iter().map(|p| p.proof.c.as_str()).collect();
+    assert_eq!(
+        held,
+        vec!["c-unspent"],
+        "the spent proof must also leave the secret-bearing inventory so no send can select it"
+    );
+}
+
+/// #2977 end-to-end over the real `MintClient::check_state` HTTP lane: recover
+/// two proofs, point their mint at a mock that reports the first `SPENT` and
+/// the second `UNSPENT`, and confirm `reconcile_recovered_proofs` leaves only
+/// the unspent proof's balance. The mock's `Y` values are computed by the real
+/// `build_check_state_request` so the response passes `parse_check_state_response`'s
+/// ordering guard exactly as a live mint's reply would.
+#[test]
+fn reconcile_recovered_proofs_drops_mint_reported_spent_proof() {
+    let spent = recoverable_proof(21, "secret-spent-e2e", "c-spent-e2e");
+    let unspent = recoverable_proof(8, "secret-unspent-e2e", "c-unspent-e2e");
+    // Compute the mock's `Y` values with the real request builder so the reply
+    // passes `parse_check_state_response`'s ordering guard, then spawn the
+    // one-response mock serving them.
+    let (_, ys) = nmp_nip60::cashu::build_check_state_request(&[
+        spent.secret.clone(),
+        unspent.secret.clone(),
+    ])
+    .expect("build check-state request");
+    let body = serde_json::json!({
+        "states": [
+            { "Y": ys[0], "state": "SPENT" },
+            { "Y": ys[1], "state": "UNSPENT" },
+        ]
+    })
+    .to_string();
+    let mock_url = spawn_mock_mint(vec![(200, body)]);
+
+    let backend = CashuWalletBackend::new();
+    lock_state(&backend.state).mints = vec![mock_url.clone()];
+    let plaintext = token_event_json(&mock_url, &[spent, unspent], &[]);
+    let recovered = ingest::ingest_token_event(&backend.state, "token-e2e", &plaintext, "")
+        .expect("ingest must succeed");
+    assert_eq!(recovered.len(), 2, "both fresh proofs carried out for probing");
+
+    ingest::reconcile_recovered_proofs(&backend.state, recovered);
+
+    let state = lock_state(&backend.state);
+    let canonical = crate::journal::MintUrl::new(mock_url.trim_end_matches('/'));
+    assert_eq!(
+        state
+            .ledger
+            .state()
+            .balance(&canonical, &crate::journal::WalletUnit::new("sat")),
+        8_000,
+        "the mint-reported-spent proof must be reconciled out of spendable balance"
+    );
+    let held: Vec<&str> = state.proofs.iter().map(|p| p.proof.c.as_str()).collect();
+    assert_eq!(held, vec!["c-unspent-e2e"]);
 }
 
 #[test]
