@@ -362,6 +362,7 @@ pub fn run_actor_with_observers(
                     &mut last_emit,
                     &mut startup_sent,
                     running,
+                    emit_hz,
                 )
             };
         }
