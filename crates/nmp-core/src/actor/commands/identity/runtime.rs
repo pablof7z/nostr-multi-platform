@@ -35,7 +35,30 @@ pub(crate) struct IdentityRuntime {
     /// Actor-written output slot for the `"bunker_handshake"` projection.
     pub(super) bunker_handshake: BunkerHandshakeSlot,
     /// Actor-written output slot for the unified remote-signer health projection.
+    ///
+    /// **#2976**: this shared slot is now a pure RECOMPUTED OUTPUT — never
+    /// written directly by a state-change handler. [`Self::project_signer_state`]
+    /// derives it from the per-identity `signer_health` map (keyed to the ACTIVE
+    /// account) with the transient `pending_signer_onboarding` lane as fallback.
+    /// The published shape is unchanged (active account's health, `null` for
+    /// local-key accounts), so shells (Chirp's `AccountsView.swift`) need no
+    /// change — the per-identity keying happens entirely inside the actor.
     pub(super) signer_state: SignerStateSlot,
+    /// **#2976**: per-identity remote-signer health, keyed by `IdentityId`.
+    ///
+    /// The authoritative store of "which account's signer is in what state".
+    /// A late/background callback for one account can no longer overwrite the
+    /// active account's published health — it lands here keyed to ITS identity
+    /// and is only surfaced when that identity is the active account.
+    pub(super) signer_health: HashMap<IdentityId, SignerStateDto>,
+    /// **#2976**: transient onboarding lane for signer-state changes that fire
+    /// BEFORE any identity exists (NIP-55 first-connect `awaiting_approval` /
+    /// `unavailable`, fresh NIP-46 handshake failures before `SignerReady`,
+    /// degraded cold-start restore with no driver). These have no account to
+    /// key against yet, so they are held here and surfaced by
+    /// [`Self::project_signer_state`] as a fallback. Cleared once a signer is
+    /// added (`finish_signer_add`) — the account then owns its own health.
+    pub(super) pending_signer_onboarding: Option<SignerStateDto>,
     /// Stashed flags for an in-flight `bunker://` handshake.
     pub(super) pending_bunker_make_active: bool,
     /// ADR-0072 §D3 — per-app bunker-URI hook slot.
@@ -58,6 +81,8 @@ impl IdentityRuntime {
             app_managed: HashSet::new(),
             bunker_handshake,
             signer_state,
+            signer_health: HashMap::new(),
+            pending_signer_onboarding: None,
             pending_bunker_make_active: false,
             // ADR-0072 §D3 — empty per-app hook slots; production replaces them
             // with the `NmpApp`'s `Arc` clones via `set_signer_hook_slots`.
@@ -121,6 +146,74 @@ impl IdentityRuntime {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = value;
+    }
+
+    /// **#2976** — record a remote-signer health fact, correctly attributed.
+    ///
+    /// - `Some(id)` naming a LIVE account → stored in the per-identity
+    ///   `signer_health` map. Only surfaces in the published slot when that
+    ///   account is active — a background/late callback for a non-active account
+    ///   can no longer clobber the active account's health.
+    /// - `Some(id)` naming a REMOVED/superseded account → dropped (D6 trace).
+    ///   With per-identity keying this is naturally correct: no cancellation or
+    ///   generation counter is needed.
+    /// - `None` (event fired before any account exists — first-connect /
+    ///   pre-`SignerReady` failure / degraded restore) → the transient
+    ///   onboarding lane, so Android sign-in progress still surfaces.
+    ///
+    /// Always re-projects the shared slot afterwards (D4 — actor sole writer).
+    pub(crate) fn record_signer_health(
+        &mut self,
+        identity_id: Option<&str>,
+        dto: SignerStateDto,
+    ) {
+        match identity_id {
+            Some(id) if self.contains_account(id) => {
+                self.signer_health.insert(id.to_string(), dto);
+            }
+            Some(id) => {
+                // Late callback for a since-removed / superseded account —
+                // never cross-apply to whatever account is now active (D6).
+                tracing::trace!(
+                    account = %id,
+                    "signer_state: dropped health for absent account"
+                );
+            }
+            None => {
+                self.pending_signer_onboarding = Some(dto);
+            }
+        }
+        self.project_signer_state();
+    }
+
+    /// **#2976** — recompute the shared `signer_state` slot from the active
+    /// account's per-identity health, falling back to the transient onboarding
+    /// lane. This is the ONLY writer of the published slot (D4). The published
+    /// shape is unchanged: active account's health, or the onboarding progress
+    /// before an account exists, or `None` (→ JSON `null`) for a local-key
+    /// active account with no remote-signer health.
+    pub(crate) fn project_signer_state(&self) {
+        let value = self
+            .active
+            .as_ref()
+            .and_then(|id| self.signer_health.get(id))
+            .cloned()
+            .or_else(|| self.pending_signer_onboarding.clone());
+        self.set_signer_state(value);
+    }
+
+    /// **#2976** — drop a removed account's per-identity health entry so a later
+    /// switch back to (a re-added) account never reads a stale row. Called by
+    /// `remove_account`.
+    pub(super) fn forget_signer_health(&mut self, identity_id: &str) {
+        self.signer_health.remove(identity_id);
+    }
+
+    /// **#2976** — clear the transient onboarding lane once a signer is added
+    /// (the account now owns its own per-identity health). Called by
+    /// `finish_signer_add`.
+    pub(super) fn clear_pending_signer_onboarding(&mut self) {
+        self.pending_signer_onboarding = None;
     }
 
     /// Test-only read of the current signer-state projection value.

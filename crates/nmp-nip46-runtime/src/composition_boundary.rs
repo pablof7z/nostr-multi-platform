@@ -36,7 +36,9 @@ use nmp_signers::signers::SignerPayload;
 use nmp_signers::Nip46Signer;
 use nostr::{Keys, PublicKey, SecretKey};
 
-use crate::runtime::{clear_runtime, init_restore, record_signer_ready, Nip46RuntimeHandle};
+use crate::runtime::{
+    clear_runtime, init_restore, record_signer_ready, record_user_pubkey, Nip46RuntimeHandle,
+};
 use crate::transport::ActorLaneTransport;
 
 // ─── sub-id scheme ───────────────────────────────────────────────────────────
@@ -193,6 +195,10 @@ pub fn restore_nip46_from_payload(
     // ── Step 7: write-back learned pubkey ────────────────────────────────
     let remote_user_pubkey = signer.remote_user_pubkey();
     record_signer_ready(handle, remote_user_pubkey);
+    // #2976 — this restored session's account identity is the user pubkey; store
+    // it so a later reconnect's "connected" health event is attributed to this
+    // account instead of clobbering whatever account is active.
+    record_user_pubkey(handle, remote_user_pubkey);
 
     // ── Step 8: add signer ────────────────────────────────────────────────
     sender.add_signer(SignerSource::RemoteHandle(Box::new(signer)), false);

@@ -45,12 +45,15 @@ impl RelayConnectedHook for Nip46ConnectedHook {
         let now = now_secs();
 
         // ── Phase 1: drive on_relay_connected under lock ──────────────────
-        let effects = {
+        // #2976 — also read the account's user pubkey (learned at SignerReady)
+        // so the "connected" health event below is attributed per-identity.
+        let (effects, user_pubkey_hex) = {
             let Ok(mut guard) = self.runtime.lock() else {
                 return;
             };
             let Some(rt) = guard.as_mut() else { return };
-            rt.on_relay_connected(relay_url, is_reconnect, now)
+            let effects = rt.on_relay_connected(relay_url, is_reconnect, now);
+            (effects, rt.user_pubkey().map(|pk| pk.to_hex()))
         }; // lock released
 
         if effects.is_empty() {
@@ -108,7 +111,9 @@ impl RelayConnectedHook for Nip46ConnectedHook {
         }
 
         // Report relay connection state for UI liveness (V-14 / signer_broker:76).
-        command_sender.bunker_connection_state_changed("connected".to_string(), None);
+        // #2976 — attributed to this session's account (`None` only if the
+        // reconnect somehow fires before SignerReady learned the identity).
+        command_sender.bunker_connection_state_changed(user_pubkey_hex, "connected".to_string(), None);
     }
 }
 

@@ -10,6 +10,8 @@ use std::sync::Arc;
 use super::{super::*, fresh, stub_signer};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+// #2976 regression tests below call `handle.pubkey_hex()` on the stub signer.
+use nmp_signer_iface::RemoteSignerHandle;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Typed-sidecar frame proofs (ADR-0072 + ADR-0072 D6)
@@ -123,7 +125,7 @@ fn signer_state_projection_reflects_transitions() {
     // Wire up a signer-state slot + identity runtime, register the
     // `"signer_state"` projection closure, bind it onto a kernel.
     let signer_state_slot = new_signer_state_slot();
-    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
+    let mut id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let projections = crate::kernel::new_snapshot_projection_slot();
     {
@@ -146,7 +148,7 @@ fn signer_state_projection_reflects_transitions() {
 
     // 2. Simulate the broker reporting "connected" after handshake completes.
     // ADR-0072 D6: "connected" is mapped to "ready" in the unified SignerStateDto.
-    bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
+    bunker_connection_state_changed(&mut id, &mut kernel, None, "connected".to_string(), None);
     let (_v, typed) = kernel.make_update_typed_for_test(true);
     let entry = typed
         .iter()
@@ -168,8 +170,9 @@ fn signer_state_projection_reflects_transitions() {
 
     // 3. Simulate a relay flap → "reconnecting".
     bunker_connection_state_changed(
-        &id,
+        &mut id,
         &mut kernel,
+        None,
         "reconnecting".to_string(),
         Some("connection reset by peer".to_string()),
     );
@@ -189,8 +192,9 @@ fn signer_state_projection_reflects_transitions() {
 
     // 4. Simulate a permanent failure → "failed".
     bunker_connection_state_changed(
-        &id,
+        &mut id,
         &mut kernel,
+        None,
         "failed".to_string(),
         Some("403 Forbidden".to_string()),
     );
@@ -215,7 +219,7 @@ fn signer_state_slot_reflects_direct_write() {
     use crate::actor::new_bunker_handshake_slot;
 
     let signer_state_slot = new_signer_state_slot();
-    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
+    let mut id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Idle: slot is None.
@@ -223,8 +227,9 @@ fn signer_state_slot_reflects_direct_write() {
 
     // Write "reconnecting" via the command handler.
     bunker_connection_state_changed(
-        &id,
+        &mut id,
         &mut kernel,
+        None,
         "reconnecting".to_string(),
         Some("timeout".to_string()),
     );
@@ -239,7 +244,7 @@ fn signer_state_slot_reflects_direct_write() {
     assert_eq!(dto.reason.as_deref(), Some("timeout"));
 
     // Overwrite with "connected" (mapped to "ready" by ADR-0072 D6).
-    bunker_connection_state_changed(&id, &mut kernel, "connected".to_string(), None);
+    bunker_connection_state_changed(&mut id, &mut kernel, None, "connected".to_string(), None);
     let dto = id
         .signer_state_for_test()
         .expect("slot must be Some after connected");
@@ -250,8 +255,9 @@ fn signer_state_slot_reflects_direct_write() {
 
     // Overwrite with "failed".
     bunker_connection_state_changed(
-        &id,
+        &mut id,
         &mut kernel,
+        None,
         "failed".to_string(),
         Some("403 Forbidden".to_string()),
     );
@@ -273,12 +279,12 @@ fn signer_state_slot_reflects_nip55_transitions() {
     use crate::actor::new_bunker_handshake_slot;
 
     let signer_state_slot = new_signer_state_slot();
-    let id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
+    let mut id = IdentityRuntime::new(new_bunker_handshake_slot(), Arc::clone(&signer_state_slot));
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Intent round-trip in flight → "awaiting_approval" drives the host's
     // "Waiting for Amber…" inline affordance.
-    nip55_signer_state_changed(&id, &mut kernel, "awaiting_approval".to_string(), None);
+    nip55_signer_state_changed(&mut id, &mut kernel, None, "awaiting_approval".to_string(), None);
     let dto = id
         .signer_state_for_test()
         .expect("slot must be Some after awaiting_approval");
@@ -290,8 +296,9 @@ fn signer_state_slot_reflects_nip55_transitions() {
 
     // Signer app uninstalled mid-session → "unavailable" prompts re-auth.
     nip55_signer_state_changed(
-        &id,
+        &mut id,
         &mut kernel,
+        None,
         "unavailable".to_string(),
         Some("signer app not installed".to_string()),
     );
@@ -303,11 +310,187 @@ fn signer_state_slot_reflects_nip55_transitions() {
     assert_eq!(dto.reason.as_deref(), Some("signer app not installed"));
 
     // Approval granted → "ready".
-    nip55_signer_state_changed(&id, &mut kernel, "ready".to_string(), None);
+    nip55_signer_state_changed(&mut id, &mut kernel, None, "ready".to_string(), None);
     let dto = id
         .signer_state_for_test()
         .expect("slot must be Some after ready");
     assert!(dto.is_ready);
     assert_eq!(dto.signer_kind, "nip55");
     assert!(dto.reason.is_none());
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// #2976: per-identity signer-state keying regressions.
+//
+// The published `signer_state` slot is a pure recomputed output derived from
+// the ACTIVE account's per-identity health. These tests pin the three bugs
+// the issue named: stale health on account switch, leak from a superseded
+// callback, and the dropped-first-event ordering trap.
+// ──────────────────────────────────────────────────────────────────────────
+
+/// Build a fresh local-key account, returning its pubkey hex. Uses a generated
+/// key so it never collides with the stub remote signer's `TEST_NSEC` pubkey.
+fn add_local_account(id: &mut IdentityRuntime, kernel: &mut Kernel, make_active: bool) -> String {
+    use nostr::nips::nip19::ToBech32;
+    let keys = nostr::Keys::generate();
+    let pk = keys.public_key().to_hex();
+    let nsec = keys.secret_key().to_bech32().expect("nsec bech32");
+    add_signer(
+        id,
+        kernel,
+        crate::actor::SignerSource::LocalNsec(zeroize::Zeroizing::new(nsec)),
+        make_active,
+        false,
+    );
+    pk
+}
+
+/// (a) Switching from a remote-signer account to a local-key account must NOT
+/// leave the remote signer's stale health published. Before #2976 the shared
+/// slot held the remote account's "ready" forever; now it re-projects to
+/// `null` for a local-key active account.
+#[test]
+fn switch_from_remote_to_local_clears_stale_signer_health() {
+    let (mut id, mut kernel) = fresh();
+
+    // Remote (NIP-46) account, active + healthy.
+    let (handle, _count) = stub_signer();
+    let remote_pk = handle.pubkey_hex();
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        true,
+        false,
+    );
+    bunker_connection_state_changed(
+        &mut id,
+        &mut kernel,
+        Some(remote_pk.clone()),
+        "connected".to_string(),
+        None,
+    );
+    assert!(
+        id.signer_state_for_test()
+            .expect("remote active is healthy")
+            .is_ready,
+        "active remote signer must publish its health"
+    );
+
+    // Add a local-key account and switch to it.
+    let local_pk = add_local_account(&mut id, &mut kernel, false);
+    switch_active(&mut id, &mut kernel, &local_pk, false);
+
+    assert!(
+        id.signer_state_for_test().is_none(),
+        "a local-key active account must publish null signer_state, \
+         not the previous remote account's stale health"
+    );
+
+    // Switching back to the remote account re-surfaces ITS health (still mapped).
+    switch_active(&mut id, &mut kernel, &remote_pk, false);
+    assert!(
+        id.signer_state_for_test().expect("remote re-active").is_ready,
+        "per-identity health persists in the map across switches"
+    );
+}
+
+/// (b) A late/background callback for a removed (superseded) account must not
+/// leak onto the now-active account. With per-identity keying the late event
+/// is dropped (its account no longer exists) instead of clobbering the slot.
+#[test]
+fn late_callback_for_removed_account_does_not_leak() {
+    let (mut id, mut kernel) = fresh();
+
+    // Remote account, active + healthy.
+    let (handle, _count) = stub_signer();
+    let remote_pk = handle.pubkey_hex();
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        true,
+        false,
+    );
+    bunker_connection_state_changed(
+        &mut id,
+        &mut kernel,
+        Some(remote_pk.clone()),
+        "connected".to_string(),
+        None,
+    );
+
+    // A local account becomes active; the remote account is removed.
+    let local_pk = add_local_account(&mut id, &mut kernel, true);
+    assert_eq!(id.active_pubkey().as_deref(), Some(local_pk.as_str()));
+    remove_account(&mut id, &mut kernel, &remote_pk);
+    assert!(
+        id.signer_state_for_test().is_none(),
+        "after removing the remote account the local active account is null"
+    );
+
+    // A stale "failed" callback arrives for the removed remote account.
+    bunker_connection_state_changed(
+        &mut id,
+        &mut kernel,
+        Some(remote_pk.clone()),
+        "failed".to_string(),
+        Some("relay dropped after logout".to_string()),
+    );
+    assert!(
+        id.signer_state_for_test().is_none(),
+        "a late callback for a removed account must never surface on the \
+         now-active account"
+    );
+}
+
+/// (c) The ordering trap: `add_signer` must run BEFORE the first health event
+/// so the `contains_account` guard passes and the event is recorded, not
+/// dropped. This pins the reorder in `interceptor::handle_signer_ready`.
+#[test]
+fn first_health_event_after_add_signer_is_not_dropped() {
+    let (mut id, mut kernel) = fresh();
+    let (handle, _count) = stub_signer();
+    let pk = handle.pubkey_hex();
+
+    // Correct order (post-#2976): add the signer first...
+    add_signer(
+        &mut id,
+        &mut kernel,
+        crate::actor::SignerSource::RemoteHandle(handle),
+        true,
+        false,
+    );
+    // ...then the first "connected" health event for that account.
+    bunker_connection_state_changed(
+        &mut id,
+        &mut kernel,
+        Some(pk.clone()),
+        "connected".to_string(),
+        None,
+    );
+    let dto = id
+        .signer_state_for_test()
+        .expect("first health event for a freshly-added signer must NOT be dropped");
+    assert!(dto.is_ready);
+    assert_eq!(dto.signer_kind, "nip46");
+
+    // The guard's negative: a health event keyed to an account that was never
+    // added is dropped (never cross-applied to the active account).
+    let never_added = nostr::Keys::generate().public_key().to_hex();
+    bunker_connection_state_changed(
+        &mut id,
+        &mut kernel,
+        Some(never_added),
+        "failed".to_string(),
+        Some("phantom".to_string()),
+    );
+    let dto = id
+        .signer_state_for_test()
+        .expect("active account's health is unchanged");
+    assert!(
+        dto.is_ready,
+        "a callback for an unknown account must not overwrite the active \
+         account's health"
+    );
 }

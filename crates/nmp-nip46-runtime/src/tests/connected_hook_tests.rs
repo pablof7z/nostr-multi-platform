@@ -140,7 +140,7 @@ mod tests {
         let (sender, rx) = make_sender();
 
         // Directly verify the bunker_connection_state_changed API shape.
-        sender.bunker_connection_state_changed("connected".to_string(), None);
+        sender.bunker_connection_state_changed(None, "connected".to_string(), None);
 
         let mails: Vec<_> = {
             let mut v = Vec::new();
@@ -153,7 +153,7 @@ mod tests {
         assert_eq!(mails.len(), 1);
         match &mails[0] {
             ActorMail::Command(ActorCommand::Identity(
-                IdentityCommand::BunkerConnectionStateChanged { state, reason },
+                IdentityCommand::BunkerConnectionStateChanged { state, reason, .. },
             )) => {
                 assert_eq!(state, "connected");
                 assert!(reason.is_none());

@@ -56,6 +56,14 @@ pub(crate) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
         .collect::<Vec<_>>();
     kernel.set_accounts(summaries, active.clone());
 
+    // #2976: the shared `signer_state` slot is a pure recomputed output. Every
+    // identity mutation that runs through `sync_kernel` (switch / add / remove)
+    // re-derives it from the ACTIVE account's per-identity health here, so
+    // switching to a local-key account no longer shows a stale remote signer's
+    // health. The `set_accounts` call above flips `changed_since_emit` on any
+    // active-account change, so the reprojected slot rides the same emit.
+    identity.project_signer_state();
+
     // NIP-42 auth signer binding (V-06 / #960 — ONE uniform async sign seam).
     //
     // A REMOTE signer (NIP-46 / NIP-55) cannot sign synchronously — only the
@@ -186,6 +194,12 @@ pub(super) fn finish_signer_add(
 ) -> Vec<OutboundMessage> {
     if should_activate {
         identity.active = Some(id);
+        // #2976: an account was just added and activated — any in-flight
+        // onboarding progress is now superseded by this account's own
+        // per-identity health, so clear the transient lane. (The account's
+        // "ready"/"connected" health arrives as a subsequent state-change
+        // command keyed to its identity.)
+        identity.clear_pending_signer_onboarding();
     }
     sync_kernel(identity, kernel);
     if should_activate {
@@ -260,6 +274,11 @@ pub(crate) fn remove_account(
     }
     identity.order.retain(|x| x != identity_id);
     identity.app_managed.remove(identity_id);
+    // #2976: drop the removed account's per-identity signer health so a later
+    // switch (or a re-add of the same pubkey) never reads a stale row. The
+    // subsequent `sync_kernel` reprojects the shared slot for the new active
+    // account.
+    identity.forget_signer_health(identity_id);
     if identity.active.as_deref() == Some(identity_id) {
         identity.active = identity
             .order

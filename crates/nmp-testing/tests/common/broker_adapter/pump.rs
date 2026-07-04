@@ -82,6 +82,7 @@ pub(super) fn pump_loop(
                                     Some(error.to_string()),
                                 );
                                 external_tx.bunker_connection_state_changed(
+                                    None,
                                     "failed".to_string(),
                                     Some(error.to_string()),
                                 );

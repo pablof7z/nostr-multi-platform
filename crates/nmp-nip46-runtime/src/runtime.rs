@@ -48,7 +48,8 @@ use std::sync::{Arc, Mutex};
 mod lifecycle;
 pub use lifecycle::{
     clear_runtime, complete_signer_from_ready, init_bunker, init_nostrconnect, init_restore,
-    mark_persistent_sub_registered, record_signer_ready, take_persistent_registration,
+    mark_persistent_sub_registered, record_signer_ready, record_user_pubkey,
+    take_persistent_registration,
 };
 
 // ─── Nip46Runtime ────────────────────────────────────────────────────────────
@@ -67,6 +68,13 @@ pub struct Nip46Runtime {
     pub(crate) local_keys: Keys,
     /// Remote signer pubkey (bunker or nostrconnect signer app).
     pub(crate) remote_pubkey: PublicKey,
+    /// #2976 — the ACCOUNT's user pubkey (NOT the signer/bunker pubkey), learned
+    /// at `SignerReady` and written back via [`lifecycle::record_user_pubkey`].
+    /// `None` until the handshake completes. Later health callbacks from THIS
+    /// runtime instance (reconnect `connected`, post-`SignerReady` errors) read
+    /// it to attribute the `signer_state` health to the correct identity instead
+    /// of clobbering whatever account is now active.
+    pub(crate) user_pubkey: Option<PublicKey>,
     /// Whether `kernel.register_persistent_sub` has been called for this session.
     /// Set to `true` by the interceptor's `on_idle_tick` on first registration.
     pub(crate) persistent_sub_registered: bool,
@@ -171,6 +179,13 @@ impl Nip46Runtime {
     /// Remote signer pubkey.
     pub fn remote_pubkey(&self) -> PublicKey {
         self.remote_pubkey
+    }
+
+    /// #2976 — the account's user pubkey once the handshake has learned it
+    /// (`None` before `SignerReady`). Read by the interceptor / connected hook
+    /// to attribute `signer_state` health to the correct identity.
+    pub fn user_pubkey(&self) -> Option<PublicKey> {
+        self.user_pubkey
     }
 }
 
