@@ -73,7 +73,7 @@ fn map_store_error(err: StoreError) -> PublishStoreError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::publish::PerRelayState;
+    use crate::publish::{PerRelayState, PublishTarget};
     use crate::store::MemEventStore;
     use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -91,6 +91,7 @@ mod tests {
                     created_at: 1_700_000_000,
                 },
             },
+            target: PublishTarget::Auto,
             per_relay: vec![("wss://relay.test".to_string(), state)],
             pending_retries: Vec::new(),
             relay_reasons: Vec::new(),

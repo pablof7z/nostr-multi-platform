@@ -271,6 +271,7 @@ impl PublishEngine {
             handle.clone(),
             InFlight {
                 event,
+                target,
                 per_relay,
                 relay_reasons,
                 pending_retries: BTreeMap::new(),

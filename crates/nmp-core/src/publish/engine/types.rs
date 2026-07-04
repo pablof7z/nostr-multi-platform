@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use super::super::action::{PublishHandle, RelayUrl};
+use super::super::action::{PublishHandle, PublishTarget, RelayUrl};
 use super::super::state::PerRelayState;
 use super::super::traits::RelaySelectionReason;
 use nmp_signer_iface::SignedEvent;
@@ -14,6 +14,14 @@ use nmp_signer_iface::SignedEvent;
 /// One in-flight publish row owned by the engine.
 pub(crate) struct InFlight {
     pub event: SignedEvent,
+    /// The caller's original routing intent, captured verbatim at publish
+    /// time. #3020: re-resolved on demand by `PublishEngine::retarget_row`
+    /// (called on every `mark_relay_available`) so a relay added to the
+    /// user's configured set AFTER this row was queued can still be folded
+    /// into `per_relay` — without this the target set was frozen forever at
+    /// compose time and a newly-added relay was never a key in `per_relay`,
+    /// so it could never receive the publish.
+    pub target: PublishTarget,
     pub per_relay: BTreeMap<RelayUrl, PerRelayState>,
     /// Per-relay selection rationale, captured from `OutboxResolver::resolve()`
     /// at publish time and never mutated thereafter. Mirrors the key set of

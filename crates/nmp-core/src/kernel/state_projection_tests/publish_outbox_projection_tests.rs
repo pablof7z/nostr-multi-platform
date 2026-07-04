@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use super::projection_fixtures_support::{snapshot, ACCOUNT};
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PerRelayState, PublishRecord, PublishStore};
+use crate::publish::{
+    InMemoryPublishStore, PerRelayState, PublishRecord, PublishStore, PublishTarget,
+};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
@@ -187,6 +189,7 @@ fn publish_outbox_omits_empty_relay_reason_from_json() {
                     created_at: 1_700_000_000,
                 },
             },
+            target: PublishTarget::Auto,
             per_relay: vec![("wss://legacy.test".to_string(), PerRelayState::Pending)],
             pending_retries: Vec::new(),
             // Deliberately empty — simulates a record persisted before the

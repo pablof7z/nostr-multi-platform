@@ -348,6 +348,13 @@ pub trait PublishStore: Send + Sync {
 pub struct PublishRecord {
     pub handle: PublishHandle,
     pub event: SignedEvent,
+    /// The caller's original routing intent (#3020). Persisted so
+    /// `PublishEngine::retarget_row` can re-run the same `OutboxResolver`
+    /// call on resume/reconnect and fold in any relay added to the user's
+    /// configured set after this row was queued. Defaults to
+    /// `PublishTarget::Auto` for rows serialised before this field existed.
+    #[serde(default)]
+    pub target: PublishTarget,
     pub per_relay: Vec<(RelayUrl, PerRelayState)>,
     /// Per-relay scheduled retry deadlines (`relay_url → earliest_retry_ms`).
     /// Persisted so a mid-backoff state survives kernel restart — without

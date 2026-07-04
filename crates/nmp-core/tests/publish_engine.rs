@@ -362,6 +362,7 @@ fn publish_store_persists_event_for_resume_round_trip() {
     let record = nmp_core::publish::PublishRecord {
         handle: "h-round".to_string(),
         event: event.clone(),
+        target: PublishTarget::Auto,
         per_relay: vec![("wss://r1".to_string(), PerRelayState::Pending)],
         pending_retries: Vec::new(),
         relay_reasons: Vec::new(),

@@ -55,7 +55,9 @@ use std::sync::Arc;
 use nmp_browser_runtime::{
     BrowserAppBuilder, BrowserRunConfig, BrowserRuntimeHandle, SnapshotOutcome,
 };
-use nmp_core::publish::{DomainPublishStore, PerRelayState, PublishRecord, PublishStore};
+use nmp_core::publish::{
+    DomainPublishStore, PerRelayState, PublishRecord, PublishStore, PublishTarget,
+};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_store::{EventStore, OpfsSqliteEventStore, RawEvent, StoreQuery};
 use wasm_bindgen::prelude::*;
@@ -379,6 +381,7 @@ fn offline_publish_record(handle: &str, relay: &str) -> PublishRecord {
                 created_at: 1_700_000_500,
             },
         },
+        target: PublishTarget::Auto,
         per_relay: vec![(relay.to_owned(), PerRelayState::Pending)],
         pending_retries: vec![],
         relay_reasons: vec![],

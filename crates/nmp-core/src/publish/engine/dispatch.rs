@@ -122,6 +122,15 @@ impl PublishEngine {
             }
             let in_flight = InFlight {
                 event: record.event,
+                // #3020: needed so `retarget_row` can re-run the SAME
+                // resolver call this row was originally planned with.
+                // `#[serde(default)]` on `PublishRecord::target` falls back
+                // to `PublishTarget::Auto` for a row persisted before this
+                // field existed — a one-release migration edge case (a row
+                // that survives exactly across the upgrade boundary); an
+                // `Explicit`-targeted row from that narrow window loses its
+                // pin on resume and re-resolves via `Auto` instead.
+                target: record.target,
                 per_relay,
                 relay_reasons,
                 pending_retries,
@@ -230,6 +239,19 @@ impl PublishEngine {
     /// Mark a relay as available and immediately dispatch any pending intent
     /// targeted at that relay. This is the connection/reconnection sync path;
     /// regular retry ticks also use the same availability gate.
+    ///
+    /// #3020: a relay reaching `Connected` is also the one event-driven
+    /// signal that the user's configured relay set may have changed since
+    /// any given row's targets were last resolved — a brand-new relay added
+    /// to the config while a note sat queued was never a key in that row's
+    /// `per_relay`, so reacting to `Connected` only for relays already
+    /// tracked did nothing for it (the #3020 bug: the note was never
+    /// re-targeted and so never delivered). `retarget_row` re-runs the SAME
+    /// `OutboxResolver` call the row was originally planned with and folds
+    /// any newly-selected relay in as a fresh `Pending` target BEFORE the
+    /// dispatch below, so a relay that is new to this row can still receive
+    /// the publish the moment it connects — no polling, purely reactive to
+    /// the existing `Connected` event.
     pub fn mark_relay_available(
         &mut self,
         relay_url: &str,
@@ -239,6 +261,7 @@ impl PublishEngine {
         self.unavailable_relays.remove(&relay_url);
         let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
         for handle in &handles {
+            self.retarget_row(handle);
             self.dispatch_pending_for_relay(handle, &relay_url, now_ms);
         }
         // Finalize any row the dispatch left fully terminal (D10 refusal of a
@@ -247,6 +270,63 @@ impl PublishEngine {
         self.finalize_completed_rows(&handles, now_ms);
         self.flush_view();
         Ok(())
+    }
+
+    /// Re-resolve `handle`'s target relay set via the engine's current
+    /// `OutboxResolver` + `BlockedRelayLookup` and fold any NEWLY-selected
+    /// canonical relay URL into `per_relay` as a fresh `Pending` entry
+    /// (#3020). A relay that is already a key — Pending, in-flight, or
+    /// terminally settled — is left untouched: this never resurrects a
+    /// relay the engine already gave up on or already delivered to, it only
+    /// discovers relays the row never knew about. A no-op (and no store
+    /// write) for a row that is already fully terminal, or whose resolve
+    /// yields nothing new.
+    fn retarget_row(&mut self, handle: &PublishHandle) {
+        let Some(in_flight) = self.in_flight.get(handle) else {
+            return;
+        };
+        if helpers::is_complete(in_flight) {
+            return;
+        }
+        let blocked = self
+            .blocked_relays
+            .blocked_relays(&in_flight.event.unsigned.pubkey);
+        let pubkey = in_flight.event.unsigned.pubkey.clone();
+        let kind = in_flight.event.unsigned.kind;
+        let p_tags = helpers::collect_p_tags(&in_flight.event);
+        let target = in_flight.target.clone();
+        let resolved = self
+            .outbox
+            .resolve(&pubkey, &p_tags, &target, kind, &blocked);
+
+        let Some(in_flight) = self.in_flight.get(handle) else {
+            return;
+        };
+        let mut new_relays: BTreeMap<RelayUrl, Vec<RelaySelectionReason>> = BTreeMap::new();
+        for r in resolved {
+            let canonical = helpers::canonical_relay_identity(&r.url);
+            if in_flight.per_relay.contains_key(&canonical) {
+                continue;
+            }
+            let bucket = new_relays.entry(canonical).or_default();
+            if !bucket.contains(&r.reason) {
+                bucket.push(r.reason);
+            }
+        }
+        if new_relays.is_empty() {
+            return;
+        }
+        let Some(in_flight) = self.in_flight.get_mut(handle) else {
+            return;
+        };
+        for (url, reasons) in new_relays {
+            in_flight
+                .per_relay
+                .insert(url.clone(), PerRelayState::Pending);
+            in_flight.relay_reasons.insert(url, reasons);
+        }
+        in_flight.dirty = true;
+        let _ = self.persist(handle);
     }
 
     /// User-requested immediate retry for a pending publish. This does not
@@ -320,6 +400,7 @@ impl PublishEngine {
         let record = PublishRecord {
             handle: handle.clone(),
             event: in_flight.event.clone(),
+            target: in_flight.target.clone(),
             per_relay: in_flight
                 .per_relay
                 .iter()
