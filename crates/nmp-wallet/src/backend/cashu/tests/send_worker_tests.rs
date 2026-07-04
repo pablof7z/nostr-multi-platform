@@ -138,7 +138,10 @@ fn finish_send_updates_proofs_ledger_and_publishes_kind_9321() {
     let state = state::lock_state(&backend.state);
     assert_eq!(
         state.journal.get(&operation_id).unwrap().state,
-        crate::journal::WalletOperationState::PublishPending
+        // #2960 — `finish_send` now settles the send once its kind:9321 is
+        // signed (its terminal transition, so the durable WAL row+payload are
+        // cleaned up and a completed send is never re-driven on restart).
+        crate::journal::WalletOperationState::Settled
     );
     // The spent proof (c = "02aa") is gone; the change proof (c = "02cc") is
     // held. The nutzap's own output proof (c = "02bb") was handed to the

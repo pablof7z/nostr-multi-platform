@@ -12,6 +12,8 @@ use crate::journal::{restore_into_journal, WalletWalStore};
 use super::deposit::ResumeDepositCommand;
 use super::state::{lock_state, CashuWalletState};
 use super::wal_payload::restore_deposits;
+use super::wal_redeem::{restore_redeems, ResumeRedeemCommand};
+use super::wal_send::{restore_sends, ResumeSendCommand};
 use super::CashuWalletBackend;
 
 impl CashuWalletBackend {
@@ -90,6 +92,15 @@ impl CashuWalletBackend {
     /// `DepositResume` retry already uses. The caller
     /// (`register::register`'s identity observer + eager cold-start restore)
     /// forwards the returned commands via `app.actor_sender()`.
+    ///
+    /// PR-3 of #2960/#2931 extends this to send + redeem: a [`ResumeSendCommand`]
+    /// per in-flight send and a [`ResumeRedeemCommand`] per in-flight redeem,
+    /// each of which (off the actor thread, same D8 reason) either re-drives its
+    /// `finish_*` seam from persisted post-swap proofs or NUT-07 check-state
+    /// reconciles a reserved-but-never-swapped operation (see
+    /// `wal_send.rs`/`wal_redeem.rs`). The mint-HTTP work all happens inside
+    /// those commands' worker threads, never inline here (this method holds the
+    /// state lock).
     #[must_use]
     pub fn restore_from_wal(&self, account: &str) -> Vec<ActorCommand> {
         let Some(store) = self.wal_store.clone() else {
@@ -98,18 +109,34 @@ impl CashuWalletBackend {
         let mut state = lock_state(&self.state);
         state.wal_account = Some(account.to_string());
         let _ = restore_into_journal(store.as_ref(), account, &mut state.journal);
-        let resumes = restore_deposits(&mut state, store.as_ref(), account);
-        resumes
-            .into_iter()
-            .map(|resume| {
-                ActorCommand::Protocol(Box::new(ResumeDepositCommand {
-                    state: Arc::clone(&self.state),
-                    operation_id: resume.operation_id,
-                    quote_id: resume.quote_id,
-                    mint: resume.mint,
-                    account_pubkey: account.to_string(),
-                }))
-            })
-            .collect()
+        let deposit_resumes = restore_deposits(&mut state, store.as_ref(), account);
+        let send_resumes = restore_sends(store.as_ref(), account);
+        let redeem_resumes = restore_redeems(store.as_ref(), account);
+
+        let mut commands: Vec<ActorCommand> = Vec::new();
+        for resume in deposit_resumes {
+            commands.push(ActorCommand::Protocol(Box::new(ResumeDepositCommand {
+                state: Arc::clone(&self.state),
+                operation_id: resume.operation_id,
+                quote_id: resume.quote_id,
+                mint: resume.mint,
+                account_pubkey: account.to_string(),
+            })));
+        }
+        for resume in send_resumes {
+            commands.push(ActorCommand::Protocol(Box::new(ResumeSendCommand {
+                state: Arc::clone(&self.state),
+                account_pubkey: account.to_string(),
+                resume,
+            })));
+        }
+        for resume in redeem_resumes {
+            commands.push(ActorCommand::Protocol(Box::new(ResumeRedeemCommand {
+                state: Arc::clone(&self.state),
+                account_pubkey: account.to_string(),
+                resume,
+            })));
+        }
+        commands
     }
 }

@@ -150,6 +150,24 @@ pub(super) fn run_redeem_worker(args: RedeemWorkerArgs) {
         }
     };
 
+    // #2931 — the unlinking swap has committed: persist the fresh
+    // wallet-owned proofs BEFORE `finish_redeem` runs, so a crash before the
+    // kind:7375/7376 are published can re-drive `finish_redeem` from these
+    // exact proofs on restart (`wal_redeem.rs`) rather than losing track of
+    // them (the redeem-side of the #2910-class gap `finish_redeem`'s own module
+    // docs flag).
+    {
+        let s = lock_state(&state);
+        super::wal_redeem::persist_redeem_payload(
+            &s,
+            &operation_id,
+            &nutzap,
+            &nutzap_wallet_event,
+            &relays,
+            Some(fresh_proofs.clone()),
+        );
+    }
+
     finish_redeem(FinishRedeemArgs {
         worker_tx,
         state,

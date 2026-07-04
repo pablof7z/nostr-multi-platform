@@ -1,5 +1,9 @@
-//! Cashu backend-owned resume payloads for the durable pre-publish WAL
-//! (PR-2 of #2910 — the deposit-side payload writes + restore/re-drive).
+//! Cashu backend-owned resume payloads for the durable pre-publish WAL.
+//! PR-2 of #2910 landed the deposit-side payload writes + restore/re-drive
+//! (below); PR-3 of #2960/#2931 adds the [`CashuWalPayload::Send`] and
+//! [`CashuWalPayload::Redeem`] variants + serializable twins here, with their
+//! write points in `send.rs`/`send_worker.rs`/`redeem.rs`/`redeem_worker.rs`
+//! and their restore/re-drive/reconcile in `wal_send.rs`/`wal_redeem.rs`.
 //!
 //! PR-1 (the journal-durability spine) made the backend-agnostic saga row
 //! durable, but a saga row deliberately carries no Cashu noun — it only knows
@@ -27,19 +31,17 @@
 use serde::{Deserialize, Serialize};
 
 use nmp_nip60::cashu::types::Proof;
+use nmp_nip60::nutzap::{NutZapProof, ReceivedNutZap};
 use nmp_signer_iface::SignedEvent;
 
 use crate::journal::{WalletOperationId, WalletOperationKind, WalletWalStore};
 
-use super::state::{CashuWalletState, PendingDeposit};
+use super::state::{CashuWalletState, PendingDeposit, StoredProof};
 
 /// The Cashu backend's opaque WAL resume payload, keyed under the operation id
 /// (the saga row's own key) via [`WalletWalStore::upsert_payload`].
 ///
-/// One variant per operation family that has secret-bearing resume state. Only
-/// [`Self::Deposit`] exists today — the Send/Redeem variants that persist
-/// consumed proofs + signed replacement tokens are PR-3's job (the send+redeem
-/// WAL wave) and land WITH their write points, not as a stub here.
+/// One variant per operation family that has secret-bearing resume state.
 #[derive(Serialize, Deserialize)]
 pub(super) enum CashuWalPayload {
     /// A two-phase Cashu deposit. `minted_proofs`/`signed_token` are `None`
@@ -52,9 +54,134 @@ pub(super) enum CashuWalPayload {
         minted_proofs: Option<Vec<Proof>>,
         signed_token: Option<SignedEvent>,
     },
-    // PR-3 (send+redeem WAL wave, #2910 follow-up): `Send`/`Redeem` variants
-    // carrying consumed proofs + the signed replacement token event land here
-    // alongside their own write points. Intentionally not stubbed.
+    /// An outgoing nutzap (`SendNutzap`, #2960). `selected` are the reserved
+    /// input proofs (removed from the spendable inventory the instant this is
+    /// first written, in the same lock scope as the reservation); `swapped` is
+    /// `None` until the mint swap returns `Ok`, then carries the swap's outputs
+    /// (recipient's P2PK-locked proofs + sender change) so a crash in the
+    /// swapped-but-kind:9321-unsigned window (the #2960 gap) can re-drive
+    /// `finish_send` from a restart instead of losing track of them. A
+    /// `swapped: None` non-terminal entry on restart is the "reserved but swap
+    /// never committed" case `wal_send.rs` reconciles via NUT-07 check-state.
+    Send {
+        mint: String,
+        recipient_pubkey: String,
+        recipient_cashu_pubkey: String,
+        target_event_id: Option<String>,
+        relays: Vec<String>,
+        selected: Vec<StoredProofRecord>,
+        swapped: Option<SwappedSend>,
+    },
+    /// An incoming nutzap redemption (`RedeemNutzap`, #2931). The whole
+    /// `nutzap` rides along (not just its id) because both the resume path and
+    /// the reconcile path need it: `finish_redeem` rebuilds kind:7375/7376 from
+    /// its mint/amount/sender/event fields, and the `Unknown`-reconcile
+    /// check-states the nutzap's own input-proof secrets. `fresh_proofs` is
+    /// `None` until the mint swap returns `Ok`, then carries the unlinked
+    /// wallet-owned outputs for the swapped-but-unpublished re-drive (the #2931
+    /// swap-side of the gap); a `None`, non-terminal entry on restart is the
+    /// case `wal_redeem.rs` reconciles (the actual #2931 fix — see there).
+    Redeem {
+        nutzap: NutzapRecord,
+        nutzap_wallet_event: String,
+        mint: String,
+        relays: Vec<String>,
+        fresh_proofs: Option<Vec<Proof>>,
+    },
+}
+
+/// Serializable twin of the live, secret-bearing [`StoredProof`]
+/// (`state.rs`) — same three fields, but a plain `#[derive(Serialize,
+/// Deserialize)]` value so the send WAL payload can round-trip the reserved
+/// input proofs. Kept a distinct type (rather than deriving serde on
+/// `StoredProof` itself) so the live inventory type stays serialization-free:
+/// a `StoredProof` is only ever meant to live in memory, never accidentally
+/// logged/serialized anywhere but this one deliberate WAL slot.
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct StoredProofRecord {
+    pub(super) token_event: Option<String>,
+    pub(super) mint: String,
+    pub(super) proof: Proof,
+}
+
+impl From<&StoredProof> for StoredProofRecord {
+    fn from(s: &StoredProof) -> Self {
+        Self {
+            token_event: s.token_event.clone(),
+            mint: s.mint.clone(),
+            proof: s.proof.clone(),
+        }
+    }
+}
+
+impl StoredProofRecord {
+    pub(super) fn into_stored(self) -> StoredProof {
+        StoredProof {
+            token_event: self.token_event,
+            mint: self.mint,
+            proof: self.proof,
+        }
+    }
+}
+
+/// The mint swap's response for an outgoing nutzap: the first `nutzap_count`
+/// entries of `new_proofs` are the recipient's P2PK-locked outputs, the rest
+/// are the sender's change — exactly the shape `send_worker::finish_send`
+/// consumes. Persisted the instant `client.swap(..)` returns `Ok`, before
+/// `finish_send` runs, so the outputs survive a crash before the kind:9321 is
+/// signed (#2960).
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct SwappedSend {
+    pub(super) new_proofs: Vec<Proof>,
+    pub(super) nutzap_count: usize,
+}
+
+/// Serializable twin of `nmp_nip60::nutzap::ReceivedNutZap` (which is not
+/// itself `Serialize`) — the received kind:9321 a redeem resumes/reconciles
+/// against. Nostr ids/keys ride as hex strings; `proofs` reuse the already-
+/// `Serialize` [`NutZapProof`] wire type. [`Self::into_received`] is fallible
+/// (a corrupt/foreign blob with un-parseable hex is skipped on restore, the
+/// same corrupt-skip discipline the whole WAL takes).
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct NutzapRecord {
+    pub(super) event_id: String,
+    pub(super) sender_pubkey: String,
+    pub(super) proofs: Vec<NutZapProof>,
+    pub(super) mint_url: String,
+    pub(super) amount_sats: u64,
+    pub(super) comment: String,
+    pub(super) zapped_event_id: Option<String>,
+}
+
+impl From<&ReceivedNutZap> for NutzapRecord {
+    fn from(n: &ReceivedNutZap) -> Self {
+        Self {
+            event_id: n.event_id.to_hex(),
+            sender_pubkey: n.sender_pubkey.to_hex(),
+            proofs: n.proofs.clone(),
+            mint_url: n.mint_url.clone(),
+            amount_sats: n.amount_sats,
+            comment: n.comment.clone(),
+            zapped_event_id: n.zapped_event_id.map(|id| id.to_hex()),
+        }
+    }
+}
+
+impl NutzapRecord {
+    pub(super) fn into_received(self) -> Option<ReceivedNutZap> {
+        Some(ReceivedNutZap {
+            event_id: nostr::EventId::from_hex(&self.event_id).ok()?,
+            sender_pubkey: nostr::PublicKey::from_hex(&self.sender_pubkey).ok()?,
+            proofs: self.proofs,
+            mint_url: self.mint_url,
+            amount_sats: self.amount_sats,
+            comment: self.comment,
+            zapped_event_id: match self.zapped_event_id {
+                Some(id) => Some(nostr::EventId::from_hex(&id).ok()?),
+                None => None,
+            },
+        })
+    }
 }
 
 impl CashuWalPayload {
@@ -62,14 +189,14 @@ impl CashuWalPayload {
     /// (practically unreachable) serde failure — the caller treats a failed
     /// encode as "no payload written", the same fail-open posture the saga
     /// write-through takes for a transient disk error (D6).
-    fn encode(&self) -> Option<Vec<u8>> {
+    pub(super) fn encode(&self) -> Option<Vec<u8>> {
         serde_json::to_vec(self).ok()
     }
 
     /// Decode a persisted payload; `None` on a corrupt/foreign blob, so a
     /// single bad payload skips its deposit rather than bricking restore
     /// (same corrupt-skip discipline as `restore_into_journal`).
-    fn decode(bytes: &[u8]) -> Option<Self> {
+    pub(super) fn decode(bytes: &[u8]) -> Option<Self> {
         serde_json::from_slice(bytes).ok()
     }
 }
