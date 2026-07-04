@@ -111,7 +111,10 @@ fn permanently_unavailable_relay_fails_fast_without_blocking_the_good_relay() {
     let mut outbox = StaticOutbox::default();
     outbox.author_writes.insert(
         "alice".to_string(),
-        vec!["wss://dead-relay".to_string(), "wss://good-relay".to_string()],
+        vec![
+            "wss://dead-relay".to_string(),
+            "wss://good-relay".to_string(),
+        ],
     );
     let dispatcher = Arc::new(QueueDispatcher::new());
     let policy = RetryPolicy {

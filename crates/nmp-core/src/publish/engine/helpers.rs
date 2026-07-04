@@ -263,7 +263,8 @@ pub(super) fn next_deadline_ms(
             // deadline — see `PublishEngine::unavailable_relays`'s doc comment.
             if !state.is_terminal() {
                 if let Some(became_unavailable_ms) = unavailable_since {
-                    let candidate = became_unavailable_ms.saturating_add(policy.inflight_deadline_ms);
+                    let candidate =
+                        became_unavailable_ms.saturating_add(policy.inflight_deadline_ms);
                     next = Some(next.map_or(candidate, |current| current.min(candidate)));
                 }
             }

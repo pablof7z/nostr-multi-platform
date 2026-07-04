@@ -171,7 +171,8 @@ impl PublishEngine {
         match self.unavailable_relays.get(&relay_url) {
             Some(Some(_)) => {}
             _ => {
-                self.unavailable_relays.insert(relay_url.clone(), Some(now_ms));
+                self.unavailable_relays
+                    .insert(relay_url.clone(), Some(now_ms));
             }
         }
         self.demote_inflight_to_pending(&relay_url)?;
