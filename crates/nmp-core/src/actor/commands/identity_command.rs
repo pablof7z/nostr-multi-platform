@@ -76,8 +76,13 @@ pub enum IdentityCommand {
     /// `"signer_state"` snapshot projection reads the slot on every tick. D4:
     /// the actor is the sole writer of the slot — the broker callback routes
     /// through this command so the write happens on the actor thread.
-    #[allow(dead_code)] // live cross-crate caller in nmp-ffi — per-crate lint false positive
     BunkerConnectionStateChanged {
+        /// #2976 — the originating account (user pubkey hex), threaded from the
+        /// NIP-46 runtime so the health is attributed per-identity instead of
+        /// clobbering whatever account is now active. `None` before the
+        /// handshake has learned the identity (pre-`SignerReady`) — routed to
+        /// the transient onboarding lane.
+        identity_id: Option<String>,
         /// `"connected"` | `"reconnecting"` | `"failed"`.
         state: String,
         /// Optional human-readable reason (error message on reconnect/failed).
@@ -87,8 +92,12 @@ pub enum IdentityCommand {
     /// `signer_state` projection. Emitted by the `nmp-ffi` NIP-55 driver when
     /// the host capability bridge reports an outcome that affects long-lived
     /// signer health (awaiting approval, ready, rejected, unavailable).
-    #[allow(dead_code)] // live cross-crate caller in nmp-ffi — per-crate lint false positive
     Nip55SignerStateChanged {
+        /// #2976 — the originating account (signer pubkey hex, learned via
+        /// `signer.pubkey_hex()` post-connect) so the health is attributed
+        /// per-identity. `None` for first-connect events that fire before any
+        /// account exists (`awaiting_approval`) — routed to the onboarding lane.
+        identity_id: Option<String>,
         /// `"ready"` | `"awaiting_approval"` | `"unavailable"` | `"failed"`.
         state: String,
         /// Optional human-readable reason (rejection/unavailable detail).
@@ -174,13 +183,23 @@ impl fmt::Debug for IdentityCommand {
                 .field("code", code)
                 .field("message", message)
                 .finish(),
-            Self::BunkerConnectionStateChanged { state, reason } => f
+            Self::BunkerConnectionStateChanged {
+                identity_id,
+                state,
+                reason,
+            } => f
                 .debug_struct("BunkerConnectionStateChanged")
+                .field("identity_id", identity_id)
                 .field("state", state)
                 .field("reason", reason)
                 .finish(),
-            Self::Nip55SignerStateChanged { state, reason } => f
+            Self::Nip55SignerStateChanged {
+                identity_id,
+                state,
+                reason,
+            } => f
                 .debug_struct("Nip55SignerStateChanged")
+                .field("identity_id", identity_id)
                 .field("state", state)
                 .field("reason", reason)
                 .finish(),

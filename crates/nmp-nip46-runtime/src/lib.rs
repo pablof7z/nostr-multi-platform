@@ -81,7 +81,7 @@ pub use register::register_nip46;
 pub use runtime::{
     clear_runtime, complete_signer_from_ready, init_bunker, init_nostrconnect, init_restore,
     mark_persistent_sub_registered, new_nip46_runtime_handle, record_signer_ready,
-    take_persistent_registration, Nip46Runtime, Nip46RuntimeHandle,
+    record_user_pubkey, take_persistent_registration, Nip46Runtime, Nip46RuntimeHandle,
 };
 pub use transport::ActorLaneTransport;
 

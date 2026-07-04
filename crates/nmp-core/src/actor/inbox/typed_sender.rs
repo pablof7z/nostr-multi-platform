@@ -88,9 +88,22 @@ impl CommandSender {
     }
 
     /// Update the NIP-55 external-signer health state in the kernel.
-    pub fn nip55_signer_state_changed(&self, state: String, reason: Option<String>) {
+    ///
+    /// #2976 — `identity_id` is the signer's pubkey hex (known post-connect via
+    /// `signer.pubkey_hex()`) so the health is attributed per-identity, or
+    /// `None` for first-connect events before any account exists.
+    pub fn nip55_signer_state_changed(
+        &self,
+        identity_id: Option<String>,
+        state: String,
+        reason: Option<String>,
+    ) {
         let _ = self.send(ActorCommand::Identity(
-            IdentityCommand::Nip55SignerStateChanged { state, reason },
+            IdentityCommand::Nip55SignerStateChanged {
+                identity_id,
+                state,
+                reason,
+            },
         ));
     }
 
@@ -111,9 +124,22 @@ impl CommandSender {
     }
 
     /// Report a NIP-46 bunker relay-layer connection state change.
-    pub fn bunker_connection_state_changed(&self, state: String, reason: Option<String>) {
+    ///
+    /// #2976 — `identity_id` is the account's user pubkey hex (threaded from the
+    /// NIP-46 runtime once the handshake learns it), or `None` before
+    /// `SignerReady` so the event routes to the transient onboarding lane.
+    pub fn bunker_connection_state_changed(
+        &self,
+        identity_id: Option<String>,
+        state: String,
+        reason: Option<String>,
+    ) {
         let _ = self.send(ActorCommand::Identity(
-            IdentityCommand::BunkerConnectionStateChanged { state, reason },
+            IdentityCommand::BunkerConnectionStateChanged {
+                identity_id,
+                state,
+                reason,
+            },
         ));
     }
 

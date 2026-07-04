@@ -221,7 +221,7 @@ fn restore_app_managed_local_signers(
 }
 
 fn restore_remote_signer(
-    identity: &IdentityRuntime,
+    identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
     capability_work_tx: &CapabilityWorkSender,
