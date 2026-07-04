@@ -49,8 +49,8 @@ fn render_imports(registry: &LoadedAppConceptReadRegistry, out: &mut String) {
         out.push_str("};\n\n");
     }
     out.push_str(&format!(
-        "use crate::facade::{};\n\n",
-        registry.facade.rust_type
+        "use crate::{}::{};\n\n",
+        registry.facade.rust_module, registry.facade.rust_type
     ));
 }
 
