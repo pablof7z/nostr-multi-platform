@@ -218,6 +218,12 @@ fn explicit_arm_appends_client_tag_on_public_note() {
 #[test]
 fn explicit_arm_finalizes_before_parking_remote_sign() {
     let (mut id, mut kernel) = fresh();
+    // Fixed clock (#2962): see the identical race + fix rationale on
+    // `auto_arm_finalizes_before_parking_remote_sign` in publish_unsigned.rs —
+    // this test has the same two-live-clock-reads assertion at :260.
+    kernel.set_clock(std::sync::Arc::new(crate::kernel::clock::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+    )));
     let signer = PendingCaptureRemoteSigner::new(&"b".repeat(64));
     let captured = signer.captured_handle();
     add_signer(

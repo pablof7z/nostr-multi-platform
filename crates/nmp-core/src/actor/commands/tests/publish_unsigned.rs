@@ -313,6 +313,15 @@ fn auto_arm_appends_client_tag_on_public_note() {
 #[test]
 fn auto_arm_finalizes_before_parking_remote_sign() {
     let (mut id, mut kernel) = fresh();
+    // Fixed clock (#2962): `publish_finalize::stamp_unsigned_if_needed` stamps
+    // the zero `created_at` below from `kernel.now_secs()`, and the assertion
+    // at :352 independently reads `kernel.now_secs()` again to check it. Two
+    // back-to-back reads of the real wall clock straddling a second boundary
+    // made that assertion intermittently fail; pinning the clock removes the
+    // race the same way `command_apply_contacts_tests.rs` does.
+    kernel.set_clock(std::sync::Arc::new(crate::kernel::clock::FixedClock(
+        std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000),
+    )));
     let signer = PendingCaptureRemoteSigner::new(&"a".repeat(64));
     let captured = signer.captured_handle();
     add_signer(
