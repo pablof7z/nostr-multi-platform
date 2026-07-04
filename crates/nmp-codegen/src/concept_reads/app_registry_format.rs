@@ -24,6 +24,9 @@ pub(super) struct FacadeRow {
     #[serde(default = "default_rust_module")]
     pub rust_module: String,
     pub runtime_accessor: String,
+    /// Accessor call shape: `"ref"` (default) or `"closure"`. Absent means ref.
+    #[serde(default)]
+    pub runtime_accessor_shape: Option<String>,
     pub error_type: String,
     pub invalid_target_variant: String,
     pub open_failed_variant: String,

@@ -32,6 +32,44 @@ const FIXTURE: &str = r#"{
   ]
 }"#;
 
+/// Closure-guarded accessor fixture with both a JSON-target read (replies) and
+/// a plain-string-target read (reactions), exercising both `open_*` code paths.
+const CLOSURE_FIXTURE: &str = r#"{
+  "schema": "nmp.concept-reads/1",
+  "facade": {
+    "rust_type": "ChirpApp",
+    "runtime_accessor": "with_app",
+    "runtime_accessor_shape": "closure",
+    "error_type": "ChirpReadError",
+    "invalid_target_variant": "InvalidTarget",
+    "open_failed_variant": "OpenFailed",
+    "decode_failed_variant": "DecodeFailed"
+  },
+  "reads": [
+    {
+      "concept": "replies",
+      "opened_record": "ChirpOpenedReplies",
+      "summary": {
+        "record": "ChirpReplySummary"
+      }
+    },
+    {
+      "concept": "reactions",
+      "opened_record": "ChirpOpenedReactions",
+      "summary": {
+        "record": "ChirpReactionSummary",
+        "group_record": "ChirpReactionGroupSummary"
+      }
+    }
+  ],
+  "outputs": {
+    "rust": "crates/nmp-chirp-android-ffi/src/uniffi_app_loop/concept_reads.rs"
+  },
+  "drift_checks": [
+    "cargo run -p nmp-codegen -- gen concept-reads --registry concept-reads.json --platform rust --check"
+  ]
+}"#;
+
 #[test]
 fn platform_parse_accepts_native_wrappers() {
     assert_eq!(
@@ -128,6 +166,62 @@ fn renders_kotlin_wrappers_for_replies() {
     assert!(rendered.contains("app.openReplies(targetJson)"));
     assert!(rendered.contains("app.closeReplies(opened)"));
     assert!(rendered.contains("return app.decodeReplySummary(payload)"));
+}
+
+#[test]
+fn default_accessor_shape_is_ref() {
+    let loaded = parse_app_concept_read_registry(FIXTURE).unwrap();
+    assert_eq!(
+        loaded.facade.runtime_accessor_shape,
+        RuntimeAccessorShape::Ref
+    );
+    // Ref mode calls the concept door directly with a held reference and never
+    // wraps it in a closure guard.
+    let rendered = crate::concept_reads::rust::render_registry(&loaded);
+    assert!(rendered.contains("open_replies(self.runtime(), target)"));
+    assert!(rendered.contains("close_replies(self.runtime(), handle)"));
+    assert!(!rendered.contains("|app|"));
+    assert!(!rendered.contains("unwrap_or(false)"));
+}
+
+#[test]
+fn parses_closure_accessor_shape() {
+    let loaded = parse_app_concept_read_registry(CLOSURE_FIXTURE).unwrap();
+    assert_eq!(
+        loaded.facade.runtime_accessor_shape,
+        RuntimeAccessorShape::Closure
+    );
+    assert_eq!(loaded.facade.runtime_accessor, "with_app");
+}
+
+#[test]
+fn renders_rust_facade_slice_closure_mode() {
+    let loaded = parse_app_concept_read_registry(CLOSURE_FIXTURE).unwrap();
+    let rendered = crate::concept_reads::rust::render_registry(&loaded);
+    // JSON-target open: dead handle and concept error both map to OpenFailed.
+    assert!(rendered.contains("        let handle = self\n"));
+    assert!(rendered.contains("            .with_app(|app| open_replies(app, target))\n"));
+    assert!(rendered.contains("            .ok_or(ChirpReadError::OpenFailed)?\n"));
+    assert!(rendered.contains("            .map_err(|_| ChirpReadError::OpenFailed)?;\n"));
+    // Plain-string open: dead handle → OpenFailed, concept error → InvalidTarget
+    // (matching ref-mode variant choice for plain-string targets).
+    assert!(
+        rendered.contains("            .with_app(|app| open_reactions(app, target_event_id))\n")
+    );
+    assert!(rendered.contains("            .map_err(|_| ChirpReadError::InvalidTarget)?;\n"));
+    // Close threads through the guard and treats a dead handle as already-closed.
+    assert!(rendered
+        .contains("        self.with_app(|app| close_replies(app, handle)).unwrap_or(false)\n"));
+    // Closure mode must never fall back to the direct ref call.
+    assert!(!rendered.contains("open_replies(self.with_app()"));
+    assert!(!rendered.contains("self.with_app(), "));
+}
+
+#[test]
+fn rejects_invalid_accessor_shape() {
+    let raw = CLOSURE_FIXTURE.replace("\"closure\"", "\"guarded\"");
+    let err = parse_app_concept_read_registry(&raw).unwrap_err();
+    assert!(err.contains("runtime_accessor_shape"), "{err}");
 }
 
 #[test]
