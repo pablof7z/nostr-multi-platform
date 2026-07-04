@@ -30,6 +30,9 @@ nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.
 nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 # `RawEvent` for the pre-signed publish path (`PublishCommand::SignedEvent`).
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
+# #2965: hex-encodes the Cashu P2PK pubkey `ingest::ingest_wallet_config`
+# derives from a recovered kind:17375's privkey — same pin nip60 itself uses.
+hex = "0.4"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # #2920 (epic #2864): typed FlatBuffers `ActionPayload` codecs for the eight

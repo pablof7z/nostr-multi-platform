@@ -54,13 +54,11 @@ pub fn capability_for(intent: &WalletIntent) -> Option<WalletCapability> {
     match intent {
         WalletIntent::SelectBackend { .. } => None,
         WalletIntent::PayBolt11 { .. } => Some(WalletCapability::PayBolt11),
-        // NOTE: `CreateCashuWallet` and `RecoverCashuWallet` share ONE
-        // capability flag (`WalletCapabilities::action_namespaces` bundles
-        // both action namespaces under `create_cashu_wallet`), so this
-        // mapping alone cannot distinguish "a backend can create" from "a
-        // backend can also recover". `action::cashu::CashuRecoverModule`
-        // rejects unconditionally in its own `start()` rather than trusting
-        // capability resolution here — see `ui_codes::CASHU_RECOVER_NOT_IMPLEMENTED`.
+        // `CreateCashuWallet` and `RecoverCashuWallet` share ONE capability
+        // flag (`WalletCapabilities::action_namespaces` bundles both action
+        // namespaces under `create_cashu_wallet`) — a backend that can mint a
+        // fresh wallet is expected to also be able to load an existing one
+        // (#2965: `CashuWalletBackend` implements both).
         WalletIntent::CreateCashuWallet { .. } | WalletIntent::RecoverCashuWallet => {
             Some(WalletCapability::CreateCashuWallet)
         }

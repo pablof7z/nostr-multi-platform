@@ -20,12 +20,3 @@ pub const UNKNOWN_BACKEND: &str = "wallet_unknown_backend";
 /// overlaps (e.g. Cashu melt implementing `pay_bolt11`).
 pub const AMBIGUOUS_BACKEND_SELECTION: &str = "wallet_ambiguous_backend_selection";
 
-/// `nmp.wallet.cashu.recover` was dispatched. No backend implements Cashu
-/// wallet recovery yet (`CashuWalletBackend::start_intent` documents
-/// `RecoverCashuWallet` as an out-of-scope no-op) — this is a real product
-/// gap, not something the generic capability-resolution check can catch,
-/// because `WalletCapability::CreateCashuWallet` bundles both the `create`
-/// and `recover` action namespaces for UI-surfacing purposes
-/// (`WalletCapabilities::action_namespaces`) without distinguishing which of
-/// the two a backend actually executes.
-pub const CASHU_RECOVER_NOT_IMPLEMENTED: &str = "wallet_cashu_recover_not_implemented";

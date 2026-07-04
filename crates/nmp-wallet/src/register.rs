@@ -157,7 +157,10 @@ pub fn register(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ))?;
-    app.register_action(CashuRecoverModule::new())?;
+    app.register_action(CashuRecoverModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ))?;
     app.register_action(CashuDepositQuoteModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),

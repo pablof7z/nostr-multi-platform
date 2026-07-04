@@ -23,6 +23,13 @@
 //! - [`mint_url_canonicalize_tests`] — #2972: `select_proofs`/send mint
 //!   resolution/the deposit and redeem accepted-mint checks must match by
 //!   canonical mint identity, not raw string equality.
+//! - [`ingest_tests`] — #2965: `ingest::ingest_wallet_config`/
+//!   `ingest_token_event`, the pure decode/fold functions wallet recovery
+//!   drives — never-clobber-if-already-created, and the `del`-field
+//!   confluence/dedup guarantee regardless of arrival order.
+//! - [`recover_tests`] — #2965: `RecoverCashuWalletCommand` — the explicit
+//!   `nmp.wallet.cashu.recover` action, fail-closed when no cached kind:17375
+//!   exists, and the happy-path decrypt->load->`record_action_success` chain.
 
 use std::sync::Mutex;
 
@@ -41,8 +48,10 @@ mod deposit_concurrency_tests;
 mod deposit_mint_race_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
+mod ingest_tests;
 mod mint_url_canonicalize_tests;
 mod publish_info_tests;
+mod recover_tests;
 mod redeem_tests;
 mod redeem_worker_tests;
 mod reset_tests;

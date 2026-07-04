@@ -74,7 +74,10 @@ fn registry_with_wallet_actions() -> ActionRegistry {
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ));
-    let _ = registry.register_action(nmp_wallet::action::CashuRecoverModule::new());
+    let _ = registry.register_action(nmp_wallet::action::CashuRecoverModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ));
     let _ = registry.register_action(nmp_wallet::action::CashuDepositQuoteModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
@@ -153,30 +156,22 @@ fn cashu_create_dispatches_by_name() {
 
 // --- cashu.recover ----------------------------------------------------------------
 
-/// `cashu.recover` is reachable BY NAME (the payload decodes and `start()`
-/// runs) but `start()` still rejects unconditionally — no backend implements
-/// recovery yet (see `action::cashu`'s module doc comment). This proves the
-/// #2920 gap is closed for this namespace too: before this change, the
-/// namespace was unreachable at the byte doorway at all (`NotTypedCapable`);
-/// now it is reachable and rejects for the RIGHT (product) reason.
+/// `cashu.recover` is reachable BY NAME (the payload decodes, `start()` and
+/// `execute()` both run) and dispatches a real command (#2965:
+/// `CashuWalletBackend` now implements `RecoverCashuWallet` —
+/// `recover::RecoverCashuWalletCommand`). Before this change, the namespace
+/// was unreachable at the byte doorway at all (`NotTypedCapable`); before
+/// #2965, `start()` rejected unconditionally regardless of what backend was
+/// registered.
 #[test]
-fn cashu_recover_is_reachable_and_rejects_with_the_documented_code() {
+fn cashu_recover_dispatches_by_name() {
     let registry = registry_with_wallet_actions();
     let bytes = CashuRecoverAction {}.encode();
-    let err = registry
-        .start_bytes(&mut ActionContext::default(), NOW_MS, CASHU_RECOVER, &bytes)
-        .expect_err("cashu.recover must still reject (no backend implements recovery)");
-    match err {
-        ActionRejection::InvalidCoded { code, .. } => {
-            assert_eq!(
-                code,
-                nmp_wallet::ui_codes::CASHU_RECOVER_NOT_IMPLEMENTED,
-                "cashu.recover must reject with its documented code, proving start() ran \
-                 on the DECODED action rather than failing at decode/dispatch"
-            );
-        }
-        other => panic!("expected InvalidCoded rejection, got {other:?}"),
-    }
+    let sent = dispatch_ok(&registry, CASHU_RECOVER, &bytes);
+    assert!(
+        !sent.is_empty(),
+        "cashu.recover must enqueue at least one ActorCommand"
+    );
 }
 
 // --- cashu.deposit_quote -----------------------------------------------------------
