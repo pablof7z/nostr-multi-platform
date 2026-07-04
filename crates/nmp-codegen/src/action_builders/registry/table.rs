@@ -310,6 +310,47 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         ],
         doc: "Send a NIP-17 gift-wrapped direct message to a recipient.",
     },
+    // nip57 — lightning zap (zap.fbs / ZapPayload). Mirrors `nmp_nip57::ZapInput`
+    // field-for-field; field order MUST match the `.fbs` slot order after the
+    // slot-0 `schema_version` tripwire: recipient_pubkey, amount_msats, lnurl,
+    // relays, target_event_id, comment (#2926 — restored generated builder).
+    ActionBuilder {
+        namespace: "nmp.nip57.zap",
+        method: "zap",
+        fields: &[
+            PayloadField {
+                name: "recipientPubkey",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "amountMsats",
+                kind: FieldKind::Ulong,
+                optional: false,
+            },
+            PayloadField {
+                name: "lnurl",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "relays",
+                kind: FieldKind::StrVec,
+                optional: true,
+            },
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+            PayloadField {
+                name: "comment",
+                kind: FieldKind::Str,
+                optional: true,
+            },
+        ],
+        doc: "Send a NIP-57 lightning zap to a recipient (optionally targeting an event).",
+    },
     // Host-called typed actions added after the original registry slice.
     PUBLISH_HIGHLIGHT,
     REPLY,
