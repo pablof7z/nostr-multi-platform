@@ -51,6 +51,13 @@ pub use keyed_projection_row_payload::{
 /// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift` is the byte-for-byte target
 /// the renderer must reproduce. Every field on that struct corresponds to
 /// exactly one entry here, in declaration order.
+///
+/// `Clone, Copy`: every field is a `&'static str` / `Option<&'static str>` /
+/// `Option<TypedSidecar>` (itself all `'static` refs) — a trivial value type.
+/// Copy lets the registry be assembled as a `const fn`-concatenated array
+/// split across sibling files (`swift_projections_registry_entries.rs` /
+/// `_tail.rs`) without an allocation.
+#[derive(Clone, Copy)]
 pub struct SnapshotProjectionEntry {
     /// The projection's identity — the kernel-emitted JSON key as it appears in
     /// the `projections` map AND the `TypedProjection.key` the producer
@@ -140,6 +147,7 @@ pub struct SnapshotProjectionEntry {
 /// envelope by `envelope.key == <entry key> && envelope.schemaId == <contract
 /// schema_id>`, then decodes via `getCheckedRoot(fileId: <contract
 /// file_identifier>)` into the `swift_reader_type` struct.
+#[derive(Clone, Copy)]
 pub struct TypedSidecar {
     /// The `flatc --swift` generated reader struct name
     /// (`namespace`-prefixed: `nmp_kernel_AccountsSnapshot`,
