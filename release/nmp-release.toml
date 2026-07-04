@@ -287,6 +287,21 @@ path = "crates/nmp-wallet"
 name = "nmp-nip59"
 path = "crates/nmp-nip59"
 
+# nmp-nip47 (Nostr Wallet Connect protocol) and nmp-nip57 (lightning zap
+# protocol) are release-classified public per #2913 option A (owner
+# decision, 2026-07-04): ship NWC/zap protocol support publicly now rather
+# than keeping them post-v1-private (#2318). This unblocks nmp-wallet and
+# nmp-native-runtime, whose non-dev/optional dependencies on these crates
+# made them unpublishable while nmp-nip47/nmp-nip57 stayed private_packages,
+# and transitively unblocks nmp-uniffi-support and nmp-testing.
+[[public_crates]]
+name = "nmp-nip47"
+path = "crates/nmp-nip47"
+
+[[public_crates]]
+name = "nmp-nip57"
+path = "crates/nmp-nip57"
+
 # nmp-nip59-decrypt-only is PARKED — excluded from the default workspace (see
 # top-level Cargo.toml [workspace] exclude, issue #2289). It is not a workspace
 # member, so it must NOT appear here: this manifest is the release-readiness
@@ -369,16 +384,6 @@ reason = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-r
 name = "nmp-devtools"
 path = "crates/nmp-devtools"
 reason = "Dev-only X-Ray diagnostic receipt sidecar (#2858); not linked by runtime/app crates and not part of the public v1 release train"
-
-[[private_packages]]
-name = "nmp-nip47"
-path = "crates/nmp-nip47"
-reason = "Post-v1 Nostr Wallet Connect protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
-
-[[private_packages]]
-name = "nmp-nip57"
-path = "crates/nmp-nip57"
-reason = "Post-v1 lightning zap protocol crate (#2318); kept in the workspace for tests and future work, but excluded from the v1 public release train"
 
 [[private_packages]]
 name = "nmp-zaps"
