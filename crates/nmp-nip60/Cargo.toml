@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only — backend selection, the wallet operation journal, and the WalletBackend seam live in nmp-wallet."
+description = "NIP-60 Cashu wallet + NIP-61 NutZap event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only — backend selection, the wallet operation journal, and the WalletBackend seam live in nmp-wallet; NIP-87 mint discoverability lives in nmp-nip87."
 
 [features]
 # `native` gates the synchronous Cashu mint HTTP client (`cashu::client`) and
@@ -21,7 +21,7 @@ native = ["dep:ureq"]
 
 [dependencies]
 # nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind
-# integers. NIP-60/61/88 kind constants live there so this crate declares zero
+# integers. NIP-60/61 kind constants live there so this crate declares zero
 # kind literals (the #1493 fragmentation finding eliminated the local u16 copy).
 nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }

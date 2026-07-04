@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.nip60",
     crate_name: "nmp-nip60",
-    summary: "NIP-60 Cashu wallet + NIP-61 NutZap + NIP-88 mint discovery event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only.",
+    summary: "NIP-60 Cashu wallet + NIP-61 NutZap event codecs, Cashu proof/DLEQ/P2PK/rollover types, and pure shape validation. NIP mechanics only. NIP-87 mint discoverability (kind:38172/38000) lives in the sibling nmp-nip87 crate.",
     claims: [
         {
             claim_type: "artifact",
@@ -79,19 +79,6 @@ nmp_ownership::declare_crate_ownership! {
             },
             owns: [
                 "NIP-61 NutZap event codec and DLEQ verification",
-            ],
-        },
-        {
-            claim_type: "artifact",
-            id: "nostr.kind.38172.mint_announce",
-            exclusive: true,
-            scope: {
-                kind: "kind",
-                value: "38172",
-                context: "",
-            },
-            owns: [
-                "NIP-88 Cashu mint announcement decoder",
             ],
         },
         {
