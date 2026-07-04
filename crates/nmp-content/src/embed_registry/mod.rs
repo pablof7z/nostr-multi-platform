@@ -33,6 +33,7 @@
 //! [`claim_count`]: EmbedClaimRegistry::claim_count
 //! [`on_event_inserted`]: EmbedClaimRegistry::on_event_inserted
 
+pub mod ad_url_resolver;
 pub mod event_ref_resolver;
 mod state;
 mod target;
@@ -41,6 +42,7 @@ mod view;
 #[cfg(test)]
 mod tests;
 
+pub use ad_url_resolver::{AdUrlResolver, AdUrlState, NoopAdUrlResolver};
 pub use event_ref_resolver::{EventRefResolver, NoopEventRefResolver};
 pub use state::EmbedClaimState;
 pub use target::{ClaimHandle, EmbedTarget, ResolvedEvent};
