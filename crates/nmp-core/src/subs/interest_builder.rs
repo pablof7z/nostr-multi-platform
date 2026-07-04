@@ -39,6 +39,15 @@ use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// `EnsureAbsent` must not let a non-indexer open mask a later indexer open of
 /// the same filter.
 ///
+/// `lifecycle` selects the compiled REQ's close semantics
+/// ([`InterestLifecycle::Tailing`] stays open after EOSE;
+/// [`InterestLifecycle::OneShot`] CLOSEs on EOSE). It rides the
+/// `LogicalInterest` into the compiler + wire-emitter, which already honour both
+/// lifecycles (`kernel/requests/mod.rs` registers the wire sub persistent only
+/// when `Tailing`; `kernel/ingest/eose.rs` CLOSEs + evicts everything else). It
+/// deliberately does NOT participate in the registry key: the key encodes what
+/// routes the sub (shape + scope + indexer-discovery), not when it closes.
+///
 /// Returns `None` when `filter_json` is not a valid NIP-01 filter object
 /// (D6 — the caller treats this as a silent no-op).
 pub(crate) fn build_interest_pair(
@@ -47,6 +56,7 @@ pub(crate) fn build_interest_pair(
     scope: u32,
     relay_pin: Option<&str>,
     is_indexer_discovery: bool,
+    lifecycle: InterestLifecycle,
 ) -> Option<(SubIdentity, LogicalInterest)> {
     let mut shape = crate::planner::InterestShape::from_filter_json(filter_json)?;
     shape.relay_pin = relay_pin.map(str::to_string);
@@ -77,8 +87,10 @@ pub(crate) fn build_interest_pair(
         id: InterestId(key.0),
         scope: interest_scope,
         shape,
-        // `open_interest` is always a tailing feed subscription (never OneShot).
-        lifecycle: InterestLifecycle::Tailing,
+        // Lifecycle is caller-selected (M2 threaded #2948): feed/interest opens
+        // pass `Tailing`; the read-demand path passes the demand's own lifecycle
+        // so a OneShot collection CLOSEs on EOSE.
+        lifecycle,
         is_indexer_discovery,
         ..LogicalInterest::default()
     };
@@ -100,6 +112,7 @@ mod tests {
             0,
             None,
             false,
+            InterestLifecycle::Tailing,
         )
         .expect("valid filter");
 
@@ -122,6 +135,7 @@ mod tests {
             1,
             None,
             false,
+            InterestLifecycle::Tailing,
         )
         .unwrap();
         assert_eq!(interest.scope, InterestScope::Global);
@@ -129,8 +143,11 @@ mod tests {
 
     #[test]
     fn malformed_filter_is_none() {
-        assert!(build_interest_pair("not json", "c", 0, None, false).is_none());
-        assert!(build_interest_pair("[]", "c", 0, None, false).is_none());
+        assert!(
+            build_interest_pair("not json", "c", 0, None, false, InterestLifecycle::Tailing)
+                .is_none()
+        );
+        assert!(build_interest_pair("[]", "c", 0, None, false, InterestLifecycle::Tailing).is_none());
     }
 
     #[test]
@@ -144,6 +161,7 @@ mod tests {
             0,
             None,
             false,
+            InterestLifecycle::Tailing,
         )
         .unwrap();
         let (id_b, int_b) = build_interest_pair(
@@ -152,6 +170,7 @@ mod tests {
             0,
             None,
             false,
+            InterestLifecycle::Tailing,
         )
         .unwrap();
 
@@ -171,8 +190,8 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
-        let (id1, int1) = build_interest_pair(filter, "consumer-1", 0, None, false).unwrap();
-        let (id2, int2) = build_interest_pair(filter, "consumer-2", 0, None, false).unwrap();
+        let (id1, int1) = build_interest_pair(filter, "consumer-1", 0, None, false, InterestLifecycle::Tailing).unwrap();
+        let (id2, int2) = build_interest_pair(filter, "consumer-2", 0, None, false, InterestLifecycle::Tailing).unwrap();
 
         let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id1.clone(), int1);
         assert!(r1.newly_installed, "consumer-1 installs");
@@ -180,11 +199,11 @@ mod tests {
         assert!(!r2.newly_installed, "consumer-2 attaches");
         assert_eq!(reg.len(), 1);
 
-        let (close1, _) = build_interest_pair(filter, "consumer-1", 0, None, false).unwrap();
+        let (close1, _) = build_interest_pair(filter, "consumer-1", 0, None, false, InterestLifecycle::Tailing).unwrap();
         assert!(!reg.drop_owner(&close1), "slot survives first close");
         assert_eq!(reg.len(), 1);
 
-        let (close2, _) = build_interest_pair(filter, "consumer-2", 0, None, false).unwrap();
+        let (close2, _) = build_interest_pair(filter, "consumer-2", 0, None, false, InterestLifecycle::Tailing).unwrap();
         assert!(reg.drop_owner(&close2), "last close drops the slot");
         assert!(reg.is_empty());
     }
@@ -195,8 +214,10 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let filter = r##"{"kinds":[1],"#t":["bitcoin"]}"##;
-        let (id_active, int_active) = build_interest_pair(filter, "c", 0, None, false).unwrap();
-        let (id_global, int_global) = build_interest_pair(filter, "c", 1, None, false).unwrap();
+        let (id_active, int_active) =
+            build_interest_pair(filter, "c", 0, None, false, InterestLifecycle::Tailing).unwrap();
+        let (id_global, int_global) =
+            build_interest_pair(filter, "c", 1, None, false, InterestLifecycle::Tailing).unwrap();
 
         let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id_active, int_active);
         assert!(r1.newly_installed);
@@ -220,6 +241,7 @@ mod tests {
             1,
             Some("wss://search-relay.example/"),
             false,
+            InterestLifecycle::Tailing,
         )
         .unwrap();
         assert_eq!(
@@ -232,9 +254,25 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let (id_a, int_a) =
-            build_interest_pair(filter, "search-c", 1, Some("wss://a.example/"), false).unwrap();
+            build_interest_pair(
+                filter,
+                "search-c",
+                1,
+                Some("wss://a.example/"),
+                false,
+                InterestLifecycle::Tailing,
+            )
+            .unwrap();
         let (id_b, int_b) =
-            build_interest_pair(filter, "search-c", 1, Some("wss://b.example/"), false).unwrap();
+            build_interest_pair(
+                filter,
+                "search-c",
+                1,
+                Some("wss://b.example/"),
+                false,
+                InterestLifecycle::Tailing,
+            )
+            .unwrap();
         assert!(
             reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a)
                 .newly_installed
@@ -248,7 +286,15 @@ mod tests {
 
         // A pinned close reconstructs the same slot (pin matches) and drops it.
         let (close_a, _) =
-            build_interest_pair(filter, "search-c", 1, Some("wss://a.example/"), false).unwrap();
+            build_interest_pair(
+                filter,
+                "search-c",
+                1,
+                Some("wss://a.example/"),
+                false,
+                InterestLifecycle::Tailing,
+            )
+            .unwrap();
         assert!(reg.drop_owner(&close_a), "pinned close drops its own slot");
         assert_eq!(reg.len(), 1);
     }
@@ -259,7 +305,8 @@ mod tests {
         let filter = r#"{"kinds":[10154]}"#;
 
         let (_id, interest) =
-            build_interest_pair(filter, "podcast-discovery", 1, None, true).unwrap();
+            build_interest_pair(filter, "podcast-discovery", 1, None, true, InterestLifecycle::Tailing)
+                .unwrap();
         assert!(
             interest.is_indexer_discovery,
             "the routing bit must reach LogicalInterest"
@@ -268,9 +315,18 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let (normal_id, normal_interest) =
-            build_interest_pair(filter, "podcast-discovery", 1, None, false).unwrap();
+            build_interest_pair(
+                filter,
+                "podcast-discovery",
+                1,
+                None,
+                false,
+                InterestLifecycle::Tailing,
+            )
+            .unwrap();
         let (indexer_id, indexer_interest) =
-            build_interest_pair(filter, "podcast-discovery", 1, None, true).unwrap();
+            build_interest_pair(filter, "podcast-discovery", 1, None, true, InterestLifecycle::Tailing)
+                .unwrap();
 
         assert!(
             reg.apply(&t, InterestWrite::EnsureAbsent, normal_id, normal_interest)
@@ -290,6 +346,63 @@ mod tests {
         assert!(
             reg.drop_owner(&indexer_id),
             "close must reconstruct the indexer-discovery identity"
+        );
+        assert_eq!(reg.len(), 1);
+    }
+
+    #[test]
+    fn caller_selected_lifecycle_reaches_interest() {
+        // #2948: the read-demand path can now ask for a OneShot compiled REQ.
+        // The selected lifecycle rides the LogicalInterest verbatim.
+        let filter = r##"{"kinds":[30402],"#a":["1:pub:collection"]}"##;
+
+        let (_id, oneshot) =
+            build_interest_pair(filter, "ad-collection", 1, None, false, InterestLifecycle::OneShot)
+                .unwrap();
+        assert_eq!(
+            oneshot.lifecycle,
+            InterestLifecycle::OneShot,
+            "a OneShot demand must lower to a OneShot LogicalInterest (CLOSE on EOSE)"
+        );
+
+        let (_id, tailing) =
+            build_interest_pair(filter, "ad-collection", 1, None, false, InterestLifecycle::Tailing)
+                .unwrap();
+        assert_eq!(
+            tailing.lifecycle,
+            InterestLifecycle::Tailing,
+            "the same filter defaults to Tailing when the caller does not opt into OneShot"
+        );
+    }
+
+    #[test]
+    fn lifecycle_is_not_part_of_the_registry_key() {
+        // Lifecycle changes WHEN a sub closes, not WHERE it routes, so a
+        // OneShot and a Tailing open of the same filter+consumer+scope+pin
+        // dedup to one slot (the last close drops it). This keeps the "zero
+        // behavior change" guarantee: threading lifecycle does not re-key any
+        // existing Tailing interest.
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        let filter = r#"{"kinds":[1]}"#;
+        let mut reg = InterestRegistry::new();
+        let t = RegistryWriteToken::for_test();
+        let (id_tailing, int_tailing) =
+            build_interest_pair(filter, "c", 1, None, false, InterestLifecycle::Tailing).unwrap();
+        let (id_oneshot, int_oneshot) =
+            build_interest_pair(filter, "c", 1, None, false, InterestLifecycle::OneShot).unwrap();
+        assert_eq!(
+            id_tailing.key.0, id_oneshot.key.0,
+            "lifecycle must not change the registry key"
+        );
+
+        assert!(
+            reg.apply(&t, InterestWrite::EnsureAbsent, id_tailing, int_tailing)
+                .newly_installed
+        );
+        assert!(
+            !reg.apply(&t, InterestWrite::EnsureAbsent, id_oneshot, int_oneshot)
+                .newly_installed,
+            "same key regardless of lifecycle → the second open attaches, not a new slot"
         );
         assert_eq!(reg.len(), 1);
     }

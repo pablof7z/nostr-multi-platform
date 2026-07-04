@@ -69,6 +69,7 @@ impl BrowserRuntimeHandle {
             scope: SCOPE_GLOBAL,
             relay_pin: None,
             is_indexer_discovery: false,
+            lifecycle: nmp_planner::InterestLifecycle::Tailing,
             replay_shapes: vec![shape],
             replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
         };

@@ -13,7 +13,7 @@ use crate::actor::{
 };
 use crate::CommandSender;
 use crate::{ObservedProjectionId, ObservedProjectionSink};
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestLifecycle, InterestShape};
 
 /// Session metadata needed to reverse an observed-projection open.
 pub type ObservedProjectionSessionMap =
@@ -102,6 +102,7 @@ impl ObservedProjectionCommandHandle {
             decl.scope,
             decl.relay_pin,
             decl.is_indexer_discovery,
+            decl.lifecycle,
             observer_id,
             decl.replay_shapes,
             decl.replay_limit,
@@ -138,6 +139,7 @@ impl ObservedProjectionCommandHandle {
         scope: u32,
         relay_pin: Option<String>,
         is_indexer_discovery: bool,
+        lifecycle: InterestLifecycle,
         observer_id: ObservedProjectionId,
         replay_shapes: Vec<InterestShape>,
         replay_limit: usize,
@@ -152,6 +154,7 @@ impl ObservedProjectionCommandHandle {
                 scope,
                 relay_pin,
                 is_indexer_discovery,
+                lifecycle,
                 observer_id,
                 replay_shapes,
                 replay_limit,
@@ -240,6 +243,11 @@ pub struct ObservedProjection {
     /// Route this sparse global read through indexer-discovery relays instead
     /// of the normal content/outbox lane.
     pub is_indexer_discovery: bool,
+    /// #2948 — close semantics for the compiled REQ. Defaults to
+    /// [`InterestLifecycle::Tailing`] (stay live after EOSE) for every existing
+    /// read model; a concept that wants a collection that completes on EOSE
+    /// opts into [`InterestLifecycle::OneShot`] via [`Self::with_lifecycle`].
+    pub lifecycle: InterestLifecycle,
     /// Shapes used during the kernel-side read-cache replay before activation
     /// and for scoped future delivery. This must be non-empty for production
     /// read models.
@@ -271,6 +279,7 @@ impl ObservedProjection {
             scope,
             relay_pin,
             is_indexer_discovery: false,
+            lifecycle: InterestLifecycle::Tailing,
             replay_shapes: vec![shape],
             replay_limit,
         }
@@ -304,6 +313,15 @@ impl ObservedProjection {
     #[must_use]
     pub fn with_indexer_discovery(mut self, enabled: bool) -> Self {
         self.is_indexer_discovery = enabled;
+        self
+    }
+
+    /// #2948 — select the compiled REQ's close semantics. Defaults to
+    /// [`InterestLifecycle::Tailing`]; a collection read that should complete
+    /// and tear down on EOSE passes [`InterestLifecycle::OneShot`].
+    #[must_use]
+    pub fn with_lifecycle(mut self, lifecycle: InterestLifecycle) -> Self {
+        self.lifecycle = lifecycle;
         self
     }
 

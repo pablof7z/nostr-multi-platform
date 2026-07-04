@@ -79,6 +79,7 @@ fn filterless_observed_projection_is_rejected() {
         scope: 1,
         relay_pin: None,
         is_indexer_discovery: false,
+        lifecycle: nmp_planner::InterestLifecycle::Tailing,
         replay_shapes: vec![InterestShape::default()],
         replay_limit: 32,
     };

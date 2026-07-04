@@ -11,7 +11,8 @@ use std::sync::Arc;
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::DeclaredProjectionKey;
 use nmp_read_session::{
-    close_read, open_read, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy,
+    close_read, open_read, InterestLifecycle, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder,
+    ReadReplayPolicy,
     ReadSpec,
 };
 
@@ -324,6 +325,7 @@ fn open_group_read(
                 scope,
                 relay_pin,
                 is_indexer_discovery: false,
+                lifecycle: InterestLifecycle::Tailing,
                 replay_limit: NIP29_GROUP_REPLAY_LIMIT,
                 replay: ReadReplayPolicy::Structural,
             }],

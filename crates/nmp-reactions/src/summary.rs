@@ -55,7 +55,8 @@ use nmp_nip25::{ReactionAggregateProjection, KIND_REACTION_DELETE};
 use nmp_ownership::FrameworkProjectionKey;
 use nmp_planner::InterestShape;
 use nmp_read_session::{
-    close_read, open_read, ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHost,
+    close_read, open_read, InterestLifecycle, ReadDemand, ReadDependentDemand,
+    ReadDependentDemandProvider, ReadHost,
     ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
 };
 use serde::{Deserialize, Serialize};
@@ -256,6 +257,7 @@ pub fn open_reactions(
         scope: REACTION_READ_SCOPE_GLOBAL,
         relay_pin: None,
         is_indexer_discovery: false,
+        lifecycle: InterestLifecycle::Tailing,
         replay_limit: REACTION_REPLAY_LIMIT,
         replay: ReadReplayPolicy::Structural,
     };

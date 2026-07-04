@@ -85,6 +85,7 @@ fn sub_identity(filter_json: &str, consumer_id: &str, scope: u32) -> SubIdentity
         scope,
         None,
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
         .map(|(id, _)| id)
         .expect("valid filter → identity")
@@ -102,6 +103,7 @@ fn logical_interest(
         scope,
         None,
         false,
+        crate::planner::InterestLifecycle::Tailing,
     )
         .map(|(_, interest)| interest)
         .expect("valid filter → interest")

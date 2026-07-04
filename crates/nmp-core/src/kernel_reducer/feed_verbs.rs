@@ -35,6 +35,7 @@ impl super::KernelReducer {
             scope,
             None,
             false,
+            crate::planner::InterestLifecycle::Tailing,
         ) {
             let _ = self.kernel.open_interest_sub(identity, interest);
         }
@@ -59,6 +60,7 @@ impl super::KernelReducer {
             scope,
             None,
             false,
+            crate::planner::InterestLifecycle::Tailing,
         ) {
             let _ = self.kernel.close_interest_sub(&identity);
         }

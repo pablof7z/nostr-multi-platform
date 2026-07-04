@@ -53,6 +53,7 @@ fn typed_tailing_child_matches_open_interest_key_for_active_and_global() {
             raw_scope,
             None,
             false,
+            crate::planner::InterestLifecycle::Tailing,
         )
         .expect("canonical filter parses");
 

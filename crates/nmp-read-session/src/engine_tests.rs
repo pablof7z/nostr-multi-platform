@@ -140,6 +140,7 @@ fn demand(filter: &str) -> ReadDemand {
         scope: 0,
         relay_pin: None,
         is_indexer_discovery: false,
+        lifecycle: nmp_planner::InterestLifecycle::Tailing,
         replay_limit: 64,
         replay: ReadReplayPolicy::Structural,
     }
