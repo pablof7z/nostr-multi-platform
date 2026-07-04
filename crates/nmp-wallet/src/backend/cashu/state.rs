@@ -188,14 +188,21 @@ impl CashuWalletState {
     /// Returns `None` when this mint's held proofs don't cover the amount;
     /// callers must fail closed on `None` rather than partially spend.
     /// Read-only — does not remove the proofs; see [`Self::remove_proofs`].
+    ///
+    /// Compares by [`canonicalize_mint_url`], not raw string equality (#2972)
+    /// — `mint` here is often a caller-resolved string (e.g. `send.rs`'s
+    /// recipient-tag mint) that can differ from a stored proof's `mint`
+    /// (`add_proofs` already stores the canonical form, but this side
+    /// canonicalizes too rather than assuming that invariant holds forever).
     pub(super) fn select_proofs(
         &self,
         mint: &str,
         amount_sats: u64,
     ) -> Option<(Vec<StoredProof>, u64)> {
+        let target = canonicalize_mint_url(mint);
         let mut selected = Vec::new();
         let mut total = 0u64;
-        for stored in self.proofs.iter().filter(|p| p.mint == mint) {
+        for stored in self.proofs.iter().filter(|p| canonicalize_mint_url(&p.mint) == target) {
             if total >= amount_sats {
                 break;
             }
@@ -219,8 +226,14 @@ impl CashuWalletState {
     }
 
     /// Add freshly minted/received proofs to the held inventory, all
-    /// attached to the same `token_event`.
+    /// attached to the same `token_event`. Stores [`canonicalize_mint_url`]'s
+    /// output, not `mint` verbatim (#2972) — the caller-supplied string
+    /// (a deposit's typed mint, a redeemed nutzap's `u`-tag mint, ...) is
+    /// never guaranteed byte-identical to the string `select_proofs`/send
+    /// resolution later looks the same mint up by, even though both denote
+    /// the same real mint.
     pub(super) fn add_proofs(&mut self, token_event: Option<String>, mint: String, proofs: Vec<Proof>) {
+        let mint = canonicalize_mint_url(&mint);
         self.proofs.extend(proofs.into_iter().map(|proof| StoredProof {
             token_event: token_event.clone(),
             mint: mint.clone(),
@@ -279,4 +292,51 @@ pub(super) fn lock_state(state: &Mutex<CashuWalletState>) -> MutexGuard<'_, Cash
 pub(super) fn is_well_formed_mint_url(mint: &str) -> bool {
     let trimmed = mint.trim();
     !trimmed.is_empty() && (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
+}
+
+/// Normalize a Cashu mint HTTP URL for equality comparisons (#2972) — two
+/// strings that name the same real mint (a trailing slash, a differently-
+/// cased scheme/host) must compare equal wherever this wallet matches a
+/// caller-resolved mint (a recipient's kind:10019 `u` tag, a deposit's typed
+/// mint) against its own stored proofs' mint.
+///
+/// Deliberately narrower than `nmp_relay_url::canonicalize` (which owns a
+/// relay WebSocket URL end-to-end, including its path): a Cashu mint URL's
+/// PATH is semantically load-bearing (e.g. minibits serves a distinct
+/// endpoint per unit at `/Bitcoin`), so only the scheme and host are
+/// lowercased and only a trailing `/` is stripped — the path's case and
+/// interior segments are preserved untouched. Two URLs that differ by path
+/// (even just by case) name *different* mints and must never collapse to
+/// the same canonical string.
+///
+/// Falls back to the trimmed, unmodified input when the string has no
+/// `scheme://` separator — never panics, and never invents a canonical form
+/// for something that isn't a well-formed URL to begin with (see
+/// `is_well_formed_mint_url`, which gates malformed input earlier in the
+/// pipeline).
+///
+/// Only the authority (host[:port]) is case-folded — the split point is the
+/// first of `/`, `?`, or `#`, so a query string or fragment (unlikely for a
+/// mint URL, but not this function's business to rewrite) is left completely
+/// untouched rather than accidentally lowercased along with the host. And
+/// only ONE trailing `/` is ever stripped, from the end of the path
+/// specifically (before any `?`/`#`): `/Bitcoin//` and `/Bitcoin/` still
+/// compare distinct from each other (only from `/Bitcoin`'s own
+/// single-trailing-slash form) — this function corrects exactly the
+/// single-trailing-slash case #2972 hit, not a general "collapse repeated
+/// slashes" rule.
+pub(super) fn canonicalize_mint_url(mint: &str) -> String {
+    let trimmed = mint.trim();
+    let Some((scheme, rest)) = trimmed.split_once("://") else {
+        return trimmed.to_string();
+    };
+    let scheme = scheme.to_ascii_lowercase();
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = rest[..authority_end].to_ascii_lowercase();
+    let mut remainder = rest[authority_end..].to_string();
+    let path_end = remainder.find(['?', '#']).unwrap_or(remainder.len());
+    if path_end > 0 && remainder.as_bytes()[path_end - 1] == b'/' {
+        remainder.remove(path_end - 1);
+    }
+    format!("{scheme}://{authority}{remainder}")
 }

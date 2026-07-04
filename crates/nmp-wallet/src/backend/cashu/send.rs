@@ -44,7 +44,7 @@ use nmp_nip60::nutzap::decode_nutzap_info_fields;
 use crate::journal::{WalletConsumedInput, WalletOperationId, WalletOperationState};
 
 use super::send_worker::{run_send_worker, SendWorkerArgs};
-use super::state::{lock_state, CashuWalletState};
+use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
 use super::ui_codes;
 
 // Re-exported so callers (and this module's own tests, via `send::`) reach
@@ -132,11 +132,18 @@ impl ProtocolCommand for SendNutzapCommand {
         // Use ONLY a mint the recipient lists that this wallet also accepts
         // (the exact `u` tag URL comes from the recipient's own list, never
         // rewritten) — design doc "Relay Acquisition"/"NIP-61 Event Rules".
+        // Matched by canonical mint identity (#2972), not raw string
+        // equality: the recipient's own client and this wallet can name the
+        // same real mint with differently-cased scheme/host or a trailing
+        // slash and still mean the same mint.
         let our_mints = lock_state(&state).mints.clone();
         let Some(mint) = recipient_info
             .mints
             .iter()
-            .find(|m| our_mints.contains(m))
+            .find(|m| {
+                let target = canonicalize_mint_url(m);
+                our_mints.iter().any(|o| canonicalize_mint_url(o) == target)
+            })
             .cloned()
         else {
             return fail(

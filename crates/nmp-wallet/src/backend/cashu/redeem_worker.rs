@@ -41,7 +41,7 @@ use crate::journal::{
 
 use super::chain::launch_self_encrypted_publish;
 use super::deposit::token_event_plaintext;
-use super::state::{lock_state, CashuWalletState};
+use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
 use super::ui_codes;
 
 pub(super) struct RedeemWorkerArgs {
@@ -284,6 +284,15 @@ fn publish_redeem_history(args: PublishHistoryArgs) {
         created_at,
         correlation_id,
     } = args;
+
+    // #2972 — `mint` already did protocol duty (the fresh kind:7375's
+    // plaintext was built from this exact string back in `mint_for_token`);
+    // from here it only feeds wallet-internal bookkeeping (the ledger fact +
+    // `add_proofs` below), so canonicalize it now so this redeem's balance
+    // fold lands under the SAME mint key every other deposit/send/redeem for
+    // this real mint uses, rather than fragmenting balances across however
+    // many ways senders happen to spell it.
+    let mint = canonicalize_mint_url(&mint);
 
     let (history_plaintext, history_tags) =
         history_plaintext_and_tags(nutzap.amount_sats, &token_event_id, &nutzap);

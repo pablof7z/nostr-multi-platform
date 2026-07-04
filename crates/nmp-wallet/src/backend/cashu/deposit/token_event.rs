@@ -19,7 +19,7 @@ use crate::journal::{
 };
 
 use super::super::chain::launch_self_encrypted_publish;
-use super::super::state::{lock_state, CashuWalletState};
+use super::super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
 
 /// Build the kind:7375 self-encrypted token event for freshly minted `proofs`
 /// and launch the encrypt -> sign -> publish chain. Factored out of `run`'s
@@ -54,7 +54,14 @@ pub(in crate::backend::cashu) fn dispatch_token_event(
         .collect();
     let on_signed_state = Arc::clone(&state);
     let on_signed_op = operation_id.clone();
-    let mint_for_fact = mint.clone();
+    // #2972 — `mint` already did protocol duty (`plaintext` above was built
+    // from the exact string this deposit was requested against); from here
+    // it only feeds wallet-internal bookkeeping (the ledger fact + proof
+    // inventory below), so canonicalize it now so this deposit's balance
+    // fold lands under the SAME mint key every other deposit/send/redeem for
+    // this real mint uses, rather than fragmenting balances across however
+    // many ways this mint got typed/observed over time.
+    let mint_for_fact = canonicalize_mint_url(&mint);
     launch_self_encrypted_publish(
         worker_tx,
         account_pubkey,

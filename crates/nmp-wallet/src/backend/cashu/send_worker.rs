@@ -56,7 +56,7 @@ use crate::journal::{
 };
 
 use super::chain::launch_plain_publish;
-use super::state::{lock_state, CashuWalletState, StoredProof};
+use super::state::{canonicalize_mint_url, lock_state, CashuWalletState, StoredProof};
 use super::ui_codes;
 
 pub(super) struct SendWorkerArgs {
@@ -261,6 +261,14 @@ pub(super) fn finish_send(args: FinishSendArgs) {
         }
     };
 
+    // #2972 — from here on `mint` only feeds wallet-internal bookkeeping
+    // (the ledger fact + `add_proofs` below), never protocol content: the
+    // kind:9321 `u` tag above already captured the recipient's own raw
+    // mint string via `tags`. Canonicalizing here keeps this send's ledger
+    // fact and proof-inventory entry keyed the same way every other
+    // deposit/redeem/send for this real mint is, so balances never split
+    // into multiple rows for one mint spelled two ways over time.
+    let mint = canonicalize_mint_url(&mint);
     let on_signed_state = Arc::clone(&state);
     let on_signed_op = operation_id;
     launch_plain_publish(

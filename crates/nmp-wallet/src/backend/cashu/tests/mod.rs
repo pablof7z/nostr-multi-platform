@@ -20,6 +20,9 @@
 //! - [`deposit_mint_race_tests`] — #2946: a slow real `mint_tokens` response
 //!   that outlives the `chain_started_at` lease must still have its proofs
 //!   persisted, even after a same-quote retry takes over the lease mid-flight.
+//! - [`mint_url_canonicalize_tests`] — #2972: `select_proofs`/send mint
+//!   resolution/the deposit and redeem accepted-mint checks must match by
+//!   canonical mint identity, not raw string equality.
 
 use std::sync::Mutex;
 
@@ -38,6 +41,7 @@ mod deposit_concurrency_tests;
 mod deposit_mint_race_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
+mod mint_url_canonicalize_tests;
 mod publish_info_tests;
 mod redeem_tests;
 mod redeem_worker_tests;
