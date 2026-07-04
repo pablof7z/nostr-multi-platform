@@ -16,6 +16,19 @@ nmp_ownership::declare_crate_ownership! {
                 "NIP-AD URL parsing, `.well-known` ad-query resolution, and auto-resolution policy semantics",
             ],
         },
+        {
+            claim_type: "namespace",
+            id: "projection.nmp.nip-ad.collection",
+            exclusive: true,
+            scope: {
+                kind: "projection_family",
+                value: "nmp.nip-ad.collection.*",
+                context: "",
+            },
+            owns: [
+                "per-session NIP-AD collection result projection family (the `open_ad_collection` delivery doorway, #2948)",
+            ],
+        },
     ],
     notes: [
     ],

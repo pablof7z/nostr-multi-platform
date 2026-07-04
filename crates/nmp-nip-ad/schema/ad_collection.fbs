@@ -1,0 +1,63 @@
+namespace nmp.nip_ad;
+
+// Typed FlatBuffers wire for `nmp_nip_ad::AdCollectionSnapshot` (the NIP-AD
+// collection noun projected onto the snapshot under the per-session key
+// `nmp.nip-ad.collection.<session>`).
+//
+// This is the typed sidecar (ADR-0072, S9) the host platforms (Swift / Kotlin /
+// TypeScript) decode with generated accessors instead of JSON reflection. The
+// `open_ad_collection` doorway registers ONE such buffer per live collection
+// session; per-row rendering dispatches by `kind` through the existing embed
+// pipeline (`nmp_content::resolve_embed_projection`) downstream (#2927 B/C) — the
+// buffer carries only raw protocol values, no display logic.
+//
+// A NIP-AD collection is a live query that may return 0..N events
+// (`golf.com/highlights` → many kind:20; `trellis.rs/legible` → one kind:30023).
+// There is NO limit and NO reduction to a single pointer: `rows` is the full
+// deduped, newest-first set.
+//
+// Field-for-field mirror of the Rust structs (raw protocol values only,
+// ADR-0072):
+//   * `AdCollectionSnapshot { rows: Vec<AdCollectionRow> }` becomes `[AdCollectionRow]`,
+//     already newest-first then id-stable sorted by the projection.
+//   * `AdCollectionRow { id, author, kind, created_at, content, tags,
+//     relay_provenance }`. `tags` is a vector of string vectors (each inner
+//     table is one tag row). `relay_provenance` is the set of relays that
+//     delivered this event id.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-nip-ad/src/wire/generated \
+//         crates/nmp-nip-ad/schema/ad_collection.fbs
+
+// One protocol tag row (`["d", "<value>"]`, `["e", "<id>", ...]` etc) verbatim.
+table TagRow {
+  cells:[string];
+}
+
+// One deduplicated collection row (one delivered event).
+table AdCollectionRow {
+  // Raw hex event id (dedup key).
+  id:string;
+  // Raw hex author pubkey.
+  author:string;
+  // Event kind.
+  kind:uint32;
+  // Raw signed created_at, Unix seconds.
+  created_at:uint64;
+  // Raw event content.
+  content:string;
+  // Raw protocol tags.
+  tags:[TagRow];
+  // Relays that delivered this event id (provenance union).
+  relay_provenance:[string];
+}
+
+table AdCollectionSnapshot {
+  // Deduplicated rows, newest-first then id-stable (the projection's order).
+  rows:[AdCollectionRow];
+}
+
+file_identifier "ADCL";
+root_type AdCollectionSnapshot;

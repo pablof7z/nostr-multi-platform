@@ -4346,12 +4346,15 @@ dependencies = [
 name = "nmp-nip-ad"
 version = "1.0.0-rc.1"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-nip-ad",
  "nmp-ownership",
+ "nmp-read-session",
  "nmp-wellknown-http",
  "nostr",
  "percent-encoding",
+ "serde",
  "serde_json",
  "tungstenite",
  "url",

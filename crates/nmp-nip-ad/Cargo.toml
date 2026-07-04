@@ -24,11 +24,20 @@ nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 # Shared SSRF-guarded bounded `.well-known` GET (#2927) — never a forked copy.
 nmp-wellknown-http = { path = "../nmp-wellknown-http", version = "1.0.0-rc.1" }
+# The shared read-lifecycle engine (#2777). The `open_ad_collection` delivery
+# doorway drives per-relay one-shot demands through it (concept → engine ← runtime;
+# nmp-nip-ad depends on the engine, NEVER on a runtime crate). Re-exports
+# `InterestLifecycle`, so no direct nmp-planner edge is needed.
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 # Canonical `nostr::Filter` deserialization (multi-event capable) — never a
 # hand-rolled filter parse. Always-compiled: `parse_ad_wellknown` is pure and
 # wasm-safe.
 nostr = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Typed FlatBuffers wire for the collection snapshot (ADCL), mirroring nip50's
+# `N50S` search-results sidecar. Checked-in generated bindings (flatc 25.12.19).
+flatbuffers = { workspace = true }
 # URL parsing + path percent-encoding for the `.well-known` fetch. Native-only
 # (only the blocking worker builds the request); never hand-rolled encoding.
 url = { version = "2", optional = true }
