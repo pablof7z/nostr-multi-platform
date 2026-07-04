@@ -75,7 +75,7 @@ use create_wallet::CreateCashuWalletCommand;
 use deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
 use nutzap_dispatch::redeem_operation_id;
 use redeem::RedeemNutzapCommand;
-use state::{is_well_formed_mint_url, lock_state, CashuWalletState};
+use state::{canonicalize_mint_url, is_well_formed_mint_url, lock_state, CashuWalletState};
 
 /// Canonical id this backend registers under.
 pub const CASHU_BACKEND_ID: &str = "cashu";
@@ -330,7 +330,14 @@ impl CashuWalletBackend {
         }
         let accepted = {
             let state = lock_state(&self.state);
-            state.mints.iter().any(|m| m == &mint)
+            // #2972 — compare canonically: the mint typed for THIS deposit
+            // need not be byte-identical to the string this wallet's
+            // `mints` allow-list was created with (trailing slash,
+            // scheme/host case) to be the same real mint.
+            state
+                .mints
+                .iter()
+                .any(|m| canonicalize_mint_url(m) == canonicalize_mint_url(&mint))
         };
         if !accepted {
             return fail_closed(

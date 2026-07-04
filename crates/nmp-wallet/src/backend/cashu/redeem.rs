@@ -45,7 +45,7 @@ use nmp_nip60::nutzap::{decode_nutzap_fields, p2pk_secret_pubkey, ReceivedNutZap
 use crate::journal::{WalletConsumedInput, WalletEventId, WalletOperationId, WalletOperationState};
 
 use super::redeem_worker::{run_redeem_worker, RedeemWorkerArgs};
-use super::state::{lock_state, CashuWalletState};
+use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
 use super::ui_codes;
 
 // Re-exported so callers (and this module's own tests, via `redeem::`) reach
@@ -171,7 +171,13 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 s.cashu_privkey.as_ref().map(|k| k.0),
             )
         };
-        if !our_mints.iter().any(|m| m == &nutzap.mint_url) {
+        // #2972 — canonical comparison: the sender's `u`-tag mint string need
+        // not be byte-identical to this wallet's own accepted-mint string to
+        // name the same real mint (trailing slash, scheme/host case).
+        if !our_mints
+            .iter()
+            .any(|m| canonicalize_mint_url(m) == canonicalize_mint_url(&nutzap.mint_url))
+        {
             return fail(
                 ctx,
                 &state,
