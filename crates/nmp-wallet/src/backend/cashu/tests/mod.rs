@@ -47,6 +47,11 @@ use nmp_core::substrate::{
 };
 
 use super::*;
+// Re-exported to the per-intent test submodules (each `use super::*` from
+// here). Before the #2997 `start_intents.rs` split these reached the tests
+// through `mod.rs`'s own import glob; the helpers that used them moved out, so
+// the shared test harness now sources the journal enums the assertions need.
+pub(super) use crate::journal::{WalletOperationKind, WalletOperationState};
 
 mod create_wallet_tests;
 mod deposit_concurrency_tests;
