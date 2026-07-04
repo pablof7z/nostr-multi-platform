@@ -19,6 +19,7 @@
 //! but the mint URL and a `secp256k1` context.
 
 use std::io::Read as _;
+use std::time::Duration;
 
 use nostr::secp256k1::{All, Secp256k1};
 use tracing::debug;
@@ -31,6 +32,42 @@ use crate::error::Nip60Error;
 /// or hostile mint streaming an unbounded body must not be able to exhaust
 /// the caller's memory.
 const MAX_MINT_RESPONSE_BYTES: u64 = 1 << 20; // 1 MiB
+
+/// How many times [`MintClient::roundtrip`] retries a request after an HTTP
+/// 429 ("Rate limit exceeded") before giving up and surfacing the mint's
+/// rate-limit response as a terminal error (#2968 — a real
+/// `mint.minibits.cash` deposit run hit 429 on `GET
+/// /v1/mint/quote/bolt11/{id}` status polling and, before this fix, never
+/// settled because the 429 surfaced as a hard failure a caller gave up on
+/// instead of a retry/backoff). Bounded so a mint that rate-limits forever
+/// cannot wedge the calling worker thread indefinitely.
+const MAX_RATE_LIMIT_RETRIES: u32 = 5;
+
+/// Backoff used on a 429 response that carries no (or an unparsable)
+/// `Retry-After` header.
+const DEFAULT_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(2);
+
+/// Upper bound on a single 429 backoff, even if the mint sends an absurdly
+/// large `Retry-After` value — bounds a hostile/misconfigured mint's ability
+/// to wedge the calling worker thread on one retry.
+const MAX_RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(30);
+
+/// Parse a `Retry-After` header value into a backoff duration.
+///
+/// Only the integer-seconds form (RFC 9110 §10.2.3) is honored — every mint
+/// we've observed in the wild sends this form, and the alternative
+/// HTTP-date form needs a date parser this crate has no other use for.
+/// Falls back to [`DEFAULT_RATE_LIMIT_BACKOFF`] when the header is absent or
+/// not a plain integer, and always caps at [`MAX_RATE_LIMIT_BACKOFF`]. Pure
+/// (no I/O, no sleep) so a test can exercise every branch without actually
+/// waiting on a clock.
+fn retry_after_duration(header: Option<&str>) -> Duration {
+    header
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_RATE_LIMIT_BACKOFF)
+        .min(MAX_RATE_LIMIT_BACKOFF)
+}
 
 /// Cashu mint HTTP client.
 ///
@@ -55,44 +92,81 @@ impl MintClient {
     /// logged — never the URL, path, or body, both of which routinely carry
     /// a mint quote id or proof secret (see `http::MintHttpRequest`'s
     /// redacted `Debug`).
+    ///
+    /// A `429` ("Rate limit exceeded") is retried with backoff (honoring the
+    /// mint's `Retry-After` header when present — see
+    /// [`retry_after_duration`]) up to [`MAX_RATE_LIMIT_RETRIES`] times
+    /// rather than surfaced immediately as a terminal error: every mint
+    /// operation this crate makes (including quote-status polling, #2968's
+    /// real-world trigger) shares this one transport chokepoint, so handling
+    /// it here covers all of them without duplicating the retry loop per
+    /// call site. This sleep happens on the caller's worker thread, never
+    /// the actor thread (see module docs / D8), so it does not violate the
+    /// no-polling-in-library-code rule the same way a sleep+recheck loop in
+    /// `nip60_wallet::deposit::complete_deposit` would.
     fn roundtrip(&self, req: &MintHttpRequest) -> Result<MintRawResponse, Nip60Error> {
         let url = format!("{}{}", self.mint_url, req.path);
         log_request(req);
 
-        let response = match req.method {
-            MintHttpMethod::Get => ureq::get(&url).call(),
-            MintHttpMethod::Post => ureq::post(&url)
-                .set("Content-Type", "application/json")
-                .send_bytes(&req.body),
-        };
+        for attempt in 0..=MAX_RATE_LIMIT_RETRIES {
+            let response = match req.method {
+                MintHttpMethod::Get => ureq::get(&url).call(),
+                MintHttpMethod::Post => ureq::post(&url)
+                    .set("Content-Type", "application/json")
+                    .send_bytes(&req.body),
+            };
 
-        match response {
-            Ok(resp) => {
-                let status_code = resp.status();
-                let body = read_bounded(resp.into_reader())?;
-                Ok(MintRawResponse { status_code, body })
-            }
-            Err(ureq::Error::Status(status_code, resp)) => {
-                // A non-2xx response still carries a body the caller's
-                // `parse_*`/`finalize_*` validator wants to inspect (Cashu
-                // mints return `{"code":N,"detail":"..."}` on protocol
-                // errors) — read it the same bounded way as a success.
-                let body = read_bounded(resp.into_reader())?;
-                Ok(MintRawResponse { status_code, body })
-            }
-            Err(ureq::Error::Transport(t)) => {
-                // `Transport`'s own `Display` embeds the failed URL (which
-                // routinely carries a quote id) — use `.kind()` instead,
-                // whose `Display` is a fixed, url-free string ("Dns
-                // Failed", "Connection Failed", ...).
-                Err(Nip60Error::MintHttp(format!(
-                    "transport error for {:?} {:?}: {}",
-                    req.operation,
-                    req.method,
-                    t.kind()
-                )))
+            match response {
+                Ok(resp) => {
+                    let status_code = resp.status();
+                    let body = read_bounded(resp.into_reader())?;
+                    return Ok(MintRawResponse { status_code, body });
+                }
+                Err(ureq::Error::Status(429, resp)) if attempt < MAX_RATE_LIMIT_RETRIES => {
+                    let backoff = retry_after_duration(resp.header("Retry-After"));
+                    debug!(
+                        operation = ?req.operation,
+                        attempt,
+                        backoff_ms = backoff.as_millis() as u64,
+                        "mint rate-limited (429); backing off and retrying"
+                    );
+                    // A bounded (<= MAX_RATE_LIMIT_RETRIES), single-shot HTTP
+                    // retry backoff on the caller-owned worker thread this
+                    // whole client is documented to require (module docs —
+                    // never the actor thread), not a sleep+check polling loop
+                    // against actor/kernel state.
+                    std::thread::sleep(backoff); // doctrine-allow: D8 — bounded mint-HTTP 429 retry backoff on the caller's worker thread, not an actor-loop poll
+                    continue;
+                }
+                Err(ureq::Error::Status(status_code, resp)) => {
+                    // A non-2xx response still carries a body the caller's
+                    // `parse_*`/`finalize_*` validator wants to inspect
+                    // (Cashu mints return `{"code":N,"detail":"..."}` on
+                    // protocol errors) — read it the same bounded way as a
+                    // success. This is also where a 429 lands once
+                    // `MAX_RATE_LIMIT_RETRIES` is exhausted: still not
+                    // silently swallowed, just no longer retried.
+                    let body = read_bounded(resp.into_reader())?;
+                    return Ok(MintRawResponse { status_code, body });
+                }
+                Err(ureq::Error::Transport(t)) => {
+                    // `Transport`'s own `Display` embeds the failed URL
+                    // (which routinely carries a quote id) — use `.kind()`
+                    // instead, whose `Display` is a fixed, url-free string
+                    // ("Dns Failed", "Connection Failed", ...).
+                    return Err(Nip60Error::MintHttp(format!(
+                        "transport error for {:?} {:?}: {}",
+                        req.operation,
+                        req.method,
+                        t.kind()
+                    )));
+                }
             }
         }
+        unreachable!(
+            "the loop always returns on its last iteration (attempt == MAX_RATE_LIMIT_RETRIES \
+             never satisfies the retry guard, so every remaining match arm returns)"
+        )
     }
 
     // ─── Keyset ────────────────────────────────────────────────────────────
@@ -252,77 +326,9 @@ fn read_bounded(reader: impl std::io::Read) -> Result<Vec<u8>, Nip60Error> {
     Ok(body)
 }
 
+// AGENTS.md file-size discipline: the transport's test suite (the 429-retry
+// mock-server coverage for #2968 plus the pre-existing redacted-log test)
+// lives in its own file, not inline here.
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn split_amount_reexport_still_reachable() {
-        // `split_amount` moved to `http.rs` (always-compiled, no `ureq`) so
-        // a browser transport can reuse it; this guards the native-facing
-        // re-export path (`crate::cashu::split_amount`) that
-        // `nip60_wallet::nutzap_send`/`nutzap_receive` depend on.
-        assert_eq!(crate::cashu::split_amount(3), vec![1, 2]);
-    }
-
-    /// Minimal capturing `tracing::Subscriber` — avoids pulling in
-    /// `tracing-subscriber` (not otherwise a dependency of this crate) just
-    /// to assert on log content.
-    struct CaptureSubscriber {
-        buf: std::sync::Arc<std::sync::Mutex<String>>,
-    }
-
-    impl tracing::Subscriber for CaptureSubscriber {
-        fn enabled(&self, _metadata: &tracing::Metadata<'_>) -> bool {
-            true
-        }
-        fn new_span(&self, _span: &tracing::span::Attributes<'_>) -> tracing::span::Id {
-            tracing::span::Id::from_u64(1)
-        }
-        fn record(&self, _span: &tracing::span::Id, _values: &tracing::span::Record<'_>) {}
-        fn record_follows_from(&self, _span: &tracing::span::Id, _follows: &tracing::span::Id) {}
-        fn event(&self, event: &tracing::Event<'_>) {
-            struct LineVisitor<'a>(&'a mut String);
-            impl tracing::field::Visit for LineVisitor<'_> {
-                fn record_debug(
-                    &mut self,
-                    field: &tracing::field::Field,
-                    value: &dyn std::fmt::Debug,
-                ) {
-                    self.0.push_str(&format!(" {}={value:?}", field.name()));
-                }
-            }
-            let mut line = String::new();
-            event.record(&mut LineVisitor(&mut line));
-            let mut buf = self.buf.lock().unwrap();
-            buf.push_str(&line);
-            buf.push('\n');
-        }
-        fn enter(&self, _span: &tracing::span::Id) {}
-        fn exit(&self, _span: &tracing::span::Id) {}
-    }
-
-    /// D6/security — the only `debug!` in the native transport must name the
-    /// operation and method, never the mint URL, request path, or body (all
-    /// of which routinely carry a quote id or proof secret).
-    #[test]
-    fn mint_client_logs_operation_not_url_body_or_quote() {
-        let buf = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
-        let subscriber = CaptureSubscriber { buf: buf.clone() };
-
-        // No live network round-trip — `log_request` is the exact call
-        // `roundtrip` makes before touching the network, so this proves
-        // what gets logged without depending on network access in CI.
-        let req = http::build_get_mint_quote_bolt11_request("top-secret-quote-id").unwrap();
-        tracing::subscriber::with_default(subscriber, || {
-            log_request(&req);
-        });
-
-        let logged = buf.lock().unwrap().clone();
-        assert!(logged.contains("mint http request"));
-        assert!(logged.contains("GetMintQuoteBolt11"));
-        assert!(!logged.contains("mint.example"));
-        assert!(!logged.contains("super-secret-path"));
-        assert!(!logged.contains("top-secret-quote-id"));
-    }
-}
+#[path = "client_tests.rs"]
+mod tests;
