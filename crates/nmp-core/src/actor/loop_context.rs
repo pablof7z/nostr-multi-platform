@@ -33,7 +33,7 @@ use crate::actor::relay_mgmt::{
     close_relays, maybe_send_startup, route_dispatch_outbound, send_all_outbound,
 };
 use crate::actor::relay_runtime::RelayRuntime;
-use crate::actor::tick::{emit_now, flush_due};
+use crate::actor::tick::{emit_now, emit_rate_limited, flush_due};
 use crate::actor::{ActorCommand, ActorConfig, CommandSender, GC_TICK_INTERVAL};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel::Kernel;
@@ -399,9 +399,15 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
             }
         }
 
-        // Surface changes immediately rather than waiting for the next periodic flush.
+        // Surface changes promptly, but still within the D8 emit_hz ceiling —
+        // this bypassed it unconditionally until 2026-07-05 (same bug shape
+        // as the relay-lifecycle emit fix): a burst of action-stage changes
+        // (e.g. many parked-op failures landing in one iteration) could
+        // re-serialize the full snapshot far faster than emit_hz allows.
+        // emit_rate_limited emits now only if the interval elapsed; otherwise
+        // the adjacent flush_due check below catches it within one interval.
         if any_changed && *lc.running {
-            emit_now(lc.kernel, *lc.running, lc.update_tx, lc.last_emit);
+            emit_rate_limited(lc.kernel, *lc.running, lc.update_tx, lc.last_emit, *lc.emit_hz);
         }
     }
 
