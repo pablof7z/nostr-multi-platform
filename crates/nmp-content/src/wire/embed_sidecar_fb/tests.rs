@@ -315,7 +315,7 @@ mod wire_stability {
     fn short_note_projection_offsets_are_stable() {
         assert_eq!(ShortNoteProjection::VT_ID, 4);
         assert_eq!(ShortNoteProjection::VT_AUTHOR_PUBKEY, 6);
-        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        // Slots 8/10/12/14 are the reserved (deprecated) placeholder slots (#3016).
         assert_eq!(ShortNoteProjection::VT_CREATED_AT, 16);
         assert_eq!(ShortNoteProjection::VT_CONTENT_TREE, 18);
         assert_eq!(ShortNoteProjection::VT_MEDIA_URLS, 20);
@@ -325,7 +325,7 @@ mod wire_stability {
     fn article_projection_offsets_are_stable() {
         assert_eq!(ArticleProjection::VT_ID, 4);
         assert_eq!(ArticleProjection::VT_AUTHOR_PUBKEY, 6);
-        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        // Slots 8/10/12/14 are the reserved (deprecated) placeholder slots (#3016).
         assert_eq!(ArticleProjection::VT_CREATED_AT, 16);
         assert_eq!(ArticleProjection::VT_HAS_TITLE, 18);
         assert_eq!(
@@ -345,7 +345,7 @@ mod wire_stability {
     fn highlight_projection_offsets_are_stable() {
         assert_eq!(HighlightProjection::VT_ID, 4);
         assert_eq!(HighlightProjection::VT_AUTHOR_PUBKEY, 6);
-        // Slots 8/10 are the deprecated author-display placeholder.
+        // Slots 8/10 are the reserved (deprecated) placeholder slots (#3016).
         assert_eq!(HighlightProjection::VT_CREATED_AT, 12);
         assert_eq!(HighlightProjection::VT_HIGHLIGHTED_TEXT, 14);
     }
@@ -354,7 +354,7 @@ mod wire_stability {
     fn unknown_projection_offsets_are_stable() {
         assert_eq!(UnknownProjection::VT_KIND, 4);
         assert_eq!(UnknownProjection::VT_AUTHOR_PUBKEY, 6);
-        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        // Slots 8/10/12/14 are the reserved (deprecated) placeholder slots (#3016).
         assert_eq!(UnknownProjection::VT_CREATED_AT, 16);
         assert_eq!(UnknownProjection::VT_CONTENT, 18);
         assert_eq!(UnknownProjection::VT_CONTENT_TREE, 20);
