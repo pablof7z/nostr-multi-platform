@@ -1,0 +1,6 @@
+{
+  "id": "b46b4-84d38",
+  "ts": "2026-07-03T11:16:36Z",
+  "session": "b46b47eb-a058-4f19-9451-13531c02c3bb",
+  "text": "| **A** — ADR + rules | Bless `nmp-devtools` as a dev-only sidecar crate, update doctrine-lint | ✅ **Done today** (PRs #2859/#2860/#2862) |\n| **B** — receipt stream | The data: ordered open/close/refresh events with NMP-owned shape | 🟡 **Half done.** The receipt *shape* and *stream plumbing* landed. **Not done:** wiring the actual live feed reconciler into the stream, and joining relay/socket diagnostics (#2868) |\n| **C** — agent CLI | Headless runner + MCP prover so an agent can debug without any UI | 🟡 **Query helpers landed** (`XrayProbe`); the MCP server, headless host runner, and acceptance test corpus are **not done** |\n| **D** — Chirp pane | The actual visual X-Ray panel in the app | ⬜ **Not started** |\n| **E** — time travel | Record/scrub reconciliation transaction-by-transaction | 🟡 Redactor + capsule envelope landed; recorder, byte-bounding, export **not done** |"
+}

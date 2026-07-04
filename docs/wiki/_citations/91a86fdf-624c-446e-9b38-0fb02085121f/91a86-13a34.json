@@ -1,0 +1,6 @@
+{
+  "id": "91a86-13a34",
+  "ts": "2026-07-03T09:34:04Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**One backend seam, two backends.** Rust owns a `WalletBackend` trait. NWC (NIP-47) is the Lightning/BOLT-11 backend; Cashu (NIP-60) is the ecash backend. A composition layer picks which backend handles a given action. Zaps (NIP-57) don't know or care which — they just emit a \"pay this\" intent through a `PaymentPort` and the selected backend fulfills it. [...] > 1. Scaffold the new Layer-4 crate `crates/nmp-wallet` (parked/excluded from the default workspace, same posture `nmp-nip60` had, since its actions aren't shippable yet — confirm the parking approach against the epic). [...] > 2. Define the `WalletBackend` seam per the design: actor-owned, command-shaped, returns `Vec<ActorCommand>`, never blocks across FFI, capability-flag model (absent capability ≠ runtime failure)."
+}

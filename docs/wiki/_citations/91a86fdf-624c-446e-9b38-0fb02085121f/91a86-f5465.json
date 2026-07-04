@@ -1,0 +1,6 @@
+{
+  "id": "91a86-f5465",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Rust owns everything that matters; the UI just renders + dispatches.** Native/browser shells never choose mints, relays, or retry policy. They show a bounded \"wallet\" projection (balance, capabilities, pending ops) and fire typed actions (`create wallet`, `send nutzap`, `redeem`, `pay invoice`). All secret material — Cashu proofs, wallet private key — stays inside Rust and never crosses the FFI boundary. [...] That's the whole thing: *Nostr events are the wallet state, Rust owns the policy and the money-safety, the mint is just an HTTP dependency behind a backend trait, and everything routes through the normal kernel/relay path — no side-door wallet stack.*"
+}

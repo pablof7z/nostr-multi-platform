@@ -1,0 +1,6 @@
+{
+  "id": "91a86-6e442",
+  "ts": "2026-07-03T10:59:55Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "Assistant: Everything's clear now: **#2869 is actually CLEAN/mergeable** (the `UNSTABLE` was transient), and the owner's comments confirm the sequencing — **#2870 item 1** (the `kind:10019` relay-seeding fix) must land before Phase 1 wires `publish_nutzap_info`. Launching Wave 1 — three background Sonnet agents with disjoint file ownership. [...] - **Relay authority reconciles**: design + nip60 reality both make kind:10019/NIP-65 authoritative and `legacy_relay_hint` decode-only; #2874 stopped `build_wallet_event` emitting relay tags and made `publish_nutzap_info` take an explicit `relays` param. ✔"
+}

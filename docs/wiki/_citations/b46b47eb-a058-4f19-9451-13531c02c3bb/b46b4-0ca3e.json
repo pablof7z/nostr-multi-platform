@@ -1,0 +1,6 @@
+{
+  "id": "b46b4-0ca3e",
+  "ts": "2026-07-03T11:16:33Z",
+  "session": "b46b47eb-a058-4f19-9451-13531c02c3bb",
+  "text": "Key finding: **`nmp-wallet` and the `WalletBackend` seam already exist on `origin/master`** (b746d3f, via #2876/#2877) — contradicting developer2's \"crate doesn't exist yet\" premise. Backends can proceed today. [...] **`nmp-wallet` and the full `WalletBackend` seam already landed on `origin/master`** (b746d3f, via #2876/#2877) — verified: the trait (`backend.rs:82`, command-shaped, no blocking FFI, with a reference stub), capability flags, `payment_port.rs` (pay_bolt11), projection, and the journal spine (saga/fact/trail/ledger)."
+}

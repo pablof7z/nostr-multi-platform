@@ -1,0 +1,6 @@
+{
+  "id": "04745-20125",
+  "ts": "2026-07-03T09:39:58Z",
+  "session": "04745411-a0c1-4523-ac83-71dc983f410b",
+  "text": "2. **#2739 — `nmp doctor` = yes.** Posted the full implementation contract: seven checks (source coherence, lockfile agreement, retired-crate detection from one canonical list, path-dep validation, informational-only baseline reporting, companion lockstep, nmp.toml coherence), exit-code/`--json`/`--strict` shape, and explicit non-goals (no auto-fix, no policy gating of `master` tracking, no network). Retitled and relabeled `category:feature` — ready for whoever picks it up."
+}

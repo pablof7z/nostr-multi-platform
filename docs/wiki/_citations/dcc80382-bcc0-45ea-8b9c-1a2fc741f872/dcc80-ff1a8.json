@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-ff1a8",
+  "ts": "2026-07-03T09:41:31Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "```rust id=\"o6x7au\"\napp.feeds().open(\n    FeedKey::app(\"app.chirp.home\")?,\n    feed::events()\n        .primary_kinds([KIND_NOTE])\n        .from(source::active_user().follows())\n        .shape(FeedShape::RootIndexed)\n        .order(FeedOrder::NewestByFeedPosition)\n        .window(FeedWindowPolicy::bounded(100))\n        .project(FeedItemProjection::note_rows())\n)?;\n``` [...] ```text id=\"l0awjr\"\nFeed owns:\n  primary item acquisition\n  source/perspective resolution\n  repost wrapper inclusion\n  windowing/order\n  feed row output\n\nFeed does NOT own:\n  profiles\n  reply counts\n  reactions\n  zaps\n  thread hydration\n  referenced-event previews\n  media loading\n  app-specific social bars\n``` [...] If a feed row needs reply count, mount `open_replies`. If it needs avatar, mount/open profile output. If it needs thread graph, mount threading. The feed row should expose stable references, not hydrate the entire screen."
+}

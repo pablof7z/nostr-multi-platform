@@ -1,0 +1,6 @@
+{
+  "id": "91a86-9ff78",
+  "ts": "2026-07-03T11:35:54Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **Receive** = validate (right mint, DLEQ proof, locked to your key), swap the proofs into fresh wallet-owned ones, mark redeemed. [...] - **W9 — Nutzap receive/redeem** [P after W7, parallel with W8]. Subscribe kinds:[9321]+`#p`+`#u` limited to accepted mints; verify p-tag/mint/P2PK/DLEQ before counting; swap into wallet-owned proofs before marking redeemed; publish kind:7376; never republish received proofs; unverifiable = rejected, never counted. Crate: `nmp-wallet` + nip60 `nutzap_receive`/DLEQ (exist)."
+}

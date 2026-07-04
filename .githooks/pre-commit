@@ -6,4 +6,14 @@
 # in the tree (tracked separately as brainstorm item #6) don't block your work.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# docs/wiki is the auto-updating knowledge-capture surface (episodes, guides,
+# citations) that background sessions write outside of any single commit's
+# intent. Sweep any pending changes there into every commit so it never sits
+# uncommitted on disk.
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+if [ -d "$REPO_ROOT/docs/wiki" ]; then
+  git add -A -- "$REPO_ROOT/docs/wiki"
+fi
+
 exec "$SCRIPT_DIR/check-file-size.sh" --changed-only "$@"

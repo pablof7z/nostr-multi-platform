@@ -1,0 +1,6 @@
+{
+  "id": "91a86-58b32",
+  "ts": "2026-07-03T09:56:30Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Wave 2 (I'll launch once the spine lands):** the downstream Phase-1 items that depend on the spine's types — backend selection policy, the `PaymentPort` adapter wiring (staying in nmp-nip47), the full canonical action namespace, and the bounded `\"wallet\"` projection. I'll also do a final coherence pass across the whole NIP-60/61/wallet surface (design doc ↔ epic ↔ crates ↔ nips.md) so it all reconciles."
+}

@@ -1,12 +1,62 @@
 {"canonical":"abi","name":"ABI The","signed":1,"status":"provisional"}
+{"canonical":"acceptance test design","name":"ACCEPTANCE-TEST DESIGN","signed":3,"status":"real"}
+{"canonical":"adcl flat buffer","name":"ADCL FlatBuffers","signed":1,"status":"provisional"}
+{"canonical":"alway ad resolution policy","name":"Always AdResolutionPolicy","signed":1,"status":"provisional"}
+{"canonical":"another claude","name":"Another Claude","signed":45,"status":"real"}
+{"canonical":"article card actual","name":"ArticleCard Actual","signed":0,"status":"provisional"}
+{"canonical":"article card print","name":"ArticleCard Prints","signed":0,"status":"provisional"}
+{"canonical":"article card verified","name":"ArticleCard Verified","signed":1,"status":"provisional"}
+{"canonical":"cargo test p nmp core lib publish unsigned","name":"cargo test -p nmp-core --lib publish_unsigned","signed":1,"status":"provisional"}
+{"canonical":"complete deposit","name":"complete_deposit","signed":0,"status":"provisional"}
+{"canonical":"deleted success txt","name":"deleted_success.txt","signed":2,"status":"provisional"}
+{"canonical":"deposit quote","name":"deposit_quote","signed":0,"status":"provisional"}
+{"canonical":"did not","name":"Did NOT","signed":0,"status":"provisional"}
+{"canonical":"dynamic observed projection set","name":"DynamicObservedProjectionSet","signed":1,"status":"provisional"}
 {"canonical":"flat buffer you","name":"FlatBuffers You","signed":-1,"status":"provisional"}
 {"canonical":"flat buffer your uni ffi","name":"FlatBuffers Your UniFFI","signed":2,"status":"provisional"}
+{"canonical":"gh pr list state merged","name":"gh pr list --state merged","signed":2,"status":"provisional"}
+{"canonical":"gh pr list state open","name":"gh pr list --state open","signed":2,"status":"provisional"}
+{"canonical":"git fetch origin prune","name":"git fetch origin --prune","signed":2,"status":"provisional"}
+{"canonical":"git ls remote head origin","name":"git ls-remote --heads origin","signed":2,"status":"provisional"}
+{"canonical":"git push origin delete","name":"git push origin --delete","signed":2,"status":"provisional"}
+{"canonical":"harness tod os","name":"Harness TODOs","signed":3,"status":"real"}
+{"canonical":"injected alway ad resolution policy","name":"Injected Always AdResolutionPolicy","signed":1,"status":"provisional"}
 {"canonical":"kind 1","name":"kind:1","signed":2,"status":"provisional"}
+{"canonical":"kind 17375","name":"kind:17375","signed":3,"status":"real"}
+{"canonical":"kind 30023","name":"kind:30023","signed":3,"status":"real"}
+{"canonical":"live proof","name":"LIVE PROOF","signed":1,"status":"provisional"}
 {"canonical":"m 14 d coordinator","name":"M14-D Coordinator","signed":1,"status":"provisional"}
+{"canonical":"moment 1 ad url resolver","name":"Moment-1 AdUrlResolver","signed":1,"status":"provisional"}
+{"canonical":"moment 2 ad candidate","name":"Moment-2 AdCandidate","signed":1,"status":"provisional"}
+{"canonical":"nak serve","name":"nak serve","signed":0,"status":"provisional"}
+{"canonical":"nip 01","name":"NIP-01","signed":0,"status":"provisional"}
+{"canonical":"nip 01 json","name":"NIP-01 JSON","signed":0,"status":"provisional"}
 {"canonical":"nip 17","name":"nip-17","signed":2,"status":"provisional"}
 {"canonical":"nip 22","name":"nip-22","signed":2,"status":"provisional"}
 {"canonical":"nip 29","name":"nip-29","signed":2,"status":"provisional"}
+{"canonical":"nip 50","name":"NIP-50","signed":1,"status":"provisional"}
+{"canonical":"nip 87","name":"NIP-87","signed":2,"status":"provisional"}
+{"canonical":"nip ad proof","name":"nip-ad-proof","signed":1,"status":"provisional"}
+{"canonical":"nmp app in process","name":"NmpApp IN-PROCESS","signed":1,"status":"provisional"}
+{"canonical":"nmp backend","name":"nmp-backend","signed":3,"status":"real"}
+{"canonical":"nmp gap issue","name":"NMP GAP ISSUES","signed":3,"status":"real"}
+{"canonical":"nutsack app","name":"NutsackApp","signed":0,"status":"provisional"}
+{"canonical":"nutzap publish info","name":"nutzap.publish_info","signed":0,"status":"provisional"}
+{"canonical":"pointer target hydration rs","name":"pointer_target_hydration.rs","signed":1,"status":"provisional"}
+{"canonical":"product surface","name":"Product Surface","signed":3,"status":"real"}
+{"canonical":"ran it","name":"RAN IT","signed":1,"status":"provisional"}
+{"canonical":"reading entrail","name":"Reading Entrails","signed":0,"status":"provisional"}
+{"canonical":"reading entrail proof","name":"Reading Entrails PROOF","signed":0,"status":"provisional"}
+{"canonical":"real nmp","name":"Real NMP","signed":3,"status":"real"}
+{"canonical":"reduced source","name":"ReducedSource","signed":1,"status":"provisional"}
 {"canonical":"rust foreign but","name":"Rust→foreign But","signed":2,"status":"provisional"}
 {"canonical":"rust shell flat buffer","name":"Rust→shell FlatBuffers","signed":-4,"status":"suppressed"}
+{"canonical":"same article card","name":"SAME ArticleCard","signed":0,"status":"provisional"}
+{"canonical":"send nmp read host","name":"Send NmpReadHost","signed":1,"status":"provisional"}
+{"canonical":"single most","name":"SINGLE MOST","signed":0,"status":"provisional"}
+{"canonical":"typed adcl flat buffer","name":"Typed ADCL FlatBuffers","signed":0,"status":"provisional"}
 {"canonical":"uni ffi","name":"UniFFI The","signed":2,"status":"provisional"}
 {"canonical":"very high level","name":"VERY HIGH LEVEL","signed":1,"status":"provisional"}
+{"canonical":"wallet projection","name":"WalletProjection","signed":0,"status":"provisional"}
+{"canonical":"wire node kind ad candidate url","name":"WireNodeKind.AdCandidateUrl","signed":1,"status":"provisional"}
+{"canonical":"work nmp","name":"Work NMP","signed":4,"status":"real"}

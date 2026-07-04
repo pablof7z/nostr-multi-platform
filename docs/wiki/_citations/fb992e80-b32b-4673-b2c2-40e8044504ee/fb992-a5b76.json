@@ -1,0 +1,6 @@
+{
+  "id": "fb992-a5b76",
+  "ts": "2026-07-04T08:39:57Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "RUNNING PROOF (verified, not just compiled) — two tests, both pass:\n1. Deterministic render (CI-safe): kind:30023 AD row → resolve_embed_projection → ArticleCard. Prints title.\n2. Live end-to-end (NMP_AD_LIVE=1): booted the real runtime, claimed trellis.rs/legible, resolved LIVE against the real trellis relays, rendered the delivered kind:30023 event via ArticleCard. Actual output:\n   live AD row: kind:30023 id=f135b6bf… author=3f68dede… title=\"Stop Reading Entrails\"\n   PROOF #2927 desktop LIVE: https://trellis.rs/legible -> ArticleCard title=\"Stop Reading Entrails\"\n   (author 3f68dede… = the trellis .well-known author; title is live data — the d-slug is just the identifier.) [...] **NIP-AD works end-to-end and is proven live.** The agent booted the real desktop runtime, resolved `https://trellis.rs/legible` against the actual trellis relays, and rendered the delivered kind:30023 event through the real `ArticleCard` widget:\n\n```\nPROOF #2927 desktop LIVE: https://trellis.rs/legible → ArticleCard title=\"Stop Reading Entrails\"\n```\n\n(GUI screenshot wasn't possible in the headless agent env, but the proof drives the exact widget the GUI renders — a genuine running result, not just a passing compile.)"
+}

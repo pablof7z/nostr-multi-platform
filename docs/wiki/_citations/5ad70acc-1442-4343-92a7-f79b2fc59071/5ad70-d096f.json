@@ -1,0 +1,6 @@
+{
+  "id": "5ad70-d096f",
+  "ts": "2026-07-03T09:08:45Z",
+  "session": "5ad70acc-1442-4343-92a7-f79b2fc59071",
+  "text": "User: 1. Wallet (start here — zero open decisions): \"Work NMP issue #2865: reactivate crates/nmp-nip60 into workspace and CI per docs/architecture/nip60-nip61-wallet-design.md. Scope and acceptance criteria are in the issue; don't start the nmp-wallet crate.\" It's fully self-contained, and everything after it (the nmp-wallet seam, Phase 1) stacks on top. [...] User: now  NMP #2865 — Phase 0 subissue: bring nmp-nip60 into workspace/CI, capability-gate the false pay_invoice stubs, demote the legacy kind:17375 relay-tag authority. [...] - Commented on #1001 noting the decision is now recorded and suggesting it close in favor of #2864. [...] - **#1001**: your comment matches what's actually true — the design doc resolved its open question, and it's now superseded by epic #2864 (Phase 0 = #2865, done via #2866)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-0942b",
+  "ts": "2026-07-03T07:59:37Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **nmp-nip60 is genuinely parked** (in `exclude`), design describes it correctly. [...] - **`nmp-nwc` exists** as the pure NWC codec crate — and the design never mentions it. [...] - **C / H / E:** New `nmp-wallet` L4 crate should cite the `nmp-note-feed` precedent to avoid reading as a forbidden \"bucket\"; justify/drop the `nmp-nip57` dep; fix \"composition owner\" vs \"composition root\" terminology. [...] **What to use instead — no new substrate needed.** There's no generic durable-saga crate in the workspace, and building one now would be a one-consumer abstraction. The design doc already specifies the right shape: `nmp-wallet` owns an **actor-owned durable journal** persisted through NMP storage, with command-shaped reducers that never await mint HTTP, capability-lane mint workers returning raw results, and the existing publish engine handling `PublishPending`. That's the standard NMP actor pattern + a persisted journal. (If a second saga ever appears — `nmp-marmot`'s pending-MLS-autopublish is the likely candidate — extract a generic saga substrate *then*, post-hoc.)"
+}

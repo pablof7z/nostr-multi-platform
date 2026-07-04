@@ -1,0 +1,6 @@
+{
+  "id": "91a86-0850b",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **Wallet = a Nostr event.** Your wallet config (`kind:17375`) and token balances (`kind:7375`) live as NIP-44-encrypted events on relays. There's no local-only wallet — your state syncs across devices via Nostr. [...] That's the whole thing: *Nostr events are the wallet state, Rust owns the policy and the money-safety, the mint is just an HTTP dependency behind a backend trait, and everything routes through the normal kernel/relay path — no side-door wallet stack.*"
+}

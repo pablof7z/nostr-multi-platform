@@ -1,0 +1,6 @@
+{
+  "id": "fb992-dba4d",
+  "ts": "2026-07-04T08:39:57Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "| **Fail-open** | New `AdUrlState` enum with a first-class `ResolutionFailed` terminal state. Today's embed machinery only models \"not-yet / resolved\" (waits forever) — wrong here, since *most URLs are just URLs*. The link must render immediately; resolution is a non-blocking upgrade. | [...] - nmp-content: Segment::AdCandidateUrl + WireNode::AdCandidateUrl (fbs WireNodeKind=22 appended; bindings regen'd via ci/regenerate-flatbuffers.sh; goldens+SegmentDto regen'd). Every plain http(s) URL now tokenizes to it. AdUrlResolver capability + AdUrlState fail-open state (NotAttempted/Resolving/ResolutionFailed{at}/Resolved{projection_key})."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-bf80b",
+  "ts": "2026-07-03T07:36:29Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **Owner deferred #1001 twice** (2026-07-02, 2026-07-03: \"Do not re-ask or re-litigate\"), yet the PR's \"Decision Summary\" hard-picks the milestone shape. [...] - **A (blocking-question):** The doc's \"Decision Summary\" hard-picks the milestone shape (\"the first wallet milestone **is** Cashu/nutzap\") — exactly the choice you deferred twice on #1001 (\"do not re-ask or re-litigate\"). The merge also flipped the nips.md matrix note from *\"requires product/architecture decision\"* → *\"requires activation work,\"* erasing the deferral marker. Since you merged it, this may be a deliberate reversal — I asked you to either record that on #1001 or reframe the doc as conditional, because right now the doc and the issue contradict each other."
+}

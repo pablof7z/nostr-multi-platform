@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "1. Wallet (start here — zero open decisions): \"Work NMP issue #2865: reactivate crates/nmp-nip60 into workspace and CI per docs/architecture/nip60-nip61-wallet-design.md. Scope and acceptance criteria are in the issue; don't start the nmp-wallet crate.\" It's fully self-contained, and everything after it (the nmp-wallet seam, Phase 1) stacks on top."
+  ],
+  [
+    "assistant",
+    "PR #2866 is up: https://github.com/pablof7z/nostr-multi-platform/pull/2866\n\nSummary of what shipped for #2865:\n- `nmp-nip60` moved from `[workspace].exclude` to `members`, dropped its standalone `[workspace]` stub, and now inherits workspace package fields.\n- Deleted `backend.rs` — the dead `WalletBackend` trait whose `pay_invoice` always returned `Err(Unsupported)` with zero real callers. That's the false surface the issue called out by name; it belongs in the future `nmp-wallet` crate, not here.\n- Renamed `WalletConfig::relays`/`Nip60WalletHandle::relays()` → `legacy_relay_hint` and rewrote every doc comment (across `nip60_wallet.rs`, `wallet_event.rs`, `mint_announce.rs`, `lib.rs`) that framed kind:17375 relay tags as authoritative — kind:10019 + NIP-65 fallback is the design doc's authoritative source, owned by `nmp-wallet`.\n- Added `ownership.rs` with a full `declare_crate_ownership!` descriptor (all 7 NIP-60/61/88 kinds) since the workspace ownership audit requires one for live members.\n- Classified `nmp-nip60` as public in `release/nmp-release.toml`.\n\nVerified: `cargo test -p nmp-nip60` (10 tests + 2 doctests), `cargo test -p nmp-testing --test doctrine_lint_smoke` (203 tests), `cargo build --workspace`, `ci/check-release-manifest.sh`, and `cargo package -p nmp-nip60 --list` all pass clean."
+  ]
+]

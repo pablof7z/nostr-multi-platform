@@ -1,0 +1,6 @@
+{
+  "id": "04745-624e3",
+  "ts": "2026-07-03T09:40:16Z",
+  "session": "04745411-a0c1-4523-ac83-71dc983f410b",
+  "text": "**What's genuinely left, and why I'm stopping here:** the actual `1.0.0` cut — real version bump, real tag, `cargo test --workspace` (supervisor-only per your CLAUDE.md, not something I run casually), and executing real `cargo publish`/`npm publish` against 61 crates + 2 npm packages. That's the one truly irreversible step in this whole chain — crate names on crates.io can't be renamed or reused once taken. I don't want to just barrel into that on your \"npm whoami now works\" — that told me the mechanics are unblocked, not \"publish for real now.\""
+}

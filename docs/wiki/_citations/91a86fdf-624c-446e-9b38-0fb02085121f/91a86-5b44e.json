@@ -1,0 +1,6 @@
+{
+  "id": "91a86-5b44e",
+  "ts": "2026-07-03T09:42:29Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Coordination guards in place:** wallet-spine checks #2871 for active `@codex` pushes before touching the branch (and reports instead of fighting it); the three lanes don't share files; and each runs the codex design/review gates required for this campaign."
+}

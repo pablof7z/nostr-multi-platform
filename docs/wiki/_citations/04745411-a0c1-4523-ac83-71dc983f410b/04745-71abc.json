@@ -1,0 +1,6 @@
+{
+  "id": "04745-71abc",
+  "ts": "2026-07-03T09:40:08Z",
+  "session": "04745411-a0c1-4523-ac83-71dc983f410b",
+  "text": "User: yes, stick to rc releases -- start with the crate [...] Assistant: Got it — real rc publish this time, crates.io first. Given 61 crates can't be un-published once live, let me do the pre-flight checks properly before touching the registry: dependency order and whether internal deps even declare the `version =` field crates.io requires."
+}

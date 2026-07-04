@@ -1,0 +1,6 @@
+{
+  "id": "5ad70-89739",
+  "ts": "2026-07-03T09:14:17Z",
+  "session": "5ad70acc-1442-4343-92a7-f79b2fc59071",
+  "text": "Assistant: Good — CI runs `cargo nextest run --workspace`, so once nmp-nip60 is a workspace member it's automatically covered. Now let's check the D8 blocking-call doctrine rule since `nip60_wallet.rs`/`deposit.rs` do synchronous HTTP via `ureq` — need to confirm this passes doctrine-lint once in-scope."
+}

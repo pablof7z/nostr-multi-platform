@@ -1,0 +1,6 @@
+{
+  "id": "91a86-458be",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Where Trellis legitimately stays in the picture:** the wallet **read projection** (balances, pending-op summaries keyed by correlation id) is a bounded typed projection that rides the normal session path — and if that path happens to sit on Trellis-backed reconciliation, the wallet never sees it. Read side: yes, invisibly. Money-safety journal: no."
+}

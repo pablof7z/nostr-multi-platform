@@ -1,0 +1,6 @@
+{
+  "id": "b46b4-33d80",
+  "ts": "2026-07-03T11:16:36Z",
+  "session": "b46b47eb-a058-4f19-9451-13531c02c3bb",
+  "text": "\"What's left is wiring the live reconciler into the stream, then the agent CLI, then the Chirp pane, with time travel committed\" = the remaining ordered work:\n\n1. **Wire the live reconciler into the receipt stream** (finish Phase B) — right now the stream exists but nothing real feeds it yet.\n2. **Agent-facing CLI/MCP** (finish Phase C) — so it's provably useful before any UI.\n3. **Chirp pane** (Phase D) — the visible product.\n4. **Time travel** (Phase E) — and \"committed, not stretch\" means it's an actual deliverable, not a nice-to-have that might get cut."
+}

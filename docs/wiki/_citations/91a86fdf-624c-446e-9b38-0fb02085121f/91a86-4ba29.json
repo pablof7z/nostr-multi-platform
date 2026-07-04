@@ -1,0 +1,6 @@
+{
+  "id": "91a86-4ba29",
+  "ts": "2026-07-03T10:59:41Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "> **Process (mandatory):** this is money-handling code — get a **codex problem/solution design first** (crate module layout + the journal/saga/trail split) before implementing. Work in an **isolated worktree**, branch + **PR** (never push master). Scope tests to `cargo test -p nmp-wallet -p nmp-nip60` plus `cargo test -p nmp-testing --test doctrine_lint_smoke`; do **not** run `cargo test --workspace`. Run **codex review on your diff before opening the PR**; promote any actionable findings to a GitHub issue and discard the review artifact (never commit it). Open a ready-for-review PR (TLDR + detailed overview + tradeoffs), reference #2864, clean up the worktree when done. [...] (Ops note for the remaining merges: I'll delete branches remote-only in the sweep — `gh`'s `--delete-branch` chokes when the agent's worktree still holds the branch, which is what happened here.)"
+}

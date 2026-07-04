@@ -1,0 +1,6 @@
+{
+  "id": "5ad70-e664c",
+  "ts": "2026-07-03T08:58:53Z",
+  "session": "5ad70acc-1442-4343-92a7-f79b2fc59071",
+  "text": "Assistant: Clean. Now let's double-check the grep-level acceptance criterion (\"no code path treats kind:17375 relay tags as authoritative relay selection\") and clean up leftover build artifacts from the crate's old standalone `target/`/`Cargo.lock` that are gitignored but locally present. [...] - Renamed `WalletConfig::relays`/`Nip60WalletHandle::relays()` → `legacy_relay_hint` and rewrote every doc comment (across `nip60_wallet.rs`, `wallet_event.rs`, `mint_announce.rs`, `lib.rs`) that framed kind:17375 relay tags as authoritative — kind:10019 + NIP-65 fallback is the design doc's authoritative source, owned by `nmp-wallet`."
+}

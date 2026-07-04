@@ -1,0 +1,6 @@
+{
+  "id": "91a86-8be00",
+  "ts": "2026-07-03T09:18:17Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "4. **Privacy at the type level** — fact payloads carry event ids, op ids, amounts-by-unit, and canonical mint URLs only when already public via `kind:10019`; never proofs or secrets. Bake it into the types, not a display-edge filter. [...] Net design in one line: **`nmp-wallet` owns an event-sourced, confluent reducer; state is the fold, the causal trail is a bounded in-memory ring + a per-atom cause index over the same facts, the saga feeds facts in as a producer, and `kind:7376` is the durable tier — all separate from the money-safety journal's persisted at-most-once records.**"
+}

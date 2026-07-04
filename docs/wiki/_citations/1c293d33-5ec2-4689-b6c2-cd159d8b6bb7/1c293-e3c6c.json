@@ -1,0 +1,6 @@
+{
+  "id": "1c293-e3c6c",
+  "ts": "2026-07-03T11:13:47Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "Treat the hook-provided fabric snapshot as ambient awareness. It tells you who\nyou are, which channel you are in, who else is around, what changed recently,\nand which agents can be invited. Read it as part of the task context, not as\noptional decoration.\n\nUse `tenex-edge who` only when that awareness is missing, stale, or lost after\ncontext compression. The normal path is to rely on the injected snapshot. [...] Use `tenex-edge who` only when that awareness is missing, stale, or lost after\ncontext compression. The normal path is to rely on the injected snapshot. [...] Refresh awareness only when the injected snapshot is unavailable or stale:\n\n```bash\ntenex-edge who\n```"
+}

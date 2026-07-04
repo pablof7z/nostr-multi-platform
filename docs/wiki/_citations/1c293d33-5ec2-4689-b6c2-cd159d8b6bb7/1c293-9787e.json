@@ -1,0 +1,6 @@
+{
+  "id": "1c293-9787e",
+  "ts": "2026-07-03T11:31:37Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "**Important discovery first:** the premise I was given (\"`nmp-wallet` doesn't exist yet\") was stale — while researching, I found the worktree I was assigned is actually *ahead* of what I first read from the shared checkout, and Phase 1 of the wallet epic (#2864) had already landed: `crates/nmp-wallet` exists with real, tested Rust (action-name constants, `WalletCapabilities`, `WalletProjection`, the operation-journal state machine, the `WalletBackend` trait). I re-grounded the whole doc in that real code rather than writing pure speculation. [...] - An honest \"what's live today vs. pending\" table — only `nmp.wallet.connect/disconnect/pay_invoice` (NWC) are actually dispatchable today via `nmp-nip47`; the Cashu/nutzap action names and the new `WalletProjection`/`WalletCapabilities`/journal types are real, tested, frozen-contract code but not yet wired to a live backend."
+}

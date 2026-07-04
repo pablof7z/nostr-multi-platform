@@ -1,0 +1,26 @@
+[
+  [
+    "user",
+    "review PR 2854's plan proposal -- once you have your thoughts use a Fable subagent to get a second pair of eyes -- publish comments and corrections or implementation plan on the PR once you have everything ready"
+  ],
+  [
+    "assistant",
+    "Reviewed PR #2854's wallet-architecture proposal with a Fable second pass and posted a consolidated review. The technical architecture is sound, but found framing/doctrine issues: a blocking question about a deferred milestone decision being hard-picked, a compat-alias violation, a crate-ownership contradiction, and several minor corrections — offered to open a follow-up corrections PR pending the user's call on the blocking question."
+  ],
+  [
+    "user",
+    "give me the high level of how this would work -- very high level"
+  ],
+  [
+    "assistant",
+    "Explained the architecture at a high level: one WalletBackend trait with NWC (Lightning) and Cashu (ecash) backends, Rust owning all policy and secret material, wallet state as Nostr events synced across devices, a durable operation journal for crash-safe spending, and fail-closed behavior for unknown mints or missing proofs."
+  ],
+  [
+    "user",
+    "can/should we use Trellis for the internal mechanics of the state machine of the wallet? -- get a second opinion on this question from a fable agent"
+  ],
+  [
+    "assistant",
+    "Concluded (with Fable agreement) that Trellis should not be used for the wallet's durable money-safety journal, because Trellis graphs are in-memory and per-session by design while the journal's purpose is surviving process death after irreversible mint spends. Trellis can still serve the wallet's read projection invisibly; the write-side journal should use the standard NMP actor pattern with a persisted journal."
+  ]
+]

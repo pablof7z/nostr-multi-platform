@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-07-03
 verified: 2026-06-29
 compiled-from: conversation
 sources:
   - session:3c942260-311d-4e00-8bcc-204045ea87b3
+  - session:91a86fdf-624c-446e-9b38-0fb02085121f
 ---
 
 # Issue Queue as Canonical Tracker
@@ -51,3 +52,7 @@ Slices use a strict naming convention: `SLICE-NS-{READ,WRITE,M5}-NNN`. <!-- [^3c
 ## Dependency Ordering
 
 When an issue cannot safely be picked up before another lands, declare the dependency explicitly — e.g. #2371 (delete anonymous explicit-route defaults) must declare `Depends on: #2369, #2370` so an agent doesn't pick it up before the typed-provenance replacement is wired. <!-- [^3c942-1bab5] -->
+
+## Deferred Decisions
+
+If the owner explicitly defers a decision on an issue — including a directive not to re-ask or re-litigate — that deferral is itself a decision and must be honored. Do not re-open, re-prompt, or re-litigate a deferred issue without a new user instruction. For example, the milestone-shape decision on issue #1001 was deferred twice (2026-07-02 and 2026-07-03) with the instruction "Do not re-ask or re-litigate"; the issue must not be prompted for that decision again. <!-- [^91a86-21616] -->

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-c7c44",
+  "ts": "2026-07-03T09:26:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**One backend seam, two backends.** Rust owns a `WalletBackend` trait. NWC (NIP-47) is the Lightning/BOLT-11 backend; Cashu (NIP-60) is the ecash backend. A composition layer picks which backend handles a given action. Zaps (NIP-57) don't know or care which — they just emit a \"pay this\" intent through a `PaymentPort` and the selected backend fulfills it. [...] **Verdict: the technical architecture is genuinely good** (WalletBackend seam, durable operation journal, NIP-60/61 event rules, P2PK/DLEQ validation, no-private-socket, signer-transparent NIP-44 gating — all correct and doctrine-aligned). The problems are **framing + doctrine**, not the engineering: [...] - **PaymentPort seam is real** — `nmp-nip57` already emits `PaymentIntent` through `nmp_core::substrate::PaymentPort` with no `nmp-nip47` dep. Design's claim is accurate. [...] > 2. Define the `WalletBackend` seam per the design: actor-owned, command-shaped, returns `Vec<ActorCommand>`, never blocks across FFI, capability-flag model (absent capability ≠ runtime failure)."
+}

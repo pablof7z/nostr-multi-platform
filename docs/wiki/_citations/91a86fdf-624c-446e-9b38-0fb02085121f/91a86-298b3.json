@@ -1,0 +1,6 @@
+{
+  "id": "91a86-298b3",
+  "ts": "2026-07-03T09:18:09Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "3. **Concern 2 \"invisibly on Trellis\" applies to *acquisition only*** (which relays/filters, per `kind:10019`) — never to proof-set derivation, which is NMP/actor-owned product meaning (ADR-0075 Ownership)."
+}

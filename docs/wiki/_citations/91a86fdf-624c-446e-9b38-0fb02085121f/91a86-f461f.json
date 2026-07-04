@@ -1,0 +1,6 @@
+{
+  "id": "91a86-f461f",
+  "ts": "2026-07-03T11:30:41Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "ACCEPTANCE-TEST DESIGN: two fresh nsecs → each `cashu.create` + `nutzap.publish_info` → each deposit value-less ecash from testnut (`deposit_quote`→`complete_deposit`, auto-settle, no Lightning) → A nutzaps B, B nutzaps A → each redeems → assert both balances/history via the projection only. Ephemeral relay via `nak serve`. Harness TODOs (spawn relay, generate keys via NMP adapter, no-polling await helpers) are marked. One-command runner in place."
+}

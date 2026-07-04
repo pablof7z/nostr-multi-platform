@@ -1,0 +1,6 @@
+{
+  "id": "91a86-7fec6",
+  "ts": "2026-07-03T09:42:38Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "Assistant: Everything's clear now: **#2869 is actually CLEAN/mergeable** (the `UNSTABLE` was transient), and the owner's comments confirm the sequencing — **#2870 item 1** (the `kind:10019` relay-seeding fix) must land before Phase 1 wires `publish_nutzap_info`. Launching Wave 1 — three background Sonnet agents with disjoint file ownership. [...] | **nip60-cleanups** | Phase-0 review fixes | `crates/nmp-nip60/` | Fixes all of **#2870** — priority is item 1 (kill the `legacy_relay_hint`→authoritative kind:10019 relay leak, the explicit Phase-1 blocker) |"
+}

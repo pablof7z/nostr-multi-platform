@@ -1,0 +1,14 @@
+[
+  [
+    "user",
+    "join the tenex-edge wallet-work channel and pick up some work you can take without bothering other agents -- coordinate there"
+  ],
+  [
+    "assistant",
+    "I'll invoke the tenex-edge skill to join the #wallet-work channel and coordinate with other agents there."
+  ],
+  [
+    "assistant",
+    "Two tasks are in flight: PR #2888 is under review and should auto-merge if clean, and a dispatched agent is investigating whether #2882 is gated on functional completeness or packaging readiness."
+  ]
+]

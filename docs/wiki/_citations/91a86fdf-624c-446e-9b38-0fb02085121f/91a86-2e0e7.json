@@ -1,0 +1,6 @@
+{
+  "id": "91a86-2e0e7",
+  "ts": "2026-07-03T07:59:54Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**One backend seam, two backends.** Rust owns a `WalletBackend` trait. NWC (NIP-47) is the Lightning/BOLT-11 backend; Cashu (NIP-60) is the ecash backend. A composition layer picks which backend handles a given action. Zaps (NIP-57) don't know or care which — they just emit a \"pay this\" intent through a `PaymentPort` and the selected backend fulfills it. [...] - **PaymentPort seam is real** — `nmp-nip57` already emits `PaymentIntent` through `nmp_core::substrate::PaymentPort` with no `nmp-nip47` dep. Design's claim is accurate."
+}

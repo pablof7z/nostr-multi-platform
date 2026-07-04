@@ -1,0 +1,6 @@
+{
+  "id": "91a86-aa2e8",
+  "ts": "2026-07-03T09:18:17Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "I had said \"in-memory, rebuild on restart.\" Fable caught that the naive rebuild is weak: after restart, every pre-session cause collapses to \"this is just what the relays said\" — you lose exactly the explanation you wanted (\"balance dropped because last session a mint probe found spent proofs\"). But the durable causal tier **already exists in the protocol**: NIP-60 `kind:7376` history (which the design doc already *requires* for every balance-changing op, and `nmp-nip60/src/history_event.rs` already has the codec) plus the `del` field on token events. So:\n\n- **Don't build a durable local trail.** `kind:7376` + `del` tags *are* the durable, cross-device, encrypted causal record. [...] - **Restart** = fold 7376 into coarse pre-session facts, then the ring accumulates fine facts from there. Two resolutions, one timeline. [...] - **The in-memory ring is the session-local high-resolution overlay** — mint-probe verdicts, arrival provenance, saga correlation ids — the stuff too fine-grained or too transient for 7376."
+}

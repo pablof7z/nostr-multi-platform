@@ -1,0 +1,6 @@
+{
+  "id": "91a86-405ed",
+  "ts": "2026-07-03T09:33:24Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "> **Process (mandatory):** this is money-handling code — get a **codex problem/solution design first** (crate module layout + the journal/saga/trail split) before implementing. Work in an **isolated worktree**, branch + **PR** (never push master). Scope tests to `cargo test -p nmp-wallet -p nmp-nip60` plus `cargo test -p nmp-testing --test doctrine_lint_smoke`; do **not** run `cargo test --workspace`. Run **codex review on your diff before opening the PR**; promote any actionable findings to a GitHub issue and discard the review artifact (never commit it). Open a ready-for-review PR (TLDR + detailed overview + tradeoffs), reference #2864, clean up the worktree when done. [...] > **Process:** money-handling code → get a **codex problem/solution design first** for the journal/saga/trail split before implementing. Scope tests to `cargo test -p nmp-wallet -p nmp-nip60` + `cargo test -p nmp-testing --test doctrine_lint_smoke`; never `--workspace`. **codex review before PR**; promote findings to issues, discard the artifact. Keep it on the existing PR #2871 (move it out of draft when ready) rather than opening a competing PR; clean up the worktree when done."
+}

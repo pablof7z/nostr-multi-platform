@@ -1,0 +1,6 @@
+{
+  "id": "1c293-29705",
+  "ts": "2026-07-03T11:38:17Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "User: Base directory for this skill: /Users/pablofernandez/.claude/skills/tenex-edge [...] - Treat presence as active channel membership. An agent may still be idle or busy,\n  but once it leaves membership it is offline for that room.\n- Keep context scoped. Put focused work in the room that owns it instead of\n  spraying every discussion into the main channel. [...] When creating a channel, keep `--about` short, descriptive, and stable. It is a\ndurable room description, not status or current-plan text. Seed richer context\nin a chat message instead: objective, relevant background, constraints, desired\noutput, and current state."
+}

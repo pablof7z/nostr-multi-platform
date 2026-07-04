@@ -1,0 +1,6 @@
+{
+  "id": "1c293-5d502",
+  "ts": "2026-07-03T11:31:28Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "**Bigger discovery:** a sibling worktree (`.claude/worktrees/codex+2872-wallet-builder-doc`) already had a nearly-complete, high-quality, uncommitted draft on the exact branch name I'd been told to use (`codex/2872-wallet-builder-doc`). I verified its citations were accurate (including a genuine external consumer app, `nutsack`, that I confirmed via `gh issue view 2882`) and it was more complete than my independently-written version (same conclusions, plus the `legacy_relay_hint` detail and a \"validated vs. pending\" status table). Rather than open a competing/duplicate PR, I adopted and finished that draft — verified every citation against source, ran the doctrine-lint smoke suite (203 passed, including the Trellis-vocabulary gate), committed, pushed, and opened the PR. I deleted my own redundant draft from my assigned worktree."
+}

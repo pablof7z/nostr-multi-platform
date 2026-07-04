@@ -1,0 +1,6 @@
+{
+  "id": "91a86-53528",
+  "ts": "2026-07-03T11:00:34Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "`ACTION_LEGACY_NWC_CONNECT`/`ACTION_LEGACY_NWC_DISCONNECT` deleted; there's now exactly one `ACTION_NWC_CONNECT`/`ACTION_NWC_DISCONNECT` pair using nmp-nip47's real current names (`nmp.wallet.connect`/`nmp.wallet.disconnect`). I did NOT rename these to the aspirational `nmp.wallet.nwc.connect`/`nwc.disconnect` from the design doc's Product Surface list, because nothing implements that name today — nmp-nip47 is the only real backend, under the current names. Renaming requires moving nmp-nip47's ActionModule + wire-schema registration, which is epic #2864 Phase 2 (NWC consolidation) and crosses into nmp-nip47's lane. `pay_invoice` was untouched — it's already the single canonical name per the design doc, not an alias pair. Added a test (`no_action_namespace_is_duplicated_as_a_compatibility_alias`) asserting no two wallet action constants share a string value."
+}

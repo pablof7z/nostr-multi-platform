@@ -1,0 +1,6 @@
+{
+  "id": "04745-5f4f8",
+  "ts": "2026-07-03T09:40:05Z",
+  "session": "04745411-a0c1-4523-ac83-71dc983f410b",
+  "text": "3. **#2695 — group-chat epic sequencing.** Recommendation: **confirm post-v1 first minor** (the recorded default). Making it a v1 blocker delays the publish downstream consumers are waiting on. [...] 3. Yes [...] 3. **#2695 — confirmed post-v1 first minor**, label cleared. [...] - **#2695** — confirmed post-v1 first minor."
+}

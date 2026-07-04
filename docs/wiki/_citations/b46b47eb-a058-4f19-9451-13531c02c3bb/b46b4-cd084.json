@@ -1,0 +1,6 @@
+{
+  "id": "b46b4-cd084",
+  "ts": "2026-07-03T11:16:33Z",
+  "session": "b46b47eb-a058-4f19-9451-13531c02c3bb",
+  "text": "- **W3 (#2886 NWC backend) is unblocked** — build `impl WalletBackend` + `backend/nwc.rs` against the existing trait *now*; it doesn't wait on Wave C. Its worktree is correctly based at b746d3f.\n- **W1 (#2885 mint-HTTP)** — correctly scoped to existing crates, proceed as planned.\n- **#2882 (release-classify) is now actionable** and is the real blocker to the nutsack green e2e — pull it forward.\n- **W12 doc (developer2)** — fine pick, keep it.\n\nNet: backends build against master today; Wave C only wires actions/projection/actor, it doesn't create the crate."
+}

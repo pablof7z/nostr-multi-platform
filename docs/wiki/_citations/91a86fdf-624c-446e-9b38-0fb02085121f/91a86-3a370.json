@@ -1,0 +1,6 @@
+{
+  "id": "91a86-3a370",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Fail closed everywhere:** unknown mint, missing DLEQ, mismatched P2PK lock, or a signer that can't do NIP-44 → the capability is simply absent, not a button that errors."
+}

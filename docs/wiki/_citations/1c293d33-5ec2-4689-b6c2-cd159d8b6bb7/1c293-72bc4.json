@@ -1,0 +1,6 @@
+{
+  "id": "1c293-72bc4",
+  "ts": "2026-07-03T11:31:37Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "**What the doc (`docs/builder-guide/29-nip60-wallet.md`) covers:**\n- The two things a builder does: dispatch `nmp.wallet.*` actions with a correlation id, and bind the bounded `\"wallet\"` projection. [...] - Send-nutzap and receive/redeem-nutzap walkthroughs explaining `kind:10019` resolution, fail-closed states, the operation journal, and the single publish chokepoint.\n- Relay-acquisition rules, the `legacy_relay_hint` non-authoritative field, and fail-closed rules. [...] - No Trellis vocabulary; no secrets in any example."
+}

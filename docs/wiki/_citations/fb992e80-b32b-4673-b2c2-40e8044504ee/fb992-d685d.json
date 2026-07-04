@@ -1,0 +1,6 @@
+{
+  "id": "fb992-d685d",
+  "ts": "2026-07-04T08:40:15Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "## Ratchet extended (crates/nmp-testing/tests/read_door_public_surface_retired.rs)\n- Added all 6 deleted files to `absent_files`.\n- Removed the now-dangling check tuple that grepped the deleted `nmp-native-runtime/src/op_pointer_source/mod.rs` for `\"pub fn open_pointer_source(\"` (would have panicked on missing file otherwise).\n- Added two new check tuples banning `\"open_pointer_source\"`/`\"register_pointer_source\"` from reappearing in `crates/nmp-content/src/lib.rs` and `crates/nmp-content/src/pointer_source/mod.rs`."
+}

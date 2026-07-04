@@ -1,0 +1,6 @@
+{
+  "id": "91a86-80b32",
+  "ts": "2026-07-03T07:36:25Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **G:** The doc bakes in a compat-alias migration, violating your standing \"no compat aliases — ever\" rule — plus an internal contradiction (`nmp.wallet.pay_invoice` listed as both canonical *and* an alias). (Fable caught this one.)\n- **B:** It silently reassigns `WalletPaymentPort` ownership away from `nmp-nip47`, contradicting crate-boundaries §8 — two durable docs now disagree.\n- **D:** Ownership model omits the real `nmp-nwc` codec crate.\n- **C / H / E:** New `nmp-wallet` L4 crate should cite the `nmp-note-feed` precedent to avoid reading as a forbidden \"bucket\"; justify/drop the `nmp-nip57` dep; fix \"composition owner\" vs \"composition root\" terminology."
+}

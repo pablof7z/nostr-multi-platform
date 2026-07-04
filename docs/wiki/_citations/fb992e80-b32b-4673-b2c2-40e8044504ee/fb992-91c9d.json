@@ -1,0 +1,6 @@
+{
+  "id": "fb992-91c9d",
+  "ts": "2026-07-04T08:39:57Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "1. WireNode::AdCandidateUrl wire variant (fbs regen'd, encode/decode/projection, goldens). Every plain http(s) URL now tokenizes to it. [...] - nmp-content: Segment::AdCandidateUrl + WireNode::AdCandidateUrl (fbs WireNodeKind=22 appended; bindings regen'd via ci/regenerate-flatbuffers.sh; goldens+SegmentDto regen'd). Every plain http(s) URL now tokenizes to it. AdUrlResolver capability + AdUrlState fail-open state (NotAttempted/Resolving/ResolutionFailed{at}/Resolved{projection_key}).\n- nmp-native-runtime (new nip-ad feature): Send NmpReadHost handle = ONE canonical ReadHost impl, NmpApp delegates (lets an off-thread resolve open a collection). Moment-1 AdUrlResolver impl gated by app-injected AdResolutionPolicy (default NeverAutoResolve). Moment-2 AdCandidate arm dispatches the same resolver, never gated; parallel search already fires. set_ad_resolution_policy composition seam. nip-ad enabled in nmp-app-gallery. [...] CHIRP: separate repo — did NOT edit. Filed #2981 (Chirp must add the .adCandidateUrl SwiftUI arm on re-pin, plain-link baseline). [...] - **#2981** — Chirp's `WireNode::AdCandidateUrl` arm (separate repo, on re-pin)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-a8227",
+  "ts": "2026-07-03T11:30:41Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- crates/nutsack-tui — ratatui shell skeleton (`nutsack` bin), screen map, single-frame render smoke; event-loop is a documented TODO cloned from the in-repo nmp-gallery-tui."
+}

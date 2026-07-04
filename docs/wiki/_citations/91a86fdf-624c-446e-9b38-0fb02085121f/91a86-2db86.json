@@ -1,0 +1,6 @@
+{
+  "id": "91a86-2db86",
+  "ts": "2026-07-03T09:26:26Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "Assistant: Full context now clear: epic **#2864** exists, **Phase 0 is done** (nmp-nip60 reactivated, PR #2866 merged), and **Phase 1 = the `nmp-wallet` composition crate** — whose \"durable operation journal\" checkbox is exactly what this whole conversation refined. So the right home for the capture is the canonical architecture doc (which the epic points at), added via a PR, plus a pointer on #2864."
+}

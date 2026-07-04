@@ -1,0 +1,6 @@
+{
+  "id": "91a86-8ba7f",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "That's the whole thing: *Nostr events are the wallet state, Rust owns the policy and the money-safety, the mint is just an HTTP dependency behind a backend trait, and everything routes through the normal kernel/relay path — no side-door wallet stack.*"
+}

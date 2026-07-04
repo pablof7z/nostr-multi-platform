@@ -1,0 +1,6 @@
+{
+  "id": "91a86-b617a",
+  "ts": "2026-07-03T09:26:23Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **nmp-core is clean** of the banned nouns (74 hits are all boundary-explaining comments; `payment.rs` is protocol-neutral). Design's D0 claim holds. [...] > 1. Scaffold the new Layer-4 crate `crates/nmp-wallet` (parked/excluded from the default workspace, same posture `nmp-nip60` had, since its actions aren't shippable yet — confirm the parking approach against the epic). [...] **What to use instead — no new substrate needed.** There's no generic durable-saga crate in the workspace, and building one now would be a one-consumer abstraction. The design doc already specifies the right shape: `nmp-wallet` owns an **actor-owned durable journal** persisted through NMP storage, with command-shaped reducers that never await mint HTTP, capability-lane mint workers returning raw results, and the existing publish engine handling `PublishPending`. That's the standard NMP actor pattern + a persisted journal. (If a second saga ever appears — `nmp-marmot`'s pending-MLS-autopublish is the likely candidate — extract a generic saga substrate *then*, post-hoc.)"
+}

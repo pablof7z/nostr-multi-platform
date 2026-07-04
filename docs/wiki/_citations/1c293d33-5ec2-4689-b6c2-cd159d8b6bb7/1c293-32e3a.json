@@ -1,0 +1,6 @@
+{
+  "id": "1c293-32e3a",
+  "ts": "2026-07-03T11:13:43Z",
+  "session": "1c293d33-5ec2-4689-b6c2-cd159d8b6bb7",
+  "text": "Do not invite agents just because they are available. A useful invitation names\nthe work, the expected output, and the channel context.\n\nExample coordination message:\n\n```text\nCan you review the channel routing change in this room? Focus on whether the\nswitch/create behavior matches the user-facing channel model. Please report\nfindings here, with file references if you inspect code.\n```"
+}

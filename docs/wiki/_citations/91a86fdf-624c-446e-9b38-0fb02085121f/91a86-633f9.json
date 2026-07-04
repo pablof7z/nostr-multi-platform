@@ -1,0 +1,6 @@
+{
+  "id": "91a86-633f9",
+  "ts": "2026-07-03T09:18:17Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **A per-atom last-cause index** (`token_event_id → last WalletFact that touched it`) → answers *\"why is **this specific** proof/token here?\"* This is O(current state), not O(traffic), so a nutzap flood can't evict the cause of a token you still hold. Fable's addition — and it's the half of your question the ring alone can't answer. [...] 2. **The ring is never a rebuild authority** — restart rebuilds from Nostr + saga reconcile, entering as a `StateRebuilt` genesis fact. (Name it explicitly so nobody later \"optimizes\" restart into ring-replay.)"
+}

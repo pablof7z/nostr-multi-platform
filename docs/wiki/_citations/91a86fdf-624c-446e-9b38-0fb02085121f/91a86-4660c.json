@@ -1,0 +1,6 @@
+{
+  "id": "91a86-4660c",
+  "ts": "2026-07-03T11:35:54Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **Send a nutzap** = mint P2PK-locked ecash proofs to the recipient's key, publish as `kind:9321` to their listed relays. [...] - **W8 — Nutzap send** [P after W7]. Resolve recipient kind:10019 via kernel reads; only recipient-listed mints + exact `u`; publish to listed relays; fail-closed on no trusted mint / no P2PK / no reachable relay. Crate: `nmp-wallet` + nip60 `nutzap_send` (exists)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "fb992-1d013",
+  "ts": "2026-07-04T08:37:50Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "- Gallery composition root injects the Always AdResolutionPolicy so moment-1 fires.\n- LiveKernelSink/GalleryBridge: claim_ad_url + ad_url_state; snapshot decoder retains ADCL payloads. [...] - nmp-native-runtime (new nip-ad feature): Send NmpReadHost handle = ONE canonical ReadHost impl, NmpApp delegates (lets an off-thread resolve open a collection). Moment-1 AdUrlResolver impl gated by app-injected AdResolutionPolicy (default NeverAutoResolve). Moment-2 AdCandidate arm dispatches the same resolver, never gated; parallel search already fires. set_ad_resolution_policy composition seam. nip-ad enabled in nmp-app-gallery."
+}

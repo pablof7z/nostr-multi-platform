@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "1. Wallet (start here — zero open decisions): \"Work NMP issue #2865: reactivate crates/nmp-nip60 into workspace and CI per docs/architecture/nip60-nip61-wallet-design.md. Scope and acceptance criteria are in the issue; don't start the nmp-wallet crate.\" It's fully self-contained, and everything after it (the nmp-wallet seam, Phase 1) stacks on top."
+  ],
+  [
+    "assistant",
+    "Opened PR #2866 reactivating `nmp-nip60` into the workspace, deleting the dead `WalletBackend` trait, renaming misleading relay fields, adding crate ownership descriptors, and classifying the crate as public; all tests and CI checks pass."
+  ]
+]

@@ -1,0 +1,6 @@
+{
+  "id": "b2008-29f55",
+  "ts": "2026-07-03T10:28:03Z",
+  "session": "b2008f14-252f-49a0-9bed-ef10db52f8f6",
+  "text": "Assistant: Archiving failed with a daemon-side error: `unknown method channels_archive` — this looks like a CLI/daemon protocol mismatch (the CLI is newer than the running daemon, or the daemon needs a restart to pick up the method). I don't want to force this via manual relay/event hacking since archiving removes non-admin members — that's a destructive, shared-state action best left to the proper CLI path."
+}

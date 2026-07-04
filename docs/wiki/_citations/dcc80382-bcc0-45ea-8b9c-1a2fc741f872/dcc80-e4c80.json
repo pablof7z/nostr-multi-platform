@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-e4c80",
+  "ts": "2026-07-03T09:41:37Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "## Make Trellis disappear\n\nTrellis should not be part of the NMP programming model. #2626 already says Trellis is private reconciliation machinery and that app/native/web callers still use NMP-owned session handles, typed feed declarations, typed projections, and action/capability surfaces.\n\nEven that wording is a bit too leaky. The public version should be:\n\n```text id=\"8f0569\"\nNMP owns active reads.\nNMP may use Trellis internally to reconcile resources.\nNo app-facing type, doc, or generated helper mentions Trellis.\n``` [...] Keep private only:\n- ObservedProjectionSink\n- source reducers\n- typed snapshot projection registration\n- Trellis adapter\n- InterestShape / LogicalInterest machinery\n- replay-before-live internals\n```"
+}

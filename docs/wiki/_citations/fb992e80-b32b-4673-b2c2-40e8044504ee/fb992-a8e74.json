@@ -1,0 +1,6 @@
+{
+  "id": "fb992-a8e74",
+  "ts": "2026-07-04T08:39:57Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "NMP ships built-ins; the app picks one or writes its own:\n- `NeverAutoResolve` — content renderer never fetches; resolution happens only on explicit search/paste (your \"only load when the user searches for it\").\n- `FollowsOnly` — auto-resolve only for notes authored by someone the user follows.\n- `WebOfTrust { max_distance }` — auto-resolve within WoT distance N.\n- `Always` — shipped but flagged high-risk; most apps shouldn't pick it. [...] (5) Deviations: no EmbedTarget reduction (per your override — full nostr::Filter kept); shared http_get_json is redirects(0) so nip57 no longer follows redirects (security hardening, 147 tests still green); WebOfTrust/FollowsOnly are closure-generic to avoid an nmp-wot dep."
+}

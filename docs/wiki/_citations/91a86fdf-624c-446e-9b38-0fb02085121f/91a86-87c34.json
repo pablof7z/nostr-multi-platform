@@ -1,0 +1,6 @@
+{
+  "id": "91a86-87c34",
+  "ts": "2026-07-03T09:33:28Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **G:** The doc bakes in a compat-alias migration, violating your standing \"no compat aliases — ever\" rule — plus an internal contradiction (`nmp.wallet.pay_invoice` listed as both canonical *and* an alias). (Fable caught this one.) [...] **3. #2871 already carries the compat-alias violation.** Its own tradeoffs say `nmp.wallet.connect/disconnect/pay_invoice` \"remain compatibility aliases\" — that's exactly finding **G** from the #2854 review, and it violates the owner's zero-tolerance no-compat-aliases rule. It needs a hard-break, not carry-forward.\n"
+}

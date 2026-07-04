@@ -1,0 +1,6 @@
+{
+  "id": "91a86-af934",
+  "ts": "2026-07-03T07:36:40Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- **Receive policy is public** (`kind:10019`): which mints you trust, which relays to send to, and your Cashu P2PK key. Senders read this to know how to pay you."
+}

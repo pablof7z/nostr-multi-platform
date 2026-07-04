@@ -1,0 +1,6 @@
+{
+  "id": "91a86-ce723",
+  "ts": "2026-07-03T07:36:32Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Scope, precisely (Fable's correction to me):** ADR-0075 doesn't literally *forbid* a private write-side use in its Forbidden list — the \"second lifecycle model\" is named as a *risk* in Context. The accurate framing is **charter**: the Decision grants Trellis only as machinery *\"below typed read sessions.\"* A durable write saga isn't below a read session, so ADR-0075 doesn't authorize it — you'd need a *new* ADR to extend Trellis into write lifecycles, which is exactly the risk materializing. Tell: the ADR's \"prove equivalence against the existing path before deleting bespoke machinery\" gate is incoherent here — there's no existing path."
+}

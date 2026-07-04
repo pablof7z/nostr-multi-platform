@@ -1,0 +1,6 @@
+{
+  "id": "91a86-c1a53",
+  "ts": "2026-07-03T11:30:41Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- crates/nutsack-core — app-core: typed `nmp.wallet.*` action builders, the bounded `WalletProjection` mirror, config (testnut + relays), and the `NutsackApp` composition handle over nmp-native-runtime. ZERO wallet logic. Real NMP deps are commented/feature-gated with TODO pins."
+}

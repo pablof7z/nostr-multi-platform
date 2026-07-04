@@ -1,0 +1,6 @@
+{
+  "id": "fb992-c5e09",
+  "ts": "2026-07-04T08:40:21Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "- Relay pinning for an arbitrary filter: `InterestShape.relay_pin` (`crates/nmp-planner/src/interest/shape.rs:99-126`) → planner Case E (`compiler/partition::case_e_relay_pinned`), works for any shape and any lifecycle, never serialized to wire, refuses merge (lattice Rule 9). N relays = N pinned demands — exactly how NIP-50 search does it today (`crates/nmp-nip50/src/search/session.rs:225-236`).\n- The #1563 finding holds: `build_interest_pair` (`crates/nmp-core/src/subs/interest_builder.rs`) parses arbitrary NIP-01 filter JSON. \"Arbitrary filter\" was never the gap. [...] - `InterestShape.relay_pin` — the stronger, already-generic vehicle: client-side routing only, never serialized onto the wire, merge-refused (Rule 9, `planner/src/lattice/rules.rs:161`), used in production by NIP-29 hosts and NIP-50 pinned search. AD rides this. Nothing new to invent or except."
+}

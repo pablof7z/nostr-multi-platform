@@ -1,0 +1,6 @@
+{
+  "id": "fb992-5d7bf",
+  "ts": "2026-07-04T08:38:17Z",
+  "session": "fb992e80-b32b-4673-b2c2-40e8044504ee",
+  "text": "- All shells render AdCandidateUrl as plain-link baseline: SwiftUI (canon+iOS copies), Compose (canon+Android copies), desktop+TUI (built clean), web. jsrepo bundles regen'd.\n"
+}
