@@ -362,12 +362,49 @@ lands in three PRs (issues #2910, #2960, #2931):
   `pending_deposits` entry is dropped. This **retires the formerly unbounded
   `pending_deposits` map** (previously kept one entry per completed deposit for
   the life of the process, an accepted tradeoff pending #2910).
-- **PR-3 (closes #2960/#2931) — send + redeem WAL.** Writes the send/redeem
-  resume payloads and drives reconciliation of `Unknown` operations on restart.
+- **PR-3 (this change, closes #2960/#2931) — send + redeem WAL.** Completes the
+  design's originally-specced "on restart, the wallet reconciles pending
+  operations" for all three flows. Adds `CashuWalPayload::Send`/`Redeem`
+  (`backend/cashu/wal_payload.rs`) with serializable twins of the live
+  secret-bearing types (`StoredProofRecord`, `SwappedSend`, `NutzapRecord`) and
+  writes them at the same points the in-memory state is set:
+  - **Send (#2960).** `send_worker::finish_send` folds the swap's real effect
+    (spend inputs, credit change, transition) only inside the kind:9321
+    `on_signed` closure, so the swapped-but-unsigned proofs lived only in that
+    capture — a crash before signing lost the wallet's own record of them (not a
+    double-spend; the proofs stay valid at the mint). PR-3 persists `Send {
+    swapped: None }` at the reservation (same lock scope as `remove_proofs`) and
+    upserts `swapped: Some` the instant `client.swap(..)` returns `Ok`, before
+    `finish_send`. On restart (`wal_send.rs`): `swapped: Some` re-drives
+    `finish_send` from those proofs; `swapped: None` at a non-terminal state
+    NUT-07 check-states the reserved inputs (via the ONE call site,
+    `check_state::query_spend_states`) — all unspent ⇒ the swap never committed ⇒
+    `Failed` (the inputs come back through the account's own kind:7375 ingest, so
+    they are NOT re-added here), any spent ⇒ left `Unknown` and surfaced in
+    `pending_operations`. `finish_send` now settles the send on sign (its
+    terminal transition), so a completed send's WAL row+payload are deleted by
+    the generic terminal write-through and it is never re-driven.
+  - **Redeem (#2931).** A redeem left `Unknown` after an ambiguous mint HTTP
+    failure was never reconciled/retried without a restart. PR-3 persists a
+    pre-swap `Redeem { fresh_proofs: None }` (the whole nutzap rides along) and
+    upserts `fresh_proofs: Some` after the unlinking swap returns `Ok`. On
+    restart (`wal_redeem.rs`): `fresh_proofs: Some` re-drives `finish_redeem`;
+    `fresh_proofs: None`, non-terminal check-states the nutzap's own input-proof
+    secrets — all unspent ⇒ **the #2931 fix**: delete the saga row from BOTH the
+    durable WAL and the in-memory journal (`WalletOperationJournal::remove`) so a
+    re-observed kind:9321 can `begin_operation` cleanly instead of being blocked
+    forever by `DuplicateOperation`; any spent ⇒ left `Unknown` and surfaced. The
+    happy-path redeem already reaches `Settled`, so its payload is cleaned up by
+    the same terminal write-through.
+
+  The reconcile/re-drive both run off the actor thread (D8) inside
+  `ResumeSendCommand`/`ResumeRedeemCommand`, the same seam `ResumeDepositCommand`
+  uses; `restore_from_wal` returns them for the caller to enqueue.
 
 PR-1 stores no raw proofs — only backend-agnostic saga state; PR-2 writes the
-deposit Cashu payload into the opaque payload slot, and PR-3 is the wave that
-adds the send/redeem payloads.
+deposit Cashu payload into the opaque payload slot, and PR-3 adds the
+send/redeem payloads — so restart reconciliation now covers all three flows
+(deposit, send, redeem).
 
 ## Three Wallet-State Concerns
 

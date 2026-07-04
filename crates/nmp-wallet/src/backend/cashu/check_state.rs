@@ -94,26 +94,17 @@ pub(super) fn run_check_state_pass(state: &Mutex<CashuWalletState>) {
 
     for (mint, proofs) in groups {
         let secrets: Vec<String> = proofs.iter().map(|p| p.proof.secret.clone()).collect();
-        let states = match MintClient::new(&mint).check_state(&secrets) {
-            Ok(states) => states,
-            Err(_) => {
-                // Fail-safe (see module docs) — a network/protocol error
-                // for this mint never touches its proofs.
-                continue;
-            }
-        };
-        // `MintClient::check_state` already validates the response is
-        // exactly as long as `secrets` (and in the same `Y` order) before
-        // returning `Ok` — this is a defensive re-check, never trusting
-        // that invariant alone from this distance.
-        if states.len() != proofs.len() {
+        // Fail-safe (see module docs) — a network/protocol error or a
+        // length mismatch for this mint returns `None` here and never
+        // touches its proofs.
+        let Some(states) = query_spend_states(&mint, &secrets) else {
             continue;
-        }
+        };
 
         let spent: Vec<StoredProof> = proofs
             .into_iter()
             .zip(states)
-            .filter(|(_, proof_state)| proof_state.state == ProofSpendState::Spent)
+            .filter(|(_, state)| *state == ProofSpendState::Spent)
             .map(|(stored, _)| stored)
             .collect();
         if spent.is_empty() {
@@ -129,6 +120,30 @@ pub(super) fn run_check_state_pass(state: &Mutex<CashuWalletState>) {
         }
         s.remove_proofs(&spent);
     }
+}
+
+/// The wallet's ONE NUT-07 `/v1/checkstate` call site — every mint spend-state
+/// query (the recovered-inventory pass above AND PR-3's send/redeem `Unknown`
+/// reconciliation in `wal_send.rs`/`wal_redeem.rs`) routes through here rather
+/// than re-issuing the mint HTTP call itself. Returns the per-secret states in
+/// request order, or `None` on ANY failure — a network/protocol error, an
+/// un-parseable body, or a response whose length doesn't match `secrets`. That
+/// `None`-on-anything-uncertain shape is the shared fail-safe: no caller may
+/// ever treat a proof as spent (drop it, fail an operation) off anything but an
+/// affirmative, correctly-shaped mint verdict.
+///
+/// Blocking — one HTTP round-trip. Callers run it off the actor thread (D8),
+/// exactly like [`run_check_state_pass`] and the send/redeem worker swaps.
+pub(super) fn query_spend_states(mint: &str, secrets: &[String]) -> Option<Vec<ProofSpendState>> {
+    let states = MintClient::new(mint).check_state(secrets).ok()?;
+    // `MintClient::check_state` already validates the response is exactly as
+    // long as `secrets` (and in the same `Y` order) before returning `Ok` —
+    // this is a defensive re-check, never trusting that invariant alone from
+    // this distance.
+    if states.len() != secrets.len() {
+        return None;
+    }
+    Some(states.into_iter().map(|s| s.state).collect())
 }
 
 /// Group held proofs by canonical mint URL — batches one check-state call

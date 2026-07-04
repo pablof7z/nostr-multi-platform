@@ -293,6 +293,24 @@ impl ProtocolCommand for RedeemNutzapCommand {
         }
 
         let relays = ctx.recipient_publish_relays(&account_pubkey, KIND_NIP60_TOKEN);
+        // #2931 — durable pre-swap record: now that the nutzap/mint/relays are
+        // all known (and the consumed input is journalled above), persist a
+        // resumable redeem record (`fresh_proofs: None`) BEFORE the swap HTTP
+        // call goes out — mirroring the deposit "record as soon as you have
+        // enough to resume" pattern. A crash mid-swap that leaves this operation
+        // `Unknown` is what `restore_from_wal` reconciles against on restart
+        // (see `wal_redeem.rs`).
+        {
+            let s = lock_state(&state);
+            super::wal_redeem::persist_redeem_payload(
+                &s,
+                &operation_id,
+                &nutzap,
+                &nutzap_wallet_event,
+                &relays,
+                None,
+            );
+        }
         let created_at = ctx.now_secs();
         let worker_tx = ctx.command_sender_clone();
         std::thread::spawn(move || {

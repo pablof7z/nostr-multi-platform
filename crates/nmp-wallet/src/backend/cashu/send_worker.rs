@@ -166,6 +166,31 @@ pub(super) fn run_send_worker(args: SendWorkerArgs) {
         }
     };
 
+    // #2960 — the swap has committed: persist the outputs (the recipient's
+    // P2PK-locked proofs + the sender's change) BEFORE `finish_send` runs, so a
+    // crash in the swapped-but-kind:9321-unsigned window can re-drive
+    // `finish_send` from these exact proofs on restart (`wal_send.rs`) instead
+    // of losing the wallet's own record of them. `nutzap_count`
+    // (`output_amounts.len()`) is where `finish_send` splits `new_proofs` into
+    // recipient outputs vs. change.
+    {
+        let s = lock_state(&state);
+        super::wal_send::persist_send_payload(
+            &s,
+            &operation_id,
+            &mint,
+            &recipient_pubkey,
+            &recipient_cashu_pubkey,
+            target_event_id.as_deref(),
+            &relays,
+            &selected,
+            Some(super::wal_payload::SwappedSend {
+                new_proofs: new_proofs.clone(),
+                nutzap_count: output_amounts.len(),
+            }),
+        );
+    }
+
     finish_send(FinishSendArgs {
         worker_tx,
         state,
@@ -325,6 +350,16 @@ pub(super) fn finish_send(args: FinishSendArgs) {
             s.add_proofs(None, mint, change_proofs);
             let _ = s.transition(&on_signed_op, WalletOperationState::MintSettled);
             let _ = s.transition(&on_signed_op, WalletOperationState::PublishPending);
+            // #2960 — settle the send once its kind:9321 is signed (optimistic,
+            // mirroring `redeem_worker.rs`'s own `Settled` on its history
+            // event's sign). This is the send's terminal transition: it deletes
+            // the durable WAL row AND resume payload via `state.rs`'s terminal
+            // write-through, so a completed send is never re-driven on a later
+            // restart. A send has no external publish-ACK to settle on (its
+            // kind:9321 is p-tagged to the recipient, so this account never
+            // re-observes it as its own), which is why it settles here rather
+            // than on a re-ingested event the way a deposit does.
+            let _ = s.transition(&on_signed_op, WalletOperationState::Settled);
         },
     );
 }

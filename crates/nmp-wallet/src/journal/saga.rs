@@ -326,6 +326,22 @@ impl WalletOperationJournal {
             .find(|operation| &operation.id == operation_id)
     }
 
+    /// Drop `operation_id` from the in-memory journal entirely, returning
+    /// whether a row was actually removed. This is the reconciliation
+    /// counterpart to `restore_into_journal`'s terminal-row deletion (PR-3 of
+    /// #2910/#2960/#2931): a restored non-terminal redeem whose mint check-state
+    /// pass proves its inputs never got spent has to leave the in-memory journal
+    /// (not merely transition to `Failed`) — a `Failed` row still lives here and
+    /// would keep the `DuplicateOperation` guard blocking a later re-observed
+    /// kind:9321 forever (the #2931 hazard). Removing it restores the same
+    /// self-healing the pre-durable-journal path had when the journal simply
+    /// evaporated on restart, now driven by a positive mint verdict instead.
+    pub fn remove(&mut self, operation_id: &WalletOperationId) -> bool {
+        let before = self.operations.len();
+        self.operations.retain(|operation| &operation.id != operation_id);
+        self.operations.len() != before
+    }
+
     fn operation_mut(
         &mut self,
         operation_id: &WalletOperationId,

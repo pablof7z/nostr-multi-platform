@@ -63,6 +63,8 @@ mod snapshot;
 mod state;
 mod ui_codes;
 mod wal_payload;
+mod wal_redeem;
+mod wal_send;
 
 use std::sync::{Arc, Mutex};
 

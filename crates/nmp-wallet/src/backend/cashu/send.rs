@@ -210,6 +210,23 @@ impl ProtocolCommand for SendNutzapCommand {
                 );
             }
             s.remove_proofs(&selected);
+            // #2960 — durable pre-publish record, in the SAME lock scope as the
+            // reservation: the inputs are now reserved (removed from the
+            // inventory) but the mint swap hasn't happened yet (`swapped:
+            // None`). Persisting here means a crash before the swap leaves a
+            // resumable record `restore_from_wal` reconciles against on restart
+            // (see `wal_send.rs`).
+            super::wal_send::persist_send_payload(
+                &s,
+                &operation_id,
+                &mint,
+                &recipient_pubkey,
+                &recipient_cashu_pubkey,
+                target_event_id.as_deref(),
+                &recipient_info.relays,
+                &selected,
+                None,
+            );
         }
 
         let relays = recipient_info.relays.clone();
