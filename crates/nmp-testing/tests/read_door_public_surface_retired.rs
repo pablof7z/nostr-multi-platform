@@ -37,6 +37,12 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
         "crates/nmp-native-runtime/src/group_feed/types.rs",
         "crates/nmp-browser-runtime/src/runtime/group_events.rs",
         "crates/nmp-browser-runtime/src/runtime/group_discovery.rs",
+        "crates/nmp-native-runtime/src/op_pointer_source/mod.rs",
+        "crates/nmp-native-runtime/src/op_pointer_source/shapes.rs",
+        "crates/nmp-native-runtime/src/op_pointer_source/tests.rs",
+        "crates/nmp-content/src/pointer_source/composition.rs",
+        "crates/nmp-content/src/pointer_source/composition_tests.rs",
+        "crates/nmp-content/src/pointer_source/shapes.rs",
     ];
     let checks = [
         (
@@ -137,8 +143,12 @@ fn retired_app_visible_read_doors_are_not_public_defs() {
             &["reaction_read_sessions"][..],
         ),
         (
-            "crates/nmp-native-runtime/src/op_pointer_source/mod.rs",
-            &["pub fn open_pointer_source("][..],
+            "crates/nmp-content/src/lib.rs",
+            &["open_pointer_source", "register_pointer_source"][..],
+        ),
+        (
+            "crates/nmp-content/src/pointer_source/mod.rs",
+            &["open_pointer_source", "register_pointer_source"][..],
         ),
     ];
 

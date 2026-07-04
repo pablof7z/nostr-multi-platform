@@ -24,7 +24,6 @@ nmp-nip84 = { path = "../nmp-nip84", version = "1.0.0-rc.1" }
 # segment model, embed registry, and wire projection consume
 # `nmp_nostr_id::{NostrUri, parse_nostr_uri, format_nostr_uri}`. Issue #2515.
 nmp-nostr-id = { path = "../nmp-nostr-id", version = "1.0.0-rc.1" }
-nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"
 serde = { workspace = true, features = ["derive"] }

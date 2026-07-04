@@ -4082,7 +4082,6 @@ dependencies = [
  "nmp-nip84",
  "nmp-nostr-id",
  "nmp-ownership",
- "nmp-planner",
  "proptest",
  "pulldown-cmark",
  "regex",

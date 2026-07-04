@@ -57,8 +57,6 @@ mod testing;
 pub mod builder;
 #[cfg(feature = "op-feed")]
 pub mod op_feed_session;
-#[cfg(test)]
-pub(crate) mod op_pointer_source;
 
 pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
