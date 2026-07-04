@@ -11,9 +11,11 @@
 use crate::segment::{MediaKind, Segment};
 use url::Url;
 
-/// Apply media grouping: any run of `Segment::Url` whose URL classifies as
-/// media (per [`media_kind_for_url`]), optionally bridged by whitespace-only
-/// or empty `Text` segments, collapses into one `Segment::Media`.
+/// Apply media grouping: any run of `Segment::AdCandidateUrl` (the autolink
+/// tokenizer's plain-URL output, #2927) whose URL classifies as media (per
+/// [`media_kind_for_url`]), optionally bridged by whitespace-only or empty
+/// `Text` segments, collapses into one `Segment::Media`. Non-media candidates
+/// pass through unchanged as `Segment::AdCandidateUrl`.
 ///
 /// Returns a new vector — the input is consumed.
 #[must_use]
@@ -25,7 +27,7 @@ pub(crate) fn group_consecutive_media(input: Vec<Segment>) -> Vec<Segment> {
 
     for seg in input {
         match seg {
-            Segment::Url(url) => {
+            Segment::AdCandidateUrl(url) => {
                 if let Some(kind) = media_kind_for_url(&url) {
                     if let Some(existing) = pending_kind {
                         if existing == kind {
@@ -51,7 +53,7 @@ pub(crate) fn group_consecutive_media(input: Vec<Segment>) -> Vec<Segment> {
                         &mut pending_kind,
                         &mut pending_bridge,
                     );
-                    out.push(Segment::Url(url));
+                    out.push(Segment::AdCandidateUrl(url));
                 }
             }
             Segment::Text(t) if pending_kind.is_some() && is_bridging_text(&t) => {
@@ -181,9 +183,9 @@ mod tests {
     #[test]
     fn groups_two_consecutive_images() {
         let input = vec![
-            Segment::Url(u("https://x/a.jpg")),
+            Segment::AdCandidateUrl(u("https://x/a.jpg")),
             Segment::Text(" ".to_string()),
-            Segment::Url(u("https://x/b.jpg")),
+            Segment::AdCandidateUrl(u("https://x/b.jpg")),
         ];
         let out = group_consecutive_media(input);
         assert_eq!(out.len(), 1);
@@ -195,8 +197,8 @@ mod tests {
     #[test]
     fn does_not_group_image_then_video() {
         let input = vec![
-            Segment::Url(u("https://x/a.jpg")),
-            Segment::Url(u("https://x/b.mp4")),
+            Segment::AdCandidateUrl(u("https://x/a.jpg")),
+            Segment::AdCandidateUrl(u("https://x/b.mp4")),
         ];
         let out = group_consecutive_media(input);
         assert_eq!(out.len(), 2);
@@ -204,7 +206,7 @@ mod tests {
 
     #[test]
     fn single_image_becomes_media_segment() {
-        let input = vec![Segment::Url(u("https://x/a.jpg"))];
+        let input = vec![Segment::AdCandidateUrl(u("https://x/a.jpg"))];
         let out = group_consecutive_media(input);
         assert_eq!(out.len(), 1);
         assert!(matches!(
@@ -219,9 +221,9 @@ mod tests {
     #[test]
     fn text_between_images_with_letters_breaks_group() {
         let input = vec![
-            Segment::Url(u("https://x/a.jpg")),
+            Segment::AdCandidateUrl(u("https://x/a.jpg")),
             Segment::Text(" caption ".to_string()),
-            Segment::Url(u("https://x/b.jpg")),
+            Segment::AdCandidateUrl(u("https://x/b.jpg")),
         ];
         let out = group_consecutive_media(input);
         // Letters break the run; the text and second image are separate.

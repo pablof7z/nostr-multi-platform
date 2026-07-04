@@ -71,6 +71,9 @@ impl WireBuilder {
             },
             Segment::Hashtag(h) => self.push(WireNode::Hashtag { tag: h.clone() }),
             Segment::Url(u) => self.push(WireNode::Url { url: u.to_string() }),
+            Segment::AdCandidateUrl(u) => {
+                self.push(WireNode::AdCandidateUrl { url: u.to_string() })
+            }
             Segment::Media { urls, kind } => self.push(WireNode::Media {
                 urls: urls.iter().map(Url::to_string).collect(),
                 media_kind: *kind,

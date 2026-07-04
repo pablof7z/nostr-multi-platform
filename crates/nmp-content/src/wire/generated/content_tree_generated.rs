@@ -17,13 +17,13 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_WIRE_NODE_KIND: u8 = 21;
+        pub const ENUM_MAX_WIRE_NODE_KIND: u8 = 22;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_WIRE_NODE_KIND: [WireNodeKind; 22] = [
+        pub const ENUM_VALUES_WIRE_NODE_KIND: [WireNodeKind; 23] = [
             WireNodeKind::Text,
             WireNodeKind::Mention,
             WireNodeKind::EventRef,
@@ -46,6 +46,7 @@ pub mod nmp {
             WireNodeKind::SoftBreak,
             WireNodeKind::HardBreak,
             WireNodeKind::Placeholder,
+            WireNodeKind::AdCandidateUrl,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -75,9 +76,10 @@ pub mod nmp {
             pub const SoftBreak: Self = Self(19);
             pub const HardBreak: Self = Self(20);
             pub const Placeholder: Self = Self(21);
+            pub const AdCandidateUrl: Self = Self(22);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 21;
+            pub const ENUM_MAX: u8 = 22;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::Text,
                 Self::Mention,
@@ -101,6 +103,7 @@ pub mod nmp {
                 Self::SoftBreak,
                 Self::HardBreak,
                 Self::Placeholder,
+                Self::AdCandidateUrl,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -127,6 +130,7 @@ pub mod nmp {
                     Self::SoftBreak => Some("SoftBreak"),
                     Self::HardBreak => Some("HardBreak"),
                     Self::Placeholder => Some("Placeholder"),
+                    Self::AdCandidateUrl => Some("AdCandidateUrl"),
                     _ => None,
                 }
             }

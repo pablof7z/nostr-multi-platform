@@ -78,6 +78,7 @@ fn project_segment(s: &Segment) -> SegmentDto {
         Segment::EventRef(u) => project_event_ref(u),
         Segment::Hashtag(h) => SegmentDto::Hashtag { tag: h.clone() },
         Segment::Url(u) => SegmentDto::Url { url: u.to_string() },
+        Segment::AdCandidateUrl(u) => SegmentDto::AdCandidateUrl { url: u.to_string() },
         Segment::Media { urls, kind } => SegmentDto::Media {
             media_kind: media_kind(kind).to_string(),
             urls: urls.iter().map(|u| u.to_string()).collect(),

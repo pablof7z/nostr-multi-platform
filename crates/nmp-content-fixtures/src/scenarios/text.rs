@@ -60,7 +60,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         "S-T03",
         "text",
         "Bare URL (non-media)",
-        "Segment::Url — URL not classified as media",
+        "Segment::AdCandidateUrl — URL not classified as media (NIP-AD candidate)",
         &e,
         vec![],
         &store,

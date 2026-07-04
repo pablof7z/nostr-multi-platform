@@ -91,6 +91,17 @@ pub enum WireNode {
         /// The URL, serialized as its string form.
         url: String,
     },
+    /// A plain `http(s)` URL that MIGHT double as a NIP-AD pointer (#2927).
+    /// Hosts MUST render it as a plain link immediately (identical baseline to
+    /// [`WireNode::Url`]); the distinct variant lets a host know the link is
+    /// *claimable* and, under its injected `AdResolutionPolicy`, attempt a
+    /// non-blocking `.well-known/nostr.json?ad=<path>` resolution that upgrades
+    /// the link to an embedded collection. Most URLs are not AD-enabled — the
+    /// plain link stays.
+    AdCandidateUrl {
+        /// The URL, serialized as its string form.
+        url: String,
+    },
     /// Grouped media block.
     Media {
         /// Ordered URLs as strings.

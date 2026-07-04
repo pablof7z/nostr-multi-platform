@@ -24,5 +24,6 @@ export enum WireNodeKind {
   Image = 18,
   SoftBreak = 19,
   HardBreak = 20,
-  Placeholder = 21
+  Placeholder = 21,
+  AdCandidateUrl = 22
 }

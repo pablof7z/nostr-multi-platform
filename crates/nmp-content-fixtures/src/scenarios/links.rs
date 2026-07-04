@@ -3,7 +3,9 @@
 //! These pin the three observable link shapes a renderer can encounter:
 //!
 //! * `S-L01` — a plain `https://…` URL in `kind:1` content. Tokenizes to
-//!   `Segment::Url` (no media-extension grouping).
+//!   `Segment::AdCandidateUrl` (every plain http(s) URL is a NIP-AD candidate,
+//!   #2927; no media-extension grouping) → `WireNode::AdCandidateUrl`, which a
+//!   host renders as a plain link baseline.
 //! * `S-L02` — a `[label](href)` markdown link inside a `kind:30023`
 //!   article body. Tokenizes through the Markdown path to a
 //!   `MarkdownInline::Link { label, href: Some(_) }`, which the wire
@@ -29,7 +31,7 @@ const BASE: u64 = 1_700_070_000;
 pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     let mut out = Vec::new();
 
-    // S-L01: plain URL -> Segment::Url.
+    // S-L01: plain URL -> Segment::AdCandidateUrl (#2927).
     let store = EmbedStore::default();
     let e = ids.alice.sign(
         1,
@@ -41,7 +43,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         "S-L01",
         "links",
         "Plain URL (non-media)",
-        "Segment::Url — bare URL, not classified as media",
+        "Segment::AdCandidateUrl — bare URL, NIP-AD candidate, renders as plain link",
         &e,
         vec![],
         &store,
