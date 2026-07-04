@@ -55,6 +55,10 @@ pub struct GalleryTypedSnapshot {
     pub profiles: BTreeMap<String, ProfileCardModel>,
     /// Per-relay connection statuses (Tier-3 envelope field).
     pub relay_statuses: Vec<nmp_core::RelayStatusEntry>,
+    /// #2927 — resolved NIP-AD collections, keyed by their projection key
+    /// (`nmp.nip-ad.collection.<session_id>`, the key `ad_url_state` returns in
+    /// `AdUrlState::Resolved`). Decoded from the typed `ADCL` snapshot payloads.
+    pub ad_collections: BTreeMap<String, nmp_nip_ad::AdCollectionSnapshot>,
 }
 
 impl GalleryTypedSnapshot {
@@ -92,10 +96,24 @@ impl GalleryTypedSnapshot {
         }
         let profiles = profiles_store.profiles();
 
+        // #2927 — retain every resolved NIP-AD collection payload (there may be
+        // several keyed by session). Decode failures are dropped (D6: a
+        // malformed sidecar just means "no resolved collection yet").
+        let ad_collections = typed
+            .iter()
+            .filter(|p| p.key.starts_with("nmp.nip-ad.collection."))
+            .filter_map(|p| {
+                nmp_nip_ad::decode_ad_collection_snapshot(&p.payload)
+                    .ok()
+                    .map(|snap| (p.key.clone(), snap))
+            })
+            .collect();
+
         Self {
             events,
             profiles,
             relay_statuses,
+            ad_collections,
         }
     }
 
@@ -155,6 +173,28 @@ impl LiveKernelSink {
             nmp_core::RefShape::Profile(shape),
             nmp_core::RefLiveness::CacheOk,
         );
+    }
+
+    /// #2927 — claim a NIP-AD candidate URL for a note authored by `author`
+    /// (moment-1 render). Idempotent; policy-gated inside the runtime. The
+    /// resolved collection later surfaces in the typed `ADCL` snapshot and is
+    /// discoverable via [`Self::ad_url_state`].
+    pub fn claim_ad_url(&self, url: &str, author: &str, consumer_id: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        use nmp_content::AdUrlResolver;
+        unsafe { &*self.app }.claim_ad_url(url, author, consumer_id);
+    }
+
+    /// #2927 — the current [`AdUrlState`](nmp_content::AdUrlState) for `url`
+    /// (the render-side read-door: plain link vs. resolved collection).
+    #[must_use]
+    pub fn ad_url_state(&self, url: &str) -> nmp_content::AdUrlState {
+        if self.app.is_null() {
+            return nmp_content::AdUrlState::NotAttempted;
+        }
+        unsafe { &*self.app }.ad_url_state(url)
     }
 
     /// Release a profile reference previously resolved via [`Self::resolve_profile`].
@@ -264,6 +304,15 @@ impl LiveKernel {
             return Err("gallery composition root already claimed".to_string());
         }
         let app = Box::into_raw(Box::new(app));
+
+        // #2927 — inject a RESOLVING NIP-AD policy at the gallery composition
+        // root so moment-1 (passive render) actually fires. The framework
+        // default is `NeverAutoResolve` (no passive fetch); the gallery is a
+        // demo/proof surface, so it opts into `Always` to demonstrate an AD URL
+        // upgrading to its resolved collection. Real apps choose their own
+        // posture (FollowsOnly / WebOfTrust / NeverAutoResolve).
+        // SAFETY: app is a valid, non-null pointer (just allocated above).
+        unsafe { &*app }.set_ad_resolution_policy(Arc::new(nmp_nip_ad::Always));
 
         let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
         // The tx is moved into the listener closure; the closure (inside the Arc)

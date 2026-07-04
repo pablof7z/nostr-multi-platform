@@ -67,6 +67,26 @@ pub struct AdCollectionRow {
     pub relay_provenance: Vec<String>,
 }
 
+impl AdCollectionRow {
+    /// Reconstruct the raw [`KernelEvent`] this row was ingested from, so a
+    /// host can drive it back through the per-kind render pipeline
+    /// (`nmp_content::resolve_embed_projection`) exactly like any other embedded
+    /// event (#2927 B/C render bridge). The row carries only raw protocol values
+    /// (no signature — rendering never needs one), so the mapping is 1:1.
+    #[must_use]
+    pub fn to_kernel_event(&self) -> KernelEvent {
+        KernelEvent {
+            id: self.id.clone(),
+            author: self.author.clone(),
+            kind: self.kind,
+            created_at: self.created_at,
+            tags: self.tags.clone(),
+            content: self.content.clone(),
+            relay_provenance: self.relay_provenance.clone(),
+        }
+    }
+}
+
 /// The typed collection snapshot: the full deduped set, newest-first.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct AdCollectionSnapshot {

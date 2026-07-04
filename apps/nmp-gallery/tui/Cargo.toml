@@ -21,6 +21,11 @@ nmp-content = { path = "../../../crates/nmp-content", version = "1.0.0-rc.1" }
 nmp-core = { path = "../../../crates/nmp-core", version = "1.0.0-rc.1" }
 nmp-nostr-id = { path = "../../../crates/nmp-nostr-id", version = "1.0.0-rc.1" }
 nmp-native-runtime = { path = "../../../crates/nmp-native-runtime", version = "1.0.0-rc.1" }
+# #2927 — NIP-AD resolved-collection proof: the app-injected `Always` policy,
+# the always-compiled `AdCollectionSnapshot`/`decode_ad_collection_snapshot`
+# render bridge. No `native` feature needed here (the blocking resolve runs
+# inside nmp-native-runtime, enabled via nmp-app-gallery's nip-ad feature).
+nmp-nip-ad = { path = "../../../crates/nmp-nip-ad", version = "1.0.0-rc.1" }
 ratatui = { version = "0.30", features = ["crossterm"] }
 ratatui-image = { version = "11.0.2", default-features = false, features = ["crossterm"] }
 serde_json = { workspace = true }
