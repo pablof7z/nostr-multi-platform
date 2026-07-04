@@ -1,0 +1,35 @@
+namespace nmp.wallet;
+
+// #3003 — typed FlatBuffers payload for the
+// `nmp.wallet.cashu.cross_mint_transfer` `ActionModule`. The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter decodes
+// against THIS schema, gating `schema_version` BEFORE `start()` (fail-closed on
+// mismatch).
+//
+// Mirrors `CashuCrossMintTransferAction { target_mint, amount_sats }`,
+// translated to `WalletIntent::CrossMintTransfer` in `execute()`. Drives the
+// standalone cross-mint transfer saga explicitly (mint-quote the target,
+// melt proofs at whichever OTHER mint holds the largest spendable balance,
+// mint the resulting SELF-owned proofs at the target, publish kind:7375) —
+// see `backend::cashu::cross_mint`'s module docs for the full saga. The
+// `nutzap.send` auto-fallback (send.rs) drives the same saga internally
+// without going through this action.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/cashu_cross_mint_transfer.fbs
+
+table CashuCrossMintTransferPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The recipient-accepted mint to fund. Must be a well-formed `http(s)://`
+  // mint URL (validated in `ActionModule::start`).
+  target_mint:string (required);
+  // The amount, in satoshis, that must land at `target_mint`. `start()`
+  // rejects zero.
+  amount_sats:uint64;
+}
+
+file_identifier "NWCX";
+root_type CashuCrossMintTransferPayload;

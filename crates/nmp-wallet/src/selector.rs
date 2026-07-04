@@ -70,6 +70,7 @@ pub fn capability_for(intent: &WalletIntent) -> Option<WalletCapability> {
             Some(WalletCapability::DepositCashu)
         }
         WalletIntent::MeltCashu { .. } => Some(WalletCapability::MeltCashu),
+        WalletIntent::CrossMintTransfer { .. } => Some(WalletCapability::CrossMintTransfer),
     }
 }
 
@@ -347,6 +348,7 @@ fn union_capabilities(acc: WalletCapabilities, next: WalletCapabilities) -> Wall
         deposit_cashu: acc.deposit_cashu || next.deposit_cashu,
         melt_cashu: acc.melt_cashu || next.melt_cashu,
         observe_nutzap_receipts: acc.observe_nutzap_receipts || next.observe_nutzap_receipts,
+        cross_mint_transfer: acc.cross_mint_transfer || next.cross_mint_transfer,
     }
 }
 

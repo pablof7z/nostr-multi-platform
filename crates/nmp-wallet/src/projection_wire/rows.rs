@@ -34,6 +34,7 @@ pub(super) fn encode_capabilities<'a>(
             deposit_cashu: capabilities.deposit_cashu,
             melt_cashu: capabilities.melt_cashu,
             observe_nutzap_receipts: capabilities.observe_nutzap_receipts,
+            cross_mint_transfer: capabilities.cross_mint_transfer,
         },
     )
 }
@@ -188,6 +189,7 @@ pub(super) fn decode_capabilities(
         deposit_cashu: caps.deposit_cashu(),
         melt_cashu: caps.melt_cashu(),
         observe_nutzap_receipts: caps.observe_nutzap_receipts(),
+        cross_mint_transfer: caps.cross_mint_transfer(),
     }
 }
 

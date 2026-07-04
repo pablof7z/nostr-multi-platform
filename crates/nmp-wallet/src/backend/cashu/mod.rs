@@ -49,6 +49,10 @@
 mod chain;
 mod check_state;
 mod create_wallet;
+mod cross_mint;
+mod cross_mint_publish;
+mod cross_mint_resume;
+mod cross_mint_worker;
 mod deposit;
 mod events;
 mod ingest;
@@ -187,6 +191,20 @@ impl WalletBackend for CashuWalletBackend {
             WalletIntent::SetCashuMints { mints } => {
                 self.start_set_mints(ctx, mints, correlation_id)
             }
+            WalletIntent::CrossMintTransfer {
+                target_mint,
+                amount_sats,
+            } => self.start_cross_mint_transfer(
+                ctx,
+                target_mint,
+                amount_sats,
+                correlation_id,
+                // A direct `WalletIntent::CrossMintTransfer` dispatch (the
+                // explicit action, or a test) has no original send to
+                // re-drive — only `send.rs`'s internal auto-fallback
+                // constructs a `SendRetry`.
+                None,
+            ),
             // Not this backend's capability — `capabilities()` already tells
             // callers not to route these here. A no-op rather than a panic
             // keeps a stray dispatch harmless (D6), same as `backend::nwc`.

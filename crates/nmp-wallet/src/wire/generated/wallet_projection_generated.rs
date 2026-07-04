@@ -221,13 +221,13 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_WALLET_OPERATION_KIND: u8 = 8;
+        pub const ENUM_MAX_WALLET_OPERATION_KIND: u8 = 9;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_WALLET_OPERATION_KIND: [WalletOperationKind; 9] = [
+        pub const ENUM_VALUES_WALLET_OPERATION_KIND: [WalletOperationKind; 10] = [
             WalletOperationKind::SelectBackend,
             WalletOperationKind::PayBolt11,
             WalletOperationKind::CreateCashuWallet,
@@ -237,6 +237,7 @@ pub mod nmp {
             WalletOperationKind::DepositCashu,
             WalletOperationKind::MeltCashu,
             WalletOperationKind::SetCashuMints,
+            WalletOperationKind::CrossMintTransfer,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -253,9 +254,10 @@ pub mod nmp {
             pub const DepositCashu: Self = Self(6);
             pub const MeltCashu: Self = Self(7);
             pub const SetCashuMints: Self = Self(8);
+            pub const CrossMintTransfer: Self = Self(9);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 8;
+            pub const ENUM_MAX: u8 = 9;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::SelectBackend,
                 Self::PayBolt11,
@@ -266,6 +268,7 @@ pub mod nmp {
                 Self::DepositCashu,
                 Self::MeltCashu,
                 Self::SetCashuMints,
+                Self::CrossMintTransfer,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -279,6 +282,7 @@ pub mod nmp {
                     Self::DepositCashu => Some("DepositCashu"),
                     Self::MeltCashu => Some("MeltCashu"),
                     Self::SetCashuMints => Some("SetCashuMints"),
+                    Self::CrossMintTransfer => Some("CrossMintTransfer"),
                     _ => None,
                 }
             }
@@ -478,6 +482,7 @@ pub mod nmp {
             pub const VT_DEPOSIT_CASHU: ::flatbuffers::VOffsetT = 14;
             pub const VT_MELT_CASHU: ::flatbuffers::VOffsetT = 16;
             pub const VT_OBSERVE_NUTZAP_RECEIPTS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_CROSS_MINT_TRANSFER: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -494,6 +499,7 @@ pub mod nmp {
                 args: &'args WalletCapabilitiesArgs,
             ) -> ::flatbuffers::WIPOffset<WalletCapabilities<'bldr>> {
                 let mut builder = WalletCapabilitiesBuilder::new(_fbb);
+                builder.add_cross_mint_transfer(args.cross_mint_transfer);
                 builder.add_observe_nutzap_receipts(args.observe_nutzap_receipts);
                 builder.add_melt_cashu(args.melt_cashu);
                 builder.add_deposit_cashu(args.deposit_cashu);
@@ -593,6 +599,17 @@ pub mod nmp {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn cross_mint_transfer(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletCapabilities::VT_CROSS_MINT_TRANSFER, Some(false))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for WalletCapabilities<'_> {
@@ -622,6 +639,11 @@ pub mod nmp {
                         Self::VT_OBSERVE_NUTZAP_RECEIPTS,
                         false,
                     )?
+                    .visit_field::<bool>(
+                        "cross_mint_transfer",
+                        Self::VT_CROSS_MINT_TRANSFER,
+                        false,
+                    )?
                     .finish();
                 Ok(())
             }
@@ -635,6 +657,7 @@ pub mod nmp {
             pub deposit_cashu: bool,
             pub melt_cashu: bool,
             pub observe_nutzap_receipts: bool,
+            pub cross_mint_transfer: bool,
         }
         impl<'a> Default for WalletCapabilitiesArgs {
             #[inline]
@@ -648,6 +671,7 @@ pub mod nmp {
                     deposit_cashu: false,
                     melt_cashu: false,
                     observe_nutzap_receipts: false,
+                    cross_mint_transfer: false,
                 }
             }
         }
@@ -713,6 +737,14 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_cross_mint_transfer(&mut self, cross_mint_transfer: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletCapabilities::VT_CROSS_MINT_TRANSFER,
+                    cross_mint_transfer,
+                    false,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletCapabilitiesBuilder<'a, 'b, A> {
@@ -740,6 +772,7 @@ pub mod nmp {
                 ds.field("deposit_cashu", &self.deposit_cashu());
                 ds.field("melt_cashu", &self.melt_cashu());
                 ds.field("observe_nutzap_receipts", &self.observe_nutzap_receipts());
+                ds.field("cross_mint_transfer", &self.cross_mint_transfer());
                 ds.finish()
             }
         }

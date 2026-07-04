@@ -22,6 +22,10 @@
 //! every call — see `backend::cashu::set_mints::SetCashuMintsCommand`'s
 //! module docs for why that distinction is money-safety-critical (rotating
 //! the key would strand already-incoming P2PK-locked proofs).
+//!
+//! `deposit_quote`/`complete_deposit` live in the sibling `cashu_deposit.rs`
+//! (AGENTS.md LOC discipline) and are re-exported here so this file stays
+//! the one `use crate::action::cashu::*`-style seam for the whole family.
 
 use std::sync::Arc;
 
@@ -39,11 +43,18 @@ use crate::selector::WalletBackendSelector;
 #[cfg(test)]
 use crate::ui_codes;
 use crate::{
-    ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
-    ACTION_CASHU_RECOVER, ACTION_CASHU_SET_MINTS,
+    ACTION_CASHU_CREATE, ACTION_CASHU_CROSS_MINT_TRANSFER, ACTION_CASHU_RECOVER,
+    ACTION_CASHU_SET_MINTS,
 };
 
 use super::{dispatch_and_forward, require_capable_backend};
+
+#[path = "cashu_deposit.rs"]
+mod cashu_deposit;
+pub use cashu_deposit::{
+    CashuCompleteDepositAction, CashuCompleteDepositModule, CashuDepositQuoteAction,
+    CashuDepositQuoteModule,
+};
 
 // ── nmp.wallet.cashu.create ─────────────────────────────────────────────────
 
@@ -254,20 +265,26 @@ impl ActionModule for CashuSetMintsModule {
     }
 }
 
-// ── nmp.wallet.cashu.deposit_quote ───────────────────────────────────────────
+// ── nmp.wallet.cashu.cross_mint_transfer ─────────────────────────────────────
 
+/// #3003 — cross-mint nutzap funding: fund `target_mint` with `amount_sats`
+/// by melting proofs at whichever OTHER mint holds the largest spendable
+/// balance, minting SELF-owned proofs at the target and publishing them as
+/// kind:7375. See `backend::cashu::cross_mint`'s module docs for the full
+/// melt -> mint saga. The `nutzap.send` auto-fallback drives the same saga
+/// internally without this action; this exists for explicit/POC driving.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CashuDepositQuoteAction {
-    pub mint: String,
+pub struct CashuCrossMintTransferAction {
+    pub target_mint: String,
     pub amount_sats: u64,
 }
 
-pub struct CashuDepositQuoteModule {
+pub struct CashuCrossMintTransferModule {
     selector: Arc<WalletBackendSelector>,
     active_pubkey: ActiveAccountSlot,
 }
 
-impl CashuDepositQuoteModule {
+impl CashuCrossMintTransferModule {
     #[must_use]
     pub fn new(selector: Arc<WalletBackendSelector>, active_pubkey: ActiveAccountSlot) -> Self {
         Self {
@@ -277,109 +294,39 @@ impl CashuDepositQuoteModule {
     }
 }
 
-impl ActionModule for CashuDepositQuoteModule {
-    const NAMESPACE: DeclaredActionNamespace =
-        DeclaredActionNamespace::framework(ACTION_CASHU_DEPOSIT_QUOTE, "action.nmp.wallet.cashu");
-
-    type Action = CashuDepositQuoteAction;
-
-    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
-    /// `nmp.wallet.cashu.deposit_quote` `ActionPayload` codec (`NWDQ`). The
-    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
-    /// `start()`.
-    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
-        Some(<Self::Action as ActionPayload>::decode(bytes))
-    }
-
-    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        if action.mint.trim().is_empty() {
-            return Err(ActionRejection::Invalid(
-                "cashu.deposit_quote requires a non-empty mint URL".to_string(),
-            ));
-        }
-        if action.amount_sats == 0 {
-            return Err(ActionRejection::Invalid(
-                "cashu.deposit_quote requires amount_sats > 0".to_string(),
-            ));
-        }
-        require_capable_backend(
-            &self.selector,
-            &WalletIntent::DepositQuoteCashu {
-                mint: action.mint.clone(),
-                amount_sats: action.amount_sats,
-            },
-        )
-    }
-
-    fn execute(
-        &self,
-        _ctx: &ActionContext,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        dispatch_and_forward(
-            &self.selector,
-            &self.active_pubkey,
-            WalletIntent::DepositQuoteCashu {
-                mint: action.mint,
-                amount_sats: action.amount_sats,
-            },
-            correlation_id,
-            send,
-        );
-        Ok(())
-    }
-}
-
-// ── nmp.wallet.cashu.complete_deposit ────────────────────────────────────────
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct CashuCompleteDepositAction {
-    pub quote_id: String,
-}
-
-pub struct CashuCompleteDepositModule {
-    selector: Arc<WalletBackendSelector>,
-    active_pubkey: ActiveAccountSlot,
-}
-
-impl CashuCompleteDepositModule {
-    #[must_use]
-    pub fn new(selector: Arc<WalletBackendSelector>, active_pubkey: ActiveAccountSlot) -> Self {
-        Self {
-            selector,
-            active_pubkey,
-        }
-    }
-}
-
-impl ActionModule for CashuCompleteDepositModule {
+impl ActionModule for CashuCrossMintTransferModule {
     const NAMESPACE: DeclaredActionNamespace = DeclaredActionNamespace::framework(
-        ACTION_CASHU_COMPLETE_DEPOSIT,
+        ACTION_CASHU_CROSS_MINT_TRANSFER,
         "action.nmp.wallet.cashu",
     );
 
-    type Action = CashuCompleteDepositAction;
+    type Action = CashuCrossMintTransferAction;
 
-    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
-    /// `nmp.wallet.cashu.complete_deposit` `ActionPayload` codec (`NWCD`). The
-    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
-    /// `start()`.
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to
+    /// the `nmp.wallet.cashu.cross_mint_transfer` `ActionPayload` codec
+    /// (`NWCX`). The registry adapter runs the fail-closed `schema_version`
+    /// gate BEFORE `start()`.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<Self::Action as ActionPayload>::decode(bytes))
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
-        if action.quote_id.trim().is_empty() {
+        if action.amount_sats == 0 {
             return Err(ActionRejection::Invalid(
-                "cashu.complete_deposit requires a non-empty quote_id".to_string(),
+                "cross_mint_transfer requires amount_sats > 0".to_string(),
             ));
+        }
+        if !crate::backend::cashu::is_well_formed_mint_url(&action.target_mint) {
+            return Err(ActionRejection::Invalid(format!(
+                "cross_mint_transfer requires a well-formed target mint URL, got: {}",
+                action.target_mint
+            )));
         }
         require_capable_backend(
             &self.selector,
-            &WalletIntent::CompleteDepositCashu {
-                quote_id: action.quote_id.clone(),
+            &WalletIntent::CrossMintTransfer {
+                target_mint: action.target_mint.clone(),
+                amount_sats: action.amount_sats,
             },
         )
     }
@@ -394,8 +341,9 @@ impl ActionModule for CashuCompleteDepositModule {
         dispatch_and_forward(
             &self.selector,
             &self.active_pubkey,
-            WalletIntent::CompleteDepositCashu {
-                quote_id: action.quote_id,
+            WalletIntent::CrossMintTransfer {
+                target_mint: action.target_mint,
+                amount_sats: action.amount_sats,
             },
             correlation_id,
             send,

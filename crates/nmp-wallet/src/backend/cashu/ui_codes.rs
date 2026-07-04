@@ -97,3 +97,28 @@ pub const NO_CASHU_WALLET: &str = "wallet_cashu_no_wallet";
 /// `cashu.create` instead), or `wallet_self_authored_shape`'s cold-start
 /// replay simply has not delivered it into this session's cache yet.
 pub const NO_EXISTING_WALLET: &str = "wallet_cashu_no_existing_wallet";
+
+// ─── #3003 — cross-mint nutzap funding (melt -> mint bridge) ───────────────
+
+/// No source mint (other than the target) holds enough spendable balance to
+/// fund a cross-mint transfer of the requested amount.
+pub const NO_FUNDABLE_SOURCE_MINT: &str = "wallet_cashu_no_fundable_source_mint";
+
+/// The target mint's NUT-04 mint-quote request failed (network/protocol
+/// error) — no funds moved yet.
+pub const TARGET_MINT_QUOTE_FAILED: &str = "wallet_cashu_target_mint_quote_failed";
+
+/// The source mint's NUT-05 melt-quote request failed (network/protocol
+/// error) — no funds moved yet.
+pub const MELT_QUOTE_FAILED: &str = "wallet_cashu_melt_quote_failed";
+
+/// The source mint's NUT-05 melt request failed, or the mint reports the
+/// melt quote UNPAID/expired after reconciliation — the reserved source
+/// inputs are restored (definite failure, not ambiguous).
+pub const MELT_FAILED: &str = "wallet_cashu_melt_failed";
+
+/// The source mint's melt outcome is ambiguous (a transport failure, or the
+/// mint itself reports `PENDING`) — the reserved source inputs are NOT
+/// restored (the melt may have already committed); reconciled via
+/// `get_melt_quote_status` on the next cold-start resume, never assumed.
+pub const MELT_UNKNOWN: &str = "wallet_cashu_melt_unknown";

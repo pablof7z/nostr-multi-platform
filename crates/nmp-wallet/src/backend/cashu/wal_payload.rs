@@ -88,6 +88,27 @@ pub(super) enum CashuWalPayload {
         relays: Vec<String>,
         fresh_proofs: Option<Vec<Proof>>,
     },
+    /// A cross-mint transfer (#3003 — see `cross_mint`'s module docs for the
+    /// full melt -> mint saga). `source_selected` are the reserved SOURCE
+    /// proofs, persisted in the SAME lock scope as the reservation and
+    /// BEFORE the melt HTTP call (the money-safety invariant every melt in
+    /// this codebase must satisfy). `melt_settled` gates whether a resume
+    /// still needs to reconcile the melt's outcome via
+    /// `get_melt_quote_status` (`false`) or can proceed straight to the
+    /// target-mint leg (`true`); `minted_proofs`/`signed_token` mirror
+    /// `Deposit`'s own field lifecycle exactly (mint -> sign) once the melt
+    /// leg is settled.
+    CrossMintTransfer {
+        target_quote_id: String,
+        target_mint: String,
+        source_mint: String,
+        amount_sats: u64,
+        melt_quote_id: String,
+        source_selected: Vec<StoredProofRecord>,
+        melt_settled: bool,
+        minted_proofs: Option<Vec<Proof>>,
+        signed_token: Option<SignedEvent>,
+    },
 }
 
 /// Serializable twin of the live, secret-bearing [`StoredProof`]
@@ -213,7 +234,8 @@ impl CashuWalPayload {
 /// state a resume would read: quote created (proofs/token `None`), mint `Ok`
 /// (proofs set — the actual #2910 fix), token signed (token set).
 pub(super) fn persist_deposit_payload(state: &CashuWalletState, quote_id: &str) {
-    let (Some(store), Some(account)) = (state.wal_store.as_ref(), state.wal_account.as_ref()) else {
+    let (Some(store), Some(account)) = (state.wal_store.as_ref(), state.wal_account.as_ref())
+    else {
         return;
     };
     let Some(pending) = state.pending_deposits.get(quote_id) else {

@@ -1,8 +1,10 @@
-//! Registry-level trip tests for the nine `nmp.wallet.*` typed FlatBuffers
+//! Registry-level trip tests for the ten `nmp.wallet.*` typed FlatBuffers
 //! payload doorways this crate owns (#2920, epic #2864; `set_mints` added by
-//! #2997): `select_backend`, the Cashu
-//! `create`/`recover`/`set_mints`/`deposit_quote`/`complete_deposit` family,
-//! and the nutzap `publish_info`/`send`/`redeem` family.
+//! #2997, `cross_mint_transfer` by #3003): `select_backend`, the Cashu
+//! `create`/`recover`/`set_mints`/`cross_mint_transfer`/`deposit_quote`/
+//! `complete_deposit` family (split into `dispatch_integration_cashu.rs`,
+//! AGENTS.md LOC discipline), and the nutzap `publish_info`/`send`/`redeem`
+//! family (this file).
 //!
 //! Before this test existed, none of these eight `ActionModule`s implemented
 //! `ActionPayload`/overrode `decode_payload`, so `ActionRegistry::start_bytes`/
@@ -39,15 +41,17 @@ use nmp_core::slots::new_active_account_slot;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRegistrar, ActionRejection};
 
 use nmp_wallet::{
-    CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    CashuSetMintsAction, CashuWalletBackend, NutzapPublishInfoAction, NutzapRedeemAction,
-    NutzapSendAction, SelectBackendAction, WalletBackendSelector, CASHU_BACKEND_ID,
+    CashuCompleteDepositAction, CashuCreateAction, CashuCrossMintTransferAction,
+    CashuDepositQuoteAction, CashuRecoverAction, CashuSetMintsAction, CashuWalletBackend,
+    NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction, SelectBackendAction,
+    WalletBackendSelector, CASHU_BACKEND_ID,
 };
 
 const SELECT_BACKEND: &str = nmp_wallet::ACTION_SELECT_BACKEND;
 const CASHU_CREATE: &str = nmp_wallet::ACTION_CASHU_CREATE;
 const CASHU_RECOVER: &str = nmp_wallet::ACTION_CASHU_RECOVER;
 const CASHU_SET_MINTS: &str = nmp_wallet::ACTION_CASHU_SET_MINTS;
+const CASHU_CROSS_MINT_TRANSFER: &str = nmp_wallet::ACTION_CASHU_CROSS_MINT_TRANSFER;
 const CASHU_DEPOSIT_QUOTE: &str = nmp_wallet::ACTION_CASHU_DEPOSIT_QUOTE;
 const CASHU_COMPLETE_DEPOSIT: &str = nmp_wallet::ACTION_CASHU_COMPLETE_DEPOSIT;
 const NUTZAP_PUBLISH_INFO: &str = nmp_wallet::ACTION_NUTZAP_PUBLISH_INFO;
@@ -81,6 +85,10 @@ fn registry_with_wallet_actions() -> ActionRegistry {
         Arc::clone(&active_pubkey),
     ));
     let _ = registry.register_action(nmp_wallet::action::CashuSetMintsModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ));
+    let _ = registry.register_action(nmp_wallet::action::CashuCrossMintTransferModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ));
@@ -129,6 +137,14 @@ fn dispatch_ok(registry: &ActionRegistry, namespace: &str, bytes: &[u8]) -> Vec<
     sent.into_inner()
 }
 
+// The `cashu.*` family's own dispatch tests (AGENTS.md LOC discipline) —
+// shares `registry_with_wallet_actions`/`dispatch_ok`/the namespace consts
+// above via `use super::*;`. Lives in the `dispatch_integration/` SUBDIRECTORY
+// (not a sibling `tests/*.rs` file) so Cargo does not also auto-discover it
+// as its own independent, helper-less integration test binary.
+#[path = "dispatch_integration/cashu.rs"]
+mod dispatch_integration_cashu;
+
 // --- select_backend -----------------------------------------------------------
 
 #[test]
@@ -142,98 +158,6 @@ fn select_backend_dispatches_by_name() {
     // synchronously in execute()) — the assertion is simply that both steps
     // succeed.
     let _ = dispatch_ok(&registry, SELECT_BACKEND, &bytes);
-}
-
-// --- cashu.create ---------------------------------------------------------------
-
-#[test]
-fn cashu_create_dispatches_by_name() {
-    let registry = registry_with_wallet_actions();
-    let bytes = CashuCreateAction {
-        mint: "https://mint.example.com".to_string(),
-    }
-    .encode();
-    let sent = dispatch_ok(&registry, CASHU_CREATE, &bytes);
-    assert!(
-        !sent.is_empty(),
-        "cashu.create must enqueue at least one ActorCommand"
-    );
-}
-
-// --- cashu.recover ----------------------------------------------------------------
-
-/// `cashu.recover` is reachable BY NAME (the payload decodes, `start()` and
-/// `execute()` both run) and dispatches a real command (#2965:
-/// `CashuWalletBackend` now implements `RecoverCashuWallet` —
-/// `recover::RecoverCashuWalletCommand`). Before this change, the namespace
-/// was unreachable at the byte doorway at all (`NotTypedCapable`); before
-/// #2965, `start()` rejected unconditionally regardless of what backend was
-/// registered.
-#[test]
-fn cashu_recover_dispatches_by_name() {
-    let registry = registry_with_wallet_actions();
-    let bytes = CashuRecoverAction {}.encode();
-    let sent = dispatch_ok(&registry, CASHU_RECOVER, &bytes);
-    assert!(
-        !sent.is_empty(),
-        "cashu.recover must enqueue at least one ActorCommand"
-    );
-}
-
-// --- cashu.set_mints --------------------------------------------------------------
-
-/// `cashu.set_mints` is reachable BY NAME. The registered backend has no
-/// created wallet, so it fails closed with `NO_CASHU_WALLET` at the backend
-/// layer — but `start_bytes`/`execute_bytes` both still succeed (the typed
-/// payload decodes, `start()`'s own non-empty/well-formed gates pass, and
-/// `execute()` reaches the backend), proving the doorway itself works
-/// end-to-end; the fail-closed backend precondition is `set_mints_tests.rs`'s
-/// job at the unit level.
-#[test]
-fn cashu_set_mints_dispatches_by_name() {
-    let registry = registry_with_wallet_actions();
-    let bytes = CashuSetMintsAction {
-        mints: vec!["https://mint.example.com".to_string()],
-    }
-    .encode();
-    let sent = dispatch_ok(&registry, CASHU_SET_MINTS, &bytes);
-    assert!(
-        !sent.is_empty(),
-        "cashu.set_mints must enqueue at least one ActorCommand"
-    );
-}
-
-// --- cashu.deposit_quote -----------------------------------------------------------
-
-#[test]
-fn cashu_deposit_quote_dispatches_by_name() {
-    let registry = registry_with_wallet_actions();
-    let bytes = CashuDepositQuoteAction {
-        mint: "https://mint.example.com".to_string(),
-        amount_sats: 21_000,
-    }
-    .encode();
-    let sent = dispatch_ok(&registry, CASHU_DEPOSIT_QUOTE, &bytes);
-    assert!(
-        !sent.is_empty(),
-        "cashu.deposit_quote must enqueue at least one ActorCommand"
-    );
-}
-
-// --- cashu.complete_deposit --------------------------------------------------------
-
-#[test]
-fn cashu_complete_deposit_dispatches_by_name() {
-    let registry = registry_with_wallet_actions();
-    let bytes = CashuCompleteDepositAction {
-        quote_id: "quote-abc-123".to_string(),
-    }
-    .encode();
-    let sent = dispatch_ok(&registry, CASHU_COMPLETE_DEPOSIT, &bytes);
-    assert!(
-        !sent.is_empty(),
-        "cashu.complete_deposit must enqueue at least one ActorCommand"
-    );
 }
 
 // --- nutzap.publish_info -----------------------------------------------------------

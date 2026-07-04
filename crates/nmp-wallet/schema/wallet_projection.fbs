@@ -63,6 +63,10 @@ enum WalletOperationKind:ubyte {
   // #2997 — `nmp.wallet.cashu.set_mints`: replaces the wallet's accepted-mint
   // list, carrying the existing Cashu P2PK privkey forward unchanged.
   SetCashuMints = 8,
+  // #3003 — cross-mint nutzap funding: mint-quote a recipient-accepted target
+  // mint, melt proofs at a source mint to pay it, mint the resulting
+  // SELF-owned proofs at the target, publish kind:7375.
+  CrossMintTransfer = 9,
 }
 
 // `WalletOperationState` — the money-safety saga state of a pending operation.
@@ -88,6 +92,8 @@ table WalletCapabilities {
   deposit_cashu:bool;
   melt_cashu:bool;
   observe_nutzap_receipts:bool;
+  // #3003 — `nmp.wallet.cashu.cross_mint_transfer`.
+  cross_mint_transfer:bool;
 }
 
 // `WalletBalanceRow` — one per (mint, unit) balance.

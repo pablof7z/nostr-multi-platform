@@ -1,20 +1,22 @@
 //! Typed FlatBuffers payload codecs for the `nmp.wallet.cashu.*` family:
 //! `create` ([`CashuCreateAction`]), `recover` ([`CashuRecoverAction`]),
 //! `deposit_quote` ([`CashuDepositQuoteAction`]), `complete_deposit`
-//! ([`CashuCompleteDepositAction`]), and `set_mints`
-//! ([`CashuSetMintsAction`], #2997). See `super` (`wire.rs`) module docs.
+//! ([`CashuCompleteDepositAction`]), `set_mints` ([`CashuSetMintsAction`],
+//! #2997), and `cross_mint_transfer` ([`CashuCrossMintTransferAction`],
+//! #3003). See `super` (`wire.rs`) module docs.
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
 use super::cashu_complete_deposit_generated::nmp::wallet as complete_deposit_fb;
 use super::cashu_create_generated::nmp::wallet as create_fb;
+use super::cashu_cross_mint_transfer_generated::nmp::wallet as cross_mint_transfer_fb;
 use super::cashu_deposit_quote_generated::nmp::wallet as deposit_quote_fb;
 use super::cashu_recover_generated::nmp::wallet as recover_fb;
 use super::cashu_set_mints_generated::nmp::wallet as set_mints_fb;
 use super::{malformed, SCHEMA_VERSION};
 use crate::action::{
-    CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    CashuSetMintsAction,
+    CashuCompleteDepositAction, CashuCreateAction, CashuCrossMintTransferAction,
+    CashuDepositQuoteAction, CashuRecoverAction, CashuSetMintsAction,
 };
 
 // --- CashuCreateAction (nmp.wallet.cashu.create) -----------------------------
@@ -215,6 +217,55 @@ impl ActionPayload for CashuSetMintsAction {
         }
         Ok(CashuSetMintsAction {
             mints: root.mints().iter().map(str::to_string).collect(),
+        })
+    }
+}
+
+// --- CashuCrossMintTransferAction (nmp.wallet.cashu.cross_mint_transfer) ----
+
+impl ActionPayload for CashuCrossMintTransferAction {
+    const SCHEMA_ID: &'static str = "nmp.wallet.cashu.cross_mint_transfer";
+    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
+
+    fn encode(&self) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let target_mint = fbb.create_string(&self.target_mint);
+        let payload = cross_mint_transfer_fb::CashuCrossMintTransferPayload::create(
+            &mut fbb,
+            &cross_mint_transfer_fb::CashuCrossMintTransferPayloadArgs {
+                schema_version: SCHEMA_VERSION,
+                target_mint: Some(target_mint),
+                amount_sats: self.amount_sats,
+            },
+        );
+        cross_mint_transfer_fb::finish_cashu_cross_mint_transfer_payload_buffer(&mut fbb, payload);
+        fbb.finished_data().to_vec()
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
+        if bytes.len() < 8
+            || !cross_mint_transfer_fb::cashu_cross_mint_transfer_payload_buffer_has_identifier(
+                bytes,
+            )
+        {
+            return Err(malformed("missing NWCX file identifier"));
+        }
+        let root = cross_mint_transfer_fb::root_as_cashu_cross_mint_transfer_payload(bytes)
+            .map_err(|e| {
+                malformed(format!(
+                    "not a valid CashuCrossMintTransferPayload buffer: {e}"
+                ))
+            })?;
+        let found = root.schema_version();
+        if found != SCHEMA_VERSION {
+            return Err(ActionPayloadDecodeError::SchemaVersionMismatch {
+                found,
+                expected: SCHEMA_VERSION,
+            });
+        }
+        Ok(CashuCrossMintTransferAction {
+            target_mint: root.target_mint().to_string(),
+            amount_sats: root.amount_sats(),
         })
     }
 }

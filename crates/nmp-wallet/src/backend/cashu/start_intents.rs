@@ -20,6 +20,7 @@ use crate::fail_closed::fail_closed;
 use crate::journal::{WalletOperationKind, WalletOperationState};
 
 use super::create_wallet::CreateCashuWalletCommand;
+use super::cross_mint_worker::SendRetry;
 use super::deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
 use super::recover::RecoverCashuWalletCommand;
 use super::set_mints::SetCashuMintsCommand;
@@ -274,5 +275,41 @@ impl CashuWalletBackend {
             mints,
             correlation_id,
         }))]
+    }
+
+    /// #3003 — cross-mint nutzap funding. Fund `target_mint` with
+    /// `amount_sats` by melting proofs at whichever OTHER mint holds the
+    /// largest spendable balance (see
+    /// `state_cross_mint::largest_spendable_mint_excluding`'s doc comment).
+    /// Called both by the standalone `nmp.wallet.cashu.cross_mint_transfer`
+    /// action (`on_settled: None`) and internally by `send.rs`'s
+    /// `nutzap.send` auto-fallback (`on_settled: Some(_)` — re-dispatches
+    /// the original send once the transfer settles). Delegates the
+    /// validation + selection + journal pre-record shared by both callers to
+    /// `cross_mint::build_cross_mint_transfer`.
+    pub(super) fn start_cross_mint_transfer(
+        &self,
+        ctx: WalletBackendContext<'_>,
+        target_mint: String,
+        amount_sats: u64,
+        correlation_id: Option<String>,
+        on_settled: Option<SendRetry>,
+    ) -> Vec<ActorCommand> {
+        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
+            return fail_closed(
+                ui_codes::NO_ACCOUNT,
+                correlation_id,
+                "no active account".to_string(),
+            );
+        };
+        super::cross_mint::build_cross_mint_transfer(
+            Arc::clone(&self.state),
+            account_pubkey,
+            ctx.now_secs,
+            target_mint,
+            amount_sats,
+            correlation_id,
+            on_settled,
+        )
     }
 }

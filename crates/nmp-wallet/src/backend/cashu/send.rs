@@ -168,6 +168,53 @@ impl ProtocolCommand for SendNutzapCommand {
             }
         }
         let Some(mint) = chosen_mint else {
+            // #3003 — no mutual mint has enough balance (or none is mutual
+            // at all), but the recipient lists SOME mint(s): before giving
+            // up, try funding the first recipient-accepted mint this wallet
+            // can reach via a cross-mint transfer (melt at whichever OTHER
+            // mint holds the largest spendable balance, mint SELF-owned
+            // proofs at the target). A read-only probe first (no side
+            // effects on a candidate that turns out unfundable) so trying
+            // several candidates never emits a spurious error toast.
+            if !recipient_info.mints.is_empty() {
+                let fundable_target = recipient_info.mints.iter().find(|candidate| {
+                    lock_state(&state)
+                        .largest_spendable_mint_excluding(candidate, amount_sats)
+                        .is_some()
+                });
+                if let Some(target_mint) = fundable_target {
+                    // Supersede THIS send attempt — the cross-mint
+                    // transfer's own re-dispatch (see
+                    // `cross_mint_worker::SendRetry`) resolves the caller's
+                    // `correlation_id` on a FRESH `SendNutzap` operation
+                    // once the transfer settles, so this one is never left
+                    // dangling non-terminal.
+                    let _ =
+                        lock_state(&state).transition(&operation_id, WalletOperationState::Failed);
+                    let commands = super::cross_mint::build_cross_mint_transfer(
+                        Arc::clone(&state),
+                        account_pubkey.clone(),
+                        ctx.now_secs(),
+                        target_mint.clone(),
+                        amount_sats,
+                        // This transfer's OWN correlation id is `None` —
+                        // nothing is waiting on IT specifically; the
+                        // caller's `correlation_id` travels in `on_settled`
+                        // instead and resolves on the re-dispatched send.
+                        None,
+                        Some(super::cross_mint_worker::SendRetry {
+                            recipient_pubkey: recipient_pubkey.clone(),
+                            amount_sats,
+                            target_event_id: target_event_id.clone(),
+                            correlation_id: correlation_id.clone(),
+                        }),
+                    );
+                    for cmd in commands {
+                        ctx.send(cmd);
+                    }
+                    return Ok(());
+                }
+            }
             return fail(
                 ctx,
                 &state,

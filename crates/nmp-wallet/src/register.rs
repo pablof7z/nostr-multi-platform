@@ -60,9 +60,9 @@ use nmp_core::substrate::{
 use crate::journal::{FsWalletWalStore, WalletWalStore};
 
 use crate::action::{
-    CashuCompleteDepositModule, CashuCreateModule, CashuDepositQuoteModule, CashuRecoverModule,
-    CashuSetMintsModule, NutzapPublishInfoModule, NutzapRedeemModule, NutzapSendModule,
-    SelectBackendModule,
+    CashuCompleteDepositModule, CashuCreateModule, CashuCrossMintTransferModule,
+    CashuDepositQuoteModule, CashuRecoverModule, CashuSetMintsModule, NutzapPublishInfoModule,
+    NutzapRedeemModule, NutzapSendModule, SelectBackendModule,
 };
 use crate::backend::cashu::CashuWalletBackend;
 use crate::backend::nwc::NwcWalletBackend;
@@ -231,6 +231,10 @@ pub fn register(
         Arc::clone(&active_pubkey),
     ))?;
     app.register_action(CashuSetMintsModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ))?;
+    app.register_action(CashuCrossMintTransferModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ))?;

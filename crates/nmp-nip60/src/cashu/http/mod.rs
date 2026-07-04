@@ -55,6 +55,8 @@
 //! - [`mint`] — `/v1/mint/bolt11` (NUT-04).
 //! - [`swap`] — `/v1/swap` (NUT-03).
 //! - [`checkstate`] — `/v1/checkstate` (NUT-07).
+//! - [`melt`] — `/v1/melt/quote/bolt11` + `/v1/melt/bolt11` (NUT-05) — the
+//!   source-mint leg of a cross-mint transfer (#3003).
 //!
 //! `#[cfg(test)] mint_http_support` holds test-only fixtures shared across
 //! those submodules' own test files — `pub(crate)` (not private) so
@@ -64,6 +66,7 @@
 mod blinded;
 mod checkstate;
 mod keyset;
+mod melt;
 mod mint;
 mod quote;
 mod swap;
@@ -78,6 +81,11 @@ pub use keyset::{build_get_keys_request, build_get_keysets_request, parse_keys_r
 // hence warning-worthy) in a `--no-default-features` build.
 #[cfg_attr(not(feature = "native"), allow(unused_imports))]
 pub(crate) use keyset::build_pubkey_map;
+pub use melt::{
+    build_get_melt_quote_bolt11_request, build_melt_quote_bolt11_request,
+    finalize_melt_bolt11_response, parse_melt_quote_bolt11_response, prepare_melt_bolt11_request,
+    MeltQuoteExpectation, PreparedMeltBolt11Request,
+};
 pub use mint::{
     finalize_mint_bolt11_response, prepare_mint_bolt11_request, PreparedMintBolt11Request,
 };

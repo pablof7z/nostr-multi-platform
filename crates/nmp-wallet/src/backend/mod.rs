@@ -84,6 +84,20 @@ pub enum WalletIntent {
     MeltCashu {
         bolt11: String,
     },
+    /// #3003 — cross-mint nutzap funding: fund `target_mint` (a
+    /// recipient-accepted mint this wallet cannot otherwise pay from) with
+    /// `amount_sats` by melting proofs at whichever OTHER mint this wallet
+    /// holds the largest spendable balance at. See
+    /// `backend::cashu::cross_mint`'s module docs for the full melt -> mint
+    /// saga; `send.rs`'s `nutzap.send` auto-fallback dispatches this
+    /// internally (never directly exposed as a `WalletIntent` a caller needs
+    /// to construct for that path), and the standalone
+    /// `nmp.wallet.cashu.cross_mint_transfer` action also dispatches it
+    /// directly for explicit/POC driving.
+    CrossMintTransfer {
+        target_mint: String,
+        amount_sats: u64,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

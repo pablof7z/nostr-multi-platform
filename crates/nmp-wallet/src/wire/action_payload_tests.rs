@@ -1,12 +1,13 @@
-//! Round-trip + fail-closed tests for the nine `nmp.wallet.*` typed payload
-//! codecs (#2920, epic #2864; `set_mints` added by #2997). Every fail-closed
-//! gate asserts the NEGATIVE.
+//! Round-trip + fail-closed tests for the ten `nmp.wallet.*` typed payload
+//! codecs (#2920, epic #2864; `set_mints` added by #2997,
+//! `cross_mint_transfer` by #3003). Every fail-closed gate asserts the
+//! NEGATIVE.
 
 use super::*;
 use crate::action::{
-    CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    CashuSetMintsAction, NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction,
-    SelectBackendAction,
+    CashuCompleteDepositAction, CashuCreateAction, CashuCrossMintTransferAction,
+    CashuDepositQuoteAction, CashuRecoverAction, CashuSetMintsAction, NutzapPublishInfoAction,
+    NutzapRedeemAction, NutzapSendAction, SelectBackendAction,
 };
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
@@ -99,6 +100,43 @@ fn cashu_set_mints_round_trips() {
     };
     let decoded = CashuSetMintsAction::decode(&action.encode()).expect("decodes");
     assert_eq!(decoded, action);
+}
+
+#[test]
+fn cashu_cross_mint_transfer_round_trips() {
+    let action = CashuCrossMintTransferAction {
+        target_mint: "https://target-mint.example".to_string(),
+        amount_sats: 21,
+    };
+    let decoded = CashuCrossMintTransferAction::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+}
+
+#[test]
+fn cashu_cross_mint_transfer_wrong_schema_version_is_rejected() {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let target_mint = fbb.create_string("https://target-mint.example");
+    let payload =
+        cashu_cross_mint_transfer_generated::nmp::wallet::CashuCrossMintTransferPayload::create(
+            &mut fbb,
+            &cashu_cross_mint_transfer_generated::nmp::wallet::CashuCrossMintTransferPayloadArgs {
+                schema_version: 999,
+                target_mint: Some(target_mint),
+                amount_sats: 21,
+            },
+        );
+    cashu_cross_mint_transfer_generated::nmp::wallet::finish_cashu_cross_mint_transfer_payload_buffer(
+        &mut fbb, payload,
+    );
+    let bytes = fbb.finished_data().to_vec();
+    let err = CashuCrossMintTransferAction::decode(&bytes).expect_err("bad version rejected");
+    assert!(matches!(
+        err,
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: 1,
+        }
+    ));
 }
 
 #[test]
@@ -198,6 +236,10 @@ fn malformed_buffers_are_rejected_for_every_namespace() {
     ));
     assert!(matches!(
         CashuSetMintsAction::decode(&[]),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        CashuCrossMintTransferAction::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(

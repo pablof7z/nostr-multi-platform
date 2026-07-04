@@ -9,6 +9,7 @@ use nmp_core::actor::ActorCommand;
 
 use crate::journal::{restore_into_journal, WalletWalStore};
 
+use super::cross_mint_resume::{restore_cross_mint_transfers, ResumeCrossMintTransferCommand};
 use super::deposit::ResumeDepositCommand;
 use super::state::{lock_state, CashuWalletState};
 use super::wal_payload::restore_deposits;
@@ -112,6 +113,7 @@ impl CashuWalletBackend {
         let deposit_resumes = restore_deposits(&mut state, store.as_ref(), account);
         let send_resumes = restore_sends(store.as_ref(), account);
         let redeem_resumes = restore_redeems(store.as_ref(), account);
+        let cross_mint_resumes = restore_cross_mint_transfers(&mut state, store.as_ref(), account);
 
         let mut commands: Vec<ActorCommand> = Vec::new();
         for resume in deposit_resumes {
@@ -136,6 +138,15 @@ impl CashuWalletBackend {
                 account_pubkey: account.to_string(),
                 resume,
             })));
+        }
+        for resume in cross_mint_resumes {
+            commands.push(ActorCommand::Protocol(Box::new(
+                ResumeCrossMintTransferCommand {
+                    state: Arc::clone(&self.state),
+                    account_pubkey: account.to_string(),
+                    target_quote_id: resume.target_quote_id,
+                },
+            )));
         }
         commands
     }

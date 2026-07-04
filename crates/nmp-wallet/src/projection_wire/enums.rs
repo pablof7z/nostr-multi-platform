@@ -62,6 +62,7 @@ pub(super) fn operation_kind_to_fb(kind: WalletOperationKind) -> fb::WalletOpera
         WalletOperationKind::DepositCashu => fb::WalletOperationKind::DepositCashu,
         WalletOperationKind::MeltCashu => fb::WalletOperationKind::MeltCashu,
         WalletOperationKind::SetCashuMints => fb::WalletOperationKind::SetCashuMints,
+        WalletOperationKind::CrossMintTransfer => fb::WalletOperationKind::CrossMintTransfer,
     }
 }
 
@@ -78,6 +79,7 @@ pub(super) fn operation_kind_from_fb(
         fb::WalletOperationKind::DepositCashu => Ok(WalletOperationKind::DepositCashu),
         fb::WalletOperationKind::MeltCashu => Ok(WalletOperationKind::MeltCashu),
         fb::WalletOperationKind::SetCashuMints => Ok(WalletOperationKind::SetCashuMints),
+        fb::WalletOperationKind::CrossMintTransfer => Ok(WalletOperationKind::CrossMintTransfer),
         other => Err(format!(
             "unknown WalletOperationKind discriminant {}",
             other.0
