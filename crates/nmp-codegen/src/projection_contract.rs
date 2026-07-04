@@ -143,6 +143,8 @@ mod chat;
 mod table;
 // Marmot host-registered projection entries split out for 500-LOC cap.
 mod marmot;
+// Wallet host-registered projection entries split out for 500-LOC cap.
+mod wallet;
 pub use table::PROJECTION_CONTRACT;
 
 /// Look up a projection's contract by its kernel-emitted key. Returns `None`
