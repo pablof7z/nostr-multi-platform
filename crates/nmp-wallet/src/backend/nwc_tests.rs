@@ -267,6 +267,80 @@ fn poisoned_status_mutex_is_recovered_not_collapsed_to_not_configured() {
     );
 }
 
+/// #2916: an NWC Lightning connection is Nostr-account-scoped. Switching from
+/// account A (with a connected NWC wallet) to account B must show no NWC
+/// connection/status in the merged wallet projection — `snapshot()` is exactly
+/// the NWC contribution `WalletRuntime::snapshot` merges into the `"wallet"`
+/// projection, so a `NotConfigured` readiness here is what the shells render as
+/// "no wallet connected for this account". Switching back / reconnecting must
+/// still work (reset clears state, it does not permanently disable NWC).
+#[test]
+fn reset_returns_merged_projection_to_not_configured_on_account_switch() {
+    // A live runtime seeded into the handle so `reset()` exercises the
+    // actor-side `WalletRuntime::reset()` path, not just the defensive
+    // status-slot clear.
+    let status = nmp_nip47::new_wallet_status_slot();
+    let runtime = nmp_nip47::new_wallet_runtime_handle();
+    *runtime.lock().unwrap() = Some(nmp_nip47::WalletRuntime::new(status.clone()));
+    let backend = NwcWalletBackend::new(runtime, status.clone());
+
+    // Account A connects an NWC wallet → the runtime projects a "ready" status.
+    *status.lock().unwrap() = Some(self::status("ready", Some(NwcConnectionState::Connected)));
+    assert_eq!(
+        backend
+            .snapshot(WalletProjectionScope::default())
+            .projection
+            .readiness,
+        WalletReadiness::Ready,
+        "account A's NWC wallet is connected"
+    );
+
+    // Nostr account switch A → B fires the identity-change reset.
+    backend.reset();
+
+    assert!(
+        status.lock().unwrap().is_none(),
+        "reset must clear the shared status slot"
+    );
+    assert_eq!(
+        backend
+            .snapshot(WalletProjectionScope::default())
+            .projection
+            .readiness,
+        WalletReadiness::NotConfigured,
+        "account B must see no NWC connection/status carried over from account A"
+    );
+
+    // Reconnecting (account B attaches its own NWC URI, or A is re-selected and
+    // re-attaches) behaves sanely: a freshly written status is reflected again.
+    *status.lock().unwrap() = Some(self::status("ready", Some(NwcConnectionState::Connected)));
+    assert_eq!(
+        backend
+            .snapshot(WalletProjectionScope::default())
+            .projection
+            .readiness,
+        WalletReadiness::Ready,
+        "reset clears state without permanently disabling NWC — reconnect works"
+    );
+}
+
+#[test]
+fn reset_is_a_safe_no_op_when_no_runtime_and_no_status() {
+    // The handle may hold no runtime yet (nothing connected this session) — a
+    // reset on a never-connected backend must not panic and must leave a clean
+    // NotConfigured projection.
+    let (backend, status_slot) = backend();
+    backend.reset();
+    assert!(status_slot.lock().unwrap().is_none());
+    assert_eq!(
+        backend
+            .snapshot(WalletProjectionScope::default())
+            .projection
+            .readiness,
+        WalletReadiness::NotConfigured
+    );
+}
+
 #[test]
 fn on_wallet_event_and_on_mint_result_are_no_ops() {
     let (backend, _status) = backend();

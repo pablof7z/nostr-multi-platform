@@ -83,6 +83,47 @@ impl NwcWalletBackend {
         Self { runtime, status }
     }
 
+    /// Discard the identity-scoped NWC connection + status on a Nostr account
+    /// switch, mirroring `CashuWalletBackend::reset()` (#2916).
+    ///
+    /// The owner's settled decision: an NWC Lightning connection is
+    /// Nostr-account-scoped, not account-independent — it resets on account
+    /// switch exactly as Cashu does. `register.rs` wires this to the same
+    /// `IdentityChangeRegistrar` signal both backends now reset on, keeping the
+    /// merged `"wallet"` projection consistent (previously Cashu reset while
+    /// NWC's previous-account connection/status was retained).
+    ///
+    /// Delegates to the actor-side [`WalletRuntime::reset`] behind the shared
+    /// handle (which drops the `WalletConnection` — connection URI, in-flight
+    /// payment tracking — and clears the status slot both backends' snapshots
+    /// read). It ALSO clears the status slot directly: the handle may hold no
+    /// runtime yet (nothing seeded), in which case a status could still have
+    /// been written; this is idempotent when the runtime already cleared its
+    /// own clone of the same `Arc`.
+    pub fn reset(&self) {
+        // Clear the actor-side runtime connection if one has been seeded into
+        // the handle. Poison is recovered, not fatal (D6) — the whole point is
+        // to end up with no connection regardless.
+        match self.runtime.lock() {
+            Ok(mut guard) => {
+                if let Some(runtime) = guard.as_mut() {
+                    runtime.reset();
+                }
+            }
+            Err(poisoned) => {
+                if let Some(runtime) = poisoned.into_inner().as_mut() {
+                    runtime.reset();
+                }
+            }
+        }
+        // Defensively clear the shared status slot (the same `Arc` the runtime
+        // writes, cloned into this backend at construction).
+        match self.status.lock() {
+            Ok(mut guard) => *guard = None,
+            Err(poisoned) => *poisoned.into_inner() = None,
+        }
+    }
+
     /// Reads the shared status slot. A poisoned mutex is recovered rather
     /// than collapsed to "no status" — the last-written `WalletStatus` is
     /// still the best information available, and reporting `NotConfigured`

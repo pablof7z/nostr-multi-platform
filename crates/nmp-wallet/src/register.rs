@@ -146,20 +146,21 @@ pub fn register(
 
     let nip47_handles = nmp_nip47::register(app, nmp_nip47::Config::new(config.storage_path))?;
 
-    // 2. Backend registry (W4).
-    let nwc_backend: Arc<dyn WalletBackend> = Arc::new(NwcWalletBackend::new(
+    // 2. Backend registry (W4). Both backends are kept as their concrete
+    //    `Arc<_>` (not yet erased to `Arc<dyn WalletBackend>`) so step 3a below
+    //    can call each one's backend-specific `reset()` on account switch — the
+    //    `WalletBackend` trait itself has no (and should have no) generic
+    //    "forget everything" method. Per the owner's settled decision (#2916),
+    //    an NWC Lightning connection is Nostr-account-scoped just like Cashu, so
+    //    `NwcWalletBackend::reset()` is wired to the same signal as
+    //    `CashuWalletBackend::reset()`.
+    let nwc_backend = Arc::new(NwcWalletBackend::new(
         nip47_handles.wallet.clone(),
         nip47_handles.status.clone(),
     ));
-    // Kept as a concrete `Arc<CashuWalletBackend>` (not yet erased to
-    // `Arc<dyn WalletBackend>`) so step 3a below can call its
-    // Cashu-specific `reset()` — the `WalletBackend` trait itself has no
-    // (and should have no) generic "forget everything" method; NWC's
-    // connection state is not identity-scoped the same way, so nothing
-    // analogous is needed for `nwc_backend`.
     let cashu_backend = Arc::new(CashuWalletBackend::with_wal_store(wal_store));
     let selector = Arc::new(WalletBackendSelector::new(vec![
-        nwc_backend,
+        Arc::clone(&nwc_backend) as Arc<dyn WalletBackend>,
         Arc::clone(&cashu_backend) as Arc<dyn WalletBackend>,
     ]));
 
@@ -182,7 +183,15 @@ pub fn register(
     //    `restore_into_journal`'s #2931 rule). This is the identity-becomes-
     //    active hook the WAL restore belongs on: at bare backend construction
     //    there is no account yet.
-    let identity_backend = Arc::clone(&cashu_backend);
+    //    NWC resets on the SAME signal (#2916): the owner settled that an NWC
+    //    Lightning connection is Nostr-account-scoped, not account-independent,
+    //    so the previous account's connection/status must not survive into the
+    //    newly active account's merged `"wallet"` projection. Unlike Cashu, NWC
+    //    has no durable per-account WAL to rehydrate — a switched-to account
+    //    re-attaches its own connection URI via `wallet_connect` — so it needs
+    //    only the reset half, no restore.
+    let identity_cashu = Arc::clone(&cashu_backend);
+    let identity_nwc = Arc::clone(&nwc_backend);
     // The actor mail sender the restore path forwards its `ResumeDepositCommand`s
     // onto (PR-2 of #2910): `restore_from_wal` rebuilds `pending_deposits` and
     // returns one re-drive command per deposit past the mint, which must run
@@ -190,9 +199,10 @@ pub fn register(
     let restore_tx = app.actor_sender();
     let observer_tx = restore_tx.clone();
     app.register_identity_change_observer(move |new_pubkey| {
-        identity_backend.reset();
+        identity_cashu.reset();
+        identity_nwc.reset();
         if let Some(pubkey) = new_pubkey {
-            for cmd in identity_backend.restore_from_wal(&pubkey) {
+            for cmd in identity_cashu.restore_from_wal(&pubkey) {
                 let _ = observer_tx.send(cmd);
             }
         }
