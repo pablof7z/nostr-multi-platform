@@ -82,7 +82,7 @@ public func nostrContentPlainText(
         case .mention(let uri): out += "@\(mentionLabel(uri))"
         case .eventRef(let uri): out += uri.primaryId
         case .hashtag(let tag): out += "#\(tag)"
-        case .url(let value): out += value
+        case .url(let value), .adCandidateUrl(let value): out += value
         case .emoji(let shortcode, _): out += ":\(shortcode):"
         case .inlineCode(let value): out += value
         case .emphasis(let kids), .strong(let kids):

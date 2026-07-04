@@ -170,7 +170,7 @@ fn node_summary<'a, Message: 'static>(
             text(format!("image {} {}", alt, src.as_deref().unwrap_or(""))).size(13)
         }
         WireNode::Text(value) => text(value.clone()).size(13),
-        WireNode::Url(url) => text(url.clone()).size(13),
+        WireNode::Url(url) | WireNode::AdCandidateUrl(url) => text(url.clone()).size(13),
         WireNode::Hashtag(tag) => text(format!("#{tag}")).size(13),
         WireNode::BlockQuote { children } => {
             text(format!("quote {}", inline_label(tree, children))).size(13)

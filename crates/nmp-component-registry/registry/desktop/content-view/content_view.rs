@@ -130,7 +130,7 @@ fn render_inline<'a, Message: 'static>(
                 WireNode::Text(value) if !value.trim().is_empty() => {
                     text(value.clone()).size(13).into()
                 }
-                WireNode::Url(url) => pill(url.clone()),
+                WireNode::Url(url) | WireNode::AdCandidateUrl(url) => pill(url.clone()),
                 WireNode::Hashtag(tag) => pill(format!("#{tag}")),
                 _ => text(node.inline_label(view.tree)).size(13).into(),
             });

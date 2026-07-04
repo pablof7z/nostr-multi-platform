@@ -120,6 +120,7 @@ public enum NostrWireNode: Decodable, Equatable, Sendable {
     case eventRef(NostrWireUri)
     case hashtag(String)
     case url(String)
+    case adCandidateUrl(String)
     case media(urls: [String], kind: NostrMediaKind)
     case emoji(shortcode: String, url: String?)
     case invoice(NostrWireInvoice)
@@ -160,6 +161,8 @@ public enum NostrWireNode: Decodable, Equatable, Sendable {
             self = .hashtag(try container.decode(String.self, forKey: .tag))
         case "url":
             self = .url(try container.decode(String.self, forKey: .url))
+        case "ad_candidate_url":
+            self = .adCandidateUrl(try container.decode(String.self, forKey: .url))
         case "media":
             self = .media(
                 urls: try container.decode([String].self, forKey: .urls),

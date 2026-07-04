@@ -154,7 +154,7 @@ public struct NostrContentView: View {
             return Text("#\(tag)")
                 .foregroundStyle(renderer.hashtagColor)
                 .bold()
-        case .url(let value):
+        case .url(let value), .adCandidateUrl(let value):
             return Text(value).foregroundStyle(renderer.linkColor)
         case .emoji(let shortcode, _):
             // Apps fill `renderer.emojiImages` from kind:0 / NIP-30 tag data

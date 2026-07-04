@@ -138,7 +138,7 @@ fn node_text(tree: &ContentTreeWire, node: &WireNode) -> String {
         WireNode::Mention { uri } => format!("@{}", short_id(&uri.primary_id)),
         WireNode::EventRef { uri } => format!("nostr:{}", short_id(&uri.primary_id)),
         WireNode::Hashtag { tag } => format!("#{tag}"),
-        WireNode::Url { url } => url.clone(),
+        WireNode::Url { url } | WireNode::AdCandidateUrl { url } => url.clone(),
         WireNode::InlineCode { code } => code.clone(),
         WireNode::CodeBlock { body, .. } => body.clone(),
         WireNode::Image { alt, .. } => alt.clone(),

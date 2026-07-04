@@ -148,6 +148,11 @@ public sealed class WireNode {
     @SerialName("url")
     public data class Url(val url: String) : WireNode()
 
+    /** Ad-candidate URL. Renders exactly like [Url] — a plain link. */
+    @Serializable
+    @SerialName("ad_candidate_url")
+    public data class AdCandidateUrl(val url: String) : WireNode()
+
     /** Grouped media block. */
     @Serializable
     @SerialName("media")
