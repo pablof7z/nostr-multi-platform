@@ -41,7 +41,7 @@ pub use types::{LastTerminal, PublishQueueTerminal, TerminalOutcome};
 // (S11 slice 4, #1758) for the kernel's single terminal fold.
 pub(super) use types::InFlight;
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -72,7 +72,25 @@ pub enum PublishEngineError {
 
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
-    unavailable_relays: BTreeSet<RelayUrl>,
+    /// Relays currently unable to take a dispatch, keyed by canonical URL.
+    ///
+    /// `Some(became_unavailable_ms)` — a genuine connectivity loss (socket
+    /// dial failed, mid-session drop, or an outbound frame evicted before
+    /// reaching the transport). BOUNDED: [`helpers::sweep_unavailable_timeouts`]
+    /// force-settles any row still targeting this relay once
+    /// `policy.inflight_deadline_ms` has elapsed since `became_unavailable_ms`
+    /// — a persistently unreachable relay in a multi-relay publish set can no
+    /// longer park the whole handle `Pending` forever (#2967: the dead relay
+    /// must fail fast so the publish can settle `Mixed`/`Accepted` on the
+    /// relays that DID accept it, instead of hanging indefinitely).
+    ///
+    /// `None` — the relay is PARKED awaiting NIP-42 re-authentication
+    /// (Finding B). Deliberately UNBOUNDED: the challenge→sign→AUTH→OK
+    /// round-trip can legitimately take several seconds with a remote
+    /// (NIP-46) signer, and a bounded deadline here would settle a false
+    /// `FailedAfterRetries` mid-handshake. Only `mark_relay_available` (the
+    /// relay reaching `Authenticated`) clears this entry.
+    unavailable_relays: BTreeMap<RelayUrl, Option<u64>>,
     pub view: PublishStatusState,
     policy: RetryPolicy,
     outbox: Arc<dyn OutboxResolver>,
@@ -114,7 +132,7 @@ impl PublishEngine {
     ) -> Self {
         Self {
             in_flight: HashMap::new(),
-            unavailable_relays: BTreeSet::new(),
+            unavailable_relays: BTreeMap::new(),
             view: PublishStatusState::new(&super::view::PublishStatusSpec::default()),
             policy,
             outbox,
@@ -296,6 +314,15 @@ impl PublishEngine {
         for handle in &handles {
             if let Some(row) = self.in_flight.get_mut(handle) {
                 helpers::sweep_inflight_timeouts(row, now_ms, deadline_ms, policy);
+                // #2967 — age out a row still parked `Pending` behind a relay
+                // that has been continuously unavailable (genuine connectivity
+                // loss, not an auth park) for longer than the same deadline.
+                helpers::sweep_unavailable_timeouts(
+                    row,
+                    now_ms,
+                    deadline_ms,
+                    &self.unavailable_relays,
+                );
             }
         }
         for handle in &handles {
@@ -371,15 +398,18 @@ impl PublishEngine {
         let park_awaiting_auth = helpers::apply_verdict(in_flight, &relay_url, verdict, now_ms);
         if park_awaiting_auth {
             // The relay refused the EVENT pending NIP-42 auth. Route it through
-            // the single availability gate: `mark_relay_unavailable` demotes the
-            // InFlight send back to durable `Pending`, drops any scheduled
-            // retry, persists, and parks the relay in `unavailable_relays` so no
-            // retry tick re-dispatches it. The publish stays in-flight; it
-            // re-dispatches event-driven when the kernel calls
-            // `mark_relay_available` on the `RelayAuthState::Authenticated`
-            // transition (no budget spent, no sleep/poll — D8). Borrow of
-            // `in_flight` ends above, so the `&mut self` call is sound.
-            if let Err(err) = self.mark_relay_unavailable(&relay_url, now_ms) {
+            // the availability gate's auth-park variant: `park_relay_awaiting_auth`
+            // demotes the InFlight send back to durable `Pending`, drops any
+            // scheduled retry, persists, and parks the relay in
+            // `unavailable_relays` (as an UNBOUNDED `None` entry — #2967's
+            // fail-fast deadline applies only to genuine connectivity loss,
+            // never to an in-progress auth handshake) so no retry tick
+            // re-dispatches it. The publish stays in-flight; it re-dispatches
+            // event-driven when the kernel calls `mark_relay_available` on the
+            // `RelayAuthState::Authenticated` transition (no budget spent, no
+            // sleep/poll — D8). Borrow of `in_flight` ends above, so the
+            // `&mut self` call is sound.
+            if let Err(err) = self.park_relay_awaiting_auth(&relay_url, now_ms) {
                 self.record_engine_error(&err, handle, "", now_ms);
             }
             self.flush_view();

@@ -147,24 +147,75 @@ impl PublishEngine {
         Ok(())
     }
 
-    /// Mark a relay as unavailable for publish delivery. Any event that was
-    /// already `InFlight` to that relay moves back to durable `Pending` so a
-    /// connection loss never consumes the publish intent.
+    /// Mark a relay as unavailable for publish delivery — a genuine
+    /// connectivity loss (socket dial failed, mid-session drop, or an
+    /// outbound frame evicted before it reached the transport). Any event
+    /// that was already `InFlight` to that relay moves back to durable
+    /// `Pending` so a connection loss never consumes the publish intent.
+    ///
+    /// BOUNDED (#2967): records (or preserves) the wall-clock moment this
+    /// relay went unavailable so [`super::helpers::sweep_unavailable_timeouts`]
+    /// can force-settle any row still parked behind it once
+    /// `policy.inflight_deadline_ms` elapses — a persistently unreachable
+    /// relay in a multi-relay publish set must not block the whole handle
+    /// from completing forever. An already-recorded bounded timestamp is
+    /// preserved (not reset) across repeated `Failed` events for the same
+    /// relay, since the pool retries + fails a dead relay on its own
+    /// reconnect cadence — the deadline is measured from the FIRST failure.
     pub fn mark_relay_unavailable(
+        &mut self,
+        relay_url: &str,
+        now_ms: u64,
+    ) -> Result<(), PublishEngineError> {
+        let relay_url = helpers::canonical_relay_identity(relay_url);
+        match self.unavailable_relays.get(&relay_url) {
+            Some(Some(_)) => {}
+            _ => {
+                self.unavailable_relays.insert(relay_url.clone(), Some(now_ms));
+            }
+        }
+        self.demote_inflight_to_pending(&relay_url)?;
+        self.flush_view();
+        Ok(())
+    }
+
+    /// Park a relay awaiting NIP-42 re-authentication (Finding B). Shares the
+    /// InFlight→Pending demotion `mark_relay_unavailable` uses, but records an
+    /// UNBOUNDED (`None`) entry: the challenge→sign→AUTH→OK round-trip can
+    /// legitimately take several seconds with a remote (NIP-46) signer, and
+    /// #2967's fail-fast deadline must never settle a false
+    /// `FailedAfterRetries` mid-handshake. An already-bounded entry (a
+    /// concurrent genuine connectivity loss on the same relay) is left alone
+    /// — the socket being verifiably down takes precedence over an auth park
+    /// that could not otherwise be happening. Only `mark_relay_available`
+    /// (the relay reaching `Authenticated`) clears this.
+    pub(super) fn park_relay_awaiting_auth(
         &mut self,
         relay_url: &str,
         _now_ms: u64,
     ) -> Result<(), PublishEngineError> {
         let relay_url = helpers::canonical_relay_identity(relay_url);
-        self.unavailable_relays.insert(relay_url.clone());
+        self.unavailable_relays
+            .entry(relay_url.clone())
+            .or_insert(None);
+        self.demote_inflight_to_pending(&relay_url)?;
+        self.flush_view();
+        Ok(())
+    }
+
+    /// Shared InFlight→Pending demotion for both [`Self::mark_relay_unavailable`]
+    /// and [`Self::park_relay_awaiting_auth`] — the two differ only in how they
+    /// record `relay_url` into `unavailable_relays`, never in how an in-flight
+    /// send is walked back.
+    fn demote_inflight_to_pending(&mut self, relay_url: &str) -> Result<(), PublishEngineError> {
         let mut changed = Vec::new();
         for (handle, row) in &mut self.in_flight {
-            let Some(state) = row.per_relay.get_mut(&relay_url) else {
+            let Some(state) = row.per_relay.get_mut(relay_url) else {
                 continue;
             };
             if matches!(state, PerRelayState::InFlight { .. }) {
                 *state = PerRelayState::Pending;
-                row.pending_retries.remove(&relay_url);
+                row.pending_retries.remove(relay_url);
                 row.dirty = true;
                 changed.push(handle.clone());
             }
@@ -172,7 +223,6 @@ impl PublishEngine {
         for handle in changed {
             self.persist(&handle)?;
         }
-        self.flush_view();
         Ok(())
     }
 
