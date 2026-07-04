@@ -31,6 +31,8 @@ pub struct LoadedAppConceptReadRegistry {
 pub struct ConceptReadFacade {
     /// Rust facade type, e.g. `GalleryApp`.
     pub rust_type: String,
+    /// Module path the facade type lives in, e.g. `facade` or `app`.
+    pub rust_module: String,
     /// Crate-visible method returning a `ReadHost`, e.g. `runtime`.
     pub runtime_accessor: String,
     /// Facade-local UniFFI error enum, e.g. `GalleryReadError`.
@@ -115,6 +117,7 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
         return Err("app concept-read registry must declare drift_checks".to_string());
     }
     validate_upper_ident("facade.rust_type", &doc.facade.rust_type)?;
+    validate_module_path("facade.rust_module", &doc.facade.rust_module)?;
     validate_lower_ident("facade.runtime_accessor", &doc.facade.runtime_accessor)?;
     validate_upper_ident("facade.error_type", &doc.facade.error_type)?;
     validate_upper_ident(
@@ -163,6 +166,7 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
     Ok(LoadedAppConceptReadRegistry {
         facade: ConceptReadFacade {
             rust_type: doc.facade.rust_type,
+            rust_module: doc.facade.rust_module,
             runtime_accessor: doc.facade.runtime_accessor,
             error_type: doc.facade.error_type,
             invalid_target_variant: doc.facade.invalid_target_variant,
@@ -283,6 +287,16 @@ fn validate_ident(field: &str, value: &str) -> Result<(), String> {
     }
     if chars.any(|b| !(b.is_ascii_alphanumeric() || *b == b'_')) {
         return Err(format!("{field} must be a Rust identifier, got {value:?}"));
+    }
+    Ok(())
+}
+
+fn validate_module_path(field: &str, value: &str) -> Result<(), String> {
+    if value.is_empty() {
+        return Err(format!("{field} must not be empty"));
+    }
+    for segment in value.split("::") {
+        validate_lower_ident(field, segment)?;
     }
     Ok(())
 }

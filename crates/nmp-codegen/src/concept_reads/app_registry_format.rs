@@ -18,11 +18,20 @@ pub(super) struct RegistryDocument {
 #[serde(deny_unknown_fields)]
 pub(super) struct FacadeRow {
     pub rust_type: String,
+    /// Module path the facade type lives in, e.g. `facade` or `app`.
+    /// Defaults to `facade` for backward compatibility with registries
+    /// predating #3004.
+    #[serde(default = "default_rust_module")]
+    pub rust_module: String,
     pub runtime_accessor: String,
     pub error_type: String,
     pub invalid_target_variant: String,
     pub open_failed_variant: String,
     pub decode_failed_variant: String,
+}
+
+fn default_rust_module() -> String {
+    "facade".to_string()
 }
 
 #[derive(Deserialize)]

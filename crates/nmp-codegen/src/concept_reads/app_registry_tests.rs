@@ -69,6 +69,7 @@ fn renders_rust_facade_slice_for_replies() {
     let loaded = parse_app_concept_read_registry(FIXTURE).unwrap();
     let rendered = crate::concept_reads::rust::render_registry(&loaded);
     assert!(rendered.contains("use nmp_replies::{"));
+    assert!(rendered.contains("use crate::facade::GalleryApp;"));
     assert!(rendered.contains("decode_and_validate_reply_target"));
     assert!(rendered.contains("pub struct GalleryOpenedReplies"));
     assert!(rendered.contains("pub struct GalleryReplySummary"));
@@ -80,6 +81,30 @@ fn renders_rust_facade_slice_for_replies() {
     assert!(rendered.contains("pub fn decode_reply_summary("));
     assert!(rendered.contains("decode_reply_summary_snapshot"));
     assert!(rendered.contains("#[path = \"concept_reads_replies_tests.rs\"]"));
+}
+
+#[test]
+fn renders_rust_import_from_custom_facade_module() {
+    let raw = FIXTURE.replace(
+        r#""rust_type": "GalleryApp","#,
+        r#""rust_type": "GalleryApp",
+    "rust_module": "app","#,
+    );
+    let loaded = parse_app_concept_read_registry(&raw).unwrap();
+    assert_eq!(loaded.facade.rust_module, "app");
+    let rendered = crate::concept_reads::rust::render_registry(&loaded);
+    assert!(rendered.contains("use crate::app::GalleryApp;"));
+}
+
+#[test]
+fn rejects_invalid_rust_module() {
+    let raw = FIXTURE.replace(
+        r#""rust_type": "GalleryApp","#,
+        r#""rust_type": "GalleryApp",
+    "rust_module": "App","#,
+    );
+    let err = parse_app_concept_read_registry(&raw).unwrap_err();
+    assert!(err.contains("facade.rust_module"), "{err}");
 }
 
 #[test]
