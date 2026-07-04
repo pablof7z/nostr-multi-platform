@@ -192,6 +192,14 @@ impl ProtocolCommand for SendNutzapCommand {
                 );
             }
             if let Err(e) = s.transition(&operation_id, WalletOperationState::MintPending) {
+                // `return EXPR;` evaluates `fail(..)` BEFORE unwinding this
+                // block and dropping `s`, and `fail` re-locks the same
+                // non-reentrant mutex — so the guard must be released
+                // explicitly first or this branch self-deadlocks (#2953),
+                // matching the same fix in `redeem.rs`. Reachable when a
+                // concurrent `reset()` wipes this operation's journal entry
+                // mid-flight, turning the transition into `MissingOperation`.
+                drop(s);
                 return fail(
                     ctx,
                     &state,
