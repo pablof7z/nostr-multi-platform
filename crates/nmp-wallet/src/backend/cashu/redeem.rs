@@ -261,7 +261,7 @@ impl ProtocolCommand for RedeemNutzapCommand {
 
         {
             let mut s = lock_state(&state);
-            let _ = s.journal.record_consumed_input(
+            let _ = s.record_consumed_input(
                 &operation_id,
                 WalletConsumedInput {
                     event_id: event_id.clone(),
@@ -342,7 +342,7 @@ pub(super) fn fail(
         .get(operation_id)
         .is_some_and(|op| !op.consumed_inputs.is_empty());
     if !already_recorded {
-        let _ = s.journal.record_consumed_input(
+        let _ = s.record_consumed_input(
             operation_id,
             WalletConsumedInput {
                 event_id: event_id.to_string(),

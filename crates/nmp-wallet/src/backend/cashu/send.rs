@@ -181,7 +181,7 @@ impl ProtocolCommand for SendNutzapCommand {
         {
             let mut s = lock_state(&state);
             for stored in &selected {
-                let _ = s.journal.record_consumed_input(
+                let _ = s.record_consumed_input(
                     &operation_id,
                     WalletConsumedInput {
                         event_id: stored.token_event.clone().unwrap_or_default(),

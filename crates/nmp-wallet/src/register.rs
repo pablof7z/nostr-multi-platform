@@ -53,6 +53,8 @@ use nmp_core::substrate::{
     RegistrationError, RelayTextInterceptorRegistrar, SnapshotProjectionRegistrar,
 };
 
+use crate::journal::{FsWalletWalStore, WalletWalStore};
+
 use crate::action::{
     CashuCompleteDepositModule, CashuCreateModule, CashuDepositQuoteModule, CashuRecoverModule,
     NutzapPublishInfoModule, NutzapRedeemModule, NutzapSendModule, SelectBackendModule,
@@ -125,6 +127,18 @@ pub fn register(
     //    connect/disconnect/pay_invoice actions, interceptor, and "wallet"
     //    projection all still register exactly as before. We only need the
     //    returned `Handles` to build a live `NwcWalletBackend`.
+    // The durable pre-publish WAL store (PR-1 of #2910/#2960/#2931) is
+    // fs-backed exactly when a persistent `storage_path` is configured —
+    // mirroring `nmp-nip47`'s own fs-vs-memory decision for `FsPaymentStore`
+    // (`register.rs`: `config.storage_path.filter(|p| !p.trim().is_empty())`).
+    // `None` keeps the wallet journal in-memory-only, the same accepted
+    // tradeoff NWC's payment store already has today.
+    let wal_store: Option<Arc<dyn WalletWalStore>> = config
+        .storage_path
+        .clone()
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| Arc::new(FsWalletWalStore::new(p)) as Arc<dyn WalletWalStore>);
+
     let nip47_handles = nmp_nip47::register(app, nmp_nip47::Config::new(config.storage_path))?;
 
     // 2. Backend registry (W4).
@@ -138,29 +152,49 @@ pub fn register(
     // (and should have no) generic "forget everything" method; NWC's
     // connection state is not identity-scoped the same way, so nothing
     // analogous is needed for `nwc_backend`.
-    let cashu_backend = Arc::new(CashuWalletBackend::new());
+    let cashu_backend = Arc::new(CashuWalletBackend::with_wal_store(wal_store));
     let selector = Arc::new(WalletBackendSelector::new(vec![
         nwc_backend,
         Arc::clone(&cashu_backend) as Arc<dyn WalletBackend>,
     ]));
 
-    // 3a. Cross-account data-leak fix: `CashuWalletBackend` is constructed
-    //    once per app instance (above), not once per signed-in account, but
-    //    its state (mints, Cashu P2PK pubkey, balances, pending deposits) is
-    //    NIP-44-encrypted-to-a-specific-identity material. Without this, a
-    //    Nostr account switch within one running app would leave the
-    //    previous account's wallet state visible to — and, via
-    //    `complete_deposit`, completable as — the newly active account.
-    //    Reset on every active-account change, mirroring how
-    //    `nmp-nip51::register_mute_runtime` resets `MuteListProjection` on
-    //    the same signal.
-    app.register_identity_change_observer(move |_| cashu_backend.reset());
+    let active_pubkey = app.active_pubkey();
+
+    // 3a. Cross-account data-leak fix + durable-WAL restore (PR-1 of
+    //    #2910/#2960/#2931). `CashuWalletBackend` is constructed once per app
+    //    instance (above), not once per signed-in account, but its state
+    //    (mints, Cashu P2PK pubkey, balances, pending deposits) is
+    //    NIP-44-encrypted-to-a-specific-identity material. Without the reset, a
+    //    Nostr account switch within one running app would leave the previous
+    //    account's wallet state visible to — and, via `complete_deposit`,
+    //    completable as — the newly active account. Reset on every
+    //    active-account change, mirroring how `nmp-nip51::register_mute_runtime`
+    //    resets `MuteListProjection` on the same signal.
+    //
+    //    Immediately after the reset, `restore_from_wal` rehydrates the fresh
+    //    journal from the durable WAL for the newly active account (keying
+    //    write-through under it and self-healing terminal rows — see
+    //    `restore_into_journal`'s #2931 rule). This is the identity-becomes-
+    //    active hook the WAL restore belongs on: at bare backend construction
+    //    there is no account yet.
+    let identity_backend = Arc::clone(&cashu_backend);
+    app.register_identity_change_observer(move |new_pubkey| {
+        identity_backend.reset();
+        if let Some(pubkey) = new_pubkey {
+            identity_backend.restore_from_wal(&pubkey);
+        }
+    });
+    // Eager cold-start restore: the account may already be active before this
+    // registration runs (the identity observer fires only on a *change*), so a
+    // process restart with a signed-in account still rehydrates its WAL.
+    if let Some(pubkey) = active_pubkey.lock().ok().and_then(|slot| slot.clone()) {
+        cashu_backend.restore_from_wal(&pubkey);
+    }
 
     // 3. Canonical `nmp.wallet.*` action modules this crate owns this wave
     //    (W5) — `select_backend` plus the Cashu/nutzap families. Each holds
     //    its own `Arc` clone of the selector (and, where an intent needs
     //    identity, of the active-pubkey slot), never a process-global.
-    let active_pubkey = app.active_pubkey();
     app.register_action(SelectBackendModule::new(Arc::clone(&selector)))?;
     app.register_action(CashuCreateModule::new(
         Arc::clone(&selector),
