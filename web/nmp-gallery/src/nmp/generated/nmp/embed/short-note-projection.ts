@@ -37,39 +37,39 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
 }
 
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 contentTree(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.readUint8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
 }
 
 contentTreeLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 contentTreeArray():Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 mediaUrls(index: number):string
 mediaUrls(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
 mediaUrls(index: number,optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
 }
 
 mediaUrlsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 static startShortNoteProjection(builder:flatbuffers.Builder) {
-  builder.startObject(5);
+  builder.startObject(9);
 }
 
 static addId(builder:flatbuffers.Builder, idOffset:flatbuffers.Offset) {
@@ -81,11 +81,11 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
 }
 
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(2, createdAt, BigInt('0'));
+  builder.addFieldInt64(6, createdAt, BigInt('0'));
 }
 
 static addContentTree(builder:flatbuffers.Builder, contentTreeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, contentTreeOffset, 0);
+  builder.addFieldOffset(7, contentTreeOffset, 0);
 }
 
 static createContentTreeVector(builder:flatbuffers.Builder, data:number[]|Uint8Array):flatbuffers.Offset {
@@ -101,7 +101,7 @@ static startContentTreeVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addMediaUrls(builder:flatbuffers.Builder, mediaUrlsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, mediaUrlsOffset, 0);
+  builder.addFieldOffset(8, mediaUrlsOffset, 0);
 }
 
 static createMediaUrlsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {

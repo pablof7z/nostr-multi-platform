@@ -75,7 +75,14 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NEMB";
 /// v3 (#2514): dropped author `display_name`/`picture` from the ShortNote /
 /// Article / Highlight / Unknown tables — non-`Profile` projections carry raw
 /// `author_pubkey` only; author display joins reactively at L5.
-pub const SCHEMA_VERSION: u32 = 3;
+/// v4 (#3016): v3 removed those fields OUTRIGHT from the middle of each table,
+/// which reflows every subsequent field's FlatBuffers vtable offset (a
+/// non-additive schema change — `title`/`hero_image_url`/`created_at`/
+/// `content_tree` etc. all silently moved). Restored them as `(deprecated)`
+/// placeholders at their original position so the vtable layout for every
+/// field that comes after them is stable again; no Rust-visible shape change
+/// (deprecated fields generate no accessor).
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// Encode the `refs.event.envelopes` projection (envelopes keyed by
 /// `primary_id`) to typed FlatBuffers bytes (with the `NEMB` file identifier).

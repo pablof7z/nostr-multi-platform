@@ -291,3 +291,154 @@ fn garbage_bytes_decode_to_err_not_panic() {
     assert!(decode_ref_event_envelopes(&[0u8; 4]).is_err());
     assert!(decode_ref_event_envelopes(b"XXXXabcd").is_err());
 }
+
+// ── Wire-stability regression (#3016) ───────────────────────────────────────
+//
+// #2514 removed `has_author_display_name`/`author_display_name`/
+// `has_author_picture_url`/`author_picture_url` OUTRIGHT from the middle of
+// ShortNote/Article/Highlight/Unknown, which reflows every later field's
+// FlatBuffers vtable offset — a non-additive schema change. That is exactly
+// what made `ArticleProjection.title` land on the byte range `hero_image_url`
+// now occupies for any decoder still expecting the pre-#2514 layout: #3016's
+// "article.title contains the image URL" and "ShortNote createdAt/content
+// never populate" bugs. The fix keeps those four fields as `(deprecated)`
+// placeholders at their ORIGINAL position instead of deleting them, so every
+// field declared after them keeps a STABLE vtable offset. These tests pin
+// that offset contract so nobody can silently reopen the regression by
+// deleting a "deprecated" field or reordering a table again.
+mod wire_stability {
+    use super::super::generated::nmp::embed::{
+        ArticleProjection, HighlightProjection, ShortNoteProjection, UnknownProjection,
+    };
+
+    #[test]
+    fn short_note_projection_offsets_are_stable() {
+        assert_eq!(ShortNoteProjection::VT_ID, 4);
+        assert_eq!(ShortNoteProjection::VT_AUTHOR_PUBKEY, 6);
+        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        assert_eq!(ShortNoteProjection::VT_CREATED_AT, 16);
+        assert_eq!(ShortNoteProjection::VT_CONTENT_TREE, 18);
+        assert_eq!(ShortNoteProjection::VT_MEDIA_URLS, 20);
+    }
+
+    #[test]
+    fn article_projection_offsets_are_stable() {
+        assert_eq!(ArticleProjection::VT_ID, 4);
+        assert_eq!(ArticleProjection::VT_AUTHOR_PUBKEY, 6);
+        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        assert_eq!(ArticleProjection::VT_CREATED_AT, 16);
+        assert_eq!(ArticleProjection::VT_HAS_TITLE, 18);
+        assert_eq!(
+            ArticleProjection::VT_TITLE,
+            20,
+            "title must NOT land on hero_image_url's old offset (#3016)"
+        );
+        assert_eq!(ArticleProjection::VT_HAS_SUMMARY, 22);
+        assert_eq!(ArticleProjection::VT_SUMMARY, 24);
+        assert_eq!(ArticleProjection::VT_HAS_HERO_IMAGE_URL, 26);
+        assert_eq!(ArticleProjection::VT_HERO_IMAGE_URL, 28);
+        assert_eq!(ArticleProjection::VT_D_TAG, 30);
+        assert_eq!(ArticleProjection::VT_CONTENT_TREE, 32);
+    }
+
+    #[test]
+    fn highlight_projection_offsets_are_stable() {
+        assert_eq!(HighlightProjection::VT_ID, 4);
+        assert_eq!(HighlightProjection::VT_AUTHOR_PUBKEY, 6);
+        // Slots 8/10 are the deprecated author-display placeholder.
+        assert_eq!(HighlightProjection::VT_CREATED_AT, 12);
+        assert_eq!(HighlightProjection::VT_HIGHLIGHTED_TEXT, 14);
+    }
+
+    #[test]
+    fn unknown_projection_offsets_are_stable() {
+        assert_eq!(UnknownProjection::VT_KIND, 4);
+        assert_eq!(UnknownProjection::VT_AUTHOR_PUBKEY, 6);
+        // Slots 8/10/12/14 are the deprecated author-display placeholders.
+        assert_eq!(UnknownProjection::VT_CREATED_AT, 16);
+        assert_eq!(UnknownProjection::VT_CONTENT, 18);
+        assert_eq!(UnknownProjection::VT_CONTENT_TREE, 20);
+    }
+}
+
+// ── End-to-end article repro (#3016) ────────────────────────────────────────
+//
+// Reproduces the exact tag shape from the issue repro (kind:30023, title +
+// summary + image + d tags) through the REAL resolver, proving `title` and
+// `hero_image_url` decode as DISTINCT values (never swapped) after the wire
+// round trip a typed-frame host performs.
+#[test]
+fn article_title_and_hero_image_never_swap_after_wire_round_trip() {
+    let ev = kernel_event(
+        "71e91e8cd84ec5503e15ed54812fc89feb2febf4e562cd2eecc84fdcf553cb1b",
+        &"aa".repeat(32),
+        30023,
+        "body",
+        vec![
+            vec!["title".to_string(), "Chirp iOS Sweep Test Article".to_string()],
+            vec![
+                "summary".to_string(),
+                "A short summary for the S26 article-embed render test.".to_string(),
+            ],
+            vec![
+                "image".to_string(),
+                "https://robohash.org/articletest.png?set=set4".to_string(),
+            ],
+            vec!["d".to_string(), "chirp-test-article-s26".to_string()],
+        ],
+    );
+    // Register the real NIP-23 adapter exactly as the app does at startup —
+    // no bespoke test-only Article construction, this exercises the whole
+    // dispatch → tag-extraction → wire round trip a host actually sees.
+    crate::register_article_projection_adapter(|event, content_tree| {
+        Some(ArticleProjection {
+            id: event.id.clone(),
+            author_pubkey: event.author.clone(),
+            created_at: event.created_at,
+            title: event
+                .tags
+                .iter()
+                .find(|t| t.first().map(String::as_str) == Some("title"))
+                .and_then(|t| t.get(1).cloned()),
+            summary: event
+                .tags
+                .iter()
+                .find(|t| t.first().map(String::as_str) == Some("summary"))
+                .and_then(|t| t.get(1).cloned()),
+            hero_image_url: event
+                .tags
+                .iter()
+                .find(|t| t.first().map(String::as_str) == Some("image"))
+                .and_then(|t| t.get(1).cloned()),
+            d_tag: event
+                .tags
+                .iter()
+                .find(|t| t.first().map(String::as_str) == Some("d"))
+                .and_then(|t| t.get(1).cloned())
+                .unwrap_or_default(),
+            content_tree,
+        })
+    });
+
+    let mut entries = BTreeMap::new();
+    entries.insert("art1".to_string(), envelope("art1", resolve(&ev)));
+    let bytes = encode_ref_event_envelopes(&entries);
+    let decoded = decode_ref_event_envelopes(&bytes).expect("decode");
+
+    match &decoded.get("art1").unwrap().projection {
+        EmbedKindProjection::Article(a) => {
+            assert_eq!(
+                a.title.as_deref(),
+                Some("Chirp iOS Sweep Test Article"),
+                "title must be the `title` tag, never the `image` tag"
+            );
+            assert_eq!(
+                a.hero_image_url.as_deref(),
+                Some("https://robohash.org/articletest.png?set=set4")
+            );
+            assert_ne!(a.title, a.hero_image_url, "title/hero must never collide");
+            assert_eq!(a.d_tag, "chirp-test-article-s26");
+        }
+        other => panic!("expected Article, got {other:?}"),
+    }
+}

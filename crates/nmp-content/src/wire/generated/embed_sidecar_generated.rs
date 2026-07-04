@@ -134,9 +134,9 @@ pub mod nmp {
         impl<'a> ShortNoteProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 10;
-            pub const VT_MEDIA_URLS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 18;
+            pub const VT_MEDIA_URLS: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -377,15 +377,15 @@ pub mod nmp {
         impl<'a> ArticleProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_HAS_TITLE: ::flatbuffers::VOffsetT = 10;
-            pub const VT_TITLE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HAS_SUMMARY: ::flatbuffers::VOffsetT = 14;
-            pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 16;
-            pub const VT_HAS_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 18;
-            pub const VT_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 20;
-            pub const VT_D_TAG: ::flatbuffers::VOffsetT = 22;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_HAS_TITLE: ::flatbuffers::VOffsetT = 18;
+            pub const VT_TITLE: ::flatbuffers::VOffsetT = 20;
+            pub const VT_HAS_SUMMARY: ::flatbuffers::VOffsetT = 22;
+            pub const VT_SUMMARY: ::flatbuffers::VOffsetT = 24;
+            pub const VT_HAS_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 26;
+            pub const VT_HERO_IMAGE_URL: ::flatbuffers::VOffsetT = 28;
+            pub const VT_D_TAG: ::flatbuffers::VOffsetT = 30;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 32;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -772,16 +772,16 @@ pub mod nmp {
         impl<'a> HighlightProjection<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_HIGHLIGHTED_TEXT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 12;
-            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 14;
-            pub const VT_HAS_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 16;
-            pub const VT_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 18;
-            pub const VT_HAS_SOURCE_URL: ::flatbuffers::VOffsetT = 20;
-            pub const VT_SOURCE_URL: ::flatbuffers::VOffsetT = 22;
-            pub const VT_HAS_CONTEXT: ::flatbuffers::VOffsetT = 24;
-            pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 26;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HIGHLIGHTED_TEXT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 16;
+            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HAS_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 20;
+            pub const VT_SOURCE_EVENT_ADDR: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_SOURCE_URL: ::flatbuffers::VOffsetT = 24;
+            pub const VT_SOURCE_URL: ::flatbuffers::VOffsetT = 26;
+            pub const VT_HAS_CONTEXT: ::flatbuffers::VOffsetT = 28;
+            pub const VT_CONTEXT: ::flatbuffers::VOffsetT = 30;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1658,12 +1658,12 @@ pub mod nmp {
         impl<'a> UnknownProjection<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_TAGS: ::flatbuffers::VOffsetT = 14;
-            pub const VT_HAS_ALT_TEXT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_ALT_TEXT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_CONTENT_TREE: ::flatbuffers::VOffsetT = 20;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_ALT_TEXT: ::flatbuffers::VOffsetT = 24;
+            pub const VT_ALT_TEXT: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
