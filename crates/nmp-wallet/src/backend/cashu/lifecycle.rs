@@ -5,9 +5,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+
 use crate::journal::{restore_into_journal, WalletWalStore};
 
+use super::deposit::ResumeDepositCommand;
 use super::state::{lock_state, CashuWalletState};
+use super::wal_payload::restore_deposits;
 use super::CashuWalletBackend;
 
 impl CashuWalletBackend {
@@ -74,12 +78,38 @@ impl CashuWalletBackend {
     /// deletion rule (a terminal `Failed` redeem must NOT survive back into the
     /// live journal, or a re-observed kind:9321 would be blocked forever by the
     /// `DuplicateOperation` guard). A no-op when no WAL is configured.
-    pub fn restore_from_wal(&self, account: &str) {
+    ///
+    /// PR-2 of #2910 additionally rebuilds `pending_deposits` from the durable
+    /// Cashu payloads ([`restore_deposits`]) — the deposit-side recovery that
+    /// unbreaks `start_complete_deposit`'s `UNKNOWN_QUOTE` lookup after a hard
+    /// crash — and RETURNS a `ResumeDepositCommand` per deposit past the mint
+    /// (minted or signed) for the caller to enqueue onto the actor. The re-drive
+    /// is a returned command, not run inline, because the encrypt/sign/publish
+    /// chain must run through a `ProtocolCommand`'s `ctx` (relays + command
+    /// sender, off the actor thread per D8) — the same seam the in-process
+    /// `DepositResume` retry already uses. The caller
+    /// (`register::register`'s identity observer + eager cold-start restore)
+    /// forwards the returned commands via `app.actor_sender()`.
+    #[must_use]
+    pub fn restore_from_wal(&self, account: &str) -> Vec<ActorCommand> {
         let Some(store) = self.wal_store.clone() else {
-            return;
+            return Vec::new();
         };
         let mut state = lock_state(&self.state);
         state.wal_account = Some(account.to_string());
         let _ = restore_into_journal(store.as_ref(), account, &mut state.journal);
+        let resumes = restore_deposits(&mut state, store.as_ref(), account);
+        resumes
+            .into_iter()
+            .map(|resume| {
+                ActorCommand::Protocol(Box::new(ResumeDepositCommand {
+                    state: Arc::clone(&self.state),
+                    operation_id: resume.operation_id,
+                    quote_id: resume.quote_id,
+                    mint: resume.mint,
+                    account_pubkey: account.to_string(),
+                }))
+            })
+            .collect()
     }
 }

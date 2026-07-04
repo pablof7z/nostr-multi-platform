@@ -46,6 +46,7 @@ use super::*;
 mod create_wallet_tests;
 mod deposit_concurrency_tests;
 mod deposit_mint_race_tests;
+mod deposit_cold_restore_tests;
 mod deposit_retry_tests;
 mod deposit_tests;
 mod fail_reentrancy_tests;

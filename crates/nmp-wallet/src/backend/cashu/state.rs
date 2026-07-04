@@ -81,12 +81,15 @@ pub(super) struct PendingDeposit {
     /// mint again, and resumes the chain with these same proofs when set
     /// (see `deposit.rs`'s module docs).
     ///
-    /// This field is in-memory only — it does NOT survive a process crash or
-    /// restart. A hard crash in the window between `mint_tokens` returning
-    /// `Ok` and the kind:7375 event publishing loses these proofs for real;
-    /// closing that window needs a durable write-ahead record, tracked as
-    /// issue #2910 (not this ticket's scope — real-sats gate, not a
-    /// testnut/merge gate).
+    /// PR-2 of #2910 made this durable: the instant these proofs are recorded
+    /// (in `deposit/complete.rs`), they are also written to the pre-publish WAL
+    /// as a `CashuWalPayload::Deposit` (`wal_payload.rs`), and
+    /// `restore_from_wal` rebuilds this `PendingDeposit` from that payload on
+    /// restart. A hard crash in the window between `mint_tokens` returning `Ok`
+    /// and the kind:7375 event publishing therefore no longer loses these
+    /// already-`ISSUED` proofs — a restarted process resumes the
+    /// encrypt/sign/publish chain from them (see `ResumeDepositCommand`) rather
+    /// than stranding real sats behind an `UNKNOWN_QUOTE`.
     ///
     /// Never cleared once set (mirrors `signed_token`): kept around both for
     /// sequential retries AND as the reference proof set `still_held`
@@ -130,11 +133,16 @@ pub(super) struct PendingDeposit {
     /// the 10000 replaceable-range floor), so relays dedupe repeated
     /// publishes of the same id rather than treating them as replacements.
     ///
-    /// This entry is intentionally never cleared/removed once set — there is
-    /// no publish-ACK loop back into this backend to know when it is finally
-    /// safe to forget (see `dispatch_token_event`'s doc comment); a bounded
-    /// `pending_deposits` map growing by one settled entry per deposit for
-    /// the life of the process is the accepted tradeoff pending #2910.
+    /// Retired once the deposit's kind:7375 is re-observed from a relay: PR-2
+    /// of #2910 added the settle rule (`events.rs`'s
+    /// `settle_deposit_on_ingested_token`) — the account's own token event
+    /// coming back through the #2965 self-authored ingest path IS the
+    /// publish-ACK this backend previously lacked, so on that re-observation the
+    /// operation transitions to `Settled` and this entry is dropped. That
+    /// closes the former "`pending_deposits` grows by one retained entry per
+    /// completed deposit for the life of the process" tradeoff. Until that
+    /// re-observation the entry is still kept (a retry before the token lands
+    /// republishes this exact cached event rather than re-minting/re-signing).
     pub(super) signed_token: Option<SignedEvent>,
 }
 

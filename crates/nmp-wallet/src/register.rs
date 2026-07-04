@@ -182,17 +182,28 @@ pub fn register(
     //    active hook the WAL restore belongs on: at bare backend construction
     //    there is no account yet.
     let identity_backend = Arc::clone(&cashu_backend);
+    // The actor mail sender the restore path forwards its `ResumeDepositCommand`s
+    // onto (PR-2 of #2910): `restore_from_wal` rebuilds `pending_deposits` and
+    // returns one re-drive command per deposit past the mint, which must run
+    // through the actor as a `ProtocolCommand` (relays + off-actor-thread D8).
+    let restore_tx = app.actor_sender();
+    let observer_tx = restore_tx.clone();
     app.register_identity_change_observer(move |new_pubkey| {
         identity_backend.reset();
         if let Some(pubkey) = new_pubkey {
-            identity_backend.restore_from_wal(&pubkey);
+            for cmd in identity_backend.restore_from_wal(&pubkey) {
+                let _ = observer_tx.send(cmd);
+            }
         }
     });
     // Eager cold-start restore: the account may already be active before this
     // registration runs (the identity observer fires only on a *change*), so a
-    // process restart with a signed-in account still rehydrates its WAL.
+    // process restart with a signed-in account still rehydrates its WAL — and
+    // re-drives any deposit caught mid-chain by the crash.
     if let Some(pubkey) = active_pubkey.lock().ok().and_then(|slot| slot.clone()) {
-        cashu_backend.restore_from_wal(&pubkey);
+        for cmd in cashu_backend.restore_from_wal(&pubkey) {
+            let _ = restore_tx.send(cmd);
+        }
     }
 
     // 3. Canonical `nmp.wallet.*` action modules this crate owns this wave
