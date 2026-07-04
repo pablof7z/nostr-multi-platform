@@ -17,14 +17,22 @@
 //! * [`resolve_ad_url_blocking`] — the IO layer: the blocking `.well-known`
 //!   round-trip (SSRF-guarded, bounded), behind the `native` feature.
 
+pub mod collection;
 pub mod parse;
 pub mod policy;
 pub mod ui_codes;
+pub mod wire;
 
+pub use collection::{
+    ad_collection_consumer, ad_collection_demands, ad_collection_projection_key,
+    close_ad_collection, close_ad_collection_by_key, open_ad_collection, AdCollectionProjection,
+    AdCollectionReadHandle, AdCollectionRow, AdCollectionSnapshot,
+};
 pub use parse::{is_valid_domain, parse_ad_wellknown, AdResolution};
 pub use policy::{
     AdRenderContext, AdResolutionPolicy, Always, FollowsOnly, NeverAutoResolve, WebOfTrust,
 };
+pub use wire::{decode_ad_collection_snapshot, encode_ad_collection_snapshot};
 
 // The blocking `.well-known/nostr.json?ad=<path>` GET uses the shared
 // `nmp-wellknown-http` bounded fetcher — native only (mirrors nip05). The pure
