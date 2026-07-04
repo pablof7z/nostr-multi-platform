@@ -1,20 +1,14 @@
 //! Blocking LNURL-pay HTTP round-trip for the NIP-57 zap worker.
 
-use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nmp_wellknown_http::http_get_json;
 use nostr::Keys;
 
 use super::{
     lnurl_to_well_known_url, looks_like_bolt11, metadata, pay, sign_zap_request, url_encode_query,
     validate_bolt11_amount, validate_description_hash, LnurlInvoice,
 };
-
-/// LNURL-pay total budget for the two-leg HTTP round-trip
-/// (well-known fetch + callback fetch). Conservative — keeps a stuck
-/// LN provider from accumulating worker threads even though each thread
-/// is independent of the actor loop.
-const LNURL_HTTP_TIMEOUT_SECS: u64 = 10;
 
 /// Maximum response body the worker will accept from either LNURL hop.
 /// LNURL-pay responses are tiny JSON objects (a few hundred bytes); 64 KiB
@@ -35,7 +29,7 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
     // Leg 1: well-known fetch. Pull the LNURL-pay metadata. We care about
     // `callback`, `minSendable`, `maxSendable`, and `allowsNostr` (must be
     // truthy for NIP-57).
-    let well_known = http_get_json(&well_known_url)?;
+    let well_known = http_get_json(&well_known_url, LNURL_MAX_RESPONSE_BYTES)?;
     let callback = well_known
         .get("callback")
         .and_then(serde_json::Value::as_str)
@@ -97,7 +91,7 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
         "{callback}{separator}amount={amount_msats}&nostr={}{lnurl_param}",
         url_encode_query(signed_zap_request_json),
     );
-    let callback_response = http_get_json(&callback_url)?;
+    let callback_response = http_get_json(&callback_url, LNURL_MAX_RESPONSE_BYTES)?;
 
     // LUD-06 says a successful response is `{ "pr": "lnbc…" }`; an error
     // shape is `{ "status": "ERROR", "reason": "…" }`. Handle the error
@@ -136,37 +130,6 @@ pub(crate) fn fetch_lnurl_invoice_blocking(
         bolt11: bolt11.to_string(),
         provider_pubkey,
     })
-}
-
-/// One-shot HTTP GET → JSON. Bounded by `LNURL_HTTP_TIMEOUT_SECS` and
-/// `LNURL_MAX_RESPONSE_BYTES`. The result is a `serde_json::Value` rather
-/// than a typed shape because LNURL-pay returns a slightly different schema
-/// per leg (well-known has `callback`/`minSendable`/…; callback has
-/// `pr`/`status`/…), and the typed-shape boilerplate adds no safety here.
-fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(LNURL_HTTP_TIMEOUT_SECS))
-        .build();
-    let response = agent
-        .get(url)
-        .call()
-        .map_err(|e| format!("HTTP GET {url} failed: {e}"))?;
-    if response.status() != 200 {
-        return Err(format!(
-            "HTTP GET {url} returned status {} {}",
-            response.status(),
-            response.status_text()
-        ));
-    }
-    // Bound the response so a runaway/hostile endpoint can't OOM us.
-    let mut body = Vec::with_capacity(1024);
-    response
-        .into_reader()
-        .take(LNURL_MAX_RESPONSE_BYTES as u64)
-        .read_to_end(&mut body)
-        .map_err(|e| format!("read response body from {url}: {e}"))?;
-    serde_json::from_slice::<serde_json::Value>(&body)
-        .map_err(|e| format!("parse JSON from {url}: {e}"))
 }
 
 /// Standalone blocking entry point for one-shot tools and integration tests.

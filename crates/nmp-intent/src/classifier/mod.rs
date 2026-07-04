@@ -26,6 +26,7 @@ use nmp_core::substrate::{
 
 use crate::relay_url::recognize_relay_url;
 
+mod ad;
 mod nip05;
 mod reference;
 mod secret;
@@ -68,6 +69,22 @@ pub fn classify_impl(
             InputScopeId::nostr_ref(),
             InputIntentTarget::Nip05 { identifier },
         );
+    }
+
+    // (4.5) NIP-AD candidate (#2927) — an `http(s)://` URL that may double as a
+    //       pointer to Nostr events. SHAPE only, no HTTP. Emitted ALONGSIDE the
+    //       free-text candidates for the same input (D1): the app attempts the
+    //       AD `.well-known` resolution and the free-text search in parallel,
+    //       never blocking on the fetch. Unlike rungs 2–4 this does NOT
+    //       short-circuit — the URL stays searchable as text if it turns out
+    //       not to be AD-enabled (the overwhelmingly common case).
+    if let Some(url) = ad::ad_candidate_url(trimmed) {
+        let mut candidates = vec![InputIntentCandidate {
+            scope: InputScopeId::nostr_ref(),
+            target: InputIntentTarget::AdCandidate { url },
+        }];
+        candidates.extend(free_text_candidates(trimmed, req, recognizers));
+        return InputIntentClassification::Candidates(candidates);
     }
 
     // Build the generic-parse output once for the recognizer passes (5)/(6).

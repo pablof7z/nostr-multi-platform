@@ -1,0 +1,23 @@
+[package]
+name = "nmp-wellknown-http"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Shared SSRF-guarded bounded HTTP GET for `.well-known` fetches (#2927). The single workspace authority for (a) `assert_host_is_public` — reject IP-literal / loopback / RFC-1918 / link-local / ULA / CGNAT / reserved hosts before a fetch — and (b) `http_get_json(url, max_bytes)` — a bounded GET (10s timeout, redirects(0), caller-supplied size cap) → JSON. Consumed by nmp-nip05 and nmp-nip-ad (host-guarded) and nmp-nip57 (bounded GET only). Native-gated: DNS resolution and ureq are blocking-worker concerns."
+
+[lib]
+crate-type = ["rlib"]
+
+[features]
+default = []
+# Enables the blocking `ureq` HTTP round-trip and the DNS-resolving SSRF guard.
+# Off in pure / wasm builds — no `.well-known` fetch happens there.
+native = ["dep:ureq"]
+
+[dependencies]
+nmp-ownership = { workspace = true }
+serde_json = { workspace = true }
+# Bounded `.well-known` GET — blocking, native only (mirrors the old nip05 /
+# nip57 fetchers this crate consolidates).
+ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }

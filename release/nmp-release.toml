@@ -227,6 +227,22 @@ path = "crates/nmp-nip84"
 name = "nmp-nip05"
 path = "crates/nmp-nip05"
 
+# nmp-wellknown-http (#2927): shared SSRF-guarded bounded `.well-known` GET.
+# The single workspace home for `assert_host_is_public` + `http_get_json`,
+# consumed by nmp-nip05 / nmp-nip-ad / nmp-nip57. Public (a transitive dep of
+# published protocol crates).
+[[public_crates]]
+name = "nmp-wellknown-http"
+path = "crates/nmp-wellknown-http"
+
+# nmp-nip-ad (#2927): NIP-AD web-URL → Nostr-events resolver. Fetches
+# `.well-known/nostr.json?ad=<path>`, selects the matching path entry, and
+# yields a live `{filter, relays}` collection query (0..N events). Ships the
+# `AdResolutionPolicy` app-injected auto-resolution seam. Public.
+[[public_crates]]
+name = "nmp-nip-ad"
+path = "crates/nmp-nip-ad"
+
 # nmp-intent (#1804): framework input-intent resolver (classify/dispatch raw
 # input → refs/NIP-05/relay/scoped-search). Higher-order crate above nmp-core,
 # consumable by apps. Public.

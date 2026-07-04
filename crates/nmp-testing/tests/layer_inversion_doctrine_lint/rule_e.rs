@@ -26,9 +26,11 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         | "nmp-nip65-types" | "nmp-nip92-types" | "nmp-nip59" | "nmp-relay-url"
         | "nmp-nostr-id" => Some(CrateClass::Layer(0)),
         // L1 — storage, network transport, concrete signer transport.
-        "nmp-store" | "nmp-nostr-lmdb" | "nmp-network" | "nmp-signers" | "nmp-sqlite-wasm" => {
-            Some(CrateClass::Layer(1))
-        }
+        // `nmp-wellknown-http` is the shared bounded-HTTP + SSRF `.well-known`
+        // fetch util (#2927): a network-transport util depended on only by the
+        // L4 protocol crates (nip05/nip57/nip-ad), so it sits below them here.
+        "nmp-store" | "nmp-nostr-lmdb" | "nmp-network" | "nmp-signers" | "nmp-sqlite-wasm"
+        | "nmp-wellknown-http" => Some(CrateClass::Layer(1)),
         // L2 — routing and subscription planning.
         "nmp-router" | "nmp-planner" => Some(CrateClass::Layer(2)),
         // L3 — kernel substrate.

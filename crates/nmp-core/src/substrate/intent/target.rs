@@ -40,6 +40,13 @@ pub enum InputIntentTarget {
     /// layer performs the HTTP `.well-known/nostr.json` reverse lookup; classify
     /// never does IO.
     Nip05 { identifier: String },
+    /// A NIP-AD candidate: an ordinary `http(s)://<domain>/<path>` web URL that
+    /// may double as a pointer to Nostr events (#2927). SHAPE ONLY — classify
+    /// never does IO; the dispatch layer performs the
+    /// `.well-known/nostr.json?ad=<path>` fetch. Emitted ALONGSIDE the free-text
+    /// candidates for the same input so an app can search in parallel (D1) while
+    /// an AD resolution is attempted.
+    AdCandidate { url: String },
     /// A normalized relay URL (`ws://` / `wss://`).
     RelayUrl { url: String },
     /// Free-text search. `request_json` is an opaque, already-serialized

@@ -1,22 +1,26 @@
-//! NIP-05 SSRF host guard (#1882) — native only.
+//! SSRF host guard (#1882, generalized #2927) — native only.
 //!
-//! Before the `.well-known/nostr.json` GET, a NIP-05 `domain` must be proven to
-//! be a public DNS host. Without this guard a `name@127.0.0.1` /
-//! `name@internal.corp` identifier could coerce the worker into issuing
-//! requests against loopback / RFC-1918 / link-local / ULA / CGNAT / reserved
-//! services (server-side request forgery).
+//! Before any `.well-known/*` GET, an arbitrary `domain` string must be proven
+//! to be a public DNS host. Without this guard a `name@127.0.0.1` /
+//! `internal.corp` / an AD URL pointing at loopback could coerce the worker
+//! into issuing requests against loopback / RFC-1918 / link-local / ULA /
+//! CGNAT / reserved services (server-side request forgery).
 //!
 //! Runs on the blocking worker thread (DNS resolution is itself blocking IO —
 //! never on the actor loop, D8).
+//!
+//! Extracted verbatim from `nmp-nip05::host_guard` (#2927) so the
+//! security-critical SSRF logic has a single canonical home shared by every
+//! `.well-known` fetcher (nip05, nip-ad) instead of being forked per NIP.
 
 use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
 
 /// HTTPS port the host-safety pre-resolve targets (also the scheme the GET
 /// uses). Resolving against the real port the request will use keeps the
 /// pre-flight check aligned with the actual connection.
-const NIP05_HTTPS_PORT: u16 = 443;
+const HTTPS_PORT: u16 = 443;
 
-/// Reject a NIP-05 host that is an IP literal or that resolves to a non-public
+/// Reject a host that is an IP literal or that resolves to a non-public
 /// address.
 ///
 /// CAVEAT — this resolves the host, then `ureq` independently resolves it again
@@ -25,29 +29,27 @@ const NIP05_HTTPS_PORT: u16 = 443;
 /// (TOCTOU). Closing that fully needs resolve-then-pin (connect to the vetted
 /// IP with SNI), which `ureq` 2.x does not expose cleanly. Documented as a
 /// residual limitation; the literal/standard-resolution vectors are covered.
-pub(crate) fn assert_host_is_public(domain: &str) -> Result<(), String> {
-    // A NIP-05 `domain` is a DNS name, never an IP literal. Reject literals
+pub fn assert_host_is_public(domain: &str) -> Result<(), String> {
+    // A `.well-known` host is a DNS name, never an IP literal. Reject literals
     // outright — they are the most direct SSRF vector and never legitimate here.
     if domain.parse::<IpAddr>().is_ok() {
         return Err(format!(
-            "NIP-05 domain `{domain}` is an IP literal; refusing the fetch (SSRF guard)"
+            "host `{domain}` is an IP literal; refusing the fetch (SSRF guard)"
         ));
     }
     // Resolve and require EVERY candidate address to be public. `to_socket_addrs`
     // is blocking — acceptable on this worker thread (D8).
-    let addrs: Vec<_> = (domain, NIP05_HTTPS_PORT)
+    let addrs: Vec<_> = (domain, HTTPS_PORT)
         .to_socket_addrs()
-        .map_err(|e| format!("NIP-05 domain `{domain}` did not resolve: {e}"))?
+        .map_err(|e| format!("host `{domain}` did not resolve: {e}"))?
         .collect();
     if addrs.is_empty() {
-        return Err(format!(
-            "NIP-05 domain `{domain}` did not resolve to any address"
-        ));
+        return Err(format!("host `{domain}` did not resolve to any address"));
     }
     for addr in addrs {
         if !ip_is_public(&addr.ip()) {
             return Err(format!(
-                "NIP-05 domain `{domain}` resolves to a non-public address; refusing the fetch (SSRF guard)"
+                "host `{domain}` resolves to a non-public address; refusing the fetch (SSRF guard)"
             ));
         }
     }
@@ -57,7 +59,7 @@ pub(crate) fn assert_host_is_public(domain: &str) -> Result<(), String> {
 /// True iff `ip` is a public (globally-routable unicast) address. Anything
 /// loopback / private / link-local / unique-local / CGNAT / reserved /
 /// unspecified / multicast / broadcast is treated as non-public.
-fn ip_is_public(ip: &IpAddr) -> bool {
+pub fn ip_is_public(ip: &IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => ipv4_is_public(v4),
         IpAddr::V6(v6) => {
@@ -82,7 +84,7 @@ fn ip_is_public(ip: &IpAddr) -> bool {
 /// `is_documentation` / `is_multicast` / `is_unspecified`) and adds the
 /// non-public ranges those omit: `0.0.0.0/8`, `100.64.0.0/10` (CGNAT),
 /// `198.18.0.0/15` (benchmarking), and `240.0.0.0/4` (reserved).
-fn ipv4_is_public(v4: &Ipv4Addr) -> bool {
+pub fn ipv4_is_public(v4: &Ipv4Addr) -> bool {
     let o = v4.octets();
     !(v4.is_private()
         || v4.is_loopback()

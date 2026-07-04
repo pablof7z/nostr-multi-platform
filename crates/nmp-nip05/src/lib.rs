@@ -28,15 +28,14 @@ use nmp_core::ui_token::UiToken;
 pub mod parse;
 pub mod ui_codes;
 
-// The blocking `.well-known/nostr.json` GET uses `ureq` + `std::thread::spawn`
-// — native only (mirrors `nmp_nip57::lnurl`, which is itself `#[cfg(native)]`).
-// `parse_nip05` stays always-compiled for the pure classifier pass.
+// The blocking `.well-known/nostr.json` GET uses the shared `nmp-wellknown-http`
+// bounded fetcher + `std::thread::spawn` — native only (mirrors `nmp_nip57`,
+// which is itself `#[cfg(native)]`). `parse_nip05` stays always-compiled for the
+// pure classifier pass. The SSRF host guard (`assert_host_is_public`, #1882) and
+// the bounded `http_get_json` now live in `nmp-wellknown-http` (#2927) — one
+// canonical home shared with `nmp-nip-ad`, no per-NIP fork.
 #[cfg(feature = "native")]
 mod http;
-// SSRF host guard for the `.well-known/nostr.json` fetch (#1882). Native-only —
-// it does blocking DNS resolution and is only reached from the native worker.
-#[cfg(feature = "native")]
-mod host_guard;
 
 #[cfg(feature = "native")]
 pub use http::resolve_nip05_pubkey_blocking;
