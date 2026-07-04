@@ -54,14 +54,15 @@ pub fn capability_for(intent: &WalletIntent) -> Option<WalletCapability> {
     match intent {
         WalletIntent::SelectBackend { .. } => None,
         WalletIntent::PayBolt11 { .. } => Some(WalletCapability::PayBolt11),
-        // `CreateCashuWallet` and `RecoverCashuWallet` share ONE capability
-        // flag (`WalletCapabilities::action_namespaces` bundles both action
-        // namespaces under `create_cashu_wallet`) — a backend that can mint a
-        // fresh wallet is expected to also be able to load an existing one
-        // (#2965: `CashuWalletBackend` implements both).
-        WalletIntent::CreateCashuWallet { .. } | WalletIntent::RecoverCashuWallet => {
-            Some(WalletCapability::CreateCashuWallet)
-        }
+        // `CreateCashuWallet`/`RecoverCashuWallet`/`SetCashuMints` share ONE
+        // capability flag (`WalletCapabilities::action_namespaces` bundles all
+        // three action namespaces under `create_cashu_wallet`) — a backend
+        // that can mint a fresh wallet is expected to also be able to load an
+        // existing one (#2965) and edit its config in place (#2997:
+        // `CashuWalletBackend` implements all three).
+        WalletIntent::CreateCashuWallet { .. }
+        | WalletIntent::RecoverCashuWallet
+        | WalletIntent::SetCashuMints { .. } => Some(WalletCapability::CreateCashuWallet),
         WalletIntent::PublishNutzapInfo => Some(WalletCapability::PublishNutzapInfo),
         WalletIntent::SendNutzap { .. } => Some(WalletCapability::SendNutzap),
         WalletIntent::RedeemNutzap { .. } => Some(WalletCapability::RedeemNutzap),

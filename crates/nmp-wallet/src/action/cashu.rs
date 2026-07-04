@@ -1,19 +1,27 @@
 //! `nmp.wallet.cashu.*` — W5 (#2908, epic #2864).
 //!
-//! `create`/`recover`/`deposit_quote`/`complete_deposit` all translate their
-//! typed payload into the matching `WalletIntent` and dispatch through the W4
-//! selector (`action::dispatch_and_forward`), so they route to whichever
-//! registered backend advertises the capability — today always
-//! `CashuWalletBackend`, but the action modules themselves name no backend.
+//! `create`/`recover`/`deposit_quote`/`complete_deposit`/`set_mints` all
+//! translate their typed payload into the matching `WalletIntent` and
+//! dispatch through the W4 selector (`action::dispatch_and_forward`), so they
+//! route to whichever registered backend advertises the capability — today
+//! always `CashuWalletBackend`, but the action modules themselves name no
+//! backend.
 //!
 //! `recover` (#2965, epic #2864) loads an account's EXISTING on-relay
 //! kind:17375 wallet config into state rather than minting fresh —
 //! `CashuWalletBackend::start_intent` now implements `RecoverCashuWallet` via
 //! `recover::RecoverCashuWalletCommand`. `WalletCapability::CreateCashuWallet`
-//! still bundles BOTH the `create` and `recover` action namespaces for
+//! still bundles the `create`/`recover`/`set_mints` action namespaces for
 //! UI-surfacing purposes (`WalletCapabilities::action_namespaces`), which is
-//! fine here: both namespaces map to the SAME capability a backend either
-//! has or doesn't, and `CashuWalletBackend` now implements both.
+//! fine here: all three namespaces map to the SAME capability a backend
+//! either has or doesn't, and `CashuWalletBackend` now implements all three.
+//!
+//! `set_mints` (#2997, epic #2864) is the key-PRESERVING counterpart to
+//! `create`: it replaces the wallet's accepted-mint list without rotating
+//! the Cashu P2PK receive key `create`'s `WalletConfig::generate` mints fresh
+//! every call — see `backend::cashu::set_mints::SetCashuMintsCommand`'s
+//! module docs for why that distinction is money-safety-critical (rotating
+//! the key would strand already-incoming P2PK-locked proofs).
 
 use std::sync::Arc;
 
@@ -32,7 +40,7 @@ use crate::selector::WalletBackendSelector;
 use crate::ui_codes;
 use crate::{
     ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
-    ACTION_CASHU_RECOVER,
+    ACTION_CASHU_RECOVER, ACTION_CASHU_SET_MINTS,
 };
 
 use super::{dispatch_and_forward, require_capable_backend};
@@ -156,6 +164,89 @@ impl ActionModule for CashuRecoverModule {
             &self.selector,
             &self.active_pubkey,
             WalletIntent::RecoverCashuWallet,
+            correlation_id,
+            send,
+        );
+        Ok(())
+    }
+}
+
+// ── nmp.wallet.cashu.set_mints ───────────────────────────────────────────────
+
+/// #2997 — key-preserving wallet config edit: replaces the wallet's
+/// accepted-mint list, carrying the existing Cashu P2PK privkey forward
+/// unchanged. Unlike `cashu.create`, this NEVER mints a fresh privkey — see
+/// `backend::cashu::set_mints::SetCashuMintsCommand`'s module docs.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct CashuSetMintsAction {
+    pub mints: Vec<String>,
+}
+
+pub struct CashuSetMintsModule {
+    selector: Arc<WalletBackendSelector>,
+    active_pubkey: ActiveAccountSlot,
+}
+
+impl CashuSetMintsModule {
+    #[must_use]
+    pub fn new(selector: Arc<WalletBackendSelector>, active_pubkey: ActiveAccountSlot) -> Self {
+        Self {
+            selector,
+            active_pubkey,
+        }
+    }
+}
+
+impl ActionModule for CashuSetMintsModule {
+    const NAMESPACE: DeclaredActionNamespace =
+        DeclaredActionNamespace::framework(ACTION_CASHU_SET_MINTS, "action.nmp.wallet.cashu");
+
+    type Action = CashuSetMintsAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
+    /// `nmp.wallet.cashu.set_mints` `ActionPayload` codec (`NWSM`). The
+    /// registry adapter runs the fail-closed `schema_version` gate BEFORE
+    /// `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        if action.mints.is_empty() {
+            return Err(ActionRejection::Invalid(
+                "cashu.set_mints requires a non-empty mint list".to_string(),
+            ));
+        }
+        if let Some(bad) = action
+            .mints
+            .iter()
+            .find(|m| !crate::backend::cashu::is_well_formed_mint_url(m))
+        {
+            return Err(ActionRejection::Invalid(format!(
+                "cashu.set_mints requires every mint to be a well-formed URL, got: {bad}"
+            )));
+        }
+        require_capable_backend(
+            &self.selector,
+            &WalletIntent::SetCashuMints {
+                mints: action.mints.clone(),
+            },
+        )
+    }
+
+    fn execute(
+        &self,
+        _ctx: &ActionContext,
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        dispatch_and_forward(
+            &self.selector,
+            &self.active_pubkey,
+            WalletIntent::SetCashuMints {
+                mints: action.mints,
+            },
             correlation_id,
             send,
         );

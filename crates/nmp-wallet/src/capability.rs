@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
-    ACTION_CASHU_RECOVER, ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM, ACTION_NUTZAP_SEND,
-    ACTION_NWC_CONNECT, ACTION_NWC_DISCONNECT, ACTION_PAY_INVOICE,
+    ACTION_CASHU_RECOVER, ACTION_CASHU_SET_MINTS, ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM,
+    ACTION_NUTZAP_SEND, ACTION_NWC_CONNECT, ACTION_NWC_DISCONNECT, ACTION_PAY_INVOICE,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -111,7 +111,11 @@ impl WalletCapabilities {
             ]);
         }
         if self.create_cashu_wallet {
-            actions.extend([ACTION_CASHU_CREATE, ACTION_CASHU_RECOVER]);
+            actions.extend([
+                ACTION_CASHU_CREATE,
+                ACTION_CASHU_RECOVER,
+                ACTION_CASHU_SET_MINTS,
+            ]);
         }
         if self.deposit_cashu {
             actions.extend([ACTION_CASHU_DEPOSIT_QUOTE, ACTION_CASHU_COMPLETE_DEPOSIT]);
@@ -147,6 +151,7 @@ mod tests {
     fn cashu_actions_are_exposed_only_when_capabilities_exist() {
         let actions = WalletCapabilities::cashu_nutzaps().action_namespaces();
         assert!(actions.contains(&ACTION_CASHU_CREATE));
+        assert!(actions.contains(&ACTION_CASHU_SET_MINTS));
         assert!(actions.contains(&ACTION_NUTZAP_SEND));
         assert!(actions.contains(&ACTION_NUTZAP_REDEEM));
         assert!(!actions.contains(&ACTION_PAY_INVOICE));
@@ -170,6 +175,7 @@ mod tests {
 
         let actions = caps.action_namespaces();
         assert!(actions.contains(&ACTION_CASHU_CREATE));
+        assert!(actions.contains(&ACTION_CASHU_SET_MINTS));
         assert!(actions.contains(&ACTION_CASHU_DEPOSIT_QUOTE));
         assert!(actions.contains(&ACTION_CASHU_COMPLETE_DEPOSIT));
         assert!(!actions.contains(&ACTION_NUTZAP_SEND));

@@ -1,7 +1,8 @@
-//! Registry-level trip tests for the eight `nmp.wallet.*` typed FlatBuffers
-//! payload doorways this crate owns (#2920, epic #2864): `select_backend`, the
-//! Cashu `create`/`recover`/`deposit_quote`/`complete_deposit` family, and the
-//! nutzap `publish_info`/`send`/`redeem` family.
+//! Registry-level trip tests for the nine `nmp.wallet.*` typed FlatBuffers
+//! payload doorways this crate owns (#2920, epic #2864; `set_mints` added by
+//! #2997): `select_backend`, the Cashu
+//! `create`/`recover`/`set_mints`/`deposit_quote`/`complete_deposit` family,
+//! and the nutzap `publish_info`/`send`/`redeem` family.
 //!
 //! Before this test existed, none of these eight `ActionModule`s implemented
 //! `ActionPayload`/overrode `decode_payload`, so `ActionRegistry::start_bytes`/
@@ -39,13 +40,14 @@ use nmp_core::substrate::{ActionContext, ActionPayload, ActionRegistrar, ActionR
 
 use nmp_wallet::{
     CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    CashuWalletBackend, NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction,
-    SelectBackendAction, WalletBackendSelector, CASHU_BACKEND_ID,
+    CashuSetMintsAction, CashuWalletBackend, NutzapPublishInfoAction, NutzapRedeemAction,
+    NutzapSendAction, SelectBackendAction, WalletBackendSelector, CASHU_BACKEND_ID,
 };
 
 const SELECT_BACKEND: &str = nmp_wallet::ACTION_SELECT_BACKEND;
 const CASHU_CREATE: &str = nmp_wallet::ACTION_CASHU_CREATE;
 const CASHU_RECOVER: &str = nmp_wallet::ACTION_CASHU_RECOVER;
+const CASHU_SET_MINTS: &str = nmp_wallet::ACTION_CASHU_SET_MINTS;
 const CASHU_DEPOSIT_QUOTE: &str = nmp_wallet::ACTION_CASHU_DEPOSIT_QUOTE;
 const CASHU_COMPLETE_DEPOSIT: &str = nmp_wallet::ACTION_CASHU_COMPLETE_DEPOSIT;
 const NUTZAP_PUBLISH_INFO: &str = nmp_wallet::ACTION_NUTZAP_PUBLISH_INFO;
@@ -75,6 +77,10 @@ fn registry_with_wallet_actions() -> ActionRegistry {
         Arc::clone(&active_pubkey),
     ));
     let _ = registry.register_action(nmp_wallet::action::CashuRecoverModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ));
+    let _ = registry.register_action(nmp_wallet::action::CashuSetMintsModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ));
@@ -174,6 +180,29 @@ fn cashu_recover_dispatches_by_name() {
     );
 }
 
+// --- cashu.set_mints --------------------------------------------------------------
+
+/// `cashu.set_mints` is reachable BY NAME. The registered backend has no
+/// created wallet, so it fails closed with `NO_CASHU_WALLET` at the backend
+/// layer — but `start_bytes`/`execute_bytes` both still succeed (the typed
+/// payload decodes, `start()`'s own non-empty/well-formed gates pass, and
+/// `execute()` reaches the backend), proving the doorway itself works
+/// end-to-end; the fail-closed backend precondition is `set_mints_tests.rs`'s
+/// job at the unit level.
+#[test]
+fn cashu_set_mints_dispatches_by_name() {
+    let registry = registry_with_wallet_actions();
+    let bytes = CashuSetMintsAction {
+        mints: vec!["https://mint.example.com".to_string()],
+    }
+    .encode();
+    let sent = dispatch_ok(&registry, CASHU_SET_MINTS, &bytes);
+    assert!(
+        !sent.is_empty(),
+        "cashu.set_mints must enqueue at least one ActorCommand"
+    );
+}
+
 // --- cashu.deposit_quote -----------------------------------------------------------
 
 #[test]
@@ -263,6 +292,7 @@ fn malformed_payload_is_rejected_before_start_for_every_namespace() {
         SELECT_BACKEND,
         CASHU_CREATE,
         CASHU_RECOVER,
+        CASHU_SET_MINTS,
         CASHU_DEPOSIT_QUOTE,
         CASHU_COMPLETE_DEPOSIT,
         NUTZAP_PUBLISH_INFO,

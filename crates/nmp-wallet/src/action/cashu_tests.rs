@@ -110,6 +110,73 @@ fn recover_execute_reaches_the_cashu_backend_and_dispatches_a_command() {
     );
 }
 
+// ── cashu.set_mints ──────────────────────────────────────────────────────────
+
+#[test]
+fn set_mints_start_rejects_empty_mint_list() {
+    let module = CashuSetMintsModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(&mut ctx(), CashuSetMintsAction { mints: Vec::new() })
+        .expect_err("empty mint list must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn set_mints_start_rejects_a_malformed_mint_url() {
+    let module = CashuSetMintsModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuSetMintsAction {
+                mints: vec![MINT.to_string(), "not-a-url".to_string()],
+            },
+        )
+        .expect_err("a malformed mint URL must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn set_mints_start_fails_closed_with_no_capable_backend() {
+    let module = CashuSetMintsModule::new(empty_selector(), active_pubkey(Some(PK)));
+    let err = module
+        .start(
+            &mut ctx(),
+            CashuSetMintsAction {
+                mints: vec![MINT.to_string()],
+            },
+        )
+        .expect_err("no registered backend must be rejected");
+    match err {
+        ActionRejection::InvalidCoded { code, .. } => {
+            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
+        }
+        other => panic!("expected InvalidCoded, got {other:?}"),
+    }
+}
+
+#[test]
+fn set_mints_execute_reaches_the_cashu_backend_and_dispatches_a_command() {
+    // The backend fails closed (no wallet created yet), but `execute()` must
+    // still reach it and emit at least one command — proving the dispatch
+    // path, not the backend's own precondition, is what this test covers.
+    let module = CashuSetMintsModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let dispatched = std::cell::Cell::new(0);
+    module
+        .execute(
+            &ctx(),
+            CashuSetMintsAction {
+                mints: vec![MINT.to_string()],
+            },
+            "corr-1",
+            &|_cmd| dispatched.set(dispatched.get() + 1),
+        )
+        .expect("execute must succeed");
+    assert!(
+        dispatched.get() > 0,
+        "set_mints must dispatch at least one command"
+    );
+}
+
 // ── cashu.deposit_quote ──────────────────────────────────────────────────────
 
 #[test]

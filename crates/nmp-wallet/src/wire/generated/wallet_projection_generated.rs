@@ -221,13 +221,13 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_WALLET_OPERATION_KIND: u8 = 7;
+        pub const ENUM_MAX_WALLET_OPERATION_KIND: u8 = 8;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_WALLET_OPERATION_KIND: [WalletOperationKind; 8] = [
+        pub const ENUM_VALUES_WALLET_OPERATION_KIND: [WalletOperationKind; 9] = [
             WalletOperationKind::SelectBackend,
             WalletOperationKind::PayBolt11,
             WalletOperationKind::CreateCashuWallet,
@@ -236,6 +236,7 @@ pub mod nmp {
             WalletOperationKind::RedeemNutzap,
             WalletOperationKind::DepositCashu,
             WalletOperationKind::MeltCashu,
+            WalletOperationKind::SetCashuMints,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -251,9 +252,10 @@ pub mod nmp {
             pub const RedeemNutzap: Self = Self(5);
             pub const DepositCashu: Self = Self(6);
             pub const MeltCashu: Self = Self(7);
+            pub const SetCashuMints: Self = Self(8);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 7;
+            pub const ENUM_MAX: u8 = 8;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::SelectBackend,
                 Self::PayBolt11,
@@ -263,6 +265,7 @@ pub mod nmp {
                 Self::RedeemNutzap,
                 Self::DepositCashu,
                 Self::MeltCashu,
+                Self::SetCashuMints,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -275,6 +278,7 @@ pub mod nmp {
                     Self::RedeemNutzap => Some("RedeemNutzap"),
                     Self::DepositCashu => Some("DepositCashu"),
                     Self::MeltCashu => Some("MeltCashu"),
+                    Self::SetCashuMints => Some("SetCashuMints"),
                     _ => None,
                 }
             }

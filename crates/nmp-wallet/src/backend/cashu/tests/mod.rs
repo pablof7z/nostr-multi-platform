@@ -30,6 +30,11 @@
 //! - [`recover_tests`] — #2965: `RecoverCashuWalletCommand` — the explicit
 //!   `nmp.wallet.cashu.recover` action, fail-closed when no cached kind:17375
 //!   exists, and the happy-path decrypt->load->`record_action_success` chain.
+//! - [`set_mints_tests`] — #2997: `SetCashuMintsCommand` — fail-closed when
+//!   no wallet exists yet (`NO_CASHU_WALLET`), empty/malformed mint lists,
+//!   and the money-critical happy path: the kind:17375 plaintext carries the
+//!   PRE-EXISTING Cashu P2PK privkey forward byte-identical, never a fresh
+//!   one, with only the `mint` entries replaced.
 
 use std::sync::Mutex;
 
@@ -58,6 +63,7 @@ mod redeem_worker_tests;
 mod reset_tests;
 mod send_tests;
 mod send_worker_tests;
+mod set_mints_tests;
 mod snapshot_tests;
 mod wal_restore_tests;
 
@@ -260,11 +266,17 @@ pub(super) fn nutzap_kernel_event(
     created_at: u64,
 ) -> KernelEvent {
     let recipient = nostr::PublicKey::from_hex(p_tagged_to).expect("valid recipient pubkey hex");
-    let event = nmp_nip60::nutzap::build_nutzap_event(proofs, mint_url, &recipient, comment, zapped_event_id)
-        .expect("build nutzap event")
-        .custom_created_at(nostr::Timestamp::from_secs(created_at))
-        .sign_with_keys(sender_keys)
-        .expect("sign nutzap fixture");
+    let event = nmp_nip60::nutzap::build_nutzap_event(
+        proofs,
+        mint_url,
+        &recipient,
+        comment,
+        zapped_event_id,
+    )
+    .expect("build nutzap event")
+    .custom_created_at(nostr::Timestamp::from_secs(created_at))
+    .sign_with_keys(sender_keys)
+    .expect("sign nutzap fixture");
     KernelEvent {
         id: event.id.to_hex(),
         author: sender_keys.public_key().to_hex(),

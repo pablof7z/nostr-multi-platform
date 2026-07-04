@@ -8,8 +8,9 @@
 //!   `WalletCapabilities::cashu_nutzaps`'s doc comment).
 //! * `start_intent()` maps every `WalletIntent` this backend implements onto
 //!   `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`,
-//!   `publish_info.rs`, `send.rs`, `redeem.rs`, `recover.rs`) that drive the
-//!   signer-transparent NIP-44 + sign ports and `nmp-nip60`'s mint HTTP lane.
+//!   `publish_info.rs`, `send.rs`, `redeem.rs`, `recover.rs`, `set_mints.rs`)
+//!   that drive the signer-transparent NIP-44 + sign ports and `nmp-nip60`'s
+//!   mint HTTP lane.
 //!   `MeltCashu` remains unimplemented, so `start_intent` is a documented
 //!   no-op for it (never a panic — D6), same as `backend::nwc` treats its own
 //!   out-of-capability intents.
@@ -59,6 +60,7 @@ mod redeem;
 mod redeem_worker;
 mod send;
 mod send_worker;
+mod set_mints;
 mod snapshot;
 mod state;
 mod ui_codes;
@@ -84,7 +86,14 @@ use crate::capability::WalletCapabilities;
 use create_wallet::CreateCashuWalletCommand;
 use deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
 use recover::RecoverCashuWalletCommand;
-use state::{canonicalize_mint_url, is_well_formed_mint_url, lock_state, CashuWalletState};
+use set_mints::SetCashuMintsCommand;
+use state::{canonicalize_mint_url, lock_state, CashuWalletState};
+
+// Re-exported (not just imported) so `action::cashu::CashuSetMintsModule::start`
+// can validate each mint URL BEFORE dispatch, mirroring exactly the gate
+// `start_create_wallet` below applies at the backend layer — the `state`
+// submodule itself stays private, only this one helper is elevated.
+pub(crate) use state::is_well_formed_mint_url;
 
 /// Canonical id this backend registers under.
 pub const CASHU_BACKEND_ID: &str = "cashu";
@@ -178,6 +187,9 @@ impl WalletBackend for CashuWalletBackend {
                 self.start_redeem_nutzap(ctx, event_id, correlation_id)
             }
             WalletIntent::RecoverCashuWallet => self.start_recover_wallet(ctx, correlation_id),
+            WalletIntent::SetCashuMints { mints } => {
+                self.start_set_mints(ctx, mints, correlation_id)
+            }
             // Not this backend's capability — `capabilities()` already tells
             // callers not to route these here. A no-op rather than a panic
             // keeps a stray dispatch harmless (D6), same as `backend::nwc`.
@@ -388,9 +400,80 @@ impl CashuWalletBackend {
                 "no active account".to_string(),
             );
         };
-        vec![ActorCommand::Protocol(Box::new(RecoverCashuWalletCommand {
+        vec![ActorCommand::Protocol(Box::new(
+            RecoverCashuWalletCommand {
+                state: Arc::clone(&self.state),
+                account_pubkey,
+                correlation_id,
+            },
+        ))]
+    }
+
+    /// #2997 — `nmp.wallet.cashu.set_mints`: replace the accepted-mint list
+    /// while carrying the EXISTING Cashu P2PK privkey forward unchanged (never
+    /// `WalletConfig::generate`s a fresh one — see `set_mints.rs`'s module
+    /// docs for why rotating it here would strand already-incoming
+    /// P2PK-locked proofs). Fails closed when no Cashu wallet has been
+    /// created/recovered yet: there is no existing privkey to carry forward,
+    /// and this action must never silently fall back to minting a fresh one
+    /// (that would be `cashu.create`'s job, not this one's).
+    fn start_set_mints(
+        &self,
+        ctx: WalletBackendContext<'_>,
+        mints: Vec<String>,
+        correlation_id: Option<String>,
+    ) -> Vec<ActorCommand> {
+        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
+            return fail_closed(
+                ui_codes::NO_ACCOUNT,
+                correlation_id,
+                "no active account".to_string(),
+            );
+        };
+        if mints.is_empty() {
+            return fail_closed(
+                ui_codes::UNSUPPORTED_MINT,
+                correlation_id,
+                "cashu.set_mints requires a non-empty mint list".to_string(),
+            );
+        }
+        if let Some(bad) = mints.iter().find(|m| !is_well_formed_mint_url(m)) {
+            return fail_closed(
+                ui_codes::UNSUPPORTED_MINT,
+                correlation_id,
+                format!("unsupported mint: {bad}"),
+            );
+        }
+        // Fail closed when this wallet has never been created/recovered:
+        // there is no existing Cashu P2PK privkey to carry forward, and this
+        // action must never mint a fresh one (that is `cashu.create`'s job).
+        let has_wallet = {
+            let state = lock_state(&self.state);
+            state.cashu_privkey.is_some() && state.cashu_pubkey_hex.is_some()
+        };
+        if !has_wallet {
+            return fail_closed(
+                ui_codes::NO_CASHU_WALLET,
+                correlation_id,
+                "no Cashu wallet exists yet; use cashu.create or cashu.recover first".to_string(),
+            );
+        }
+        let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "set-mints");
+        {
+            let mut state = lock_state(&self.state);
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::SetCashuMints,
+                ctx.now_secs,
+            ) {
+                return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
+            }
+        }
+        vec![ActorCommand::Protocol(Box::new(SetCashuMintsCommand {
             state: Arc::clone(&self.state),
+            operation_id,
             account_pubkey,
+            mints,
             correlation_id,
         }))]
     }

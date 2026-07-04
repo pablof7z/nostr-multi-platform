@@ -148,6 +148,7 @@ impl WalletBackend for NwcWalletBackend {
             WalletIntent::SelectBackend { .. }
             | WalletIntent::CreateCashuWallet { .. }
             | WalletIntent::RecoverCashuWallet
+            | WalletIntent::SetCashuMints { .. }
             | WalletIntent::PublishNutzapInfo
             | WalletIntent::SendNutzap { .. }
             | WalletIntent::RedeemNutzap { .. }

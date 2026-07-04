@@ -61,7 +61,8 @@ use crate::journal::{FsWalletWalStore, WalletWalStore};
 
 use crate::action::{
     CashuCompleteDepositModule, CashuCreateModule, CashuDepositQuoteModule, CashuRecoverModule,
-    NutzapPublishInfoModule, NutzapRedeemModule, NutzapSendModule, SelectBackendModule,
+    CashuSetMintsModule, NutzapPublishInfoModule, NutzapRedeemModule, NutzapSendModule,
+    SelectBackendModule,
 };
 use crate::backend::cashu::CashuWalletBackend;
 use crate::backend::nwc::NwcWalletBackend;
@@ -208,6 +209,10 @@ pub fn register(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
     ))?;
+    app.register_action(CashuSetMintsModule::new(
+        Arc::clone(&selector),
+        Arc::clone(&active_pubkey),
+    ))?;
     app.register_action(CashuDepositQuoteModule::new(
         Arc::clone(&selector),
         Arc::clone(&active_pubkey),
@@ -280,9 +285,7 @@ pub fn register(
 /// configured, and emitting it keeps the host cache authoritative (an omitted
 /// key retains the last decoded value under incremental apply — see ADR-0070).
 #[must_use]
-pub fn wallet_merged_typed_projection(
-    runtime: &WalletRuntime,
-) -> nmp_core::TypedProjectionData {
+pub fn wallet_merged_typed_projection(runtime: &WalletRuntime) -> nmp_core::TypedProjectionData {
     let projection = runtime.snapshot();
     nmp_core::TypedProjectionData {
         key: crate::projection_wire::PROJECTION_KEY.to_string(),
