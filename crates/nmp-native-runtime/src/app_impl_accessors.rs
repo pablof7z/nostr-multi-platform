@@ -227,6 +227,20 @@ impl NmpApp {
         self.send_cmd(ActorCommand::Relay(RelayCommand::RemoveRelay { url }));
     }
 
+    /// Re-attempt connection on every relay worker the actor tracks (#1689).
+    /// Typed wrapper for [`ActorCommand::ReconnectRelays`].
+    ///
+    /// A live/connecting socket is untouched; a socket the pool tore down
+    /// permanently (e.g. a `PoolEvent::Closed` — an HTTP 401/403, or any
+    /// slot the pool otherwise decided not to auto-retry) is re-dialed in
+    /// place. This is the host-driven trigger the actor-side `#1689`
+    /// mechanism was built for but that, until now, no app-facing surface
+    /// exposed: network-change notifications, app-foreground transitions,
+    /// and a Settings/Diagnostics "Reconnect" button should all call this.
+    pub fn reconnect_relays(&self) {
+        self.send_cmd(ActorCommand::Relay(RelayCommand::ReconnectRelays));
+    }
+
     /// Retry a failed publish, addressed by its handle.
     /// Typed wrapper for [`ActorCommand::RetryPublish`].
     pub fn retry_publish(&self, handle: String) {
