@@ -179,16 +179,26 @@ impl Nip60WalletHandle {
     }
 
     /// Select proofs summing to at least `amount_sats` from `mint_url`.
+    ///
+    /// Compares by [`crate::cashu::canonicalize_mint_url`], not raw string
+    /// equality (#2975, mirroring #2972's `nmp-wallet` fix) — `mint_url` here
+    /// is often a caller-resolved string that can differ from a stored
+    /// token's `mint_url` by trailing slash or scheme/host case while still
+    /// naming the same real mint.
     fn select_proofs(
         &self,
         amount_sats: u64,
         mint_url: &str,
     ) -> Result<(Vec<Proof>, u64), Nip60Error> {
+        let target = crate::cashu::canonicalize_mint_url(mint_url);
         let tokens = self.tokens.lock().unwrap();
         let mut selected = Vec::new();
         let mut total = 0u64;
 
-        for record in tokens.iter().filter(|r| r.mint_url == mint_url) {
+        for record in tokens
+            .iter()
+            .filter(|r| crate::cashu::canonicalize_mint_url(&r.mint_url) == target)
+        {
             for proof in &record.proofs {
                 if total >= amount_sats {
                     break;
@@ -283,5 +293,82 @@ impl Nip60WalletHandle {
     fn build_delete_event(&self, event_id: EventId) -> Result<nostr::EventBuilder, Nip60Error> {
         use nostr::{EventBuilder, Kind, Tag};
         Ok(EventBuilder::new(Kind::EventDeletion, "spent").tag(Tag::event(event_id)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token_event::{build_token_event, TokenRecord};
+    use nostr::Keys;
+
+    fn dummy_proof(amount: u64) -> Proof {
+        Proof {
+            amount,
+            id: "testkeyset".into(),
+            secret: hex::encode([7u8; 32]),
+            c: hex::encode(
+                [0x02u8]
+                    .iter()
+                    .chain([0u8; 32].iter())
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            ),
+            dleq: None,
+            witness: None,
+        }
+    }
+
+    /// #2975 — `select_proofs` must match a stored token's `mint_url` against
+    /// the caller-supplied `mint_url` by [`crate::cashu::canonicalize_mint_url`],
+    /// not raw string equality: a trailing slash or scheme/host case
+    /// difference must not hide real, spendable proofs.
+    #[test]
+    fn select_proofs_matches_mints_that_differ_by_trailing_slash_and_case() {
+        let keys = Keys::generate();
+        let handle = Nip60WalletHandle::create_new(&keys, "https://mint.example/Bitcoin")
+            .expect("create wallet");
+
+        // Stored record's mint carries an uppercased host and a trailing
+        // slash the caller-supplied lookup key below doesn't.
+        let record = TokenRecord::new(
+            "HTTPS://Mint.Example/Bitcoin/".into(),
+            vec![dummy_proof(64)],
+        );
+        let builder = build_token_event(&record, &keys).expect("build token event");
+        let event = builder.sign_with_keys(&keys).expect("sign token event");
+        handle
+            .ingest_token_events(&[event])
+            .expect("ingest token event");
+
+        let (selected, change) = handle
+            .select_proofs(50, "https://mint.example/Bitcoin")
+            .expect("proofs at the same mint must be found despite the trailing-slash/case diff");
+        assert_eq!(selected.len(), 1);
+        assert_eq!(change, 14);
+    }
+
+    /// A genuinely different mint (different host) must still be rejected —
+    /// canonicalization must not collapse distinct mints together.
+    #[test]
+    fn select_proofs_rejects_a_genuinely_different_mint() {
+        let keys = Keys::generate();
+        let handle = Nip60WalletHandle::create_new(&keys, "https://mint.example/Bitcoin")
+            .expect("create wallet");
+
+        let record = TokenRecord::new(
+            "https://other-mint.example/Bitcoin".into(),
+            vec![dummy_proof(64)],
+        );
+        let builder = build_token_event(&record, &keys).expect("build token event");
+        let event = builder.sign_with_keys(&keys).expect("sign token event");
+        handle
+            .ingest_token_events(&[event])
+            .expect("ingest token event");
+
+        let err = handle
+            .select_proofs(50, "https://mint.example/Bitcoin")
+            .expect_err("a different mint's proofs must not be selected");
+        assert!(matches!(err, Nip60Error::InsufficientBalance { .. }));
     }
 }
