@@ -118,6 +118,35 @@ fn ingest_token_event_loads_proofs_into_state_and_ledger_balance() {
     );
 }
 
+/// #2972/#2973 — a recovered token event's mint must canonicalize the same
+/// way `add_proofs`/`select_proofs` do, so a recovered proof's balance lands
+/// under the same mint key a later `nutzap.send` resolves the recipient's
+/// mint to, even when the two strings differ by scheme/host case or a
+/// trailing slash (the real-sats minibits shape).
+#[test]
+fn ingest_token_event_canonicalizes_the_mint_url() {
+    let backend = CashuWalletBackend::new();
+    let proof = synthetic_proof(7, "proof-c-canon");
+    let plaintext = token_event_json(
+        "HTTPS://Mint.Minibits.Cash/Bitcoin/",
+        std::slice::from_ref(&proof),
+        &[],
+    );
+
+    ingest::ingest_token_event(&backend.state, "token-event-canon", &plaintext, "").unwrap();
+
+    let state = lock_state(&backend.state);
+    assert_eq!(
+        state.proofs[0].mint, "https://mint.minibits.cash/Bitcoin",
+        "the stored proof's mint must be canonical, matching what select_proofs compares against"
+    );
+    let (selected, total) = state
+        .select_proofs("https://mint.minibits.cash/Bitcoin", 7)
+        .expect("select_proofs must find the recovered proof by its canonical mint");
+    assert_eq!(total, 7);
+    assert_eq!(selected.len(), 1);
+}
+
 #[test]
 fn ingest_token_event_is_idempotent_on_a_relay_resend() {
     let backend = backend_with_mint();
