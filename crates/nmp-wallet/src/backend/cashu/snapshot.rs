@@ -116,7 +116,8 @@ fn history_kind(op_kind: WalletOperationKind) -> Option<WalletHistoryKind> {
         | WalletOperationKind::CreateCashuWallet
         | WalletOperationKind::PublishNutzapInfo
         | WalletOperationKind::SelectBackend
-        | WalletOperationKind::MeltCashu => None,
+        | WalletOperationKind::MeltCashu
+        | WalletOperationKind::SetCashuMints => None,
     }
 }
 

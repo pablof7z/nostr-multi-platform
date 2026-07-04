@@ -36,6 +36,10 @@ pub enum WalletOperationKind {
     RedeemNutzap,
     DepositCashu,
     MeltCashu,
+    /// #2997 — `nmp.wallet.cashu.set_mints`: replaces the wallet's
+    /// accepted-mint list, carrying the existing Cashu P2PK privkey forward
+    /// unchanged (never rotates it, unlike `CreateCashuWallet`).
+    SetCashuMints,
 }
 
 impl WalletOperationKind {

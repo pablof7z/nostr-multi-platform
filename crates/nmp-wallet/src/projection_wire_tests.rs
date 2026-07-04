@@ -173,6 +173,7 @@ fn each_operation_kind_and_state_round_trips() {
         WalletOperationKind::RedeemNutzap,
         WalletOperationKind::DepositCashu,
         WalletOperationKind::MeltCashu,
+        WalletOperationKind::SetCashuMints,
     ];
     let states = [
         WalletOperationState::Draft,
@@ -183,6 +184,10 @@ fn each_operation_kind_and_state_round_trips() {
         WalletOperationState::Settled,
         WalletOperationState::Unknown,
         WalletOperationState::Failed,
+        // #2997 — the 9th kind (`SetCashuMints`) reuses `Draft`; every state
+        // is already covered by an earlier pairing above, so this only needs
+        // to prove `SetCashuMints` itself round-trips.
+        WalletOperationState::Draft,
     ];
     for (kind, state) in kinds.into_iter().zip(states) {
         let projection = WalletProjection::empty().with_pending_operations([WalletOperation::new(

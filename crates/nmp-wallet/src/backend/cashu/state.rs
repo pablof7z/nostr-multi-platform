@@ -32,7 +32,9 @@ pub(super) struct CashuP2pkSecret(pub(super) nostr::secp256k1::SecretKey);
 
 impl fmt::Debug for CashuP2pkSecret {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("CashuP2pkSecret").field(&"<redacted>").finish()
+        f.debug_tuple("CashuP2pkSecret")
+            .field(&"<redacted>")
+            .finish()
     }
 }
 
@@ -241,7 +243,11 @@ impl CashuWalletState {
         let target = canonicalize_mint_url(mint);
         let mut selected = Vec::new();
         let mut total = 0u64;
-        for stored in self.proofs.iter().filter(|p| canonicalize_mint_url(&p.mint) == target) {
+        for stored in self
+            .proofs
+            .iter()
+            .filter(|p| canonicalize_mint_url(&p.mint) == target)
+        {
             if total >= amount_sats {
                 break;
             }
@@ -261,7 +267,8 @@ impl CashuWalletState {
     pub(super) fn remove_proofs(&mut self, spent: &[StoredProof]) {
         let spent_cs: std::collections::HashSet<&str> =
             spent.iter().map(|p| p.proof.c.as_str()).collect();
-        self.proofs.retain(|p| !spent_cs.contains(p.proof.c.as_str()));
+        self.proofs
+            .retain(|p| !spent_cs.contains(p.proof.c.as_str()));
     }
 
     /// Add freshly minted/received proofs to the held inventory, all
@@ -271,13 +278,19 @@ impl CashuWalletState {
     /// never guaranteed byte-identical to the string `select_proofs`/send
     /// resolution later looks the same mint up by, even though both denote
     /// the same real mint.
-    pub(super) fn add_proofs(&mut self, token_event: Option<String>, mint: String, proofs: Vec<Proof>) {
+    pub(super) fn add_proofs(
+        &mut self,
+        token_event: Option<String>,
+        mint: String,
+        proofs: Vec<Proof>,
+    ) {
         let mint = canonicalize_mint_url(&mint);
-        self.proofs.extend(proofs.into_iter().map(|proof| StoredProof {
-            token_event: token_event.clone(),
-            mint: mint.clone(),
-            proof,
-        }));
+        self.proofs
+            .extend(proofs.into_iter().map(|proof| StoredProof {
+                token_event: token_event.clone(),
+                mint: mint.clone(),
+                proof,
+            }));
     }
 
     /// Drop every held proof attached to `token_event` — the recovery-path
@@ -403,7 +416,14 @@ pub(super) fn lock_state(state: &Mutex<CashuWalletState>) -> MutexGuard<'_, Cash
 /// defaults to suggesting `https://testnut.cashu.space` at the shell layer,
 /// but any well-formed mint URL is accepted here (fail-closed only rejects
 /// obviously-malformed input, not "not testnut").
-pub(super) fn is_well_formed_mint_url(mint: &str) -> bool {
+///
+/// `pub(crate)` (not `pub(super)`) since #2997: `action::cashu::
+/// CashuSetMintsModule::start` needs this same gate to validate every mint
+/// in a caller-supplied list BEFORE dispatch, mirroring exactly what
+/// `CashuWalletBackend::start_create_wallet`/`start_set_mints` re-check at
+/// the backend layer — re-exported (not just imported) by
+/// `backend::cashu::mod` for that cross-tree caller.
+pub(crate) fn is_well_formed_mint_url(mint: &str) -> bool {
     let trimmed = mint.trim();
     !trimmed.is_empty() && (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
 }

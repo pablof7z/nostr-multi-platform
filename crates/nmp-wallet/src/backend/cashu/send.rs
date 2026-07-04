@@ -33,6 +33,17 @@
 //! `send_worker.rs` (AGENTS.md file-size split) owns everything from the mint
 //! HTTP round-trip onward, including the definite-vs-ambiguous-failure
 //! restore/no-restore split for the proof reservation this file makes below.
+//!
+//! # Balance-aware mutual-mint selection (#2997)
+//!
+//! `run()` no longer stops at the FIRST mint the recipient and this wallet
+//! both accept: it walks every mutually-trusted mint in the recipient's
+//! listed order and picks the first one THIS WALLET ALSO HAS ENOUGH BALANCE
+//! AT. Before this fix, an underfunded first mutual mint failed the entire
+//! send with `INSUFFICIENT_BALANCE` even when a later mutual mint could have
+//! covered it. `NO_TRUSTED_MINT` is reserved for the case where no mint is
+//! mutual at all; `INSUFFICIENT_BALANCE` now means "at least one mutual mint
+//! exists, but none of them has enough balance".
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -129,36 +140,61 @@ impl ProtocolCommand for SendNutzapCommand {
             );
         };
 
-        // Use ONLY a mint the recipient lists that this wallet also accepts
-        // (the exact `u` tag URL comes from the recipient's own list, never
-        // rewritten) — design doc "Relay Acquisition"/"NIP-61 Event Rules".
-        // Matched by canonical mint identity (#2972), not raw string
-        // equality: the recipient's own client and this wallet can name the
-        // same real mint with differently-cased scheme/host or a trailing
-        // slash and still mean the same mint.
+        // #2997 — pick the first mint that is BOTH mutually trusted (the
+        // recipient lists it AND this wallet also accepts it, matched by
+        // canonical mint identity per #2972 — never raw string equality) AND
+        // actually has enough balance to cover `amount_sats`. Before this
+        // fix, the FIRST mutual mint was picked unconditionally and an
+        // underfunded first mint failed the whole send with
+        // `INSUFFICIENT_BALANCE` even when a LATER mutual mint could have
+        // covered it. The exact `u`-tag URL always comes from the
+        // recipient's own list, never rewritten — design doc "Relay
+        // Acquisition"/"NIP-61 Event Rules".
         let our_mints = lock_state(&state).mints.clone();
-        let Some(mint) = recipient_info
-            .mints
-            .iter()
-            .find(|m| {
-                let target = canonicalize_mint_url(m);
-                our_mints.iter().any(|o| canonicalize_mint_url(o) == target)
-            })
-            .cloned()
-        else {
+        let mut any_mutual_mint = false;
+        let mut chosen_mint: Option<String> = None;
+        for candidate in &recipient_info.mints {
+            let target = canonicalize_mint_url(candidate);
+            if !our_mints.iter().any(|o| canonicalize_mint_url(o) == target) {
+                continue;
+            }
+            any_mutual_mint = true;
+            if lock_state(&state)
+                .select_proofs(candidate, amount_sats)
+                .is_some()
+            {
+                chosen_mint = Some(candidate.clone());
+                break;
+            }
+        }
+        let Some(mint) = chosen_mint else {
             return fail(
                 ctx,
                 &state,
                 &operation_id,
                 correlation_id,
-                ui_codes::NO_TRUSTED_MINT,
-                "no mint the recipient accepts is also accepted by this wallet".to_string(),
+                if any_mutual_mint {
+                    ui_codes::INSUFFICIENT_BALANCE
+                } else {
+                    ui_codes::NO_TRUSTED_MINT
+                },
+                if any_mutual_mint {
+                    "insufficient balance at every mutually-trusted mint".to_string()
+                } else {
+                    "no mint the recipient accepts is also accepted by this wallet".to_string()
+                },
             );
         };
 
-        let Some((selected, selected_total)) =
-            lock_state(&state).select_proofs(&mint, amount_sats)
+        // Re-select under the SAME lock discipline as before (`select_proofs`
+        // is a pure read; nothing mutates `state.proofs` between the loop
+        // above and here on this single-threaded actor) — this is what
+        // actually reserves the exact proof set spent below.
+        let Some((selected, selected_total)) = lock_state(&state).select_proofs(&mint, amount_sats)
         else {
+            // Unreachable given the check above already proved this mint has
+            // enough balance; fail closed rather than unwrap/panic if it
+            // somehow no longer does.
             return fail(
                 ctx,
                 &state,

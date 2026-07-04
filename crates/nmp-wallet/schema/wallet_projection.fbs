@@ -60,6 +60,9 @@ enum WalletOperationKind:ubyte {
   RedeemNutzap = 5,
   DepositCashu = 6,
   MeltCashu = 7,
+  // #2997 — `nmp.wallet.cashu.set_mints`: replaces the wallet's accepted-mint
+  // list, carrying the existing Cashu P2PK privkey forward unchanged.
+  SetCashuMints = 8,
 }
 
 // `WalletOperationState` — the money-safety saga state of a pending operation.

@@ -30,6 +30,11 @@
 //! - [`recover_tests`] — #2965: `RecoverCashuWalletCommand` — the explicit
 //!   `nmp.wallet.cashu.recover` action, fail-closed when no cached kind:17375
 //!   exists, and the happy-path decrypt->load->`record_action_success` chain.
+//! - [`set_mints_tests`] — #2997: `SetCashuMintsCommand` — fail-closed when
+//!   no wallet exists yet (`NO_CASHU_WALLET`), empty/malformed mint lists,
+//!   and the money-critical happy path: the kind:17375 plaintext carries the
+//!   PRE-EXISTING Cashu P2PK privkey forward byte-identical, never a fresh
+//!   one, with only the `mint` entries replaced.
 
 use std::sync::Mutex;
 
@@ -42,6 +47,11 @@ use nmp_core::substrate::{
 };
 
 use super::*;
+// Re-exported to the per-intent test submodules (each `use super::*` from
+// here). Before the #2997 `start_intents.rs` split these reached the tests
+// through `mod.rs`'s own import glob; the helpers that used them moved out, so
+// the shared test harness now sources the journal enums the assertions need.
+pub(super) use crate::journal::{WalletOperationKind, WalletOperationState};
 
 mod create_wallet_tests;
 mod deposit_concurrency_tests;
@@ -61,6 +71,7 @@ mod reset_tests;
 mod send_cold_restore_tests;
 mod send_tests;
 mod send_worker_tests;
+mod set_mints_tests;
 mod snapshot_tests;
 mod wal_restore_tests;
 
@@ -263,11 +274,17 @@ pub(super) fn nutzap_kernel_event(
     created_at: u64,
 ) -> KernelEvent {
     let recipient = nostr::PublicKey::from_hex(p_tagged_to).expect("valid recipient pubkey hex");
-    let event = nmp_nip60::nutzap::build_nutzap_event(proofs, mint_url, &recipient, comment, zapped_event_id)
-        .expect("build nutzap event")
-        .custom_created_at(nostr::Timestamp::from_secs(created_at))
-        .sign_with_keys(sender_keys)
-        .expect("sign nutzap fixture");
+    let event = nmp_nip60::nutzap::build_nutzap_event(
+        proofs,
+        mint_url,
+        &recipient,
+        comment,
+        zapped_event_id,
+    )
+    .expect("build nutzap event")
+    .custom_created_at(nostr::Timestamp::from_secs(created_at))
+    .sign_with_keys(sender_keys)
+    .expect("sign nutzap fixture");
     KernelEvent {
         id: event.id.to_hex(),
         author: sender_keys.public_key().to_hex(),

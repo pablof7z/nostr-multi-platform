@@ -8,8 +8,9 @@
 //!   `WalletCapabilities::cashu_nutzaps`'s doc comment).
 //! * `start_intent()` maps every `WalletIntent` this backend implements onto
 //!   `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`,
-//!   `publish_info.rs`, `send.rs`, `redeem.rs`, `recover.rs`) that drive the
-//!   signer-transparent NIP-44 + sign ports and `nmp-nip60`'s mint HTTP lane.
+//!   `publish_info.rs`, `send.rs`, `redeem.rs`, `recover.rs`, `set_mints.rs`)
+//!   that drive the signer-transparent NIP-44 + sign ports and `nmp-nip60`'s
+//!   mint HTTP lane.
 //!   `MeltCashu` remains unimplemented, so `start_intent` is a documented
 //!   no-op for it (never a panic — D6), same as `backend::nwc` treats its own
 //!   out-of-capability intents.
@@ -59,7 +60,9 @@ mod redeem;
 mod redeem_worker;
 mod send;
 mod send_worker;
+mod set_mints;
 mod snapshot;
+mod start_intents;
 mod state;
 mod ui_codes;
 mod wal_payload;
@@ -72,10 +75,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{KernelEvent, ProtocolCommandContext};
 use nmp_core::ui_token::UiToken;
 
-use crate::fail_closed::fail_closed;
-use crate::journal::{
-    WalletOperationId, WalletOperationKind, WalletOperationState, WalletWalStore,
-};
+use crate::journal::{WalletOperationId, WalletWalStore};
 use crate::projection::{WalletBalanceRow, WalletProjection, WalletReadiness};
 
 use super::{
@@ -84,10 +84,13 @@ use super::{
 };
 use crate::capability::WalletCapabilities;
 
-use create_wallet::CreateCashuWalletCommand;
-use deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
-use recover::RecoverCashuWalletCommand;
-use state::{canonicalize_mint_url, is_well_formed_mint_url, lock_state, CashuWalletState};
+use state::{lock_state, CashuWalletState};
+
+// Re-exported (not just imported) so `action::cashu::CashuSetMintsModule::start`
+// can validate each mint URL BEFORE dispatch, mirroring exactly the gate
+// `start_create_wallet` below applies at the backend layer — the `state`
+// submodule itself stays private, only this one helper is elevated.
+pub(crate) use state::is_well_formed_mint_url;
 
 /// Canonical id this backend registers under.
 pub const CASHU_BACKEND_ID: &str = "cashu";
@@ -181,6 +184,9 @@ impl WalletBackend for CashuWalletBackend {
                 self.start_redeem_nutzap(ctx, event_id, correlation_id)
             }
             WalletIntent::RecoverCashuWallet => self.start_recover_wallet(ctx, correlation_id),
+            WalletIntent::SetCashuMints { mints } => {
+                self.start_set_mints(ctx, mints, correlation_id)
+            }
             // Not this backend's capability — `capabilities()` already tells
             // callers not to route these here. A no-op rather than a panic
             // keeps a stray dispatch harmless (D6), same as `backend::nwc`.
@@ -216,186 +222,6 @@ impl WalletBackend for CashuWalletBackend {
         // See the module doc comment: this backend's own workers own the
         // mint-result mapping directly against the richer data they hold.
         Vec::new()
-    }
-}
-
-impl CashuWalletBackend {
-    fn start_create_wallet(
-        &self,
-        ctx: WalletBackendContext<'_>,
-        mint: String,
-        correlation_id: Option<String>,
-    ) -> Vec<ActorCommand> {
-        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return fail_closed(
-                ui_codes::NO_ACCOUNT,
-                correlation_id,
-                "no active account".to_string(),
-            );
-        };
-        if !is_well_formed_mint_url(&mint) {
-            return fail_closed(
-                ui_codes::UNSUPPORTED_MINT,
-                correlation_id,
-                format!("unsupported mint: {mint}"),
-            );
-        }
-        // Fail closed rather than silently re-creating: a second wallet
-        // event would overwrite `mints`/`cashu_pubkey_hex` for a wallet that
-        // may already hold ledger balance under the first mint. This does
-        // not close the narrower "two `CreateCashuWallet` calls dispatched
-        // back-to-back before the first one's async chain finishes" race
-        // (`created` only flips once `on_signed` runs) — that needs the
-        // higher dispatch layer's own dedup, same as `nmp-nip47`'s
-        // `nmp.wallet.pay_invoice` action rejects a same-invoice retap in
-        // `start()` (see `nwc.rs`'s doc comment).
-        if lock_state(&self.state).created {
-            return fail_closed(
-                ui_codes::ALREADY_CREATED,
-                correlation_id,
-                "wallet already created".to_string(),
-            );
-        }
-        let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "create");
-        {
-            let mut state = lock_state(&self.state);
-            if let Err(e) = state.begin_operation_at(
-                operation_id.clone(),
-                WalletOperationKind::CreateCashuWallet,
-                ctx.now_secs,
-            ) {
-                return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
-            }
-        }
-        vec![ActorCommand::Protocol(Box::new(CreateCashuWalletCommand {
-            state: Arc::clone(&self.state),
-            operation_id,
-            account_pubkey,
-            mint,
-            correlation_id,
-        }))]
-    }
-
-    fn start_deposit_quote(
-        &self,
-        ctx: WalletBackendContext<'_>,
-        mint: String,
-        amount_sats: u64,
-        correlation_id: Option<String>,
-    ) -> Vec<ActorCommand> {
-        if amount_sats == 0 {
-            return fail_closed(
-                ui_codes::UNSUPPORTED_MINT,
-                correlation_id,
-                "deposit amount must be greater than zero".to_string(),
-            );
-        }
-        let accepted = {
-            let state = lock_state(&self.state);
-            // #2972 — compare canonically: the mint typed for THIS deposit
-            // need not be byte-identical to the string this wallet's
-            // `mints` allow-list was created with (trailing slash,
-            // scheme/host case) to be the same real mint.
-            state
-                .mints
-                .iter()
-                .any(|m| canonicalize_mint_url(m) == canonicalize_mint_url(&mint))
-        };
-        if !accepted {
-            return fail_closed(
-                ui_codes::UNSUPPORTED_MINT,
-                correlation_id,
-                "mint not accepted by this wallet".to_string(),
-            );
-        }
-        let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "deposit-quote");
-        {
-            let mut state = lock_state(&self.state);
-            if let Err(e) = state.begin_operation_at(
-                operation_id.clone(),
-                WalletOperationKind::DepositCashu,
-                ctx.now_secs,
-            ) {
-                return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
-            }
-            // Pre-effect record: this operation has an HTTP round-trip in
-            // flight BEFORE the worker thread (spawned in
-            // `CashuDepositQuoteCommand::run`) makes it — this is the
-            // "journals ... before the mint request" invariant #2895 W2
-            // requires (see `deposit.rs`'s module docs).
-            if let Err(e) = state.transition(&operation_id, WalletOperationState::MintPending) {
-                return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
-            }
-        }
-        vec![ActorCommand::Protocol(Box::new(CashuDepositQuoteCommand {
-            state: Arc::clone(&self.state),
-            operation_id,
-            mint,
-            amount_sats,
-            correlation_id,
-        }))]
-    }
-
-    fn start_complete_deposit(
-        &self,
-        ctx: WalletBackendContext<'_>,
-        quote_id: String,
-        correlation_id: Option<String>,
-    ) -> Vec<ActorCommand> {
-        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return fail_closed(
-                ui_codes::NO_ACCOUNT,
-                correlation_id,
-                "no active account".to_string(),
-            );
-        };
-        let pending = {
-            let state = lock_state(&self.state);
-            state.pending_deposits.get(&quote_id).cloned()
-        };
-        let Some(pending) = pending else {
-            // Never include the quote_id itself in the failure reason —
-            // secret-adjacent (see `state.rs`'s `pending_deposits` docs).
-            return fail_closed(
-                ui_codes::UNKNOWN_QUOTE,
-                correlation_id,
-                "no pending deposit for this quote".to_string(),
-            );
-        };
-        vec![ActorCommand::Protocol(Box::new(
-            CashuCompleteDepositCommand {
-                state: Arc::clone(&self.state),
-                operation_id: pending.operation_id,
-                quote_id,
-                mint: pending.mint,
-                amount_sats: pending.amount_sats,
-                account_pubkey,
-                correlation_id,
-            },
-        ))]
-    }
-
-    /// #2965 — the explicit `nmp.wallet.cashu.recover` action path. See
-    /// `recover.rs`'s module docs for why only the kind:17375 config is
-    /// resolved deterministically here, with proof recovery left to the
-    /// passive `on_self_authored_wallet_event` path regardless.
-    fn start_recover_wallet(
-        &self,
-        ctx: WalletBackendContext<'_>,
-        correlation_id: Option<String>,
-    ) -> Vec<ActorCommand> {
-        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return fail_closed(
-                ui_codes::NO_ACCOUNT,
-                correlation_id,
-                "no active account".to_string(),
-            );
-        };
-        vec![ActorCommand::Protocol(Box::new(RecoverCashuWalletCommand {
-            state: Arc::clone(&self.state),
-            account_pubkey,
-            correlation_id,
-        }))]
     }
 }
 

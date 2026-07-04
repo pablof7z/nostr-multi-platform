@@ -1,10 +1,12 @@
-//! Round-trip + fail-closed tests for the eight `nmp.wallet.*` typed payload
-//! codecs (#2920, epic #2864). Every fail-closed gate asserts the NEGATIVE.
+//! Round-trip + fail-closed tests for the nine `nmp.wallet.*` typed payload
+//! codecs (#2920, epic #2864; `set_mints` added by #2997). Every fail-closed
+//! gate asserts the NEGATIVE.
 
 use super::*;
 use crate::action::{
     CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction, SelectBackendAction,
+    CashuSetMintsAction, NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction,
+    SelectBackendAction,
 };
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
@@ -85,6 +87,46 @@ fn cashu_complete_deposit_round_trips() {
     assert_eq!(decoded, action);
 }
 
+// --- cashu.set_mints ---------------------------------------------------------------
+
+#[test]
+fn cashu_set_mints_round_trips() {
+    let action = CashuSetMintsAction {
+        mints: vec![
+            "https://mint-a.example".to_string(),
+            "https://mint-b.example".to_string(),
+        ],
+    };
+    let decoded = CashuSetMintsAction::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+}
+
+#[test]
+fn cashu_set_mints_wrong_schema_version_is_rejected() {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let mint_off = fbb.create_string("https://mint.example.com");
+    let mints = fbb.create_vector(&[mint_off]);
+    let payload = cashu_set_mints_generated::nmp::wallet::CashuSetMintsPayload::create(
+        &mut fbb,
+        &cashu_set_mints_generated::nmp::wallet::CashuSetMintsPayloadArgs {
+            schema_version: 999,
+            mints: Some(mints),
+        },
+    );
+    cashu_set_mints_generated::nmp::wallet::finish_cashu_set_mints_payload_buffer(
+        &mut fbb, payload,
+    );
+    let bytes = fbb.finished_data().to_vec();
+    let err = CashuSetMintsAction::decode(&bytes).expect_err("bad version rejected");
+    assert_eq!(
+        err,
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
+    );
+}
+
 // --- nutzap.publish_info -----------------------------------------------------------
 
 #[test]
@@ -152,6 +194,10 @@ fn malformed_buffers_are_rejected_for_every_namespace() {
     ));
     assert!(matches!(
         CashuCompleteDepositAction::decode(b"junk"),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        CashuSetMintsAction::decode(&[]),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(

@@ -46,6 +46,16 @@ pub enum WalletIntent {
         mint: String,
     },
     RecoverCashuWallet,
+    /// #2997 — key-preserving wallet config edit: replace the wallet's
+    /// accepted-mint list with `mints`, carrying the existing Cashu P2PK
+    /// privkey forward unchanged. Preconditions: a Cashu wallet must already
+    /// exist (`cashu_privkey`/`cashu_pubkey_hex` set) and `mints` must be
+    /// non-empty with every entry a well-formed mint URL — both checked
+    /// before dispatch AND again at the backend (see
+    /// `backend::cashu::CashuWalletBackend::start_set_mints`).
+    SetCashuMints {
+        mints: Vec<String>,
+    },
     PublishNutzapInfo,
     SendNutzap {
         recipient_pubkey: String,

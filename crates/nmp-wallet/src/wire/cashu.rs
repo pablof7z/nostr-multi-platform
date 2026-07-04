@@ -1,7 +1,8 @@
 //! Typed FlatBuffers payload codecs for the `nmp.wallet.cashu.*` family:
 //! `create` ([`CashuCreateAction`]), `recover` ([`CashuRecoverAction`]),
-//! `deposit_quote` ([`CashuDepositQuoteAction`]), and `complete_deposit`
-//! ([`CashuCompleteDepositAction`]). See `super` (`wire.rs`) module docs.
+//! `deposit_quote` ([`CashuDepositQuoteAction`]), `complete_deposit`
+//! ([`CashuCompleteDepositAction`]), and `set_mints`
+//! ([`CashuSetMintsAction`], #2997). See `super` (`wire.rs`) module docs.
 
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
 
@@ -9,9 +10,11 @@ use super::cashu_complete_deposit_generated::nmp::wallet as complete_deposit_fb;
 use super::cashu_create_generated::nmp::wallet as create_fb;
 use super::cashu_deposit_quote_generated::nmp::wallet as deposit_quote_fb;
 use super::cashu_recover_generated::nmp::wallet as recover_fb;
+use super::cashu_set_mints_generated::nmp::wallet as set_mints_fb;
 use super::{malformed, SCHEMA_VERSION};
 use crate::action::{
     CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
+    CashuSetMintsAction,
 };
 
 // --- CashuCreateAction (nmp.wallet.cashu.create) -----------------------------
@@ -172,6 +175,46 @@ impl ActionPayload for CashuCompleteDepositAction {
         }
         Ok(CashuCompleteDepositAction {
             quote_id: root.quote_id().to_string(),
+        })
+    }
+}
+
+// --- CashuSetMintsAction (nmp.wallet.cashu.set_mints) ------------------------
+
+impl ActionPayload for CashuSetMintsAction {
+    const SCHEMA_ID: &'static str = "nmp.wallet.cashu.set_mints";
+    const SCHEMA_VERSION: u32 = SCHEMA_VERSION;
+
+    fn encode(&self) -> Vec<u8> {
+        let mut fbb = flatbuffers::FlatBufferBuilder::new();
+        let mint_offsets: Vec<_> = self.mints.iter().map(|m| fbb.create_string(m)).collect();
+        let mints = fbb.create_vector(&mint_offsets);
+        let payload = set_mints_fb::CashuSetMintsPayload::create(
+            &mut fbb,
+            &set_mints_fb::CashuSetMintsPayloadArgs {
+                schema_version: SCHEMA_VERSION,
+                mints: Some(mints),
+            },
+        );
+        set_mints_fb::finish_cashu_set_mints_payload_buffer(&mut fbb, payload);
+        fbb.finished_data().to_vec()
+    }
+
+    fn decode(bytes: &[u8]) -> Result<Self, ActionPayloadDecodeError> {
+        if bytes.len() < 8 || !set_mints_fb::cashu_set_mints_payload_buffer_has_identifier(bytes) {
+            return Err(malformed("missing NWSM file identifier"));
+        }
+        let root = set_mints_fb::root_as_cashu_set_mints_payload(bytes)
+            .map_err(|e| malformed(format!("not a valid CashuSetMintsPayload buffer: {e}")))?;
+        let found = root.schema_version();
+        if found != SCHEMA_VERSION {
+            return Err(ActionPayloadDecodeError::SchemaVersionMismatch {
+                found,
+                expected: SCHEMA_VERSION,
+            });
+        }
+        Ok(CashuSetMintsAction {
+            mints: root.mints().iter().map(str::to_string).collect(),
         })
     }
 }

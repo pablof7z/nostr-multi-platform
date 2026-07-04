@@ -40,7 +40,8 @@ mod wire;
 
 pub use action::{
     CashuCompleteDepositAction, CashuCreateAction, CashuDepositQuoteAction, CashuRecoverAction,
-    NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction, SelectBackendAction,
+    CashuSetMintsAction, NutzapPublishInfoAction, NutzapRedeemAction, NutzapSendAction,
+    SelectBackendAction,
 };
 pub use backend::cashu::{CashuWalletBackend, CASHU_BACKEND_ID};
 pub use backend::nwc::{NwcWalletBackend, NWC_BACKEND_ID};
@@ -50,16 +51,16 @@ pub use backend::{
 };
 pub use capability::{WalletCapabilities, WalletCapability};
 pub use discovery_runtime::MintDiscoveryRuntime;
-pub use mint_discovery::{
-    aggregate_discovered_mints, DiscoveredMint, MintDiscoveryPolicy, MintDiscoveryProjection,
-    MintDiscoveryStore, MAX_DISCOVERED_MINTS,
-};
 pub use journal::{
     CorrelationId, DeleteCause, HistoryFactSeed, MintUrl, ProofAtom, ProofRef, ProofVerdict,
     Provenance, PubkeyRef, RelayRef, WalletApplySummary, WalletBalanceKey, WalletCauseIndex,
     WalletConsumedInput, WalletDeltaRing, WalletDerivedState, WalletEventId, WalletFact,
     WalletJournalError, WalletLedger, WalletOperation, WalletOperationId, WalletOperationJournal,
     WalletOperationKind, WalletOperationState, WalletSagaEvent, WalletTrailEntry, WalletUnit,
+};
+pub use mint_discovery::{
+    aggregate_discovered_mints, DiscoveredMint, MintDiscoveryPolicy, MintDiscoveryProjection,
+    MintDiscoveryStore, MAX_DISCOVERED_MINTS,
 };
 pub use payment_port::{
     WalletBackendPaymentCommandFactory, WalletBackendPaymentRouter, WalletBolt11Payment,
@@ -94,6 +95,10 @@ pub const ACTION_CASHU_CREATE: &str = "nmp.wallet.cashu.create";
 pub const ACTION_CASHU_RECOVER: &str = "nmp.wallet.cashu.recover";
 pub const ACTION_CASHU_DEPOSIT_QUOTE: &str = "nmp.wallet.cashu.deposit_quote";
 pub const ACTION_CASHU_COMPLETE_DEPOSIT: &str = "nmp.wallet.cashu.complete_deposit";
+/// #2997 — key-preserving wallet config edit: replaces the kind:17375
+/// accepted-mint list, carrying the existing Cashu P2PK privkey forward
+/// unchanged (never rotates it, unlike `cashu.create`'s `WalletConfig::generate`).
+pub const ACTION_CASHU_SET_MINTS: &str = "nmp.wallet.cashu.set_mints";
 pub const ACTION_NUTZAP_PUBLISH_INFO: &str = "nmp.wallet.nutzap.publish_info";
 pub const ACTION_NUTZAP_SEND: &str = "nmp.wallet.nutzap.send";
 pub const ACTION_NUTZAP_REDEEM: &str = "nmp.wallet.nutzap.redeem";
@@ -113,6 +118,7 @@ mod tests {
             ACTION_CASHU_RECOVER,
             ACTION_CASHU_DEPOSIT_QUOTE,
             ACTION_CASHU_COMPLETE_DEPOSIT,
+            ACTION_CASHU_SET_MINTS,
             ACTION_NUTZAP_PUBLISH_INFO,
             ACTION_NUTZAP_SEND,
             ACTION_NUTZAP_REDEEM,
@@ -136,6 +142,7 @@ mod tests {
             ACTION_CASHU_RECOVER,
             ACTION_CASHU_DEPOSIT_QUOTE,
             ACTION_CASHU_COMPLETE_DEPOSIT,
+            ACTION_CASHU_SET_MINTS,
             ACTION_NUTZAP_PUBLISH_INFO,
             ACTION_NUTZAP_SEND,
             ACTION_NUTZAP_REDEEM,

@@ -36,13 +36,18 @@ pub(super) fn history_kind_to_fb(kind: WalletHistoryKind) -> fb::WalletHistoryKi
     }
 }
 
-pub(super) fn history_kind_from_fb(kind: fb::WalletHistoryKind) -> Result<WalletHistoryKind, String> {
+pub(super) fn history_kind_from_fb(
+    kind: fb::WalletHistoryKind,
+) -> Result<WalletHistoryKind, String> {
     match kind {
         fb::WalletHistoryKind::Deposit => Ok(WalletHistoryKind::Deposit),
         fb::WalletHistoryKind::SendNutzap => Ok(WalletHistoryKind::SendNutzap),
         fb::WalletHistoryKind::RedeemNutzap => Ok(WalletHistoryKind::RedeemNutzap),
         fb::WalletHistoryKind::PayBolt11 => Ok(WalletHistoryKind::PayBolt11),
-        other => Err(format!("unknown WalletHistoryKind discriminant {}", other.0)),
+        other => Err(format!(
+            "unknown WalletHistoryKind discriminant {}",
+            other.0
+        )),
     }
 }
 
@@ -56,6 +61,7 @@ pub(super) fn operation_kind_to_fb(kind: WalletOperationKind) -> fb::WalletOpera
         WalletOperationKind::RedeemNutzap => fb::WalletOperationKind::RedeemNutzap,
         WalletOperationKind::DepositCashu => fb::WalletOperationKind::DepositCashu,
         WalletOperationKind::MeltCashu => fb::WalletOperationKind::MeltCashu,
+        WalletOperationKind::SetCashuMints => fb::WalletOperationKind::SetCashuMints,
     }
 }
 
@@ -71,6 +77,7 @@ pub(super) fn operation_kind_from_fb(
         fb::WalletOperationKind::RedeemNutzap => Ok(WalletOperationKind::RedeemNutzap),
         fb::WalletOperationKind::DepositCashu => Ok(WalletOperationKind::DepositCashu),
         fb::WalletOperationKind::MeltCashu => Ok(WalletOperationKind::MeltCashu),
+        fb::WalletOperationKind::SetCashuMints => Ok(WalletOperationKind::SetCashuMints),
         other => Err(format!(
             "unknown WalletOperationKind discriminant {}",
             other.0

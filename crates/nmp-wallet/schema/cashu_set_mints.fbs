@@ -1,0 +1,29 @@
+namespace nmp.wallet;
+
+// #2997 — typed FlatBuffers payload for the `nmp.wallet.cashu.set_mints`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace;
+// the registry adapter decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Mirrors `CashuSetMintsAction { mints }`, translated to
+// `WalletIntent::SetCashuMints` in `execute()`. Unlike `cashu.create`, this
+// action never mints a fresh Cashu P2PK privkey — it replaces the wallet's
+// accepted-mint allow-list while carrying the EXISTING privkey forward
+// unchanged (see `backend/cashu/set_mints.rs`).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-wallet/src/wire/generated \
+//         crates/nmp-wallet/schema/cashu_set_mints.fbs
+
+table CashuSetMintsPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The new accepted-mint list this wallet should carry, replacing the
+  // existing one in full. Must be non-empty; each entry must be a
+  // well-formed `http(s)://` mint URL (validated in `ActionModule::start`).
+  mints:[string] (required);
+}
+
+file_identifier "NWSM";
+root_type CashuSetMintsPayload;

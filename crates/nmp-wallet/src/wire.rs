@@ -1,7 +1,7 @@
-//! Typed FlatBuffers wire codecs for the eight `nmp.wallet.*` action payloads
-//! this crate owns (#2920, epic #2864): `select_backend`, the Cashu
-//! create/recover/deposit_quote/complete_deposit family, and the nutzap
-//! publish_info/send/redeem family.
+//! Typed FlatBuffers wire codecs for the nine `nmp.wallet.*` action payloads
+//! this crate owns (#2920, epic #2864; `set_mints` added by #2997):
+//! `select_backend`, the Cashu create/recover/deposit_quote/complete_deposit/
+//! set_mints family, and the nutzap publish_info/send/redeem family.
 //!
 //! These are the WRITE-direction typed payloads carried as the OPAQUE
 //! `DispatchEnvelope.payload`. The registry adapter decodes them through
@@ -68,6 +68,19 @@ pub mod cashu_recover_generated;
     unsafe_code,
     unused_imports
 )]
+#[path = "wire/generated/cashu_set_mints_generated.rs"]
+pub mod cashu_set_mints_generated;
+
+#[allow(
+    clippy::all,
+    dead_code,
+    deprecated,
+    missing_docs,
+    non_camel_case_types,
+    non_snake_case,
+    unsafe_code,
+    unused_imports
+)]
 #[path = "wire/generated/cashu_deposit_quote_generated.rs"]
 pub mod cashu_deposit_quote_generated;
 
@@ -123,7 +136,7 @@ pub mod nutzap_send_generated;
 #[path = "wire/generated/nutzap_redeem_generated.rs"]
 pub mod nutzap_redeem_generated;
 
-/// Wire schema version for all eight wallet action payloads this crate owns.
+/// Wire schema version for all nine wallet action payloads this crate owns.
 /// Bump the relevant `.fbs` schema's own version on any breaking wire change —
 /// kept as one constant today because every payload is at schema v1.
 pub(crate) const SCHEMA_VERSION: u32 = 1;

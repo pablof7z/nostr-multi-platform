@@ -19,6 +19,7 @@ mod select_backend;
 pub use cashu::{
     CashuCompleteDepositAction, CashuCompleteDepositModule, CashuCreateAction, CashuCreateModule,
     CashuDepositQuoteAction, CashuDepositQuoteModule, CashuRecoverAction, CashuRecoverModule,
+    CashuSetMintsAction, CashuSetMintsModule,
 };
 pub use nutzap::{
     NutzapPublishInfoAction, NutzapPublishInfoModule, NutzapRedeemAction, NutzapRedeemModule,

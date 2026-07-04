@@ -59,7 +59,10 @@ fn run_send(
 }
 
 fn expect_error_code(errors: &RecordingErrorSurface, code: &str) {
-    assert_eq!(errors.last_token_code.lock().unwrap().as_deref(), Some(code));
+    assert_eq!(
+        errors.last_token_code.lock().unwrap().as_deref(),
+        Some(code)
+    );
 }
 
 #[test]
@@ -180,7 +183,11 @@ fn retry_after_interest_delivers_recipient_info_proceeds_past_the_gate() {
         mints: vec![MINT.to_string()],
         cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     // Same backend (no proofs) — the next gate it should hit is insufficient
     // balance, never the recipient-info gate again.
     let errors = run_send(&backend, &cached, "cid-retry-2", 21);
@@ -195,7 +202,11 @@ fn recipient_info_with_no_relays_fails_closed() {
         mints: vec![MINT.to_string()],
         cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     let errors = run_send(&backend, &cached, "cid-no-relays", 21);
     expect_error_code(&errors, ui_codes::NO_RECIPIENT_RELAYS);
 }
@@ -208,7 +219,11 @@ fn recipient_info_with_no_p2pk_pubkey_fails_closed() {
         mints: vec![MINT.to_string()],
         cashu_pubkey: None,
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     let errors = run_send(&backend, &cached, "cid-no-p2pk", 21);
     expect_error_code(&errors, ui_codes::NO_RECIPIENT_P2PK);
 }
@@ -221,7 +236,11 @@ fn no_overlapping_mint_fails_closed() {
         mints: vec!["https://a-different-mint.example".to_string()],
         cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     let errors = run_send(&backend, &cached, "cid-no-mint", 21);
     expect_error_code(&errors, ui_codes::NO_TRUSTED_MINT);
 }
@@ -234,10 +253,70 @@ fn insufficient_balance_fails_closed() {
         mints: vec![MINT.to_string()],
         cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     // No proofs at all in `backend`'s state.
     let errors = run_send(&backend, &cached, "cid-insufficient", 21);
     expect_error_code(&errors, ui_codes::INSUFFICIENT_BALANCE);
+}
+
+/// #2997 (issue #2997): the recipient lists TWO mutually-trusted mints; this
+/// wallet is only funded on the SECOND one. Before the fix, `run()` picked
+/// the FIRST mutual mint unconditionally and failed the whole send with
+/// `INSUFFICIENT_BALANCE` even though the second mutual mint could have
+/// covered it. The corrected selection must skip the underfunded first mint
+/// and settle on the funded second one.
+///
+/// Assertions are deliberately scoped to what `run()` does SYNCHRONOUSLY,
+/// before it spawns the worker thread that would need a real mint HTTP
+/// round-trip (no mock mint here, matching `insufficient_balance_fails_closed`'s
+/// no-network style): (1) no fail-closed `UiToken` is raised through `ctx`
+/// (the mint-choice gate's own failure path — worker-thread failures use a
+/// different channel entirely, so this assertion cannot race the background
+/// thread), and (2) the reserved proof was actually removed from MINT_B's
+/// inventory (also done synchronously in `run()`, before the thread spawns),
+/// proving the code proceeded to spend MINT_B rather than failing on MINT_A.
+#[test]
+fn send_selects_a_later_mutual_mint_when_the_first_is_underfunded() {
+    const MINT_A: &str = "https://mint-a.example";
+    const MINT_B: &str = "https://mint-b.example";
+
+    let backend = CashuWalletBackend::new();
+    {
+        let mut state = state::lock_state(&backend.state);
+        // This wallet accepts BOTH mints, but only holds proofs on MINT_B.
+        state.mints = vec![MINT_A.to_string(), MINT_B.to_string()];
+        state.add_proofs(None, MINT_B.to_string(), vec![synthetic_proof(100, "02bb")]);
+    }
+    let info = nmp_nip60::nutzap::NutZapInfo {
+        relays: vec!["wss://recipient-relay.example".to_string()],
+        // Recipient lists MINT_A first, then MINT_B — both mutual.
+        mints: vec![MINT_A.to_string(), MINT_B.to_string()],
+        cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
+    };
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
+    let errors = run_send(&backend, &cached, "cid-mutual-mint-fallback", 21);
+
+    // No fail-closed token must have been raised: the send must have reached
+    // past proof selection into the worker-thread mint round-trip, rather
+    // than stopping at `NO_TRUSTED_MINT`/`INSUFFICIENT_BALANCE` on MINT_A.
+    assert_eq!(
+        errors.last_token_code.lock().unwrap().as_deref(),
+        None,
+        "a funded second mutual mint must not fail closed"
+    );
+    let state = state::lock_state(&backend.state);
+    assert!(
+        state.proofs.iter().all(|p| p.proof.c != "02bb"),
+        "the reserved MINT_B proof must have been removed (spent), proving MINT_B was chosen"
+    );
 }
 
 /// The core saga invariant, mirroring `deposit_tests`'s equivalent: consumed
@@ -255,7 +334,11 @@ fn insufficient_balance_never_reaches_mint_pending() {
         mints: vec![MINT.to_string()],
         cashu_pubkey: Some("02".to_string() + &"44".repeat(32)),
     };
-    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(RECIPIENT, &info, 1_699_999_000)]);
+    let cached = FixedCachedEvents(vec![nutzap_info_kernel_event(
+        RECIPIENT,
+        &info,
+        1_699_999_000,
+    )]);
     let _rx = run_send(&backend, &cached, "cid-op-state", 21);
     let state = state::lock_state(&backend.state);
     let op = state
