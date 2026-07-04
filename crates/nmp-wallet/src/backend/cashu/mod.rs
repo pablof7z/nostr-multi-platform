@@ -46,6 +46,7 @@
 //!   opposite reason ("not this backend's concept").
 
 mod chain;
+mod check_state;
 mod create_wallet;
 mod deposit;
 mod events;

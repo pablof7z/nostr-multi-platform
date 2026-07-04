@@ -44,16 +44,19 @@
 //! — a relay resend) or tombstoned (superseded by an earlier-processed `del`
 //! that named it, however out of order).
 //!
-//! # Deferred: mint check-state on recovered proofs (issue #2977)
+//! # Mint check-state on recovered proofs (#2977)
 //!
-//! This module does NOT verify a recovered proof is still unspent at the
-//! mint (NUT-07) before counting it as spendable balance — only the local
-//! `del`/dedup confluence above. A proof spent by another client/device
-//! without a corresponding rollover ever reaching this account's relays
-//! would show as (transiently optimistic) balance here; a later spend
-//! attempt fails safely at the mint's own swap call (never double-spends —
-//! see `send_worker.rs`), but the displayed balance can be wrong until then.
-//! Tracked as an explicit follow-up, not a silent gap.
+//! `ingest_token_event` itself only ever applies the local `del`/dedup
+//! confluence above — it never asks the mint whether a proof is still
+//! unspent. That reconciliation is [`super::check_state::run_check_state_pass`],
+//! kicked off by this module's `build_passive_ingest_command` continuation
+//! (below, whenever fresh proofs were actually folded) and by
+//! `recover.rs`'s `RecoverCashuWalletCommand` (which additionally defers its
+//! own `RecordActionSuccess` until that pass completes, so a caller polling
+//! balance right after `nmp.wallet.cashu.recover` returns sees the
+//! mint-reconciled, UNSPENT-only figure). See that module's docs for the
+//! fail-safe (never drop a proof the mint didn't affirmatively report
+//! spent).
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -132,12 +135,18 @@ pub(super) fn ingest_wallet_config(
 /// empty when unknown) — carried into the ledger's `Provenance::Relay` fact,
 /// never into anything logged. See module docs for the confluence
 /// guarantee this relies on `WalletLedger` for.
+///
+/// Returns whether this call actually folded fresh proofs into `state` (as
+/// opposed to a no-op: a relay resend, a `del`-superseded event, or an
+/// event whose proofs were already held under some other token event) — the
+/// caller (`build_passive_ingest_command`, below) uses this to decide
+/// whether a mint check-state pass (#2977) is worth kicking off at all.
 pub(super) fn ingest_token_event(
     state: &Mutex<CashuWalletState>,
     event_id: &str,
     plaintext: &str,
     relay_hint: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let record: TokenEventPlaintext =
         serde_json::from_str(plaintext).map_err(|e| format!("token event decode: {e}"))?;
     let this_id = WalletEventId::new(event_id.to_string());
@@ -168,7 +177,7 @@ pub(super) fn ingest_token_event(
     // earlier-processed `del` naming this event: nothing further to do,
     // never double-counted.
     if s.ledger.state().is_token_live(&this_id) || s.ledger.state().is_token_tombstoned(&this_id) {
-        return Ok(());
+        return Ok(false);
     }
 
     // Belt-and-suspenders dedup by proof `C` beyond the per-event guard
@@ -182,7 +191,7 @@ pub(super) fn ingest_token_event(
         .filter(|p| !known_cs.contains(p.c.as_str()))
         .collect();
     if fresh_proofs.is_empty() {
-        return Ok(());
+        return Ok(false);
     }
 
     let proof_atoms: Vec<ProofAtom> = fresh_proofs
@@ -200,7 +209,7 @@ pub(super) fn ingest_token_event(
         via: Provenance::Relay(RelayRef::new(relay_hint)),
     });
     s.add_proofs(Some(event_id.to_string()), mint, fresh_proofs);
-    Ok(())
+    Ok(true)
 }
 
 /// Build the `ActorCommand` that decrypts a self-authored kind:17375/7375
@@ -233,11 +242,28 @@ pub(super) fn build_passive_ingest_command(
             let Ok(plaintext) = outcome else {
                 return;
             };
-            let _ = if event_kind == nmp_nip60::kinds::KIND_NIP60_WALLET {
-                ingest_wallet_config(&state, &plaintext)
-            } else {
+            if event_kind == nmp_nip60::kinds::KIND_NIP60_WALLET {
+                let _ = ingest_wallet_config(&state, &plaintext);
+                return;
+            }
+            let Ok(folded_fresh_proofs) =
                 ingest_token_event(&state, &event_id, &plaintext, &relay_hint)
+            else {
+                return;
             };
+            if folded_fresh_proofs {
+                // #2977 — this event actually added proofs (not a relay
+                // resend / del-superseded no-op): reconcile them against
+                // their mint before they can be read as final balance. See
+                // module docs ("Mint check-state on recovered proofs").
+                // Silent and off the actor thread, same posture as the
+                // rest of this passive path — no correlation id to report
+                // against here.
+                let state_for_probe = Arc::clone(&state);
+                std::thread::spawn(move || {
+                    super::check_state::run_check_state_pass(&state_for_probe);
+                });
+            }
         },
     )
 }

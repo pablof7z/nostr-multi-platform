@@ -11,6 +11,19 @@
 //! (cold-start replay + live tail of the account's own self-authored wallet
 //! events), regardless of whether this action ever ran. `ingest.rs` holds
 //! the actual decode/fold logic both paths share.
+//!
+//! # Check-state before reporting success (#2977)
+//!
+//! Both the idempotent ("already loaded") branch and the happy-path decrypt
+//! chain defer `RecordActionSuccess` until AFTER
+//! `check_state::run_check_state_pass` has reconciled whatever proofs are
+//! currently held against their mints — this is the one caller of that pass
+//! that "awaits" it rather than firing it silently: a caller polling balance
+//! right after `nmp.wallet.cashu.recover` returns must see the
+//! mint-reconciled, UNSPENT-only figure, not a transiently optimistic one.
+//! Both branches spawn their own `std::thread` for this (D8 — mint HTTP
+//! never blocks the actor thread), mirroring every other worker in this
+//! backend.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -24,6 +37,7 @@ use nmp_core::ui_token::UiToken;
 use nmp_core::CommandSender;
 use nmp_nip60::kinds::KIND_NIP60_WALLET;
 
+use super::check_state::run_check_state_pass;
 use super::ingest::ingest_wallet_config;
 use super::state::{lock_state, CashuWalletState};
 use super::ui_codes;
@@ -55,10 +69,18 @@ impl ProtocolCommand for RecoverCashuWalletCommand {
             // Idempotent: a wallet is already loaded — by a prior
             // `CreateCashuWallet`, a prior `RecoverCashuWallet`, or the
             // passive replay path winning the race. The caller's intent
-            // ("make sure I have my existing wallet") is already satisfied.
-            if let Some(id) = correlation_id {
-                ctx.record_action_success(id, None);
-            }
+            // ("make sure I have my existing wallet") is already satisfied
+            // for the config; still worth reconciling whatever proofs are
+            // already held against their mints before reporting success
+            // (#2977 — see module docs) rather than assuming the passive
+            // path's own check-state pass already ran.
+            let worker_tx = ctx.command_sender_clone();
+            std::thread::spawn(move || {
+                run_check_state_pass(&state);
+                if let Some(id) = correlation_id {
+                    let _ = worker_tx.send(build_record_action_success(id, None));
+                }
+            });
             return Ok(());
         }
 
@@ -104,9 +126,16 @@ impl ProtocolCommand for RecoverCashuWalletCommand {
                 };
                 match ingest_wallet_config(&state, &plaintext) {
                     Ok(()) => {
-                        if let Some(id) = correlation_id {
-                            let _ = tx_for_cont.send(build_record_action_success(id, None));
-                        }
+                        // #2977 — reconcile before reporting success (see
+                        // module docs); off the actor thread, this
+                        // continuation's own thread since mint HTTP is
+                        // blocking (D8).
+                        std::thread::spawn(move || {
+                            run_check_state_pass(&state);
+                            if let Some(id) = correlation_id {
+                                let _ = tx_for_cont.send(build_record_action_success(id, None));
+                            }
+                        });
                     }
                     Err(reason) => report_failure(&tx_for_cont, correlation_id, reason),
                 }

@@ -75,7 +75,11 @@ fn no_existing_wallet_fails_closed_with_the_documented_code() {
 
 /// A wallet already loaded (by a prior create, a prior recover, or the
 /// passive replay path winning the race) makes `RecoverCashuWallet` an
-/// idempotent success — never re-decrypts, never re-dispatches.
+/// idempotent success — never re-decrypts, never re-dispatches. #2977: this
+/// branch now spawns a check-state pass over whatever proofs are already
+/// held (a no-op here, since none are) and defers success to AFTER it, so
+/// success now lands on the worker channel rather than synchronously
+/// through `ctx.record_action_success`.
 #[test]
 fn already_created_recovers_idempotently() {
     let backend = CashuWalletBackend::new();
@@ -105,20 +109,19 @@ fn already_created_recovers_idempotently() {
         cmd.run(&mut c).expect("run returns Ok");
     }
 
-    // `ctx.record_action_success` reports synchronously through `send`
-    // (the sink), never the worker channel — distinct from the async
-    // decrypt-chain's `build_record_action_success`, which lands on the
-    // worker channel instead (see the happy-path test below).
+    // Never a decrypt (idempotent no-op) — but the check-state pass +
+    // deferred success DO land on the worker channel, from the spawned
+    // thread, not synchronously through the sink.
+    match recv_command(&worker_rx) {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
+            assert_eq!(correlation_id, "cid-idem");
+        }
+        other => panic!("expected RecordActionSuccess, got {other:?}"),
+    }
     assert!(
-        worker_rx.try_recv().is_err(),
-        "an idempotent no-op must never dispatch a decrypt"
+        sink.sends.lock().unwrap().is_empty(),
+        "success now flows through the worker channel, not the sync sink"
     );
-    let sends = sink.sends.lock().unwrap();
-    assert!(matches!(
-        sends.as_slice(),
-        [ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. })]
-            if correlation_id == "cid-idem"
-    ));
 }
 
 /// The full happy path: a cached kind:17375 is found, decrypted, and folded
