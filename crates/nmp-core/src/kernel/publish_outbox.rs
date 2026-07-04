@@ -9,18 +9,35 @@ use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
 
 use super::publish_engine_wire::describe_engine_error;
-use super::{Kernel, OutboxSummarySnapshot, PublishOutboxItem, PublishOutboxRelay};
+use super::{
+    Kernel, OutboxSummarySnapshot, PublishOutboxItem, PublishOutboxRelay, PublishQueueEntry,
+};
 
 impl Kernel {
+    /// User-facing outbox rows: every currently in-flight publish, PLUS every
+    /// publish that has permanently failed on every targeted relay.
+    ///
+    /// #3022 (honesty gap): `finalize_completed_rows` correctly evicts a row
+    /// from `PublishEngine::snapshot().in_flight` once every relay settles
+    /// `FailedAfterRetries` — the row IS terminal. But that eviction must not
+    /// make the permanent failure invisible: before this fix a note that had
+    /// genuinely failed to reach any relay looked byte-identical in the
+    /// Outbox to "nothing pending / all published". The durable
+    /// `publish_queue` projection (`Kernel::publish_queue_snapshot`, a bounded
+    /// 16-row window keyed by event id / handle) already retains the settled
+    /// `"failed"` verdict plus the retry payload for exactly this reason
+    /// (T128) — it is simply never consumed here. Fold every `"failed"`
+    /// `publish_queue` row not already covered by an `in_flight` row into the
+    /// outbox as a distinct, actionable row (status `"failed"`, `can_retry`,
+    /// the event id, and which relays rejected it) — same honesty bar
+    /// #3020/#3021 gave the "still pending" case.
     pub(super) fn publish_outbox_items(&self) -> Vec<PublishOutboxItem> {
-        let mut rows = self.publish_engine.snapshot().in_flight.clone();
-        rows.sort_by(|left, right| {
-            right
-                .created_at
-                .cmp(&left.created_at)
-                .then_with(|| left.event_id.cmp(&right.event_id))
-        });
-        rows.into_iter()
+        let rows = self.publish_engine.snapshot().in_flight.clone();
+        let in_flight_handles: std::collections::HashSet<String> =
+            rows.iter().map(|row| row.handle.clone()).collect();
+
+        let mut items: Vec<PublishOutboxItem> = rows
+            .into_iter()
             .map(|row| {
                 // Build a quick canonical-URL → reasons lookup so the per_relay
                 // iteration stays O(n + m) instead of O(n*m). Keys match the
@@ -69,21 +86,39 @@ impl Kernel {
                     relays,
                 }
             })
-            .collect()
+            .collect();
+
+        for entry in self.publish_queue_snapshot() {
+            if entry.status != "failed" || in_flight_handles.contains(entry.event_id.as_str()) {
+                continue;
+            }
+            items.push(publish_outbox_item_from_failed_queue_entry(entry));
+        }
+
+        items.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| left.event_id.cmp(&right.event_id))
+        });
+        items
     }
 
     /// Raw per-status counters for the publish-outbox summary header.
     /// ADR-0072 / aim.md §2 #4: the previously-emitted pre-formatted English
     /// `title` / `subtitle` strings are removed; shells derive display strings
     /// from these raw counts using their own locale/formatting rules.
+    ///
+    /// Derived from [`Self::publish_outbox_items`] (single source of truth)
+    /// so the counters and the rows they summarise can never drift apart —
+    /// #3022's merged-in `"failed"` rows are counted here for free.
     pub(super) fn outbox_summary_snapshot(&self) -> OutboxSummarySnapshot {
-        let rows = &self.publish_engine.snapshot().in_flight;
         let mut sending: u32 = 0;
         let mut retrying: u32 = 0;
         let mut queued: u32 = 0;
         let mut failed: u32 = 0;
-        for row in rows {
-            match publish_outbox_status(&row.per_relay).as_str() {
+        for item in self.publish_outbox_items() {
+            match item.status.as_str() {
                 "sending" => sending = sending.saturating_add(1),
                 "retrying" => retrying = retrying.saturating_add(1),
                 "failed" => failed = failed.saturating_add(1),
@@ -248,6 +283,61 @@ pub(super) fn format_relay_reasons(reasons: &[RelaySelectionReason]) -> String {
         .map(format_relay_reason)
         .collect::<Vec<_>>()
         .join("; ")
+}
+
+/// Build a terminal `"failed"` outbox row from a settled `publish_queue`
+/// entry (#3022).
+///
+/// `publish_queue` is the ONLY place a permanently-failed publish's
+/// `content` / `created_at` survive past `in_flight` eviction — they ride on
+/// the entry's retained `signed_event` (kept specifically to serve a future
+/// retry, never serialised itself: `#[serde(skip)]`). `relay_outcomes`
+/// mirrors `RelayAckOutcome { relay_url, status: "ok"|"failed", message,
+/// relay_reason }`, already field-for-field compatible with
+/// `PublishOutboxRelay` — every relay is `"failed"` here by construction
+/// (`publish_entry_can_retry`'s `"failed"` status means every targeted relay
+/// reached `FailedAfterRetries`, no `Ok` survived).
+fn publish_outbox_item_from_failed_queue_entry(entry: &PublishQueueEntry) -> PublishOutboxItem {
+    let (content, created_at) = entry
+        .signed_event
+        .as_ref()
+        .map(|signed| (signed.unsigned.content.clone(), signed.unsigned.created_at))
+        .unwrap_or_default();
+    let relays = entry
+        .relay_outcomes
+        .iter()
+        .map(|outcome| PublishOutboxRelay {
+            relay_url: outcome.relay_url.clone(),
+            status: outcome.status.clone(),
+            attempt: 0,
+            message: outcome.message.clone(),
+            relay_reason: outcome.relay_reason.clone(),
+        })
+        .collect::<Vec<_>>();
+    // `entry.target_relays` is the count captured at dispatch time (T128);
+    // fall back to the settled outcome count for the rare pre-T128 /
+    // `NoTargets` row that never recorded one.
+    let target_relays = if entry.target_relays > 0 {
+        entry.target_relays
+    } else {
+        relays.len()
+    };
+    PublishOutboxItem {
+        // #3020/#3021: `event_id` doubles as the publish handle throughout
+        // the engine ("event ids are unique per publish"); `publish_queue`
+        // never stored a separate correlation handle, so the two are the
+        // same value here too — `retry_publish_now`/`cancel_publish` both
+        // resolve by this id.
+        handle: entry.event_id.clone(),
+        event_id: entry.event_id.clone(),
+        kind: entry.kind,
+        content,
+        created_at,
+        status: "failed".to_string(),
+        can_retry: entry.can_retry,
+        target_relays,
+        relays,
+    }
 }
 
 fn publish_outbox_relay(

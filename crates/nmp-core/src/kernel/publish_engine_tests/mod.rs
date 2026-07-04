@@ -34,6 +34,7 @@ pub(super) use helpers_tests::{
 };
 
 mod chokepoint_tests;
+mod outbox_failed_honesty_tests;
 mod t117_tests;
 mod t127_tests;
 mod user_actions_tests;
