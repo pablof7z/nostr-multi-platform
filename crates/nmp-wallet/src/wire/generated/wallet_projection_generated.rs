@@ -1618,6 +1618,12 @@ pub mod nmp {
             pub const VT_HAS_TIMESTAMP: ::flatbuffers::VOffsetT = 16;
             pub const VT_TIMESTAMP: ::flatbuffers::VOffsetT = 18;
             pub const VT_STATE: ::flatbuffers::VOffsetT = 20;
+            pub const VT_HAS_SOURCE_MINT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_SOURCE_MINT: ::flatbuffers::VOffsetT = 24;
+            pub const VT_HAS_TARGET_MINT: ::flatbuffers::VOffsetT = 26;
+            pub const VT_TARGET_MINT: ::flatbuffers::VOffsetT = 28;
+            pub const VT_HAS_FEE_PAID_SATS: ::flatbuffers::VOffsetT = 30;
+            pub const VT_FEE_PAID_SATS: ::flatbuffers::VOffsetT = 32;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1634,8 +1640,15 @@ pub mod nmp {
                 args: &'args WalletHistoryRowArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletHistoryRow<'bldr>> {
                 let mut builder = WalletHistoryRowBuilder::new(_fbb);
+                builder.add_fee_paid_sats(args.fee_paid_sats);
                 builder.add_timestamp(args.timestamp);
                 builder.add_amount(args.amount);
+                if let Some(x) = args.target_mint {
+                    builder.add_target_mint(x);
+                }
+                if let Some(x) = args.source_mint {
+                    builder.add_source_mint(x);
+                }
                 if let Some(x) = args.state {
                     builder.add_state(x);
                 }
@@ -1648,6 +1661,9 @@ pub mod nmp {
                 if let Some(x) = args.operation_id {
                     builder.add_operation_id(x);
                 }
+                builder.add_has_fee_paid_sats(args.has_fee_paid_sats);
+                builder.add_has_target_mint(args.has_target_mint);
+                builder.add_has_source_mint(args.has_source_mint);
                 builder.add_has_timestamp(args.has_timestamp);
                 builder.add_has_sender(args.has_sender);
                 builder.add_kind(args.kind);
@@ -1760,6 +1776,74 @@ pub mod nmp {
                     )
                 }
             }
+            #[inline]
+            pub fn has_source_mint(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletHistoryRow::VT_HAS_SOURCE_MINT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn source_mint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletHistoryRow::VT_SOURCE_MINT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_target_mint(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletHistoryRow::VT_HAS_TARGET_MINT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn target_mint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletHistoryRow::VT_TARGET_MINT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_fee_paid_sats(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletHistoryRow::VT_HAS_FEE_PAID_SATS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn fee_paid_sats(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletHistoryRow::VT_FEE_PAID_SATS, Some(0))
+                        .unwrap()
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for WalletHistoryRow<'_> {
@@ -1794,6 +1878,20 @@ pub mod nmp {
                         Self::VT_STATE,
                         false,
                     )?
+                    .visit_field::<bool>("has_source_mint", Self::VT_HAS_SOURCE_MINT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "source_mint",
+                        Self::VT_SOURCE_MINT,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_target_mint", Self::VT_HAS_TARGET_MINT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "target_mint",
+                        Self::VT_TARGET_MINT,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_fee_paid_sats", Self::VT_HAS_FEE_PAID_SATS, false)?
+                    .visit_field::<u64>("fee_paid_sats", Self::VT_FEE_PAID_SATS, false)?
                     .finish();
                 Ok(())
             }
@@ -1808,6 +1906,12 @@ pub mod nmp {
             pub has_timestamp: bool,
             pub timestamp: u64,
             pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_source_mint: bool,
+            pub source_mint: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_target_mint: bool,
+            pub target_mint: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_fee_paid_sats: bool,
+            pub fee_paid_sats: u64,
         }
         impl<'a> Default for WalletHistoryRowArgs<'a> {
             #[inline]
@@ -1822,6 +1926,12 @@ pub mod nmp {
                     has_timestamp: false,
                     timestamp: 0,
                     state: None,
+                    has_source_mint: false,
+                    source_mint: None,
+                    has_target_mint: false,
+                    target_mint: None,
+                    has_fee_paid_sats: false,
+                    fee_paid_sats: 0,
                 }
             }
         }
@@ -1891,6 +2001,49 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_has_source_mint(&mut self, has_source_mint: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletHistoryRow::VT_HAS_SOURCE_MINT,
+                    has_source_mint,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_source_mint(&mut self, source_mint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletHistoryRow::VT_SOURCE_MINT,
+                    source_mint,
+                );
+            }
+            #[inline]
+            pub fn add_has_target_mint(&mut self, has_target_mint: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletHistoryRow::VT_HAS_TARGET_MINT,
+                    has_target_mint,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_target_mint(&mut self, target_mint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletHistoryRow::VT_TARGET_MINT,
+                    target_mint,
+                );
+            }
+            #[inline]
+            pub fn add_has_fee_paid_sats(&mut self, has_fee_paid_sats: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletHistoryRow::VT_HAS_FEE_PAID_SATS,
+                    has_fee_paid_sats,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_fee_paid_sats(&mut self, fee_paid_sats: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletHistoryRow::VT_FEE_PAID_SATS, fee_paid_sats, 0);
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletHistoryRowBuilder<'a, 'b, A> {
@@ -1919,6 +2072,12 @@ pub mod nmp {
                 ds.field("has_timestamp", &self.has_timestamp());
                 ds.field("timestamp", &self.timestamp());
                 ds.field("state", &self.state());
+                ds.field("has_source_mint", &self.has_source_mint());
+                ds.field("source_mint", &self.source_mint());
+                ds.field("has_target_mint", &self.has_target_mint());
+                ds.field("target_mint", &self.target_mint());
+                ds.field("has_fee_paid_sats", &self.has_fee_paid_sats());
+                ds.field("fee_paid_sats", &self.fee_paid_sats());
                 ds.finish()
             }
         }

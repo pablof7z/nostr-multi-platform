@@ -40,6 +40,14 @@ fn fully_populated() -> WalletProjection {
         recorded_amount: Some(63),
         recorded_sender: Some("cc".repeat(32)),
         recorded_at: Some(1_700_000_000),
+        // #3008 — not yet carried on the `WalletOperation` wire table (see
+        // `rows.rs::decode_operations`'s doc comment); a fully-populated
+        // fixture used for wire round-tripping must match what the codec
+        // actually preserves, so these stay `None` here even though a real
+        // in-flight cross-mint-funded send could have them set in memory.
+        recorded_fee_sats: None,
+        recorded_cross_mint_source: None,
+        recorded_cross_mint_fee_sats: None,
     };
 
     WalletProjection {
@@ -70,6 +78,9 @@ fn fully_populated() -> WalletProjection {
             sender: Some("dd".repeat(32)),
             timestamp: Some(1_700_000_100),
             state: "settled".to_string(),
+            source_mint: Some("https://source-mint.example".to_string()),
+            target_mint: Some("https://mint.example".to_string()),
+            fee_paid_sats: Some(3),
         }],
         receive_rows: vec![WalletReceiveRow {
             event_id: "recv-1".to_string(),
@@ -121,6 +132,46 @@ fn round_trips_operation_with_no_correlation_id_or_inputs() {
     assert!(op.recorded_amount.is_none());
     assert!(op.recorded_sender.is_none());
     assert!(op.recorded_at.is_none());
+    assert!(op.recorded_fee_sats.is_none());
+    assert!(op.recorded_cross_mint_source.is_none());
+    assert!(op.recorded_cross_mint_fee_sats.is_none());
+}
+
+/// #3008 — `WalletHistoryRow`'s new `source_mint`/`target_mint`/
+/// `fee_paid_sats` fields round-trip both `Some` (the cross-mint case) and
+/// `None` (an intra-mint send/deposit/redeem that never sets them).
+#[test]
+fn history_row_source_target_fee_fields_round_trip() {
+    let with_fields = WalletHistoryRow {
+        operation_id: "op-cross".to_string(),
+        kind: WalletHistoryKind::SendNutzap,
+        amount: 100,
+        unit: "sat".to_string(),
+        sender: None,
+        timestamp: Some(1_700_000_300),
+        state: "settled".to_string(),
+        source_mint: Some("https://source-mint.example".to_string()),
+        target_mint: Some("https://target-mint.example".to_string()),
+        fee_paid_sats: Some(6),
+    };
+    let without_fields = WalletHistoryRow {
+        operation_id: "op-intra".to_string(),
+        kind: WalletHistoryKind::Deposit,
+        amount: 50,
+        unit: "sat".to_string(),
+        sender: None,
+        timestamp: None,
+        state: "settled".to_string(),
+        source_mint: None,
+        target_mint: None,
+        fee_paid_sats: None,
+    };
+    let projection = WalletProjection::empty()
+        .with_recent_history([with_fields.clone(), without_fields.clone()]);
+    let bytes = encode_wallet_projection(&projection);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.recent_history[0], with_fields);
+    assert_eq!(decoded.recent_history[1], without_fields);
 }
 
 #[test]
@@ -155,6 +206,9 @@ fn each_history_kind_variant_round_trips() {
             sender: None,
             timestamp: None,
             state: "settled".to_string(),
+            source_mint: None,
+            target_mint: None,
+            fee_paid_sats: None,
         }]);
         let bytes = encode_wallet_projection(&projection);
         let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");

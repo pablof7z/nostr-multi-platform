@@ -124,6 +124,14 @@ pub(super) fn encode_history<'a>(
         let unit = fbb.create_string(&row.unit);
         let state = fbb.create_string(&row.state);
         let sender = row.sender.as_ref().map(|value| fbb.create_string(value));
+        let source_mint = row
+            .source_mint
+            .as_ref()
+            .map(|value| fbb.create_string(value));
+        let target_mint = row
+            .target_mint
+            .as_ref()
+            .map(|value| fbb.create_string(value));
         offsets.push(fb::WalletHistoryRow::create(
             fbb,
             &fb::WalletHistoryRowArgs {
@@ -136,6 +144,12 @@ pub(super) fn encode_history<'a>(
                 has_timestamp: row.timestamp.is_some(),
                 timestamp: row.timestamp.unwrap_or(0),
                 state: Some(state),
+                has_source_mint: row.source_mint.is_some(),
+                source_mint,
+                has_target_mint: row.target_mint.is_some(),
+                target_mint,
+                has_fee_paid_sats: row.fee_paid_sats.is_some(),
+                fee_paid_sats: row.fee_paid_sats.unwrap_or(0),
             },
         ));
     }
@@ -245,6 +259,13 @@ pub(super) fn decode_operations(
             recorded_amount,
             recorded_sender,
             recorded_at,
+            // #3008 — not yet carried on the `WalletOperation` wire table
+            // (only `WalletHistoryRow`, the terminal-operation display
+            // shape, needs these on the wire today; `pending_operations`
+            // stays display-light). Always `None` on decode.
+            recorded_fee_sats: None,
+            recorded_cross_mint_source: None,
+            recorded_cross_mint_fee_sats: None,
         });
     }
     Ok(out)
@@ -281,6 +302,22 @@ pub(super) fn decode_history(
         } else {
             None
         };
+        let source_mint = if row.has_source_mint() {
+            Some(str_field(
+                row.source_mint(),
+                "WalletHistoryRow.source_mint",
+            )?)
+        } else {
+            None
+        };
+        let target_mint = if row.has_target_mint() {
+            Some(str_field(
+                row.target_mint(),
+                "WalletHistoryRow.target_mint",
+            )?)
+        } else {
+            None
+        };
         out.push(WalletHistoryRow {
             operation_id: str_field(row.operation_id(), "WalletHistoryRow.operation_id")?,
             kind: history_kind_from_fb(row.kind())?,
@@ -289,6 +326,9 @@ pub(super) fn decode_history(
             sender,
             timestamp: row.has_timestamp().then(|| row.timestamp()),
             state: str_field(row.state(), "WalletHistoryRow.state")?,
+            source_mint,
+            target_mint,
+            fee_paid_sats: row.has_fee_paid_sats().then(|| row.fee_paid_sats()),
         });
     }
     Ok(out)

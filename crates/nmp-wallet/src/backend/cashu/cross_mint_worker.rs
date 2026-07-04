@@ -67,6 +67,43 @@ pub(super) struct CrossMintWorkerArgs {
     pub(super) on_settled: Option<SendRetry>,
 }
 
+/// A conservative fixed input-count assumption for estimating the target
+/// mint's OWN P2PK swap fee before it can possibly be known exactly (#3008)
+/// — the retried `SendNutzap`'s proof selection at the target mint (fresh
+/// `split_amount` denominations funded by this transfer) rarely needs more
+/// than a handful of inputs to cover an ordinary nutzap amount. Mirrors how
+/// `nutzap_send.rs`/`send_worker.rs` call `MintClient::compute_fee`, just
+/// applied speculatively here since the real input count isn't known until
+/// the retried send actually selects proofs.
+const HEADROOM_ESTIMATE_INPUT_COUNT: u64 = 6;
+
+/// Safe minimum sats headroom added when the target mint's keyset can't be
+/// fetched cheaply while sizing the fallback transfer (#3008) — fail-open on
+/// the ESTIMATE, never on the transfer itself. A small, explicit constant
+/// rather than failing the whole cross-mint fallback over an unrelated
+/// keyset-fetch hiccup: worst case the residual (headroom minus the real
+/// fee) simply stays as spendable balance at the target mint.
+const MIN_CROSS_MINT_FEE_HEADROOM_SATS: u64 = 2;
+
+/// #3008 — when this transfer exists ONLY to fund `send.rs`'s `nutzap.send`
+/// auto-fallback (`on_settled.is_some()`), how many extra sats to fund the
+/// target mint with on top of the nutzap's own `amount_sats`, so the
+/// re-dispatched send can cover its OWN P2PK swap fee at the target mint
+/// without underflowing `gross_change < fee` in `send_worker.rs`/
+/// `create_p2pk_proofs`. Fetches the target's keyset to estimate the real
+/// `input_fee_ppk`-based fee for a realistic small input count; falls back
+/// to [`MIN_CROSS_MINT_FEE_HEADROOM_SATS`] if that fetch fails rather than
+/// failing the transfer over it. The standalone `nmp.wallet.cashu.
+/// cross_mint_transfer` action (`on_settled: None`) NEVER calls this — see
+/// this function's only call site below.
+fn target_send_fee_headroom(target_client: &MintClient) -> u64 {
+    match target_client.get_sat_keyset() {
+        Ok(keyset) => MintClient::compute_fee(HEADROOM_ESTIMATE_INPUT_COUNT, keyset.input_fee_ppk)
+            .max(MIN_CROSS_MINT_FEE_HEADROOM_SATS),
+        Err(_) => MIN_CROSS_MINT_FEE_HEADROOM_SATS,
+    }
+}
+
 /// The full fresh-flow chain: target mint-quote -> source melt-quote ->
 /// reserve+journal -> melt -> (on settle) the target-mint leg. Runs entirely
 /// on a spawned worker thread (D8 — every step here is mint HTTP).
@@ -85,13 +122,22 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
         on_settled,
     } = args;
 
-    // 1. Target mint-quote. `create_mint_quote` already enforces (via
-    // `MintQuoteExpectation{amount: Some(amount_sats), ..}`) that the
-    // returned invoice is for EXACTLY `amount_sats` — the guard the design
-    // spec calls for ("reject if the returned bolt11 is for more than
+    // 1. Target mint-quote — sized to `amount_sats` PLUS headroom ONLY when
+    // this transfer exists to fund `send.rs`'s auto-fallback (#3008): the
+    // standalone action (`on_settled: None`) always funds EXACTLY
+    // `amount_sats`, never more. `create_mint_quote` already enforces (via
+    // `MintQuoteExpectation{amount: Some(funded_amount_sats), ..}`) that the
+    // returned invoice is for EXACTLY `funded_amount_sats` — the guard the
+    // design spec calls for ("reject if the returned bolt11 is for more than
     // amount") is strictly subsumed by this exact-match check.
     let target_client = MintClient::new(&target_mint);
-    let target_quote = match target_client.create_mint_quote(amount_sats) {
+    let funded_amount_sats = if on_settled.is_some() {
+        let headroom = target_send_fee_headroom(&target_client);
+        amount_sats.saturating_add(headroom)
+    } else {
+        amount_sats
+    };
+    let target_quote = match target_client.create_mint_quote(funded_amount_sats) {
         Ok(q) => q,
         Err(e) => {
             fail_no_funds_moved(
@@ -126,7 +172,7 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
     // match what the target mint-quote was created for (same invoice) —
     // reject rather than melt a different amount than was actually
     // requested.
-    if melt_quote.amount != amount_sats {
+    if melt_quote.amount != funded_amount_sats {
         fail_no_funds_moved(
             &state,
             &operation_id,
@@ -134,7 +180,7 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
             &correlation_id,
             ui_codes::MELT_QUOTE_FAILED,
             format!(
-                "source melt-quote amount {} does not match the requested {amount_sats}",
+                "source melt-quote amount {} does not match the requested {funded_amount_sats}",
                 melt_quote.amount
             ),
         );
@@ -228,7 +274,11 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
                 operation_id: operation_id.clone(),
                 target_mint: target_mint.clone(),
                 source_mint: source_mint.clone(),
-                amount_sats,
+                // #3008 — the amount actually invoiced/minted at the target
+                // (includes the fallback's fee headroom, when present); NOT
+                // necessarily the nutzap's own `amount_sats` — see
+                // `SendRetry::amount_sats` for that (unaffected) value.
+                amount_sats: funded_amount_sats,
                 target_quote_id: target_quote_id.clone(),
                 melt_quote_id: melt_quote_id.clone(),
                 source_selected: selected.clone(),
@@ -283,6 +333,17 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
         return;
     }
 
+    // #3008 — the melt fee this transfer actually cost: `fee_reserve` minus
+    // whatever NUT-08 change the mint handed back unspent. Recorded onto
+    // THIS (`CrossMintTransfer`) operation's own `recorded_fee_sats` — the
+    // same field a `SendNutzap` uses for its own swap fee — so
+    // `cross_mint_publish.rs` can read it back and copy it onto the
+    // re-dispatched send's journal row once that retry is dispatched (see
+    // `dispatch_cross_mint_token_event`).
+    let melt_fee_consumed = melt_quote
+        .fee_reserve
+        .saturating_sub(melt_response.change.iter().map(|p| p.amount).sum::<u64>());
+
     // Melt settled: fold the source-side effect (consumed inputs already
     // removed at reservation time; credit any NUT-08 change) and advance.
     {
@@ -317,6 +378,7 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
         if let Some(p) = s.pending_cross_mint_transfers.get_mut(&target_quote_id) {
             p.melt_settled = true;
         }
+        let _ = s.journal.record_fee_sats(&operation_id, melt_fee_consumed);
         let _ = s.transition(&operation_id, WalletOperationState::MintSettled);
         super::cross_mint_resume::persist_cross_mint_payload(&s, &target_quote_id);
     }

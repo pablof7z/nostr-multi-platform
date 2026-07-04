@@ -43,6 +43,21 @@ pub struct WalletHistoryRow {
     /// only for a row folded from state that predates this field.
     pub timestamp: Option<u64>,
     pub state: String,
+    /// The mint a `SendNutzap` ultimately drew its Lightning-melt funding
+    /// from, when it took the cross-mint auto-fallback (#3003/#3008) —
+    /// `None` for an intra-mint send (where it equals `target_mint`) or any
+    /// other history kind. Lets a shell render "sent via mint A -> mint B"
+    /// without ever decoding a proof.
+    pub source_mint: Option<String>,
+    /// The mint a `SendNutzap` actually sent the nutzap FROM — the same
+    /// mint `consumed_inputs` names (#3008). `None` only for a send that
+    /// never reached proof selection (failed before a mint was chosen).
+    pub target_mint: Option<String>,
+    /// The total fee, in sats, this `SendNutzap` actually cost: its own
+    /// P2PK swap fee at `target_mint`, plus (for a cross-mint payment) the
+    /// realized melt fee consumed funding `target_mint` from `source_mint`
+    /// (#3008). `None` only for a send that never reached the mint swap.
+    pub fee_paid_sats: Option<u64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -148,6 +163,9 @@ mod tests {
             sender: None,
             timestamp: None,
             state: "settled".to_string(),
+            source_mint: None,
+            target_mint: None,
+            fee_paid_sats: None,
         });
 
         let projection = WalletProjection::empty().with_recent_history(history);

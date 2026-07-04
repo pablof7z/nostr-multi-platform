@@ -156,6 +156,30 @@ pub struct WalletOperation {
     /// later, so it reads as "when this wallet started the operation"
     /// consistently across every kind.
     pub recorded_at: Option<u64>,
+    /// The mint-swap fee THIS operation itself paid, in sats (#3008) —
+    /// for a `SendNutzap`, the P2PK swap fee at the mint it actually sent
+    /// from; for a `CrossMintTransfer`, the realized NUT-05 melt fee
+    /// (`fee_reserve` minus NUT-08 change actually returned). Recorded once
+    /// the value-moving mint call the fee came from has genuinely
+    /// committed (`finish_send`'s on-signed fold / the melt-settled fold in
+    /// `cross_mint_worker.rs`) — `None` before that point, or for an
+    /// operation recorded before this field existed.
+    pub recorded_fee_sats: Option<u64>,
+    /// For a `SendNutzap` that was funded via the cross-mint auto-fallback
+    /// (#3003/#3008) rather than paid directly from an already-mutual mint:
+    /// the SOURCE mint the funding melt drew from, copied from that
+    /// `CrossMintTransfer` operation at the moment the retry is dispatched
+    /// (see `cross_mint_publish.rs::dispatch_cross_mint_token_event`).
+    /// `None` for an intra-mint send (source == the mint named by
+    /// `consumed_inputs`) or any operation that predates this field.
+    pub recorded_cross_mint_source: Option<String>,
+    /// The realized melt fee (see `recorded_fee_sats`'s cross-mint case)
+    /// from the `CrossMintTransfer` operation that funded this send's
+    /// target mint — `None` unless `recorded_cross_mint_source` is also
+    /// `Some`. Added to this send's OWN `recorded_fee_sats` to get the
+    /// total fee the user's payment actually cost (see
+    /// `snapshot.rs::history_row`).
+    pub recorded_cross_mint_fee_sats: Option<u64>,
 }
 
 impl WalletOperation {
@@ -174,6 +198,9 @@ impl WalletOperation {
             recorded_amount: None,
             recorded_sender: None,
             recorded_at: None,
+            recorded_fee_sats: None,
+            recorded_cross_mint_source: None,
+            recorded_cross_mint_fee_sats: None,
         }
     }
 
@@ -284,6 +311,33 @@ impl WalletOperationJournal {
     ) -> Result<(), WalletJournalError> {
         let operation = self.operation_mut(operation_id)?;
         operation.recorded_sender = Some(sender.into());
+        Ok(())
+    }
+
+    /// Record the mint-swap/melt fee this operation itself paid (#3008) —
+    /// see [`WalletOperation::recorded_fee_sats`]'s doc comment.
+    pub fn record_fee_sats(
+        &mut self,
+        operation_id: &WalletOperationId,
+        fee_sats: u64,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_fee_sats = Some(fee_sats);
+        Ok(())
+    }
+
+    /// Record that this `SendNutzap` was funded via the cross-mint
+    /// auto-fallback (#3008) — see
+    /// [`WalletOperation::recorded_cross_mint_source`]'s doc comment.
+    pub fn record_cross_mint_origin(
+        &mut self,
+        operation_id: &WalletOperationId,
+        source_mint: impl Into<String>,
+        melt_fee_sats: u64,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_cross_mint_source = Some(source_mint.into());
+        operation.recorded_cross_mint_fee_sats = Some(melt_fee_sats);
         Ok(())
     }
 

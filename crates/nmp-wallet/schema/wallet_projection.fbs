@@ -146,6 +146,18 @@ table WalletHistoryRow {
   has_timestamp:bool;
   timestamp:uint64;
   state:string;
+  // source_mint: Option<String> (#3008) — the mint a cross-mint SendNutzap's
+  // funding melt drew from; equals target_mint for an intra-mint send.
+  has_source_mint:bool;
+  source_mint:string;
+  // target_mint: Option<String> (#3008) — the mint the SendNutzap actually
+  // sent from (the same mint consumed_inputs names).
+  has_target_mint:bool;
+  target_mint:string;
+  // fee_paid_sats: Option<u64> (#3008) — this send's own swap fee, plus (for
+  // a cross-mint payment) the realized melt fee that funded target_mint.
+  has_fee_paid_sats:bool;
+  fee_paid_sats:uint64;
 }
 
 // `WalletReceiveRow` — one observed nutzap-receipt row.

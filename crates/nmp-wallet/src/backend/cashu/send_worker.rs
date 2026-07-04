@@ -255,6 +255,20 @@ pub(super) fn finish_send(args: FinishSendArgs) {
     let nutzap_proofs: Vec<Proof> = new_proofs[..nutzap_count].to_vec();
     let change_proofs: Vec<Proof> = new_proofs[nutzap_count..].to_vec();
 
+    // #3008 — this send's own mint-swap fee, derived from conservation
+    // (`selected` sums to strictly more than the swap's real outputs by
+    // exactly the fee the mint retained) rather than threaded as a separate
+    // argument: this works identically whether `finish_send` is driven live
+    // (`run_send_worker`, right after `client.swap`) or from a cold-restart
+    // WAL resume (`wal_send.rs`, from persisted `new_proofs`) — both already
+    // have `selected`/`new_proofs` (nutzap_proofs+change_proofs) in hand.
+    // Recorded onto the journal in the `on_signed` fold below, alongside
+    // this send's other post-swap facts.
+    let selected_total: u64 = selected.iter().map(|stored| stored.proof.amount).sum();
+    let new_total: u64 = nutzap_proofs.iter().map(|p| p.amount).sum::<u64>()
+        + change_proofs.iter().map(|p| p.amount).sum::<u64>();
+    let fee_sats = selected_total.saturating_sub(new_total);
+
     let Ok(recipient_pk) = nostr::PublicKey::from_hex(&recipient_pubkey) else {
         fail_worker(
             &worker_tx,
@@ -348,6 +362,7 @@ pub(super) fn finish_send(args: FinishSendArgs) {
                 });
             }
             s.add_proofs(None, mint, change_proofs);
+            let _ = s.journal.record_fee_sats(&on_signed_op, fee_sats);
             let _ = s.transition(&on_signed_op, WalletOperationState::MintSettled);
             let _ = s.transition(&on_signed_op, WalletOperationState::PublishPending);
             // #2960 — settle the send once its kind:9321 is signed (optimistic,
