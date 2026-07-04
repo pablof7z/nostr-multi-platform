@@ -316,7 +316,7 @@ write-ahead log — the filesystem shadow of the in-memory saga journal — so a
 in-flight operation survives a crash and can be reconciled on restart. This
 lands in three PRs (issues #2910, #2960, #2931):
 
-- **PR-1 (this change) — the journal-durability spine.** A backend-agnostic
+- **PR-1 (landed) — the journal-durability spine.** A backend-agnostic
   `WalletWalStore` trait (`journal/wal.rs`) with an fs implementation
   (`FsWalletWalStore`, `journal/wal_fs.rs`) mirroring `nmp-nip47`'s
   `FsPaymentStore` discipline exactly: one JSON file per record, atomic
@@ -339,15 +339,35 @@ lands in three PRs (issues #2910, #2960, #2931):
   `DuplicateOperation` guard, which is strictly worse than today's
   in-memory-evaporation self-healing. Deleting terminal rows on restore
   preserves that self-healing.
-- **PR-2 (closes #2910) — deposit WAL.** Writes the deposit resume payload
-  (minted proofs / signed kind:7375 token event) through `upsert_payload` before
-  publish, closing the crash window between `mint_tokens` returning and the
-  token event landing.
+- **PR-2 (this change, closes #2910) — deposit WAL.** Lands the actual deposit
+  resume-payload writes and the deposit-side restore/re-drive. A Cashu-owned
+  `CashuWalPayload::Deposit` (`backend/cashu/wal_payload.rs`) — `{quote_id,
+  mint, amount_sats, minted_proofs?, signed_token?}` — is written through
+  `upsert_payload` at each of the three points the in-memory field is set today:
+  quote created (proofs/token `None` — fixes the everyday "paid, then restarted"
+  case), mint `Ok` (proofs set — **the actual #2910 fix**, persisted the instant
+  the already-`ISSUED` proofs land, before the encrypt/sign/publish chain), and
+  token signed (the cached kind:7375). On restart, `restore_from_wal` rebuilds
+  `pending_deposits` from these payloads (unbreaking `start_complete_deposit`'s
+  `UNKNOWN_QUOTE` lookup) and re-drives any deposit past the mint off the actor
+  thread (D8) via a `ResumeDepositCommand`: a signed deposit republishes its
+  exact cached event (relays dedupe by id, the #2965 ingest fold dedupes
+  `TokenAdded` by token-event id), a minted-not-signed deposit re-runs
+  `dispatch_token_event` over the persisted proofs (never re-mints). A
+  quote-created-only deposit is repopulated but not re-driven. PR-2 also adds the
+  **settle rule**: the account's own kind:7375 coming back through the #2965
+  self-authored ingest path is the publish-ACK the deposit flow never had — on
+  that re-observation the operation transitions to `Settled` (deleting the saga
+  row *and* the resume payload via PR-1's terminal write-through) and the
+  `pending_deposits` entry is dropped. This **retires the formerly unbounded
+  `pending_deposits` map** (previously kept one entry per completed deposit for
+  the life of the process, an accepted tradeoff pending #2910).
 - **PR-3 (closes #2960/#2931) — send + redeem WAL.** Writes the send/redeem
   resume payloads and drives reconciliation of `Unknown` operations on restart.
 
-PR-1 stores no raw proofs — only backend-agnostic saga state; PR-2/PR-3 are the
-waves that actually write Cashu payloads into the opaque payload slot.
+PR-1 stores no raw proofs — only backend-agnostic saga state; PR-2 writes the
+deposit Cashu payload into the opaque payload slot, and PR-3 is the wave that
+adds the send/redeem payloads.
 
 ## Three Wallet-State Concerns
 

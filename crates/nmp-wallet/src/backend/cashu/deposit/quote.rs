@@ -65,6 +65,13 @@ impl ProtocolCommand for CashuDepositQuoteCommand {
                             },
                         );
                         let _ = guard.transition(&operation_id, WalletOperationState::MintSettled);
+                        // Durable WAL payload write (PR-2 of #2910): persist the
+                        // quote-created deposit (no proofs/token yet) so a
+                        // process restart after the invoice is paid but before
+                        // completion rebuilds `pending_deposits` and unbreaks
+                        // `start_complete_deposit`'s lookup. This alone fixes the
+                        // everyday "paid, then restarted" case.
+                        super::super::wal_payload::persist_deposit_payload(&guard, &quote_id);
                     }
                     // The action-result channel (NOT the bounded projection,
                     // NOT a log line — see module docs) is how the caller

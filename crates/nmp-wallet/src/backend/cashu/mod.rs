@@ -62,6 +62,7 @@ mod send_worker;
 mod snapshot;
 mod state;
 mod ui_codes;
+mod wal_payload;
 
 use std::sync::{Arc, Mutex};
 

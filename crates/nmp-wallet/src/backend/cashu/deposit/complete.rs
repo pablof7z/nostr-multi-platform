@@ -278,6 +278,15 @@ impl ProtocolCommand for CashuCompleteDepositCommand {
                             pending.minted_proofs = Some(proofs.clone());
                         }
                     }
+                    // The actual #2910 fix: persist the minted proofs to the
+                    // durable WAL the instant they land in memory, BEFORE the
+                    // encrypt/sign/publish chain. A hard crash from here on
+                    // resumes from these same proofs on restart (see
+                    // `wal_payload::restore_deposits`) rather than stranding
+                    // real, already-`ISSUED` sats. Read-back reflects the
+                    // write-if-absent above (never clobbers a prior attempt's
+                    // recorded proofs).
+                    super::super::wal_payload::persist_deposit_payload(&guard, &quote_id);
                     drop(guard);
                     proofs
                 }

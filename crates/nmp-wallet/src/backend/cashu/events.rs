@@ -14,7 +14,7 @@ use std::sync::Arc;
 use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::KernelEvent;
 
-use crate::journal::WalletOperationKind;
+use crate::journal::{WalletOperationKind, WalletOperationState};
 
 use super::ingest::build_passive_ingest_command;
 use super::nutzap_dispatch::redeem_operation_id;
@@ -82,6 +82,14 @@ impl CashuWalletBackend {
         if event.author != account_pubkey {
             return Vec::new();
         }
+        // Settle rule (PR-2 of #2910): our own kind:7375 coming back from a
+        // relay is the publish-ACK the deposit flow never otherwise had. Fire
+        // BEFORE the (async, decrypt-gated) ingest below — the match keys on the
+        // event id alone, no decryption needed — so a landed deposit is retired
+        // from the durable WAL the moment its token event is re-observed.
+        if event.kind == nmp_nip60::kinds::KIND_NIP60_TOKEN {
+            self.settle_deposit_on_ingested_token(&event.id);
+        }
         vec![build_passive_ingest_command(
             Arc::clone(&self.state),
             account_pubkey.to_string(),
@@ -90,5 +98,34 @@ impl CashuWalletBackend {
             event.content.clone(),
             event.relay_provenance.first().cloned().unwrap_or_default(),
         )]
+    }
+
+    /// Retire a deposit whose kind:7375 token event has been re-observed from a
+    /// relay (PR-2 of #2910 settle rule). When `event_id` matches a pending
+    /// deposit's cached `signed_token.id`, the deposit is durably landed:
+    /// transition its operation `PublishPending`/`Unknown` -> `Settled` (which,
+    /// per PR-1's terminal write-through, deletes the saga row AND the WAL
+    /// payload) and drop the `pending_deposits` entry. This closes the
+    /// previously-accepted "unbounded `pending_deposits` map" tradeoff — the
+    /// map no longer grows by one retained entry per completed deposit for the
+    /// life of the process. A no-op when no deposit matches (any other
+    /// self-authored kind:7375 — e.g. a send/redeem replacement token).
+    fn settle_deposit_on_ingested_token(&self, event_id: &str) {
+        let mut state = lock_state(&self.state);
+        let matched = state
+            .pending_deposits
+            .iter()
+            .find(|(_, pending)| {
+                pending
+                    .signed_token
+                    .as_ref()
+                    .is_some_and(|signed| signed.id == event_id)
+            })
+            .map(|(quote_id, pending)| (quote_id.clone(), pending.operation_id.clone()));
+        let Some((quote_id, operation_id)) = matched else {
+            return;
+        };
+        let _ = state.transition(&operation_id, WalletOperationState::Settled);
+        state.pending_deposits.remove(&quote_id);
     }
 }

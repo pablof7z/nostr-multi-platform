@@ -126,6 +126,14 @@ pub(in crate::backend::cashu) fn dispatch_token_event(
                 // (see `PendingDeposit::chain_started_at`'s doc comment).
                 pending.chain_started_at = None;
             }
+            // Durable WAL payload write (PR-2 of #2910): persist the signed
+            // kind:7375 so a crash after signing but before the publish ACKs
+            // resumes by republishing this EXACT cached event on restart (see
+            // `wal_payload::restore_deposits` / `ResumeDepositCommand`), never
+            // re-mints and never re-signs. The saga row already moved to
+            // `PublishPending` above (write-through by `transition`); this adds
+            // the secret-bearing token blob the row deliberately omits.
+            super::super::wal_payload::persist_deposit_payload(&guard, &quote_id);
         },
     );
 }

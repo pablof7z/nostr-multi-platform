@@ -59,10 +59,12 @@
 
 mod complete;
 mod quote;
+mod resume;
 mod token_event;
 
 pub(super) use complete::CashuCompleteDepositCommand;
 pub(super) use quote::CashuDepositQuoteCommand;
+pub(super) use resume::ResumeDepositCommand;
 pub(super) use token_event::{dispatch_token_event, token_event_plaintext};
 
 use nmp_core::actor::ActorCommand;

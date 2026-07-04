@@ -26,7 +26,7 @@ fn restart_round_trip_rehydrates_pending_operation() {
     {
         let backend = CashuWalletBackend::with_wal_store(Some(fs_store(dir.path())));
         // `restore_from_wal` sets `wal_account`, arming write-through.
-        backend.restore_from_wal(account);
+        let _ = backend.restore_from_wal(account);
         {
             let mut state = lock_state(&backend.state);
             state
@@ -56,7 +56,7 @@ fn restart_round_trip_rehydrates_pending_operation() {
         .pending_operations
         .is_empty());
 
-    backend.restore_from_wal(account);
+    let _ = backend.restore_from_wal(account);
 
     let pending = backend
         .snapshot(WalletProjectionScope::default())
@@ -75,7 +75,7 @@ fn terminal_operation_does_not_survive_restart() {
 
     {
         let backend = CashuWalletBackend::with_wal_store(Some(fs_store(dir.path())));
-        backend.restore_from_wal(account);
+        let _ = backend.restore_from_wal(account);
         let mut state = lock_state(&backend.state);
         let id = WalletOperationId::new("create-op");
         state
@@ -91,7 +91,7 @@ fn terminal_operation_does_not_survive_restart() {
     }
 
     let backend = CashuWalletBackend::with_wal_store(Some(fs_store(dir.path())));
-    backend.restore_from_wal(account);
+    let _ = backend.restore_from_wal(account);
     assert!(backend
         .snapshot(WalletProjectionScope::default())
         .projection
@@ -120,7 +120,7 @@ fn terminal_failed_redeem_row_does_not_block_reobservation_after_restore() {
     assert_eq!(store.load_operations(account).unwrap().len(), 1);
 
     let backend = CashuWalletBackend::with_wal_store(Some(Arc::clone(&store)));
-    backend.restore_from_wal(account);
+    let _ = backend.restore_from_wal(account);
 
     // Not restored into the live journal.
     assert!(backend
@@ -150,7 +150,7 @@ fn account_switch_does_not_leak_wal_rows() {
     let store = fs_store(dir.path());
 
     let backend = CashuWalletBackend::with_wal_store(Some(Arc::clone(&store)));
-    backend.restore_from_wal("npub-a");
+    let _ = backend.restore_from_wal("npub-a");
     {
         let mut state = lock_state(&backend.state);
         state
@@ -164,7 +164,7 @@ fn account_switch_does_not_leak_wal_rows() {
     // Switch account: reset() clears in-memory state and wal_account; restore
     // rehydrates npub-b (which has no rows).
     backend.reset();
-    backend.restore_from_wal("npub-b");
+    let _ = backend.restore_from_wal("npub-b");
     assert!(backend
         .snapshot(WalletProjectionScope::default())
         .projection
@@ -173,7 +173,7 @@ fn account_switch_does_not_leak_wal_rows() {
 
     // npub-a's durable row is untouched — a switch back rehydrates it.
     backend.reset();
-    backend.restore_from_wal("npub-a");
+    let _ = backend.restore_from_wal("npub-a");
     let pending = backend
         .snapshot(WalletProjectionScope::default())
         .projection
