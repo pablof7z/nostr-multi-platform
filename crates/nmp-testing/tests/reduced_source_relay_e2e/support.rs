@@ -226,6 +226,24 @@ pub(crate) fn mute_source_params(key: &str) -> FeedParams {
     }
 }
 
+pub(crate) fn difference_follows_minus_mute_params(key: &str) -> FeedParams {
+    FeedParams {
+        primary_kinds: vec![1],
+        shape: FeedShape::Flat,
+        source: FeedScope::Difference(
+            Box::new(FeedScope::ActiveUserFollows),
+            Box::new(FeedScope::ListMembers {
+                list: ListId(nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID.to_string()),
+            }),
+        ),
+        admission: FeedAdmission::All,
+        order: FeedOrder::NewestByFeedPosition,
+        window: FeedWindowPolicy::bounded(80),
+        key: ProjectionKey::app_owned(key).unwrap(),
+        item_projection: FeedItemProjection::FeedRows,
+    }
+}
+
 pub(crate) fn list_members_params(key: &str, list_id: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
