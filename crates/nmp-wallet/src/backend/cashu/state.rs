@@ -166,6 +166,19 @@ pub(super) struct CashuWalletState {
     /// `RecordActionSuccess` one-shot action result a caller must keep to
     /// complete the deposit.
     pub(super) pending_deposits: BTreeMap<String, PendingDeposit>,
+    /// #2977 single-flight guard for `check_state::spawn_debounced` — the
+    /// passive cold-start-replay trigger (`ingest.rs`'s
+    /// `build_passive_ingest_command`) can fold fresh proofs from many
+    /// kind:7375 events in a tight, unordered burst; without this, each
+    /// would spawn its own full check-state pass over every held proof,
+    /// hammering the same mint(s) with redundant concurrent
+    /// `/v1/checkstate` calls. `true` while a pass is running.
+    pub(super) check_state_in_flight: bool,
+    /// Set when a trigger arrives while `check_state_in_flight` is already
+    /// `true` — the in-flight pass re-runs once more before clearing
+    /// `check_state_in_flight`, so proofs folded mid-pass are coalesced into
+    /// the next run rather than permanently skipped.
+    pub(super) check_state_rerun_needed: bool,
 }
 
 impl CashuWalletState {
@@ -179,6 +192,8 @@ impl CashuWalletState {
             journal: WalletOperationJournal::new(),
             ledger: WalletLedger::new(DELTA_RING_CAPACITY),
             pending_deposits: BTreeMap::new(),
+            check_state_in_flight: false,
+            check_state_rerun_needed: false,
         }
     }
 
