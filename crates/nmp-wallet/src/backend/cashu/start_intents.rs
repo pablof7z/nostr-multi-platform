@@ -278,9 +278,10 @@ impl CashuWalletBackend {
     }
 
     /// #3003 — cross-mint nutzap funding. Fund `target_mint` with
-    /// `amount_sats` by melting proofs at whichever OTHER mint holds the
-    /// largest spendable balance (see
-    /// `state_cross_mint::largest_spendable_mint_excluding`'s doc comment).
+    /// `amount_sats` by melting proofs at a SETTLEABLE source mint, walking
+    /// the settleable candidates largest-balance-first (#3010; see
+    /// `state_cross_mint::spendable_source_candidates_excluding`'s doc
+    /// comment — known valueless test mints are never candidates).
     /// Called both by the standalone `nmp.wallet.cashu.cross_mint_transfer`
     /// action (`on_settled: None`) and internally by `send.rs`'s
     /// `nutzap.send` auto-fallback (`on_settled: Some(_)` — re-dispatches

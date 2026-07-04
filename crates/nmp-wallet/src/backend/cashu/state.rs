@@ -205,6 +205,20 @@ impl CashuWalletState {
         state_cross_mint::largest_spendable_mint_excluding(&self.proofs, exclude, min_amount)
     }
 
+    /// Every settleable cross-mint SOURCE candidate for a transfer to
+    /// `exclude`, largest spendable balance first (#3010) — thin delegate to
+    /// [`state_cross_mint::spendable_source_candidates_excluding`] (see its
+    /// doc comment). Drives the worker's next-candidate fall-through so a
+    /// pre-melt failure at one source tries the next rather than stalling.
+    #[must_use]
+    pub(super) fn spendable_source_candidates_excluding(
+        &self,
+        exclude: &str,
+        min_amount: u64,
+    ) -> Vec<(String, u64)> {
+        state_cross_mint::spendable_source_candidates_excluding(&self.proofs, exclude, min_amount)
+    }
+
     /// Remove exactly the proofs in `spent` (matched by the proof's public
     /// `C` value — unique per proof) from the held inventory. Call this only
     /// once the mint has actually consumed them (i.e. after a successful

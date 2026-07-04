@@ -54,40 +54,105 @@ pub(in crate::backend::cashu) struct PendingCrossMintTransfer {
     pub(in crate::backend::cashu) chain_started_at: Option<u64>,
 }
 
-/// The mint — among every mint OTHER than `exclude` this wallet holds proofs
-/// at — with the LARGEST total spendable balance, provided that total is at
-/// least `min_amount`. Used to auto-select a cross-mint-transfer SOURCE
-/// mint: the design picks the largest balance (not first-fit/insertion
-/// order) as the strictly-safer choice for routing a small payment.
+/// Known **valueless / non-Lightning-settleable** mints, excluded from
+/// cross-mint SOURCE selection (#3010). These are public Cashu *test* mints
+/// (canonically the `testnut.cashu.space` family) whose Lightning backend is
+/// a fake/regtest wallet: they hand out ecash for free (so a wallet can
+/// accumulate a large "balance" at them), but they CANNOT settle a real
+/// mainnet bolt11 — a melt to pay a real target invoice goes `PENDING` and
+/// never completes.
+///
+/// Why a denylist and not a runtime probe: such a mint is *protocol-
+/// indistinguishable* from a real one before the irreversible melt. It
+/// returns a perfectly valid melt QUOTE for the real target invoice (so a
+/// pre-melt quote probe cannot catch it), and after `melt()` it reports
+/// `PENDING`, not a definite `UNPAID` — and money-safety (see
+/// `cross_mint_worker`) forbids advancing past an ambiguous/pending melt.
+/// The only point at which a fake test mint can be kept out of a real
+/// Lightning melt is therefore SELECTION, and the only signal available at
+/// selection time is the mint's identity. The list is deliberately tiny and
+/// matches the well-known canonical test-mint host family; unknown mints that
+/// *definitely* fail are instead handled by the caller's next-candidate
+/// fall-through (a pre-melt quote/keyset/reserve failure moves no funds, so
+/// the worker simply tries the next source).
+#[must_use]
+pub(super) fn is_known_valueless_mint(mint: &str) -> bool {
+    // Match on the canonical authority (host[:port]) only — a mint's path is
+    // load-bearing (`canonicalize_mint_url`), but "is this the testnut fake
+    // mint" is a property of the HOST, independent of any path a test mint
+    // serves. Covers both `testnut.cashu.space` and its published
+    // subdomains (e.g. `nofees.testnut.cashu.space`).
+    let canonical = super::canonicalize_mint_url(mint);
+    let Some((_scheme, rest)) = canonical.split_once("://") else {
+        return false;
+    };
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let host = rest[..authority_end]
+        .rsplit_once(':')
+        .map_or(&rest[..authority_end], |(h, _port)| h);
+    host == "testnut.cashu.space" || host.ends_with(".testnut.cashu.space")
+}
+
+/// Every mint this wallet could MELT from to fund a cross-mint transfer to
+/// `exclude` (#3003/#3010), as `(canonical_mint_url, spendable_total)` pairs
+/// ordered by spendable balance **descending** (ties broken by canonical URL
+/// for a deterministic order). A mint is a candidate iff it is NOT the target
+/// (`exclude`), NOT a [known valueless mint](is_known_valueless_mint), and
+/// holds at least `min_amount` spendable.
 ///
 /// `min_amount` is a LOWER-BOUND proxy only — the real melt total, once the
 /// target's bolt11 and the source melt-quote are both known, is
 /// `melt_quote.amount + melt_quote.fee_reserve`, always >= the bare nutzap
 /// amount. A mint that cannot even cover the bare amount can never cover the
 /// real (fee-inclusive) total either, so this is safe to call before either
-/// quote exists; the caller MUST re-verify against the real total via
-/// `CashuWalletState::select_proofs` once the melt quote is known and fail
-/// closed if it no longer covers it (balances can shift between this
-/// candidate check and the actual reservation).
+/// quote exists. The worker walks these candidates in order and, for each,
+/// re-verifies against the real total via `CashuWalletState::select_proofs`
+/// once the melt quote is known; a candidate that can't cover the
+/// fee-inclusive total (or whose melt-quote/keyset fetch fails) is skipped in
+/// favour of the next — all of which move no funds (#3010).
+#[must_use]
+pub(super) fn spendable_source_candidates_excluding(
+    proofs: &[StoredProof],
+    exclude: &str,
+    min_amount: u64,
+) -> Vec<(String, u64)> {
+    let excluded = super::canonicalize_mint_url(exclude);
+    let mut totals: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    for stored in proofs {
+        let mint = super::canonicalize_mint_url(&stored.mint);
+        if mint == excluded || is_known_valueless_mint(&mint) {
+            continue;
+        }
+        *totals.entry(mint).or_insert(0) += stored.proof.amount;
+    }
+    let mut candidates: Vec<(String, u64)> = totals
+        .into_iter()
+        .filter(|(_, total)| *total >= min_amount)
+        .collect();
+    // Largest balance first (the strictly-safer choice for routing a small
+    // payment); canonical URL as a stable tie-breaker so ordering is
+    // deterministic across runs.
+    candidates.sort_by(|(a_mint, a_total), (b_mint, b_total)| {
+        b_total.cmp(a_total).then_with(|| a_mint.cmp(b_mint))
+    });
+    candidates
+}
+
+/// The single largest-balance cross-mint SOURCE candidate (or `None` if
+/// there is no eligible mint) — a thin convenience over
+/// [`spendable_source_candidates_excluding`] used by `send.rs`'s read-only
+/// "is this target fundable at all?" probe. Shares the exact same eligibility
+/// rules, so a target that is *only* fundable by a valueless test mint (which
+/// this excludes) is correctly treated as unfundable (#3010).
 #[must_use]
 pub(super) fn largest_spendable_mint_excluding(
     proofs: &[StoredProof],
     exclude: &str,
     min_amount: u64,
 ) -> Option<(String, u64)> {
-    let excluded = super::canonicalize_mint_url(exclude);
-    let mut totals: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
-    for stored in proofs {
-        let mint = super::canonicalize_mint_url(&stored.mint);
-        if mint == excluded {
-            continue;
-        }
-        *totals.entry(mint).or_insert(0) += stored.proof.amount;
-    }
-    totals
+    spendable_source_candidates_excluding(proofs, exclude, min_amount)
         .into_iter()
-        .filter(|(_, total)| *total >= min_amount)
-        .max_by_key(|(_, total)| *total)
+        .next()
 }
 
 #[cfg(test)]
@@ -141,5 +206,95 @@ mod tests {
             largest_spendable_mint_excluding(&proofs, "https://mint-b.example", 1).unwrap();
         assert_eq!(mint, "https://mint-a.example");
         assert_eq!(total, 12);
+    }
+
+    #[test]
+    fn identifies_the_testnut_fake_mint_family() {
+        assert!(is_known_valueless_mint("https://testnut.cashu.space"));
+        assert!(is_known_valueless_mint("https://testnut.cashu.space/"));
+        assert!(is_known_valueless_mint("https://nofees.testnut.cashu.space"));
+        // Case-insensitive host, path is irrelevant to the identity.
+        assert!(is_known_valueless_mint("https://TestNut.Cashu.Space/Bitcoin"));
+        // Real mints are never flagged.
+        assert!(!is_known_valueless_mint("https://mint.minibits.cash/Bitcoin"));
+        assert!(!is_known_valueless_mint("https://mint-a.example"));
+        // A different host that merely CONTAINS the substring must not match.
+        assert!(!is_known_valueless_mint(
+            "https://testnut.cashu.space.evil.example"
+        ));
+    }
+
+    #[test]
+    fn candidates_exclude_valueless_test_mints_even_when_largest() {
+        // The WAL scenario (#3010): the LARGEST balance sits at the valueless
+        // testnut fake mint, with ample REAL balance at other mints. Source
+        // selection must skip testnut entirely and rank only the settleable
+        // mints — largest real balance first.
+        let proofs = vec![
+            proof("https://testnut.cashu.space", 1200),
+            proof("https://mint.chorus.example", 300),
+            proof("https://mint.flashapp.example", 500),
+            proof("https://mint.minibits.cash/Bitcoin", 100),
+        ];
+        let candidates = spendable_source_candidates_excluding(
+            &proofs,
+            "https://mint.minibits.cash/Bitcoin", // target — also excluded
+            50,
+        );
+        assert_eq!(
+            candidates,
+            vec![
+                ("https://mint.flashapp.example".to_string(), 500),
+                ("https://mint.chorus.example".to_string(), 300),
+            ],
+            "testnut (largest) and the target must be excluded; real mints ranked by balance desc"
+        );
+        // The single-pick convenience never returns the valueless mint either.
+        let (mint, total) =
+            largest_spendable_mint_excluding(&proofs, "https://mint.minibits.cash/Bitcoin", 50)
+                .unwrap();
+        assert_eq!(mint, "https://mint.flashapp.example");
+        assert_eq!(total, 500);
+    }
+
+    #[test]
+    fn candidates_are_none_when_only_a_valueless_mint_could_fund() {
+        // testnut holds plenty, but it's the ONLY non-target mint — there is
+        // no settleable source, so the transfer must fail closed rather than
+        // stall on an unsettleable melt.
+        let proofs = vec![
+            proof("https://testnut.cashu.space", 1200),
+            proof("https://mint.minibits.cash/Bitcoin", 100),
+        ];
+        let candidates = spendable_source_candidates_excluding(
+            &proofs,
+            "https://mint.minibits.cash/Bitcoin",
+            50,
+        );
+        assert!(candidates.is_empty());
+        assert!(
+            largest_spendable_mint_excluding(&proofs, "https://mint.minibits.cash/Bitcoin", 50)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn candidates_ranked_by_balance_desc_with_stable_tie_break() {
+        let proofs = vec![
+            proof("https://mint-c.example", 30),
+            proof("https://mint-a.example", 30),
+            proof("https://mint-b.example", 50),
+        ];
+        let candidates =
+            spendable_source_candidates_excluding(&proofs, "https://target.example", 1);
+        assert_eq!(
+            candidates,
+            vec![
+                ("https://mint-b.example".to_string(), 50),
+                // 30-vs-30 tie broken by canonical URL ascending.
+                ("https://mint-a.example".to_string(), 30),
+                ("https://mint-c.example".to_string(), 30),
+            ]
+        );
     }
 }
