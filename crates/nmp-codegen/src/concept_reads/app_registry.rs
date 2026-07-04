@@ -26,6 +26,23 @@ pub struct LoadedAppConceptReadRegistry {
     pub drift_checks: Vec<String>,
 }
 
+/// Shape of the facade's runtime accessor, i.e. how the generated `open_*` /
+/// `close_*` methods reach the read host that the concept doors marshal into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RuntimeAccessorShape {
+    /// `self.<accessor>()` returns a plain read-host reference the facade holds
+    /// for its whole lifetime (iOS `ChirpApp` owning `Arc<NmpApp>`). The
+    /// concept door is called directly: `open_fn(self.<accessor>(), target)`.
+    Ref,
+    /// `self.<accessor>(|app| { ... }) -> Option<R>` guards the read host behind
+    /// a closure-scoped accessor (Android `AppHandle::with_app`, which holds a
+    /// lock for the call's duration to prevent a UAF race with `nmp_app_free`).
+    /// The concept door is called inside the closure — `self.<accessor>(|app|
+    /// open_fn(app, target))` — and a `None` return (dead/inert handle) maps to
+    /// the facade's open-failed error.
+    Closure,
+}
+
 /// App facade facts used by the Rust emitter.
 #[derive(Debug)]
 pub struct ConceptReadFacade {
@@ -33,8 +50,13 @@ pub struct ConceptReadFacade {
     pub rust_type: String,
     /// Module path the facade type lives in, e.g. `facade` or `app`.
     pub rust_module: String,
-    /// Crate-visible method returning a `ReadHost`, e.g. `runtime`.
+    /// Crate-visible accessor reaching the `ReadHost`, e.g. `runtime` (ref
+    /// shape) or `with_app` (closure shape). Its call form is selected by
+    /// [`ConceptReadFacade::runtime_accessor_shape`].
     pub runtime_accessor: String,
+    /// Whether `runtime_accessor` is a plain ref accessor or a closure-guarded
+    /// one. Defaults to [`RuntimeAccessorShape::Ref`].
+    pub runtime_accessor_shape: RuntimeAccessorShape,
     /// Facade-local UniFFI error enum, e.g. `GalleryReadError`.
     pub error_type: String,
     /// Error variant for malformed target input.
@@ -119,6 +141,8 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
     validate_upper_ident("facade.rust_type", &doc.facade.rust_type)?;
     validate_module_path("facade.rust_module", &doc.facade.rust_module)?;
     validate_lower_ident("facade.runtime_accessor", &doc.facade.runtime_accessor)?;
+    let runtime_accessor_shape =
+        parse_runtime_accessor_shape(doc.facade.runtime_accessor_shape.as_deref())?;
     validate_upper_ident("facade.error_type", &doc.facade.error_type)?;
     validate_upper_ident(
         "facade.invalid_target_variant",
@@ -168,6 +192,7 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
             rust_type: doc.facade.rust_type,
             rust_module: doc.facade.rust_module,
             runtime_accessor: doc.facade.runtime_accessor,
+            runtime_accessor_shape,
             error_type: doc.facade.error_type,
             invalid_target_variant: doc.facade.invalid_target_variant,
             open_failed_variant: doc.facade.open_failed_variant,
@@ -184,6 +209,16 @@ pub fn parse_app_concept_read_registry(raw: &str) -> Result<LoadedAppConceptRead
         },
         drift_checks: doc.drift_checks,
     })
+}
+
+fn parse_runtime_accessor_shape(raw: Option<&str>) -> Result<RuntimeAccessorShape, String> {
+    match raw {
+        None | Some("ref") => Ok(RuntimeAccessorShape::Ref),
+        Some("closure") => Ok(RuntimeAccessorShape::Closure),
+        Some(other) => Err(format!(
+            "facade.runtime_accessor_shape must be \"ref\" or \"closure\", got {other:?}"
+        )),
+    }
 }
 
 fn validate_summary_nested_records(

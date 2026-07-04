@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::app_registry::{AppConceptRead, LoadedAppConceptReadRegistry};
+use super::app_registry::{AppConceptRead, LoadedAppConceptReadRegistry, RuntimeAccessorShape};
 use super::registry::{SummaryShape, TargetInput};
 
 /// Render the Rust facade slice for an app-local concept-read registry.
@@ -185,6 +185,10 @@ fn render_open_method(
     registry: &LoadedAppConceptReadRegistry,
     out: &mut String,
 ) {
+    if registry.facade.runtime_accessor_shape == RuntimeAccessorShape::Closure {
+        render_open_method_closure(read, registry, out);
+        return;
+    }
     let error = &registry.facade.error_type;
     let invalid = &registry.facade.invalid_target_variant;
     let open_failed = &registry.facade.open_failed_variant;
@@ -225,6 +229,79 @@ fn render_open_method(
     out.push_str("    }\n\n");
 }
 
+/// Closure-guarded variant of [`render_open_method`]: the read host is reached
+/// through `self.<runtime>(|app| ...)` returning `Option<R>` (`None` = dead
+/// handle → open-failed) rather than a plain `self.<runtime>()` reference.
+fn render_open_method_closure(
+    read: &AppConceptRead,
+    registry: &LoadedAppConceptReadRegistry,
+    out: &mut String,
+) {
+    let error = &registry.facade.error_type;
+    let invalid = &registry.facade.invalid_target_variant;
+    let open_failed = &registry.facade.open_failed_variant;
+    let runtime = &registry.facade.runtime_accessor;
+    let open_fn = read.concept.open_fn;
+    let record = &read.opened_record;
+    match read.concept.target_input {
+        TargetInput::Json {
+            arg_name,
+            decoder_fn,
+        } => {
+            out.push_str("    /// Open a generated concept read.\n");
+            out.push_str(&format!("    pub fn {open_fn}(\n"));
+            out.push_str("        &self,\n");
+            out.push_str(&format!("        {arg_name}: String,\n"));
+            out.push_str(&format!("    ) -> Result<{record}, {error}> {{\n"));
+            out.push_str(&format!("        let target = {decoder_fn}(&{arg_name})\n"));
+            out.push_str(&format!("            .map_err(|_| {error}::{invalid})?;\n"));
+            render_open_closure_call(
+                out,
+                runtime,
+                open_fn,
+                "target",
+                error,
+                open_failed,
+                open_failed,
+            );
+        }
+        TargetInput::PlainString { arg_name } => {
+            out.push_str("    /// Open a generated concept read.\n");
+            out.push_str(&format!(
+                "    pub fn {open_fn}(&self, {arg_name}: String) -> Result<{record}, {error}> {{\n"
+            ));
+            render_open_closure_call(out, runtime, open_fn, arg_name, error, open_failed, invalid);
+        }
+    }
+    out.push_str("        let (projection_key, handle_id) = handle.into_parts();\n");
+    out.push_str(&format!(
+        "        Ok({record} {{\n            projection_key,\n            handle_id,\n        }})\n"
+    ));
+    out.push_str("    }\n\n");
+}
+
+/// Emit the closure-guarded `open_*` call chain. `dead_variant` maps the
+/// accessor's `None` (dead/inert handle) and `inner_variant` maps the concept
+/// door's own error, preserving the ref-mode variant choice per target shape.
+fn render_open_closure_call(
+    out: &mut String,
+    runtime: &str,
+    open_fn: &str,
+    call_arg: &str,
+    error: &str,
+    dead_variant: &str,
+    inner_variant: &str,
+) {
+    out.push_str("        let handle = self\n");
+    out.push_str(&format!(
+        "            .{runtime}(|app| {open_fn}(app, {call_arg}))\n"
+    ));
+    out.push_str(&format!("            .ok_or({error}::{dead_variant})?\n"));
+    out.push_str(&format!(
+        "            .map_err(|_| {error}::{inner_variant})?;\n"
+    ));
+}
+
 fn render_close_method(
     read: &AppConceptRead,
     registry: &LoadedAppConceptReadRegistry,
@@ -241,7 +318,18 @@ fn render_close_method(
     out.push_str(&format!(
         "        let handle = {handle}::from_parts(opened.projection_key, opened.handle_id);\n"
     ));
-    out.push_str(&format!("        {close_fn}(self.{runtime}(), handle)\n"));
+    match registry.facade.runtime_accessor_shape {
+        RuntimeAccessorShape::Ref => {
+            out.push_str(&format!("        {close_fn}(self.{runtime}(), handle)\n"));
+        }
+        RuntimeAccessorShape::Closure => {
+            // `None` (dead/inert handle) means nothing to close; report `false`,
+            // keeping close idempotent (D6).
+            out.push_str(&format!(
+                "        self.{runtime}(|app| {close_fn}(app, handle)).unwrap_or(false)\n"
+            ));
+        }
+    }
     out.push_str("    }\n");
 }
 
