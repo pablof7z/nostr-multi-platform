@@ -389,6 +389,13 @@ pub(crate) fn verify_nutzap_dleq_against_keyset(
                 proof.c
             )));
         };
+        // Bind to the proof's claimed keyset (#2963, mirrors `blinded.rs`).
+        if proof.id != keyset.id {
+            return Err(Nip60Error::Crypto(format!(
+                "nutzap proof (C={}) claims keyset {}, expected {}",
+                proof.c, proof.id, keyset.id
+            )));
+        }
 
         let mint_pk = pubkey_map.get(&proof.amount).ok_or_else(|| {
             Nip60Error::Crypto(format!("no mint pubkey for amount {}", proof.amount))
