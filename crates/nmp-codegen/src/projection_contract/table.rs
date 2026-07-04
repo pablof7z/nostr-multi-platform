@@ -256,6 +256,23 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
+        // The MERGED multi-backend wallet projection (#2915). Registered by
+        // `nmp_wallet::register` under a DISTINCT key from the `"wallet"` NWST
+        // sidecar above (which nmp-nip47 still owns) so the two coexist. No iOS
+        // Swift consumer yet — see NOT_SWIFT_PRESENTED in the contract tests.
+        key: "wallet.merged",
+        tier: ProjectionTier::HostRegistered,
+        producer: "nmp-wallet register (merged WalletRuntime::snapshot sidecar)",
+        owner_claim: "projection.wallet.merged",
+        schema_id: "nmp.wallet.merged",
+        file_identifier: "NWMP",
+        // nmp-wallet projection_wire::SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
         key: "bunker_handshake",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-core actor/typed_projections/bunker_handshake_fb (NIP-46)",
