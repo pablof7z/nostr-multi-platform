@@ -4722,6 +4722,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip87"
+version = "1.0.0-rc.1"
+dependencies = [
+ "nmp-kinds",
+ "nmp-ownership",
+ "nostr",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nip89"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -5066,10 +5077,12 @@ dependencies = [
  "nmp-core",
  "nmp-nip47",
  "nmp-nip60",
+ "nmp-nip87",
  "nmp-ownership",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
+ "nmp-wot",
  "nostr",
  "serde",
  "serde_json",

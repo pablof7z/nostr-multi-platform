@@ -5,7 +5,6 @@
 //! use the single source of truth without per-crate aliases.
 
 pub use nmp_kinds::{
-    KIND_MINT_ANNOUNCE,
     KIND_NIP60_HISTORY,
     KIND_NIP60_QUOTE,
     KIND_NIP60_TOKEN,

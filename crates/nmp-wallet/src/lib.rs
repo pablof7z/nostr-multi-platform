@@ -23,9 +23,11 @@
 pub mod action;
 pub mod backend;
 pub mod capability;
+pub mod discovery_runtime;
 mod fail_closed;
 pub mod interests;
 pub mod journal;
+pub mod mint_discovery;
 pub mod ownership;
 pub mod payment_port;
 pub mod projection;
@@ -46,6 +48,11 @@ pub use backend::{
     WalletIntent, WalletProjectionScope,
 };
 pub use capability::{WalletCapabilities, WalletCapability};
+pub use discovery_runtime::MintDiscoveryRuntime;
+pub use mint_discovery::{
+    aggregate_discovered_mints, DiscoveredMint, MintDiscoveryPolicy, MintDiscoveryProjection,
+    MintDiscoveryStore, MAX_DISCOVERED_MINTS,
+};
 pub use journal::{
     CorrelationId, DeleteCause, HistoryFactSeed, MintUrl, ProofAtom, ProofRef, ProofVerdict,
     Provenance, PubkeyRef, RelayRef, WalletApplySummary, WalletBalanceKey, WalletCauseIndex,
