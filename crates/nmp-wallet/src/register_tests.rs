@@ -193,6 +193,7 @@ fn register_installs_exactly_this_waves_new_action_namespaces() {
         crate::ACTION_CASHU_CREATE,
         crate::ACTION_CASHU_RECOVER,
         crate::ACTION_CASHU_SET_MINTS,
+        crate::ACTION_CASHU_CROSS_MINT_TRANSFER,
         crate::ACTION_CASHU_DEPOSIT_QUOTE,
         crate::ACTION_CASHU_COMPLETE_DEPOSIT,
         crate::ACTION_NUTZAP_PUBLISH_INFO,

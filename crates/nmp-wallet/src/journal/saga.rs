@@ -40,6 +40,21 @@ pub enum WalletOperationKind {
     /// accepted-mint list, carrying the existing Cashu P2PK privkey forward
     /// unchanged (never rotates it, unlike `CreateCashuWallet`).
     SetCashuMints,
+    /// #3003 — cross-mint nutzap funding: mint-quote a recipient-accepted
+    /// TARGET mint, melt proofs at a SOURCE mint to pay it, mint the
+    /// resulting SELF-owned (non-P2PK) proofs at the target, and publish
+    /// them as kind:7375 so the existing balance-aware `SendNutzap`
+    /// transparently picks the now-funded target mint. Distinct from
+    /// [`Self::MeltCashu`] (reserved for a melt -> pay_bolt11 real-Lightning
+    /// withdrawal, a different product feature never wired to this kind) —
+    /// conflating the two under one journal kind would make the
+    /// history/audit trail unable to tell which flow an entry belongs to.
+    /// Reuses the existing `Draft`/`Prepared`/`MintPending`/`MintSettled`/
+    /// `PublishPending`/`Settled`/`Unknown`/`Failed` state set unchanged (see
+    /// `backend::cashu::cross_mint`'s module docs for how each state maps
+    /// onto the melt-then-mint saga) — no new `WalletOperationState` variant
+    /// was needed.
+    CrossMintTransfer,
 }
 
 impl WalletOperationKind {
@@ -47,7 +62,7 @@ impl WalletOperationKind {
     pub const fn requires_consumed_inputs_before_mint_request(self) -> bool {
         matches!(
             self,
-            Self::SendNutzap | Self::RedeemNutzap | Self::MeltCashu
+            Self::SendNutzap | Self::RedeemNutzap | Self::MeltCashu | Self::CrossMintTransfer
         )
     }
 }
@@ -342,7 +357,8 @@ impl WalletOperationJournal {
     /// evaporated on restart, now driven by a positive mint verdict instead.
     pub fn remove(&mut self, operation_id: &WalletOperationId) -> bool {
         let before = self.operations.len();
-        self.operations.retain(|operation| &operation.id != operation_id);
+        self.operations
+            .retain(|operation| &operation.id != operation_id);
         self.operations.len() != before
     }
 

@@ -26,12 +26,14 @@ pub use crypto::{
 };
 pub use http::{
     build_check_state_request, build_get_keys_request, build_get_keysets_request,
-    build_get_mint_quote_bolt11_request, build_mint_quote_bolt11_request,
-    finalize_mint_bolt11_response, finalize_swap_response, parse_check_state_response,
-    parse_keys_response, parse_mint_quote_bolt11_response, prepare_mint_bolt11_request,
-    prepare_swap_request, split_amount, DleqPolicy, MintHttpMethod, MintHttpOperation,
-    MintHttpRequest, MintQuoteExpectation, MintRawResponse, PreparedMintBolt11Request,
-    PreparedSwapRequest,
+    build_get_melt_quote_bolt11_request, build_get_mint_quote_bolt11_request,
+    build_melt_quote_bolt11_request, build_mint_quote_bolt11_request,
+    finalize_melt_bolt11_response, finalize_mint_bolt11_response, finalize_swap_response,
+    parse_check_state_response, parse_keys_response, parse_melt_quote_bolt11_response,
+    parse_mint_quote_bolt11_response, prepare_melt_bolt11_request, prepare_mint_bolt11_request,
+    prepare_swap_request, split_amount, DleqPolicy, MeltQuoteExpectation, MintHttpMethod,
+    MintHttpOperation, MintHttpRequest, MintQuoteExpectation, MintRawResponse,
+    PreparedMeltBolt11Request, PreparedMintBolt11Request, PreparedSwapRequest,
 };
 pub use types::Proof;
 

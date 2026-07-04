@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
-    ACTION_CASHU_RECOVER, ACTION_CASHU_SET_MINTS, ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM,
-    ACTION_NUTZAP_SEND, ACTION_NWC_CONNECT, ACTION_NWC_DISCONNECT, ACTION_PAY_INVOICE,
+    ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_CROSS_MINT_TRANSFER,
+    ACTION_CASHU_DEPOSIT_QUOTE, ACTION_CASHU_RECOVER, ACTION_CASHU_SET_MINTS,
+    ACTION_NUTZAP_PUBLISH_INFO, ACTION_NUTZAP_REDEEM, ACTION_NUTZAP_SEND, ACTION_NWC_CONNECT,
+    ACTION_NWC_DISCONNECT, ACTION_PAY_INVOICE,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -16,6 +17,13 @@ pub enum WalletCapability {
     DepositCashu,
     MeltCashu,
     ObserveNutzapReceipts,
+    /// #3003 — `nmp.wallet.cashu.cross_mint_transfer`: fund a recipient-
+    /// accepted target mint by melting proofs at a source mint. Distinct
+    /// from [`Self::MeltCashu`] (still unimplemented — reserved for a
+    /// melt -> real-Lightning-withdrawal feature `CashuWalletBackend` does
+    /// not back today) so this capability only ever advertises a feature
+    /// that is actually wired end-to-end.
+    CrossMintTransfer,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -28,6 +36,8 @@ pub struct WalletCapabilities {
     pub deposit_cashu: bool,
     pub melt_cashu: bool,
     pub observe_nutzap_receipts: bool,
+    /// #3003 — see [`WalletCapability::CrossMintTransfer`].
+    pub cross_mint_transfer: bool,
 }
 
 impl WalletCapabilities {
@@ -42,6 +52,7 @@ impl WalletCapabilities {
             deposit_cashu: false,
             melt_cashu: false,
             observe_nutzap_receipts: false,
+            cross_mint_transfer: false,
         }
     }
 
@@ -62,6 +73,7 @@ impl WalletCapabilities {
             redeem_nutzap: true,
             deposit_cashu: true,
             observe_nutzap_receipts: true,
+            cross_mint_transfer: true,
             ..Self::none()
         }
     }
@@ -97,6 +109,7 @@ impl WalletCapabilities {
             WalletCapability::DepositCashu => self.deposit_cashu,
             WalletCapability::MeltCashu => self.melt_cashu,
             WalletCapability::ObserveNutzapReceipts => self.observe_nutzap_receipts,
+            WalletCapability::CrossMintTransfer => self.cross_mint_transfer,
         }
     }
 
@@ -119,6 +132,9 @@ impl WalletCapabilities {
         }
         if self.deposit_cashu {
             actions.extend([ACTION_CASHU_DEPOSIT_QUOTE, ACTION_CASHU_COMPLETE_DEPOSIT]);
+        }
+        if self.cross_mint_transfer {
+            actions.push(ACTION_CASHU_CROSS_MINT_TRANSFER);
         }
         if self.publish_nutzap_info {
             actions.push(ACTION_NUTZAP_PUBLISH_INFO);
@@ -154,7 +170,11 @@ mod tests {
         assert!(actions.contains(&ACTION_CASHU_SET_MINTS));
         assert!(actions.contains(&ACTION_NUTZAP_SEND));
         assert!(actions.contains(&ACTION_NUTZAP_REDEEM));
+        assert!(actions.contains(&ACTION_CASHU_CROSS_MINT_TRANSFER));
         assert!(!actions.contains(&ACTION_PAY_INVOICE));
+
+        let actions = WalletCapabilities::none().action_namespaces();
+        assert!(!actions.contains(&ACTION_CASHU_CROSS_MINT_TRANSFER));
     }
 
     /// W2 (#2895) — this narrower constant (pre-#2917) still advertises
@@ -172,6 +192,7 @@ mod tests {
         assert!(!caps.redeem_nutzap);
         assert!(!caps.melt_cashu);
         assert!(!caps.observe_nutzap_receipts);
+        assert!(!caps.cross_mint_transfer);
 
         let actions = caps.action_namespaces();
         assert!(actions.contains(&ACTION_CASHU_CREATE));
@@ -179,5 +200,6 @@ mod tests {
         assert!(actions.contains(&ACTION_CASHU_DEPOSIT_QUOTE));
         assert!(actions.contains(&ACTION_CASHU_COMPLETE_DEPOSIT));
         assert!(!actions.contains(&ACTION_NUTZAP_SEND));
+        assert!(!actions.contains(&ACTION_CASHU_CROSS_MINT_TRANSFER));
     }
 }

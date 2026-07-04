@@ -294,7 +294,93 @@ impl MintClient {
         let raw = self.roundtrip(&req)?;
         http::parse_check_state_response(&raw, &expected_ys)
     }
+
+    // ─── Melt (NUT-05) ─────────────────────────────────────────────────────
+    //
+    // Melt redeems this mint's ecash to pay a Lightning invoice — the
+    // source-mint leg of a cross-mint transfer (#3003: fund a nutzap at a
+    // recipient-accepted mint by melting proofs held at a different mint).
+    // Every method here is a thin transport wrapper, identical in shape to
+    // `create_mint_quote`/`get_mint_quote_status`/`mint_tokens` above; all
+    // request construction and response validation lives in
+    // `super::http::melt`.
+
+    /// Request a melt quote for paying `bolt11` from this mint's balance.
+    /// The returned `amount + fee_reserve` is exactly how much of this
+    /// mint's balance [`Self::melt`] will consume.
+    pub fn create_melt_quote(&self, bolt11: &str) -> Result<MeltQuoteResponse, Nip60Error> {
+        let req = http::build_melt_quote_bolt11_request(bolt11, "sat")?;
+        let raw = self.roundtrip(&req)?;
+        http::parse_melt_quote_bolt11_response(&raw, http::MeltQuoteExpectation { quote_id: None })
+    }
+
+    /// Poll the status of an existing melt quote. The caller (the
+    /// `nmp-wallet` cross-mint saga) uses this to reconcile an `Unknown`
+    /// melt after a transport failure that left the payment's real outcome
+    /// ambiguous — NEVER assume success or failure without this call.
+    pub fn get_melt_quote_status(&self, quote_id: &str) -> Result<MeltQuoteResponse, Nip60Error> {
+        let req = http::build_get_melt_quote_bolt11_request(quote_id)?;
+        let raw = self.roundtrip(&req)?;
+        http::parse_melt_quote_bolt11_response(
+            &raw,
+            http::MeltQuoteExpectation {
+                quote_id: Some(quote_id),
+            },
+        )
+    }
+
+    /// Melt `inputs` to pay `quote_id`. This is the IRREVERSIBLE leg of a
+    /// cross-mint transfer — the Lightning payment leaves this mint the
+    /// moment this call succeeds (or, on a transport failure with no
+    /// response at all, *may* have left it). The caller MUST durably record
+    /// `inputs` as consumed (and `quote_id`) BEFORE calling this, and MUST
+    /// treat a transport-level error as `Unknown` (reconcile via
+    /// [`Self::get_melt_quote_status`]) rather than as a definite failure —
+    /// never re-melt the same inputs on ambiguity.
+    ///
+    /// `fee_reserve` (from the melt quote) sizes the NUT-08 blank change
+    /// outputs sent alongside `inputs`; any unspent portion of the fee
+    /// reserve returns as fresh proofs at this mint.
+    pub fn melt(
+        &self,
+        quote_id: &str,
+        fee_reserve: u64,
+        inputs: Vec<Proof>,
+        keyset: &KeySet,
+    ) -> Result<MeltResponse, Nip60Error> {
+        let prepared =
+            http::prepare_melt_bolt11_request(quote_id, fee_reserve, inputs, keyset, &self.secp)?;
+        let raw = self.roundtrip(&prepared.http)?;
+        let (response, change) = http::finalize_melt_bolt11_response(
+            &prepared,
+            &raw,
+            DleqPolicy::VerifyIfPresent,
+            &self.secp,
+        )?;
+        Ok(MeltResponse { response, change })
+    }
 }
+
+/// Result of [`MintClient::melt`] — the mint's raw melt response plus the
+/// change proofs already unblinded (and DLEQ-verified) from any NUT-08
+/// blank outputs. A distinct type (rather than reusing
+/// [`MeltBolt11Response`] directly) because the raw response's `change`
+/// field is blind signatures, not spendable proofs — bundling them together
+/// here means a caller can never accidentally treat the raw (still-blinded)
+/// field as spendable.
+#[derive(Debug)]
+pub struct MeltResponse {
+    pub response: MeltBolt11Response,
+    pub change: Vec<Proof>,
+}
+
+/// Alias kept distinct from [`MeltBolt11Response`] at the call site: every
+/// other `*QuoteResponse`/`*Response` pair in this client
+/// (`MintQuoteResponse`/`MintTokensResponse` via `mint_tokens`) names the
+/// wire type directly, so this type alias just gives melt-quote calls the
+/// same naming shape (`create_melt_quote` returns a `MeltQuoteResponse`,
+/// mirroring `create_mint_quote` returning a `MintQuoteResponse`).
+pub type MeltQuoteResponse = MeltQuoteBolt11Response;
 
 /// Log an outgoing mint HTTP request. A dedicated function (rather than an
 /// inline `debug!` in `roundtrip`) so a unit test can exercise the log

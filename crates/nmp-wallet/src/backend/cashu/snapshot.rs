@@ -117,7 +117,12 @@ fn history_kind(op_kind: WalletOperationKind) -> Option<WalletHistoryKind> {
         | WalletOperationKind::PublishNutzapInfo
         | WalletOperationKind::SelectBackend
         | WalletOperationKind::MeltCashu
-        | WalletOperationKind::SetCashuMints => None,
+        | WalletOperationKind::SetCashuMints
+        // #3003 — no dedicated `WalletHistoryKind` row for cross-mint
+        // transfers yet (they surface as the recipient's eventual
+        // `SendNutzap` history row instead); a future UI-facing history kind
+        // is a fast-follow, not required for the money-safety saga itself.
+        | WalletOperationKind::CrossMintTransfer => None,
     }
 }
 
