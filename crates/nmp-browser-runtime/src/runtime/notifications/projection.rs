@@ -5,11 +5,9 @@ use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent};
 use nmp_core::ObservedProjectionSink;
-use nmp_kinds::{
-    KIND_GENERIC_REPOST, KIND_NIP22_COMMENT, KIND_REACTION, KIND_REPOST, KIND_SHORT_TEXT_NOTE,
-    KIND_ZAP_RECEIPT,
-};
+use nmp_kinds::{KIND_NIP22_COMMENT, KIND_REACTION, KIND_SHORT_TEXT_NOTE, KIND_ZAP_RECEIPT};
 use nmp_planner::InterestShape;
+use nostr::Kind;
 use serde::{Deserialize, Serialize};
 
 pub const NOTIFICATIONS_KEY: &str = "nmp.notifications";
@@ -201,8 +199,8 @@ pub fn notifications_interest_shape(viewer_pubkey: &str) -> InterestShape {
     InterestShape {
         kinds: [
             KIND_SHORT_TEXT_NOTE,
-            KIND_REPOST,
-            KIND_GENERIC_REPOST,
+            repost_kind(),
+            generic_repost_kind(),
             KIND_REACTION,
             KIND_ZAP_RECEIPT,
             KIND_NIP22_COMMENT,
@@ -215,8 +213,16 @@ pub fn notifications_interest_shape(viewer_pubkey: &str) -> InterestShape {
     }
 }
 
-const fn is_repost_kind(kind: u32) -> bool {
-    kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
+fn is_repost_kind(kind: u32) -> bool {
+    kind == repost_kind() || kind == generic_repost_kind()
+}
+
+fn repost_kind() -> u32 {
+    u32::from(Kind::Repost.as_u16())
+}
+
+fn generic_repost_kind() -> u32 {
+    u32::from(Kind::GenericRepost.as_u16())
 }
 
 fn has_p_tag(tags: &[Vec<String>], pubkey: &str) -> bool {
