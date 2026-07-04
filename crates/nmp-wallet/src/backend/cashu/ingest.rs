@@ -43,6 +43,17 @@
 //! entirely if the ledger already knows it as either live (already ingested
 //! — a relay resend) or tombstoned (superseded by an earlier-processed `del`
 //! that named it, however out of order).
+//!
+//! # Deferred: mint check-state on recovered proofs (issue #2977)
+//!
+//! This module does NOT verify a recovered proof is still unspent at the
+//! mint (NUT-07) before counting it as spendable balance — only the local
+//! `del`/dedup confluence above. A proof spent by another client/device
+//! without a corresponding rollover ever reaching this account's relays
+//! would show as (transiently optimistic) balance here; a later spend
+//! attempt fails safely at the mint's own swap call (never double-spends —
+//! see `send_worker.rs`), but the displayed balance can be wrong until then.
+//! Tracked as an explicit follow-up, not a silent gap.
 
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
