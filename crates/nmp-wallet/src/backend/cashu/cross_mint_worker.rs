@@ -54,7 +54,11 @@ pub(super) struct CrossMintWorkerArgs {
     pub(super) operation_id: WalletOperationId,
     pub(super) account_pubkey: String,
     pub(super) target_mint: String,
-    pub(super) source_mint: String,
+    /// Ordered (largest-balance-first) settleable SOURCE candidates (#3010).
+    /// The worker walks these until one yields a melt quote it can reserve and
+    /// melt against; a pre-melt failure at any candidate (all move no funds)
+    /// falls through to the next. `(canonical_mint_url, spendable_total)`.
+    pub(super) source_candidates: Vec<(String, u64)>,
     pub(super) amount_sats: u64,
     pub(super) relays: Vec<String>,
     pub(super) created_at: u64,
@@ -104,9 +108,20 @@ fn target_send_fee_headroom(target_client: &MintClient) -> u64 {
     }
 }
 
-/// The full fresh-flow chain: target mint-quote -> source melt-quote ->
-/// reserve+journal -> melt -> (on settle) the target-mint leg. Runs entirely
-/// on a spawned worker thread (D8 — every step here is mint HTTP).
+/// The full fresh-flow chain: target mint-quote -> (per source candidate)
+/// source melt-quote -> reserve+journal -> melt -> (on settle) the
+/// target-mint leg. Runs entirely on a spawned worker thread (D8 — every step
+/// here is mint HTTP).
+///
+/// #3010 — source selection is an ORDERED candidate walk, not a single
+/// pre-committed mint. The target mint-quote is created once; then each
+/// candidate is tried in turn for the PRE-melt stages (melt-quote, keyset,
+/// reserve — none of which move funds). The first candidate that reserves
+/// proofs is the COMMIT point: from there the melt is the irreversible leg
+/// and the outcome is terminal (PAID -> target-mint leg; anything else ->
+/// `Unknown`, reconciled via resume — NEVER retried against a fresh source,
+/// since the payment may already be in flight). If every candidate fails a
+/// pre-melt stage, the transfer fails closed with no funds moved.
 pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
     let CrossMintWorkerArgs {
         worker_tx,
@@ -114,7 +129,7 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
         operation_id,
         account_pubkey,
         target_mint,
-        source_mint,
+        source_candidates,
         amount_sats,
         relays,
         created_at,
@@ -151,247 +166,238 @@ pub(super) fn run_cross_mint_transfer_worker(args: CrossMintWorkerArgs) {
             return;
         }
     };
-
-    // 2. Source melt-quote, sized against the target's own bolt11 invoice.
-    let source_client = MintClient::new(&source_mint);
-    let melt_quote = match source_client.create_melt_quote(&target_quote.request) {
-        Ok(q) => q,
-        Err(e) => {
-            fail_no_funds_moved(
-                &state,
-                &operation_id,
-                &worker_tx,
-                &correlation_id,
-                ui_codes::MELT_QUOTE_FAILED,
-                format!("source melt-quote request failed: {e}"),
-            );
-            return;
-        }
-    };
-    // Defensive: the source mint's own read of the invoice's amount should
-    // match what the target mint-quote was created for (same invoice) —
-    // reject rather than melt a different amount than was actually
-    // requested.
-    if melt_quote.amount != funded_amount_sats {
-        fail_no_funds_moved(
-            &state,
-            &operation_id,
-            &worker_tx,
-            &correlation_id,
-            ui_codes::MELT_QUOTE_FAILED,
-            format!(
-                "source melt-quote amount {} does not match the requested {funded_amount_sats}",
-                melt_quote.amount
-            ),
-        );
-        return;
-    }
-    let Some(total_to_melt) = melt_quote.amount.checked_add(melt_quote.fee_reserve) else {
-        fail_no_funds_moved(
-            &state,
-            &operation_id,
-            &worker_tx,
-            &correlation_id,
-            ui_codes::MELT_QUOTE_FAILED,
-            "melt total overflowed u64".to_string(),
-        );
-        return;
-    };
-
-    // 3. Source keyset — fetched BEFORE reservation so a failure here never
-    // needs an unreserve step (mirrors the ordering rationale in
-    // `send_worker.rs`'s module docs, just shifted earlier since cross-mint
-    // has the luxury of not yet having reserved anything at this point).
-    let source_keyset = match source_client.get_sat_keyset() {
-        Ok(k) => k,
-        Err(e) => {
-            fail_no_funds_moved(
-                &state,
-                &operation_id,
-                &worker_tx,
-                &correlation_id,
-                ui_codes::MELT_QUOTE_FAILED,
-                format!("source keyset fetch failed: {e}"),
-            );
-            return;
-        }
-    };
-
-    // 4. Select + reserve source proofs for the REAL total (amount +
-    // fee_reserve) — do NOT split across source mints (v1 scope, per
-    // design spec); fail closed if the pre-selected source mint no longer
-    // covers it (balance can shift between candidate selection and here).
-    let Some((selected, _selected_total)) =
-        lock_state(&state).select_proofs(&source_mint, total_to_melt)
-    else {
-        fail_no_funds_moved(
-            &state,
-            &operation_id,
-            &worker_tx,
-            &correlation_id,
-            ui_codes::NO_FUNDABLE_SOURCE_MINT,
-            "selected source mint no longer covers the melt total".to_string(),
-        );
-        return;
-    };
-
     let target_quote_id = target_quote.quote.clone();
-    let melt_quote_id = melt_quote.quote.clone();
-    {
-        let mut s = lock_state(&state);
-        for stored in &selected {
-            let _ = s.record_consumed_input(
-                &operation_id,
-                WalletConsumedInput {
-                    event_id: stored.token_event.clone().unwrap_or_default(),
-                    mint: source_mint.clone(),
-                    unit: "sat".to_string(),
-                    amount: stored.proof.amount,
+
+    // 2. Walk the settleable source candidates (largest balance first). Every
+    // step below up to and including the reservation moves NO funds, so a
+    // failure at any of them simply falls through to the next candidate
+    // (#3010). `last_skip` carries the most recent skip reason so the final
+    // "no fundable source" failure is informative.
+    let mut last_skip = "no settleable source mint could fund this transfer".to_string();
+    for (source_mint, _balance) in source_candidates {
+        let source_client = MintClient::new(&source_mint);
+
+        // 2a. Source melt-quote, sized against the target's own bolt11.
+        let melt_quote = match source_client.create_melt_quote(&target_quote.request) {
+            Ok(q) => q,
+            Err(e) => {
+                last_skip = format!("source {source_mint} melt-quote request failed: {e}");
+                continue;
+            }
+        };
+        // Defensive: the source mint's own read of the invoice's amount
+        // should match what the target mint-quote was created for (same
+        // invoice) — skip this source rather than melt a different amount
+        // than was actually requested.
+        if melt_quote.amount != funded_amount_sats {
+            last_skip = format!(
+                "source {source_mint} melt-quote amount {} does not match the requested {funded_amount_sats}",
+                melt_quote.amount
+            );
+            continue;
+        }
+        let Some(total_to_melt) = melt_quote.amount.checked_add(melt_quote.fee_reserve) else {
+            last_skip = format!("source {source_mint} melt total overflowed u64");
+            continue;
+        };
+
+        // 2b. Source keyset — fetched BEFORE reservation so a failure here
+        // never needs an unreserve step (mirrors the ordering rationale in
+        // `send_worker.rs`'s module docs, just shifted earlier since
+        // cross-mint has the luxury of not yet having reserved anything).
+        let source_keyset = match source_client.get_sat_keyset() {
+            Ok(k) => k,
+            Err(e) => {
+                last_skip = format!("source {source_mint} keyset fetch failed: {e}");
+                continue;
+            }
+        };
+
+        // 2c. Select + reserve source proofs for the REAL total (amount +
+        // fee_reserve) — do NOT split across source mints (v1 scope). The
+        // candidate list only guaranteed the bare `amount_sats`; a source
+        // that can't cover the fee-inclusive total is skipped in favour of
+        // the next candidate (#3010 requirement 3), moving no funds.
+        let Some((selected, _selected_total)) =
+            lock_state(&state).select_proofs(&source_mint, total_to_melt)
+        else {
+            last_skip =
+                format!("source {source_mint} does not cover the fee-inclusive melt total");
+            continue;
+        };
+
+        // 2d. COMMIT — reserve the inputs and durably journal them plus the
+        // `melt_quote_id` BEFORE the irreversible melt below. Past this point
+        // the melt outcome is terminal for THIS transfer: we never fall
+        // through to another candidate (the payment may already be in
+        // flight), only PAID -> advance or ambiguous -> `Unknown`+resume.
+        let melt_quote_id = melt_quote.quote.clone();
+        {
+            let mut s = lock_state(&state);
+            for stored in &selected {
+                let _ = s.record_consumed_input(
+                    &operation_id,
+                    WalletConsumedInput {
+                        event_id: stored.token_event.clone().unwrap_or_default(),
+                        mint: source_mint.clone(),
+                        unit: "sat".to_string(),
+                        amount: stored.proof.amount,
+                    },
+                );
+            }
+            if let Err(e) = s.transition(&operation_id, WalletOperationState::MintPending) {
+                // Nothing removed from the inventory yet at this point, so
+                // failing here needs no restore — see `send.rs`'s own comment
+                // on the identical #2953 self-deadlock hazard (release the
+                // guard before calling into a helper that re-locks it).
+                drop(s);
+                fail_no_funds_moved(
+                    &state,
+                    &operation_id,
+                    &worker_tx,
+                    &correlation_id,
+                    ui_codes::JOURNAL_ERROR,
+                    format!("{e:?}"),
+                );
+                return;
+            }
+            s.remove_proofs(&selected);
+            s.pending_cross_mint_transfers.insert(
+                target_quote_id.clone(),
+                PendingCrossMintTransfer {
+                    operation_id: operation_id.clone(),
+                    target_mint: target_mint.clone(),
+                    source_mint: source_mint.clone(),
+                    // #3008 — the amount actually invoiced/minted at the
+                    // target (includes the fallback's fee headroom, when
+                    // present); NOT necessarily the nutzap's own
+                    // `amount_sats` — see `SendRetry::amount_sats`.
+                    amount_sats: funded_amount_sats,
+                    target_quote_id: target_quote_id.clone(),
+                    melt_quote_id: melt_quote_id.clone(),
+                    source_selected: selected.clone(),
+                    melt_settled: false,
+                    minted_proofs: None,
+                    signed_token: None,
+                    chain_started_at: Some(created_at),
                 },
             );
+            // The money-safety invariant: the consumed inputs + melt_quote_id
+            // are now durably recorded BEFORE the melt HTTP call below.
+            super::cross_mint_resume::persist_cross_mint_payload(&s, &target_quote_id);
         }
-        if let Err(e) = s.transition(&operation_id, WalletOperationState::MintPending) {
-            // Mirrors `send.rs`'s ordering: nothing is removed from the
-            // inventory yet at this point, so failing here needs no
-            // restore — see this file's module docs / `send.rs`'s own
-            // comment on the identical #2953 self-deadlock hazard (release
-            // the guard before calling into a helper that re-locks it).
-            drop(s);
-            fail_no_funds_moved(
-                &state,
-                &operation_id,
-                &worker_tx,
-                &correlation_id,
-                ui_codes::JOURNAL_ERROR,
-                format!("{e:?}"),
-            );
-            return;
-        }
-        s.remove_proofs(&selected);
-        s.pending_cross_mint_transfers.insert(
-            target_quote_id.clone(),
-            PendingCrossMintTransfer {
-                operation_id: operation_id.clone(),
-                target_mint: target_mint.clone(),
-                source_mint: source_mint.clone(),
-                // #3008 — the amount actually invoiced/minted at the target
-                // (includes the fallback's fee headroom, when present); NOT
-                // necessarily the nutzap's own `amount_sats` — see
-                // `SendRetry::amount_sats` for that (unaffected) value.
-                amount_sats: funded_amount_sats,
-                target_quote_id: target_quote_id.clone(),
-                melt_quote_id: melt_quote_id.clone(),
-                source_selected: selected.clone(),
-                melt_settled: false,
-                minted_proofs: None,
-                signed_token: None,
-                chain_started_at: Some(created_at),
-            },
-        );
-        // The money-safety invariant: the consumed inputs + melt_quote_id
-        // are now durably recorded BEFORE the melt HTTP call below.
-        super::cross_mint_resume::persist_cross_mint_payload(&s, &target_quote_id);
-    }
 
-    // 5. THE irreversible call. From here on, a transport-level failure
-    // must NEVER restore `selected` — the Lightning payment may have
-    // already left the source mint even if this response was lost.
-    let melt_result = source_client.melt(
-        &melt_quote_id,
-        melt_quote.fee_reserve,
-        selected.iter().map(|s| s.proof.clone()).collect(),
-        &source_keyset,
-    );
-    let melt_response = match melt_result {
-        Ok(r) => r,
-        Err(e) => {
+        // 2e. THE irreversible call. From here on, a transport-level failure
+        // must NEVER restore `selected` — the Lightning payment may have
+        // already left the source mint even if this response was lost, and it
+        // must NEVER fall through to another candidate (same reason).
+        let melt_result = source_client.melt(
+            &melt_quote_id,
+            melt_quote.fee_reserve,
+            selected.iter().map(|s| s.proof.clone()).collect(),
+            &source_keyset,
+        );
+        let melt_response = match melt_result {
+            Ok(r) => r,
+            Err(e) => {
+                mark_melt_unknown(
+                    &state,
+                    &operation_id,
+                    &worker_tx,
+                    &correlation_id,
+                    format!("melt request failed: {e}"),
+                );
+                return;
+            }
+        };
+        if melt_response.response.state != MeltQuoteState::Paid {
+            // A definite HTTP success, but the mint itself reports the payment
+            // still pending/unpaid — genuinely ambiguous in practice (the
+            // payment could still complete asynchronously); reconciled only
+            // via a later resume's `get_melt_quote_status`, never assumed
+            // here, and never advanced past to a fresh source.
             mark_melt_unknown(
                 &state,
                 &operation_id,
                 &worker_tx,
                 &correlation_id,
-                format!("melt request failed: {e}"),
+                format!(
+                    "melt quote state after melt() is {:?}, not PAID",
+                    melt_response.response.state
+                ),
             );
             return;
         }
-    };
-    if melt_response.response.state != MeltQuoteState::Paid {
-        // A definite HTTP success, but the mint itself reports the payment
-        // still pending/unpaid — genuinely ambiguous in practice (the
-        // payment could still complete asynchronously); reconciled only via
-        // a later resume's `get_melt_quote_status`, never assumed here.
-        mark_melt_unknown(
-            &state,
-            &operation_id,
-            &worker_tx,
-            &correlation_id,
-            format!(
-                "melt quote state after melt() is {:?}, not PAID",
-                melt_response.response.state
-            ),
+
+        // #3008 — the melt fee this transfer actually cost: `fee_reserve`
+        // minus whatever NUT-08 change the mint handed back unspent. Recorded
+        // onto THIS operation's own `recorded_fee_sats` so
+        // `cross_mint_publish.rs` can copy it onto the re-dispatched send's
+        // journal row (see `dispatch_cross_mint_token_event`).
+        let melt_fee_consumed = melt_quote
+            .fee_reserve
+            .saturating_sub(melt_response.change.iter().map(|p| p.amount).sum::<u64>());
+
+        // Melt settled: fold the source-side effect (consumed inputs already
+        // removed at reservation time; credit any NUT-08 change) and advance.
+        {
+            let mut s = lock_state(&state);
+            for stored in &selected {
+                s.ledger.apply(WalletFact::MintProbed {
+                    proof: ProofRef::new(stored.proof.c.clone()),
+                    verdict: ProofVerdict::Spent,
+                });
+            }
+            if !melt_response.change.is_empty() {
+                let change_atoms: Vec<ProofAtom> = melt_response
+                    .change
+                    .iter()
+                    .map(|p| ProofAtom {
+                        proof: ProofRef::new(p.c.clone()),
+                        amount_msat: p.amount.saturating_mul(1000),
+                    })
+                    .collect();
+                s.ledger.apply(WalletFact::TokenAdded {
+                    token_event: WalletEventId::new(format!(
+                        "pending-change-{}",
+                        operation_id.as_str()
+                    )),
+                    mint: MintUrl::new(source_mint.clone()),
+                    unit: WalletUnit::new("sat"),
+                    proofs: change_atoms,
+                    via: Provenance::Saga(CorrelationId::new(operation_id.as_str())),
+                });
+            }
+            s.add_proofs(None, source_mint.clone(), melt_response.change);
+            if let Some(p) = s.pending_cross_mint_transfers.get_mut(&target_quote_id) {
+                p.melt_settled = true;
+            }
+            let _ = s.journal.record_fee_sats(&operation_id, melt_fee_consumed);
+            let _ = s.transition(&operation_id, WalletOperationState::MintSettled);
+            super::cross_mint_resume::persist_cross_mint_payload(&s, &target_quote_id);
+        }
+
+        resume_target_mint_leg(
+            worker_tx,
+            state,
+            account_pubkey,
+            target_quote_id,
+            relays,
+            created_at,
+            on_settled,
+            correlation_id,
         );
         return;
     }
 
-    // #3008 — the melt fee this transfer actually cost: `fee_reserve` minus
-    // whatever NUT-08 change the mint handed back unspent. Recorded onto
-    // THIS (`CrossMintTransfer`) operation's own `recorded_fee_sats` — the
-    // same field a `SendNutzap` uses for its own swap fee — so
-    // `cross_mint_publish.rs` can read it back and copy it onto the
-    // re-dispatched send's journal row once that retry is dispatched (see
-    // `dispatch_cross_mint_token_event`).
-    let melt_fee_consumed = melt_quote
-        .fee_reserve
-        .saturating_sub(melt_response.change.iter().map(|p| p.amount).sum::<u64>());
-
-    // Melt settled: fold the source-side effect (consumed inputs already
-    // removed at reservation time; credit any NUT-08 change) and advance.
-    {
-        let mut s = lock_state(&state);
-        for stored in &selected {
-            s.ledger.apply(WalletFact::MintProbed {
-                proof: ProofRef::new(stored.proof.c.clone()),
-                verdict: ProofVerdict::Spent,
-            });
-        }
-        if !melt_response.change.is_empty() {
-            let change_atoms: Vec<ProofAtom> = melt_response
-                .change
-                .iter()
-                .map(|p| ProofAtom {
-                    proof: ProofRef::new(p.c.clone()),
-                    amount_msat: p.amount.saturating_mul(1000),
-                })
-                .collect();
-            s.ledger.apply(WalletFact::TokenAdded {
-                token_event: WalletEventId::new(format!(
-                    "pending-change-{}",
-                    operation_id.as_str()
-                )),
-                mint: MintUrl::new(source_mint.clone()),
-                unit: WalletUnit::new("sat"),
-                proofs: change_atoms,
-                via: Provenance::Saga(CorrelationId::new(operation_id.as_str())),
-            });
-        }
-        s.add_proofs(None, source_mint.clone(), melt_response.change);
-        if let Some(p) = s.pending_cross_mint_transfers.get_mut(&target_quote_id) {
-            p.melt_settled = true;
-        }
-        let _ = s.journal.record_fee_sats(&operation_id, melt_fee_consumed);
-        let _ = s.transition(&operation_id, WalletOperationState::MintSettled);
-        super::cross_mint_resume::persist_cross_mint_payload(&s, &target_quote_id);
-    }
-
-    resume_target_mint_leg(
-        worker_tx,
-        state,
-        account_pubkey,
-        target_quote_id,
-        relays,
-        created_at,
-        on_settled,
-        correlation_id,
+    // Every candidate failed a pre-melt stage — no funds moved anywhere.
+    fail_no_funds_moved(
+        &state,
+        &operation_id,
+        &worker_tx,
+        &correlation_id,
+        ui_codes::NO_FUNDABLE_SOURCE_MINT,
+        last_skip,
     );
 }
 

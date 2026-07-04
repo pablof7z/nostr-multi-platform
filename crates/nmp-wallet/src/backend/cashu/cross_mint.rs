@@ -60,13 +60,21 @@
 //! Target: the first recipient-accepted mint this wallet can fund (mirrors
 //! `send.rs`'s own mutual-mint ordering) — resolved by the caller
 //! (`send.rs`'s fallback, or the explicit action's `target_mint` argument).
-//! Source: the mint (NOT the target) with the LARGEST spendable balance
-//! that can cover `amount_sats` (a lower-bound proxy for the real,
+//! Source: NOT a single pre-committed mint but an ORDERED list of SETTLEABLE
+//! candidates (#3010) — every mint (NOT the target, NOT a known valueless
+//! test mint) that can cover `amount_sats` (a lower-bound proxy for the real,
 //! fee-inclusive total — see
-//! `state_cross_mint::largest_spendable_mint_excluding`'s doc comment). No
+//! `state_cross_mint::spendable_source_candidates_excluding`'s doc comment),
+//! largest spendable balance first. The worker walks the list and, on any
+//! PRE-melt failure at a candidate (melt-quote/keyset/reserve — none move
+//! funds), falls through to the next; the moment a candidate reserves and
+//! melts is the commit point (past which it never advances — an ambiguous
+//! melt is reconciled via resume, never retried against a fresh source). No
 //! splitting across source mints in v1 — fails closed
-//! (`NO_FUNDABLE_SOURCE_MINT`/`INSUFFICIENT_BALANCE`) if no single source
-//! mint covers it.
+//! (`NO_FUNDABLE_SOURCE_MINT`/`INSUFFICIENT_BALANCE`) if no single settleable
+//! source mint covers it. A known valueless test mint (e.g. testnut) is never
+//! a candidate: it hands out free ecash but cannot settle a real bolt11, so
+//! its melt hangs `PENDING` — see `is_known_valueless_mint`.
 
 use std::fmt;
 use std::sync::{Arc, Mutex};
@@ -89,7 +97,11 @@ pub(super) struct CrossMintTransferCommand {
     pub(super) operation_id: WalletOperationId,
     pub(super) account_pubkey: String,
     pub(super) target_mint: String,
-    pub(super) source_mint: String,
+    /// Ordered (largest-balance-first) settleable SOURCE candidates the worker
+    /// walks until one yields a melt quote it can reserve+melt against (#3010)
+    /// — never a single pre-committed source. Each entry is
+    /// `(canonical_mint_url, spendable_total)`.
+    pub(super) source_candidates: Vec<(String, u64)>,
     pub(super) amount_sats: u64,
     pub(super) correlation_id: Option<String>,
     pub(super) on_settled: Option<SendRetry>,
@@ -114,7 +126,7 @@ impl ProtocolCommand for CrossMintTransferCommand {
             operation_id,
             account_pubkey,
             target_mint,
-            source_mint,
+            source_candidates,
             amount_sats,
             correlation_id,
             on_settled,
@@ -132,7 +144,7 @@ impl ProtocolCommand for CrossMintTransferCommand {
                 operation_id,
                 account_pubkey,
                 target_mint,
-                source_mint,
+                source_candidates,
                 amount_sats,
                 relays,
                 created_at,
@@ -182,15 +194,22 @@ pub(super) fn build_cross_mint_transfer(
             format!("unsupported target mint: {target_mint}"),
         );
     }
-    let Some((source_mint, _balance)) =
-        lock_state(&state).largest_spendable_mint_excluding(&target_mint, amount_sats)
-    else {
+    // #3010 — resolve the FULL ordered list of settleable source candidates
+    // (largest balance first, excluding the target and any known valueless
+    // test mint) rather than one pre-committed source. The worker walks this
+    // list and, on any pre-melt failure (melt-quote/keyset/reserve — all
+    // move no funds), falls through to the next candidate; only a candidate
+    // that actually reserves+melts commits. Fail closed here only if NO
+    // settleable mint could fund it at all.
+    let source_candidates =
+        lock_state(&state).spendable_source_candidates_excluding(&target_mint, amount_sats);
+    if source_candidates.is_empty() {
         return fail_closed(
             ui_codes::NO_FUNDABLE_SOURCE_MINT,
             correlation_id,
-            "no other mint holds enough spendable balance to fund this transfer".to_string(),
+            "no settleable mint holds enough spendable balance to fund this transfer".to_string(),
         );
-    };
+    }
     let operation_id = operation_id_for(&correlation_id, now_secs, "cross-mint");
     {
         let mut s = lock_state(&state);
@@ -207,7 +226,7 @@ pub(super) fn build_cross_mint_transfer(
         operation_id,
         account_pubkey,
         target_mint,
-        source_mint,
+        source_candidates,
         amount_sats,
         correlation_id,
         on_settled,

@@ -100,17 +100,16 @@ pub const NO_EXISTING_WALLET: &str = "wallet_cashu_no_existing_wallet";
 
 // ─── #3003 — cross-mint nutzap funding (melt -> mint bridge) ───────────────
 
-/// No source mint (other than the target) holds enough spendable balance to
-/// fund a cross-mint transfer of the requested amount.
+/// No SETTLEABLE source mint (other than the target, and excluding known
+/// valueless test mints) could fund a cross-mint transfer of the requested
+/// amount — either none holds enough spendable balance, or every candidate
+/// failed a pre-melt stage (melt-quote / keyset / fee-inclusive reservation).
+/// Terminal, and no funds moved (#3010).
 pub const NO_FUNDABLE_SOURCE_MINT: &str = "wallet_cashu_no_fundable_source_mint";
 
 /// The target mint's NUT-04 mint-quote request failed (network/protocol
 /// error) — no funds moved yet.
 pub const TARGET_MINT_QUOTE_FAILED: &str = "wallet_cashu_target_mint_quote_failed";
-
-/// The source mint's NUT-05 melt-quote request failed (network/protocol
-/// error) — no funds moved yet.
-pub const MELT_QUOTE_FAILED: &str = "wallet_cashu_melt_quote_failed";
 
 /// The source mint's NUT-05 melt request failed, or the mint reports the
 /// melt quote UNPAID/expired after reconciliation — the reserved source
