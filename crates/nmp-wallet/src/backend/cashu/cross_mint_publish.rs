@@ -8,7 +8,7 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::substrate::build_record_action_success;
+use nmp_core::substrate::{build_record_action_failure, build_record_action_success};
 use nmp_core::CommandSender;
 use nmp_nip60::cashu::types::{MintQuoteState, Proof};
 use nmp_nip60::cashu::MintClient;
@@ -22,7 +22,6 @@ use crate::journal::{
 use super::chain::{enqueue_signed_publish, launch_self_encrypted_publish};
 use super::cross_mint_worker::SendRetry;
 use super::deposit::token_event_plaintext;
-use super::operation_id_for;
 use super::send::SendNutzapCommand;
 use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
 
@@ -99,6 +98,21 @@ pub(super) fn resume_target_mint_leg(
         proofs
     };
 
+    // #3008 — the melt fee this transfer's OWN `CrossMintTransfer` operation
+    // recorded (see `cross_mint_worker.rs`'s `melt_fee_consumed`), read back
+    // so it (plus `pending.source_mint`) can be copied onto the retried
+    // send's journal row below — `0` for a resume/standalone caller that
+    // never recorded one (rather than failing the whole leg over a display
+    // field).
+    let melt_fee_sats = {
+        let guard = lock_state(&state);
+        guard
+            .journal
+            .get(&pending.operation_id)
+            .and_then(|op| op.recorded_fee_sats)
+            .unwrap_or(0)
+    };
+
     dispatch_cross_mint_token_event(
         worker_tx,
         state,
@@ -111,6 +125,8 @@ pub(super) fn resume_target_mint_leg(
         created_at,
         on_settled,
         standalone_correlation_id,
+        pending.source_mint,
+        melt_fee_sats,
     );
 }
 
@@ -132,6 +148,12 @@ fn dispatch_cross_mint_token_event(
     created_at: u64,
     on_settled: Option<SendRetry>,
     standalone_correlation_id: Option<String>,
+    // #3008 — this transfer's own melt source mint + realized melt fee,
+    // copied onto the retried send's journal row below (fresh-flow/
+    // auto-fallback only — see the `on_settled` branch) so
+    // `snapshot.rs::history_row` can surface them without decoding a proof.
+    cross_mint_source: String,
+    cross_mint_fee_sats: u64,
 ) {
     let plaintext = token_event_plaintext(&target_mint, &proofs);
     let proof_atoms: Vec<ProofAtom> = proofs
@@ -191,11 +213,28 @@ fn dispatch_cross_mint_token_event(
             if let Some(retry) = on_settled.clone() {
                 // Re-dispatch the ORIGINAL nutzap send now that the target
                 // mint is funded — a fresh journal operation (this is
-                // logically a brand-new `SendNutzap`), re-using the
-                // ORIGINAL send's correlation id so its own worker resolves
-                // the caller's one-shot action-result channel.
+                // logically a brand-new `SendNutzap`). Its OPERATION id must
+                // be DISTINCT from the original send's: that original
+                // operation (keyed by `retry.correlation_id` — see
+                // `nutzap_dispatch.rs::start_send_nutzap`) is still sitting
+                // in the journal as a terminal `Failed` row (superseded, not
+                // removed — see `send.rs`'s fallback comment), so reusing
+                // `operation_id_for(&retry.correlation_id, ..)` here would
+                // collide with it and `begin_operation_at` would fail closed
+                // with `DuplicateOperation` on every retry that carries a
+                // correlation id — i.e. always in production (#3008 fix; the
+                // pre-fix behavior silently dropped the retry with `began:
+                // false` and no failure ever reported). `target_quote_id` is
+                // mint-issued and unique per transfer, so keying off it here
+                // can never collide with the original send's id OR a
+                // different concurrent transfer's retry.
+                //
+                // `retry.correlation_id` is passed through UNCHANGED on
+                // `SendNutzapCommand` below — that is what the caller's
+                // one-shot action-result channel is keyed on, entirely
+                // separate from this journal operation id.
                 let retry_op =
-                    operation_id_for(&retry.correlation_id, created_at, "cross-mint-retry-send");
+                    WalletOperationId::new(format!("cross-mint-retry-send-{target_quote_id}"));
                 let began = {
                     let mut guard = lock_state(&on_signed_state);
                     let ok = guard
@@ -207,6 +246,11 @@ fn dispatch_cross_mint_token_event(
                         .is_ok();
                     if ok {
                         let _ = guard.journal.record_amount(&retry_op, retry.amount_sats);
+                        let _ = guard.journal.record_cross_mint_origin(
+                            &retry_op,
+                            cross_mint_source,
+                            cross_mint_fee_sats,
+                        );
                     }
                     ok
                 };
@@ -220,6 +264,17 @@ fn dispatch_cross_mint_token_event(
                         target_event_id: retry.target_event_id,
                         correlation_id: retry.correlation_id,
                     })));
+                } else if let Some(id) = retry.correlation_id.clone() {
+                    // Never leave the caller's one-shot action-result channel
+                    // dangling: the target mint IS funded (the transfer
+                    // itself settled), but the retry journal write failed —
+                    // report it rather than silently dropping the retry.
+                    let _ = tx.send(build_record_action_failure(
+                        id,
+                        "cross-mint transfer settled, but the re-dispatched send could not begin \
+                         (journal error) — the target mint is funded, retry nutzap.send"
+                            .to_string(),
+                    ));
                 }
             } else if let Some(id) = standalone_correlation_id.clone() {
                 let result_json = serde_json::json!({

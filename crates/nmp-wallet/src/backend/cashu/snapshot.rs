@@ -96,6 +96,31 @@ fn history_row(state: &CashuWalletState, op: &WalletOperation) -> Option<WalletH
             None => deposit_amount(state, op).unwrap_or((0, "sat".to_string())),
         },
     };
+    // #3008 — which mint(s) a payment used and its fee, without decoding a
+    // proof. Only `SendNutzap` has a meaningful source/target-mint split
+    // (a deposit/redeem has no "sent from a mint" concept); `target_mint`
+    // is whichever mint `consumed_inputs` actually names (the mint the
+    // P2PK swap ran at — the SAME mint the recipient's kind:9321 `u` tag
+    // carries), `source_mint` defaults to that same mint (the ordinary,
+    // intra-mint case) unless the cross-mint auto-fallback recorded a
+    // DIFFERENT melt-source mint on this operation (see
+    // `cross_mint_publish.rs::dispatch_cross_mint_token_event`).
+    // `fee_paid_sats` folds this send's own swap fee with any recorded
+    // melt fee from that fallback; `None` only if the send never reached
+    // the swap (so no fee was ever recorded) at all.
+    let (source_mint, target_mint, fee_paid_sats) = if op.kind == WalletOperationKind::SendNutzap {
+        let target_mint = op.consumed_inputs.last().map(|input| input.mint.clone());
+        let source_mint = op
+            .recorded_cross_mint_source
+            .clone()
+            .or_else(|| target_mint.clone());
+        let fee_paid_sats = op
+            .recorded_fee_sats
+            .map(|own_fee| own_fee + op.recorded_cross_mint_fee_sats.unwrap_or(0));
+        (source_mint, target_mint, fee_paid_sats)
+    } else {
+        (None, None, None)
+    };
     Some(WalletHistoryRow {
         operation_id: op.id.as_str().to_string(),
         kind,
@@ -104,6 +129,9 @@ fn history_row(state: &CashuWalletState, op: &WalletOperation) -> Option<WalletH
         sender: op.recorded_sender.clone(),
         timestamp: op.recorded_at,
         state: format!("{:?}", op.state),
+        source_mint,
+        target_mint,
+        fee_paid_sats,
     })
 }
 

@@ -35,6 +35,15 @@
 //!   and the money-critical happy path: the kind:17375 plaintext carries the
 //!   PRE-EXISTING Cashu P2PK privkey forward byte-identical, never a fresh
 //!   one, with only the `mint` entries replaced.
+//! - [`cross_mint_headroom_tests`] + [`cross_mint_headroom_fallback_tests`]
+//!   — #3008: the auto-fallback's fee-headroom sizing, split across two
+//!   files (AGENTS.md LOC discipline). The standalone action funds EXACTLY
+//!   `amount_sats` (no headroom leaks in — `cross_mint_headroom_tests`); the
+//!   fallback funds `amount_sats` + a real, keyset-derived headroom so the
+//!   re-dispatched send can pay its OWN swap fee at the newly-funded target
+//!   mint instead of underflowing `INSUFFICIENT_BALANCE`, and the resulting
+//!   settled send's history row carries the threaded `source_mint`/
+//!   `fee_paid_sats` (`cross_mint_headroom_fallback_tests`).
 
 use std::sync::Mutex;
 
@@ -54,6 +63,9 @@ use super::*;
 pub(super) use crate::journal::{WalletOperationKind, WalletOperationState};
 
 mod create_wallet_tests;
+mod cross_mint_headroom_fallback_support;
+mod cross_mint_headroom_fallback_tests;
+mod cross_mint_headroom_tests;
 mod cross_mint_resume_tests;
 mod cross_mint_tests;
 mod deposit_cold_restore_tests;
