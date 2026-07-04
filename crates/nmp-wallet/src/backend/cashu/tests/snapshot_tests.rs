@@ -239,6 +239,12 @@ fn snapshot_surfaces_an_accepted_receive_row_and_history_row_after_settle() {
 /// `redeem_tests::on_wallet_event_dispatches_redeem_and_a_deliberately_unverifiable_nutzap_lands_failed`,
 /// then asserts what THAT test doesn't: `snapshot()`'s projection actually
 /// carries the rejected row, with no secret/proof material leaking into it.
+///
+/// Also #2966: a nutzap feed's "from <pubkey> at <time>" needs a sender and
+/// a timestamp on both the receive row and the history row — this asserts
+/// both are present even for a REJECTED redeem (recorded the moment the
+/// event resolves in `RedeemNutzapCommand::run`, before the untrusted-mint
+/// check below fails it), never only on a settled one.
 #[test]
 fn snapshot_surfaces_a_rejected_receive_row_for_an_unverifiable_nutzap() {
     let backend = backend_with_mint();
@@ -306,6 +312,12 @@ fn snapshot_surfaces_a_rejected_receive_row_for_an_unverifiable_nutzap() {
     assert!(!receive_row.accepted);
     assert_eq!(receive_row.mint, "https://untrusted-mint.example");
     assert_eq!(receive_row.amount, 21);
+    assert_eq!(
+        receive_row.sender.as_deref(),
+        Some(sender.public_key().to_hex().as_str()),
+        "a nutzap feed needs to show who a rejected nutzap was from too"
+    );
+    assert_eq!(receive_row.timestamp, Some(1_700_000_000));
 
     let history_row = snapshot
         .projection
@@ -314,6 +326,11 @@ fn snapshot_surfaces_a_rejected_receive_row_for_an_unverifiable_nutzap() {
         .find(|row| row.kind == crate::projection::WalletHistoryKind::RedeemNutzap)
         .expect("a rejected redeem must surface a history row");
     assert_eq!(history_row.state, "Failed");
+    assert_eq!(
+        history_row.sender.as_deref(),
+        Some(sender.public_key().to_hex().as_str())
+    );
+    assert_eq!(history_row.timestamp, Some(1_700_000_000));
 
     let json = serde_json::to_string(&snapshot.projection).expect("projection serializes");
     for forbidden in ["secret", "nsec", "proof", "quote_id"] {

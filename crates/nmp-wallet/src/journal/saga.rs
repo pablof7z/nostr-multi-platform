@@ -115,6 +115,28 @@ pub struct WalletOperation {
     pub state: WalletOperationState,
     pub correlation_id: Option<String>,
     pub consumed_inputs: Vec<WalletConsumedInput>,
+    /// The operation's own logical amount, recorded once by the command that
+    /// creates it (#2966) — distinct from `consumed_inputs`, which name
+    /// proofs actually spent in wallet-internal denominations, not what the
+    /// operation was *for*. Today only `SendNutzap` populates this (the
+    /// amount the sender intended to deliver, known up front, before proof
+    /// selection ever runs) — `consumed_inputs.last()` names the last
+    /// selected proof's own face value, which is never the same number and
+    /// is unset entirely for a send that fails before proof selection.
+    pub recorded_amount: Option<u64>,
+    /// The counterparty pubkey for a receive, set once `RedeemNutzapCommand`
+    /// resolves the kind:9321 event (#2966) — a nutzap feed's "from
+    /// <pubkey>" needs this and nothing upstream carried it into the journal
+    /// before now. `None` for kinds with no external counterparty
+    /// (`DepositCashu`, `SendNutzap`: the account itself is the sender).
+    pub recorded_sender: Option<String>,
+    /// When this operation was recorded, in unix seconds (#2966) — a nutzap
+    /// feed's "at <time>" needs a timestamp on every history/receive row,
+    /// not just a settled/failed state. Set once at `begin_operation` from
+    /// the caller's already-available `ctx.now_secs`, never re-derived
+    /// later, so it reads as "when this wallet started the operation"
+    /// consistently across every kind.
+    pub recorded_at: Option<u64>,
 }
 
 impl WalletOperation {
@@ -130,6 +152,9 @@ impl WalletOperation {
             state,
             correlation_id: None,
             consumed_inputs: Vec::new(),
+            recorded_amount: None,
+            recorded_sender: None,
+            recorded_at: None,
         }
     }
 
@@ -213,6 +238,33 @@ impl WalletOperationJournal {
     ) -> Result<(), WalletJournalError> {
         let operation = self.operation_mut(operation_id)?;
         operation.record_consumed_input(input);
+        Ok(())
+    }
+
+    /// Record `SendNutzap`'s intended send amount (#2966) — see
+    /// [`WalletOperation::recorded_amount`]'s doc comment for why this,
+    /// rather than `consumed_inputs`, is the correct source for a send
+    /// history row's display amount.
+    pub fn record_amount(
+        &mut self,
+        operation_id: &WalletOperationId,
+        amount: u64,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_amount = Some(amount);
+        Ok(())
+    }
+
+    /// Record a `RedeemNutzap`'s sender pubkey (#2966) once the kind:9321
+    /// event resolves — see [`WalletOperation::recorded_sender`]'s doc
+    /// comment.
+    pub fn record_sender(
+        &mut self,
+        operation_id: &WalletOperationId,
+        sender: impl Into<String>,
+    ) -> Result<(), WalletJournalError> {
+        let operation = self.operation_mut(operation_id)?;
+        operation.recorded_sender = Some(sender.into());
         Ok(())
     }
 

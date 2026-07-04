@@ -68,6 +68,41 @@ fn no_recipient_info_fails_closed() {
     expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
 }
 
+/// #2966 — before this fix, `snapshot.rs`'s `history_row` read a
+/// `SendNutzap` history row's `amount` from `op.consumed_inputs.last()`,
+/// which is empty for any failure this early (proof selection never runs
+/// without a resolved recipient) — the nutsack TUI's nutzap feed showed
+/// `amount: 0` for every outgoing send regardless of what was actually
+/// requested. `start_send_nutzap` now records the intended send amount
+/// (`WalletOperation::recorded_amount`) at dispatch time, before recipient
+/// resolution ever runs, so even this earliest failure keeps the real
+/// amount.
+#[test]
+fn history_row_shows_the_intended_send_amount_even_when_the_send_fails_before_proof_selection() {
+    let backend = backend_with_mint();
+    let _errors = run_send(
+        &backend,
+        &FixedCachedEvents::default(),
+        "cid-amount-fidelity",
+        4_200,
+    );
+
+    let snapshot = backend.snapshot(WalletProjectionScope::default());
+    let history_row = snapshot
+        .projection
+        .recent_history
+        .iter()
+        .find(|row| row.operation_id == "cid-amount-fidelity")
+        .expect("a failed SendNutzap must still surface a history row");
+    assert_eq!(
+        history_row.kind,
+        crate::projection::WalletHistoryKind::SendNutzap
+    );
+    assert_eq!(history_row.amount, 4_200);
+    assert_eq!(history_row.unit, "sat");
+    assert_eq!(history_row.state, "Failed");
+}
+
 /// #2936 — a cache miss on the recipient's kind:10019 must not just fail
 /// closed silently: it opens a warm-the-cache read interest for that
 /// specific recipient (`interests::recipient_nutzap_info_interest`) so a

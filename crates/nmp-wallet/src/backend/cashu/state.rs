@@ -273,16 +273,35 @@ impl CashuWalletState {
     /// (the saga is a *producer* into the trail — see `journal` module docs).
     /// This durably records "an operation for this intent now exists" before
     /// any HTTP or port round-trip starts.
+    ///
+    /// Kept as the plain (no timestamp) form so the many existing tests that
+    /// drive the journal directly don't need touching; every real dispatch
+    /// site goes through [`Self::begin_operation_at`] instead, which is the
+    /// one that actually populates `WalletOperation::recorded_at` (#2966).
+    #[cfg(test)]
     pub(super) fn begin_operation(
         &mut self,
         id: WalletOperationId,
         kind: WalletOperationKind,
     ) -> Result<(), WalletJournalError> {
-        self.journal.insert(WalletOperation::new(
-            id.clone(),
-            kind,
-            WalletOperationState::Draft,
-        ))?;
+        self.begin_operation_at(id, kind, 0)
+    }
+
+    /// [`Self::begin_operation`], plus recording `now_secs` as the
+    /// operation's [`WalletOperation::recorded_at`] (#2966) — every history/
+    /// receive row needs a timestamp, and the caller's `ctx.now_secs` is
+    /// already the wallet's one clock read for this dispatch, so this
+    /// threads it through rather than taking a fresh, separately-sourced
+    /// timestamp.
+    pub(super) fn begin_operation_at(
+        &mut self,
+        id: WalletOperationId,
+        kind: WalletOperationKind,
+        now_secs: u64,
+    ) -> Result<(), WalletJournalError> {
+        let mut operation = WalletOperation::new(id.clone(), kind, WalletOperationState::Draft);
+        operation.recorded_at = Some(now_secs);
+        self.journal.insert(operation)?;
         self.transition(&id, WalletOperationState::Prepared)
     }
 
