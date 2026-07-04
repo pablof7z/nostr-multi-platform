@@ -392,3 +392,32 @@ fn derives_from_ref_event_store_and_honors_clear_delta() {
         "cleared refs.event row removes the derived envelope"
     );
 }
+
+// ── `referenced_pubkey` — the self-claim seam (#3016 bug 2) ────────────────
+
+#[test]
+fn referenced_pubkey_reads_author_pubkey_for_short_note() {
+    let author = "aa".repeat(32);
+    let ev = make_event(&"bb".repeat(32), &author, 1, "hello", vec![]);
+    let proj = resolve_embed_projection(&ev, &RenderContext::new());
+    assert_eq!(proj.referenced_pubkey(), Some(author.as_str()));
+}
+
+#[test]
+fn referenced_pubkey_reads_subject_pubkey_for_profile() {
+    let subject = "cc".repeat(32);
+    let ev = make_event(&subject, &subject, 0, r#"{"name":"Alice"}"#, vec![]);
+    let proj = resolve_embed_projection(&ev, &RenderContext::new());
+    assert_eq!(proj.referenced_pubkey(), Some(subject.as_str()));
+}
+
+#[test]
+fn referenced_pubkey_is_none_for_empty_author() {
+    let ev = make_event(&"dd".repeat(32), "", 1, "hello", vec![]);
+    let proj = resolve_embed_projection(&ev, &RenderContext::new());
+    assert_eq!(
+        proj.referenced_pubkey(),
+        None,
+        "an empty author must never be handed to the resolver as a claim key"
+    );
+}

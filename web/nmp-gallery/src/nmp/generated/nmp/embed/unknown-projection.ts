@@ -38,56 +38,56 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
 }
 
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 content():string|null
 content(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 content(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 contentTree(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.readUint8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
 }
 
 contentTreeLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 contentTreeArray():Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 tags(index: number, obj?:TagRow):TagRow|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? (obj || new TagRow()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 tagsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 hasAltText():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 altText():string|null
 altText(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 altText(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startUnknownProjection(builder:flatbuffers.Builder) {
-  builder.startObject(8);
+  builder.startObject(12);
 }
 
 static addKind(builder:flatbuffers.Builder, kind:number) {
@@ -99,15 +99,15 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
 }
 
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(2, createdAt, BigInt('0'));
+  builder.addFieldInt64(6, createdAt, BigInt('0'));
 }
 
 static addContent(builder:flatbuffers.Builder, contentOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, contentOffset, 0);
+  builder.addFieldOffset(7, contentOffset, 0);
 }
 
 static addContentTree(builder:flatbuffers.Builder, contentTreeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, contentTreeOffset, 0);
+  builder.addFieldOffset(8, contentTreeOffset, 0);
 }
 
 static createContentTreeVector(builder:flatbuffers.Builder, data:number[]|Uint8Array):flatbuffers.Offset {
@@ -123,7 +123,7 @@ static startContentTreeVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addTags(builder:flatbuffers.Builder, tagsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, tagsOffset, 0);
+  builder.addFieldOffset(9, tagsOffset, 0);
 }
 
 static createTagsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -139,11 +139,11 @@ static startTagsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addHasAltText(builder:flatbuffers.Builder, hasAltText:boolean) {
-  builder.addFieldInt8(6, +hasAltText, +false);
+  builder.addFieldInt8(10, +hasAltText, +false);
 }
 
 static addAltText(builder:flatbuffers.Builder, altTextOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(7, altTextOffset, 0);
+  builder.addFieldOffset(11, altTextOffset, 0);
 }
 
 static endUnknownProjection(builder:flatbuffers.Builder):flatbuffers.Offset {

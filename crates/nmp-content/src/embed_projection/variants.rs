@@ -34,6 +34,34 @@ pub enum EmbedKindProjection {
     Unknown(UnknownProjection),
 }
 
+impl EmbedKindProjection {
+    /// The single raw pubkey this projection's display name/avatar reactively
+    /// joins against at L5 (#3016) — the `author_pubkey` for every kind that
+    /// renders one, or `Profile`'s own `pubkey` (a `Profile` embed's "author"
+    /// is the profile subject itself). `None` for an empty/absent key so a
+    /// caller never demands a resolve for `""`.
+    ///
+    /// This is the seam a host-side embed sidecar uses to auto-`resolve_ref`
+    /// every author an embed will render — the SAME "component-owned kind:0
+    /// claiming" pattern a feed row's author already gets via
+    /// `register_feed_author_provider`/`FeedAuthorRefs`. Without it, an
+    /// embedded event's author never gets a live resolver demand unless some
+    /// OTHER surface happens to already be watching that pubkey, so its
+    /// display name never arrives no matter how long a host waits (#3016 bug
+    /// 2: a quoted note's author kind:0 never resolves).
+    #[must_use]
+    pub fn referenced_pubkey(&self) -> Option<&str> {
+        let key = match self {
+            EmbedKindProjection::ShortNote(p) => p.author_pubkey.as_str(),
+            EmbedKindProjection::Article(p) => p.author_pubkey.as_str(),
+            EmbedKindProjection::Highlight(p) => p.author_pubkey.as_str(),
+            EmbedKindProjection::Profile(p) => p.pubkey.as_str(),
+            EmbedKindProjection::Unknown(p) => p.author_pubkey.as_str(),
+        };
+        (!key.is_empty()).then_some(key)
+    }
+}
+
 /// Projection payload for a kind:1 short text note embed.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

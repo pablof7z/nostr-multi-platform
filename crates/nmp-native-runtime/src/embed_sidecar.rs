@@ -189,6 +189,20 @@ fn snapshot_map(slot: &EmbedSidecarSlot) -> BTreeMap<String, EmbeddedEventEnvelo
         .unwrap_or_default()
 }
 
+/// The deduped set of author pubkeys the CURRENT resolved embed map will
+/// RENDER (#3016 bug 2) — every [`EmbedKindProjection::referenced_pubkey`]
+/// across the map, using a [`BTreeSet`] so one author embedded on N rows
+/// costs one resolver slot (mirrors [`nmp_feed::FeedAuthorRefs`]).
+fn referenced_author_keys(envelopes: &BTreeMap<String, EmbeddedEventEnvelope>) -> Vec<String> {
+    let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for envelope in envelopes.values() {
+        if let Some(pubkey) = envelope.projection.referenced_pubkey() {
+            keys.insert(pubkey.to_string());
+        }
+    }
+    keys.into_iter().collect()
+}
+
 /// Build the TYPED FlatBuffer (`NEMB`) form of the embed sidecar from the slot.
 ///
 /// Always returns a present [`TypedProjectionData`] — an empty map is a
@@ -226,6 +240,19 @@ pub(crate) fn read_embed_sidecar_typed(slot: &EmbedSidecarSlot) -> TypedProjecti
 /// incremental-apply capability (exact byte equality, monotonic rev, freeze
 /// guard on the same FrameIdentity the feed uses — one shared implementation).
 ///
+/// ADR-0070 D7 / #3016 (bug 2): ALSO registers the embed sidecar's own
+/// feed-author-provider under the SAME key. Every resolved embed's author
+/// pubkey ([`EmbedKindProjection::referenced_pubkey`]) is fed to the kernel's
+/// per-tick author auto-resolve, the SAME "component-owned kind:0 claiming"
+/// lane a feed row's author gets via `register_feed_window_source`. Without
+/// this, an embedded event's author never gets a live resolver demand, so its
+/// kind:0 never arrives no matter how long a host waits — a quoted note's
+/// author display name/picture stays empty even though the SAME pubkey
+/// resolves fine everywhere a feed already claims it. This module is not a
+/// [`nmp_feed::FeedWindowSource`] (it derives from `refs.event`, not a feed
+/// window), so it cannot use that helper's structural pairing and registers
+/// the bare provider directly instead.
+///
 /// Keeping the registration body here — rather than inline in `lib.rs` — keeps
 /// the already-over-cap `lib.rs` from growing (AGENTS.md file-size anti-cheat).
 pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedSidecarSlot) {
@@ -242,6 +269,14 @@ pub(crate) fn install_embed_sidecar_projection(app: &crate::NmpApp, slot: EmbedS
     let emission_state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
         incremental_apply,
     )));
+
+    // #3016 bug 2 — the author-provider lane, keyed identically to the typed
+    // sidecar below so `registered_feed_author_provider_keys` structurally
+    // pairs with it the same way a feed's does.
+    let author_slot = Arc::clone(&slot);
+    app.register_feed_author_provider(EMBED_SIDECAR_PROJECTION_KEY, move || {
+        referenced_author_keys(&snapshot_map(&author_slot))
+    });
 
     app.register_typed_snapshot_projection(
         nmp_ownership::DeclaredProjectionKey::framework(

@@ -29,6 +29,24 @@ namespace nmp.embed;
 // `ProfileProjection` (the sole legitimate kind:0 display carrier), so display
 // updates flow without re-deriving these protocol primitives.
 //
+// Wire stability (#3016): #2514 originally REMOVED four author-display fields
+// outright from the middle of ShortNote / Article / Highlight / Unknown. That
+// shifted every subsequent field's FlatBuffers vtable offset
+// (`title`/`summary`/`hero_image_url`/`created_at`/`content_tree`/`media_urls`
+// all moved), so any decoder generated from the pre-#2514 schema (or any
+// decoder generated from a schema snapshot that predates this fix) silently
+// reads the WRONG field at a given offset instead of failing loudly — e.g.
+// `ArticleProjection.title` lands on the byte range `hero_image_url` now
+// occupies. FlatBuffers tables must only ever GROW (append new fields at the
+// end) or mark unused fields `(deprecated)` in place; never delete/reorder a
+// field, because that reflows every later field's slot. Those slots are
+// therefore re-held below as anonymous `reserved_slot_*` `(deprecated)`
+// placeholders — NOT the removed display fields, which stay gone (flatc emits
+// no accessor for a deprecated field, and display separation (#2514) bans any
+// author `display_name`/`picture` token in a sub-L5 primitive schema). The
+// placeholders exist purely to keep the same-typed vtable slot stable for
+// every field declared after them, at their ORIGINAL position.
+//
 // The per-kind `content_tree` body is the existing `ContentTreeWire` typed
 // buffer (`NFCT` root, `crates/nmp-content/schema/content_tree.fbs`) carried
 // verbatim as opaque bytes via the standalone `encode_content_tree` /
@@ -64,6 +82,13 @@ table ShortNoteProjection {
   id:string;
   // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
+  // Reserved (#3016): unused deprecated slots holding the vtable offsets stable
+  // for created_at/content_tree/media_urls. flatc emits no accessor. See the
+  // "Wire stability" note at the top of this file. Do NOT rename or reorder.
+  reserved_slot_0:bool (deprecated);
+  reserved_slot_1:string (deprecated);
+  reserved_slot_2:bool (deprecated);
+  reserved_slot_3:string (deprecated);
   // Event creation time as Unix seconds.
   created_at:uint64;
   // Rendered note body as a verbatim `ContentTreeWire` (`NFCT`) buffer.
@@ -77,6 +102,14 @@ table ArticleProjection {
   id:string;
   // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
+  // Reserved (#3016): unused deprecated slots holding the vtable offsets stable
+  // for created_at/title/summary/hero_image_url/d_tag/content_tree. flatc emits
+  // no accessor. See the "Wire stability" note at the top of this file. Do NOT
+  // rename or reorder.
+  reserved_slot_0:bool (deprecated);
+  reserved_slot_1:string (deprecated);
+  reserved_slot_2:bool (deprecated);
+  reserved_slot_3:string (deprecated);
   created_at:uint64;
   // title: Option<String>.
   has_title:bool;
@@ -98,6 +131,11 @@ table HighlightProjection {
   id:string;
   // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
+  // Reserved (#3016): unused deprecated slots holding the vtable offsets stable
+  // for created_at/highlighted_text/.... flatc emits no accessor. See the
+  // "Wire stability" note at the top of this file. Do NOT rename or reorder.
+  reserved_slot_0:bool (deprecated);
+  reserved_slot_1:string (deprecated);
   created_at:uint64;
   // Highlighted text from the event content.
   highlighted_text:string;
@@ -139,6 +177,14 @@ table UnknownProjection {
   kind:uint32;
   // 64-character hex author pubkey (display joins reactively at L5).
   author_pubkey:string;
+  // Reserved (#3016): unused deprecated slots holding the vtable offsets stable
+  // for created_at/content/content_tree/tags/alt_text. flatc emits no accessor.
+  // See the "Wire stability" note at the top of this file. Do NOT rename or
+  // reorder.
+  reserved_slot_0:bool (deprecated);
+  reserved_slot_1:string (deprecated);
+  reserved_slot_2:bool (deprecated);
+  reserved_slot_3:string (deprecated);
   created_at:uint64;
   // Raw event content.
   content:string;

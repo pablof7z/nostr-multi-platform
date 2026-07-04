@@ -15,8 +15,8 @@ use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
 use std::collections::BTreeMap;
 
 use super::{
-    build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed, row_to_kernel_event,
-    update_embed_sidecar_from_frame,
+    build_envelope, new_embed_sidecar_slot, read_embed_sidecar_typed, referenced_author_keys,
+    row_to_kernel_event, update_embed_sidecar_from_frame,
 };
 
 fn make_claimed_event_row(
@@ -292,6 +292,58 @@ fn update_from_refs_event_populates_ref_event_envelopes_payload() {
         decoded[primary_id].projection,
         EmbedKindProjection::ShortNote(_)
     ));
+}
+
+// ── Author self-claim seam (#3016 bug 2) ────────────────────────────────────
+//
+// A quoted note's author kind:0 previously never got a live resolver demand:
+// the embed sidecar resolved `author_pubkey` into the projection but nothing
+// ever fed that pubkey into the kernel's per-tick author auto-resolve (the
+// SAME lane a feed row's author gets via `register_feed_author_provider`).
+// These tests prove `referenced_author_keys` — the function
+// `install_embed_sidecar_projection` now registers as the embed sidecar's
+// feed-author provider — surfaces every resolved embed's author, deduped.
+
+#[test]
+fn referenced_author_keys_surfaces_each_resolved_embed_author() {
+    let ctx = RenderContext::new();
+    let author_a = "aa".repeat(32);
+    let author_b = "bb".repeat(32);
+    let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
+    for (pid, author) in [("note-a", &author_a), ("note-b", &author_b)] {
+        let row = make_claimed_event_row(pid, pid, author, 1, "hi", vec![]);
+        let proj = resolve_embed_projection(&row_to_kernel_event(&row), &ctx);
+        map.insert(pid.to_string(), build_envelope(pid, proj));
+    }
+
+    let keys = referenced_author_keys(&map);
+    assert_eq!(keys.len(), 2, "both distinct quoted authors must be claimed");
+    assert!(keys.contains(&author_a));
+    assert!(keys.contains(&author_b));
+}
+
+#[test]
+fn referenced_author_keys_dedupes_one_author_across_many_embeds() {
+    let ctx = RenderContext::new();
+    let author = "cc".repeat(32);
+    let mut map: BTreeMap<String, EmbeddedEventEnvelope> = BTreeMap::new();
+    for pid in ["note-1", "note-2", "note-3"] {
+        let row = make_claimed_event_row(pid, pid, &author, 1, "hi", vec![]);
+        let proj = resolve_embed_projection(&row_to_kernel_event(&row), &ctx);
+        map.insert(pid.to_string(), build_envelope(pid, proj));
+    }
+
+    let keys = referenced_author_keys(&map);
+    assert_eq!(
+        keys,
+        vec![author],
+        "one author quoted N times must cost exactly one resolver slot"
+    );
+}
+
+#[test]
+fn referenced_author_keys_empty_map_yields_no_claims() {
+    assert!(referenced_author_keys(&BTreeMap::new()).is_empty());
 }
 
 #[test]
