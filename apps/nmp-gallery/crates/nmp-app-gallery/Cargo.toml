@@ -19,6 +19,8 @@ default = ["native"]
 # the entire crate is gated behind `native`. Enabled by default.
 native = [
     "nmp-native-runtime/external-signer",
+    # #2927 — NIP-AD moment-1 render + moment-2 paste/search resolution wiring.
+    "nmp-native-runtime/nip-ad",
 ]
 
 [dependencies]
