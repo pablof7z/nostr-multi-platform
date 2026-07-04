@@ -105,6 +105,72 @@ fn kotlin_emits_every_namespace_and_method() {
 }
 
 #[test]
+fn zap_builder_is_present_with_expected_field_shape() {
+    // #2926 regression guard: the `nmp.nip57.zap` builder was silently dropped
+    // from `ACTION_BUILDERS`, so a fresh `gen action-builders` emitted no `zap`
+    // builder and consumer apps lost typed zap dispatch. Assert the registry
+    // entry exists AND matches `nmp_nip57::ZapInput` / `zap.fbs` slot order
+    // (recipient_pubkey, amount_msats, lnurl, relays, target_event_id, comment).
+    let zap = ACTION_BUILDERS
+        .iter()
+        .find(|b| b.namespace == "nmp.nip57.zap")
+        .expect("nmp.nip57.zap must be in ACTION_BUILDERS (#2926)");
+    assert_eq!(zap.method, "zap");
+    // (name, optional) tuples in declaration order — must match zap.fbs slots.
+    let names: Vec<(&str, bool)> = zap.fields.iter().map(|f| (f.name, f.optional)).collect();
+    assert_eq!(
+        names,
+        vec![
+            ("recipientPubkey", false),
+            ("amountMsats", false),
+            ("lnurl", true),
+            ("relays", true),
+            ("targetEventId", true),
+            ("comment", true),
+        ],
+        "zap builder field names/order drifted from ZapInput / zap.fbs slot order"
+    );
+    // `FieldKind` has no `Debug`; assert each kind individually via `matches!`.
+    assert!(
+        matches!(zap.fields[0].kind, FieldKind::Str),
+        "recipientPubkey must be Str"
+    );
+    assert!(
+        matches!(zap.fields[1].kind, FieldKind::Ulong),
+        "amountMsats must be Ulong"
+    );
+    assert!(
+        matches!(zap.fields[2].kind, FieldKind::Str),
+        "lnurl must be Str"
+    );
+    assert!(
+        matches!(zap.fields[3].kind, FieldKind::StrVec),
+        "relays must be StrVec"
+    );
+    assert!(
+        matches!(zap.fields[4].kind, FieldKind::Str),
+        "targetEventId must be Str"
+    );
+    assert!(
+        matches!(zap.fields[5].kind, FieldKind::Str),
+        "comment must be Str"
+    );
+    // And the generated surface actually emits the builder on every platform.
+    assert!(
+        render(Platform::Swift).contains("public static func zap("),
+        "swift must emit a zap builder (#2926)"
+    );
+    assert!(
+        render(Platform::Kotlin).contains("fun zap("),
+        "kotlin must emit a zap builder (#2926)"
+    );
+    assert!(
+        render(Platform::Ts).contains("  zap("),
+        "ts must emit a zap builder (#2926)"
+    );
+}
+
+#[test]
 fn both_platforms_emit_the_publish_union_builders() {
     // `nmp.publish` is a UNION body, emitted by the dedicated `*_publish`
     // emitters (not the flat-table `ACTION_BUILDERS` loop). Assert the two

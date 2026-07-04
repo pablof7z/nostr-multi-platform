@@ -413,12 +413,17 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         schema_version: 1,
         file_identifier: "N57Z",
         default_tier: ActionDefaultTier::Zaps,
-        builder_support: BuilderSupport::NotGenerated {
-            reason: "post-v1 zap send surface removed from v1 generated host builders (#2318)",
-        },
-        public_re_export: PublicReExportPolicy::NotReExported {
-            reason: "standard v1 owner composition does not expose zap payloads (#2318)",
-        },
+        // #2926 — zap host builder restored. #2318's post-v1 payments deferral was
+        // reversed for the wallet surface (NIP-47 pay_invoice + the nmp-wallet
+        // Cashu/nutzap families now generate builders again); the zap builder is
+        // the last straggler. `ZapAction` is a live, typed-doorway ActionModule
+        // (`nmp_nip57::ZapInput`), so consumer apps opting into zaps must be able
+        // to dispatch through the generated builder rather than hand-rolling the
+        // FlatBuffers bytes client-side (ADR-0071 §3 forbids that). The
+        // `Zaps` tier still keeps zap OUT of the canonical default composition —
+        // it stays opt-in.
+        builder_support: BuilderSupport::GeneratedFlatTable,
+        public_re_export: PUBLIC_REEXPORT,
         typed_dispatch: TYPED_ONLY,
     },
     // nmp-wallet owns the wallet product namespaces. nmp-nip47 remains the
