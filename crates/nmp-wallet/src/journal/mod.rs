@@ -11,6 +11,10 @@
 //!   and an unbounded per-atom cause index.
 //! - [`ledger`] — the reducer that folds facts into derived state (balances,
 //!   proof-set membership) while feeding both trail views.
+//! - [`wal`] / [`wal_fs`] — the durable pre-publish write-ahead log: the
+//!   filesystem shadow of the in-memory saga journal that survives a process
+//!   crash (PR-1 of #2910/#2960/#2931). Backend-agnostic saga rows plus opaque
+//!   resume payloads; see the `wal` module docs.
 //!
 //! The saga is a *producer* into the trail via `WalletSagaEvent` ->
 //! `WalletFact::from`; it never depends on `fact`/`trail`/`ledger`. Most
@@ -23,6 +27,8 @@ mod ledger;
 mod ledger_state;
 mod saga;
 mod trail;
+mod wal;
+mod wal_fs;
 
 pub use fact::{
     CorrelationId, DeleteCause, MintUrl, ProofAtom, ProofRef, ProofVerdict, Provenance, PubkeyRef,
@@ -36,3 +42,5 @@ pub use saga::{
     WalletOperationJournal, WalletOperationKind, WalletOperationState, WalletSagaEvent,
 };
 pub use trail::{WalletCauseIndex, WalletDeltaRing, WalletTrailEntry};
+pub use wal::{restore_into_journal, InMemoryWalletWalStore, WalError, WalletWalStore};
+pub use wal_fs::FsWalletWalStore;

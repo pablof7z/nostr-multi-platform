@@ -308,6 +308,47 @@ Reducers do not await mint HTTP. They emit commands, and mint workers return
 raw results. Rust maps those results into wallet state, action stages, and
 publish commands.
 
+### Durable pre-publish WAL
+
+The operation journal above is at-most-once *in memory*; on its own it
+evaporates on process exit. `nmp-wallet` therefore backs it with a durable
+write-ahead log — the filesystem shadow of the in-memory saga journal — so an
+in-flight operation survives a crash and can be reconciled on restart. This
+lands in three PRs (issues #2910, #2960, #2931):
+
+- **PR-1 (this change) — the journal-durability spine.** A backend-agnostic
+  `WalletWalStore` trait (`journal/wal.rs`) with an fs implementation
+  (`FsWalletWalStore`, `journal/wal_fs.rs`) mirroring `nmp-nip47`'s
+  `FsPaymentStore` discipline exactly: one JSON file per record, atomic
+  rename-over-write, corrupt files skipped (not fatal) on load. It stores two
+  record families keyed by account pubkey — **saga rows** (the serialized
+  `WalletOperation`: backend-agnostic ids/mint/unit/amount only) and **opaque
+  resume payloads** (byte blobs for backend-owned secret-bearing resume data).
+  Layout: `{storage_path}/wallet_operations/{account}/{op_id}.json` and
+  `.../{op_id}.payload.json`. Saga rows are written through on every
+  `begin_operation`/`transition`/`record_consumed_input` (the single
+  `CashuWalletState` chokepoint) and deleted on any transition to a terminal
+  state. The store is fs-backed when a `storage_path` is configured (mirroring
+  the `FsPaymentStore` fs-vs-memory decision), else in-memory-only — the same
+  accepted tradeoff NWC's payment store already has. On identity-becomes-active
+  (and eagerly at cold start), `restore_from_wal` rehydrates non-terminal
+  operations into the live journal and deletes any terminal rows found on disk.
+  That terminal-row deletion is load-bearing (**the #2931 fix**): making the
+  journal durable would otherwise let a stuck terminal `Failed` redeem row
+  survive a restart and block a re-observed kind:9321 forever via the
+  `DuplicateOperation` guard, which is strictly worse than today's
+  in-memory-evaporation self-healing. Deleting terminal rows on restore
+  preserves that self-healing.
+- **PR-2 (closes #2910) — deposit WAL.** Writes the deposit resume payload
+  (minted proofs / signed kind:7375 token event) through `upsert_payload` before
+  publish, closing the crash window between `mint_tokens` returning and the
+  token event landing.
+- **PR-3 (closes #2960/#2931) — send + redeem WAL.** Writes the send/redeem
+  resume payloads and drives reconciliation of `Unknown` operations on restart.
+
+PR-1 stores no raw proofs — only backend-agnostic saga state; PR-2/PR-3 are the
+waves that actually write Cashu payloads into the opaque payload slot.
+
 ## Three Wallet-State Concerns
 
 Wallet state is chaotic to reason about: NIP-09 deletions arrive, mint

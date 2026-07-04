@@ -57,3 +57,6 @@ flatbuffers = { workspace = true }
 # (ADR-0071 / #1756, mirrors `nmp-nip47`'s own dev-dependency).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 serde_json = { workspace = true }
+# Temp dirs for the durable-WAL restart round-trip tests (PR-1 of
+# #2910/#2960/#2931) — same pin `nmp-nip47` uses for its `FsPaymentStore` tests.
+tempfile = "3"

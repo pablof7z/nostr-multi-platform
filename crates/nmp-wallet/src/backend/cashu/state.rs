@@ -9,14 +9,15 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use nmp_nip60::cashu::types::Proof;
 use nmp_signer_iface::SignedEvent;
 
 use crate::journal::{
-    WalletFact, WalletJournalError, WalletLedger, WalletOperation, WalletOperationId,
-    WalletOperationJournal, WalletOperationKind, WalletOperationState,
+    WalletConsumedInput, WalletFact, WalletJournalError, WalletLedger, WalletOperation,
+    WalletOperationId, WalletOperationJournal, WalletOperationKind, WalletOperationState,
+    WalletWalStore,
 };
 
 /// The wallet's Cashu (NUT-11 P2PK) private key — NOT the Nostr identity key
@@ -179,6 +180,19 @@ pub(super) struct CashuWalletState {
     /// `check_state_in_flight`, so proofs folded mid-pass are coalesced into
     /// the next run rather than permanently skipped.
     pub(super) check_state_rerun_needed: bool,
+    /// Durable pre-publish WAL (PR-1 of #2910/#2960/#2931), when the app was
+    /// registered with a `storage_path`. `None` keeps the journal in-memory-
+    /// only — the same accepted tradeoff `nmp-nip47`'s payment store already
+    /// has when no storage path is configured. Every saga transition through
+    /// [`Self::transition`]/[`Self::record_consumed_input`] is written through
+    /// to this store keyed by [`Self::wal_account`]; a transition to a terminal
+    /// state deletes the row instead.
+    pub(super) wal_store: Option<Arc<dyn WalletWalStore>>,
+    /// The active account pubkey the WAL rows are keyed under, set by
+    /// `CashuWalletBackend::restore_from_wal` on every identity change (and the
+    /// eager cold-start restore). `None` until an account is active, which is
+    /// also why write-through no-ops before sign-in (no account to key on).
+    pub(super) wal_account: Option<String>,
 }
 
 impl CashuWalletState {
@@ -194,6 +208,8 @@ impl CashuWalletState {
             pending_deposits: BTreeMap::new(),
             check_state_in_flight: false,
             check_state_rerun_needed: false,
+            wal_store: None,
+            wal_account: None,
         }
     }
 
@@ -316,7 +332,51 @@ impl CashuWalletState {
     ) -> Result<(), WalletJournalError> {
         let event = self.journal.transition(id, next)?;
         self.ledger.apply(WalletFact::from(event));
+        self.wal_persist(id);
         Ok(())
+    }
+
+    /// Record a consumed input on the journal AND write the updated saga row
+    /// through to the WAL — the third pre-effect chokepoint (alongside
+    /// `begin_operation_at` and `transition`). Send/redeem/melt record their
+    /// consumed proofs here BEFORE the mint request goes out, so a crash after
+    /// the mint spends them but before the token event publishes leaves a
+    /// durable "these inputs were consumed by this operation" record to
+    /// reconcile against (never re-mint). Route every consumed-input record
+    /// through this method rather than `self.journal.record_consumed_input`
+    /// directly, or the durable row misses the input.
+    pub(super) fn record_consumed_input(
+        &mut self,
+        id: &WalletOperationId,
+        input: WalletConsumedInput,
+    ) -> Result<(), WalletJournalError> {
+        self.journal.record_consumed_input(id, input)?;
+        self.wal_persist(id);
+        Ok(())
+    }
+
+    /// Write the current saga row for `id` through to the durable WAL, or
+    /// delete it once terminal. A no-op when no WAL is configured or no account
+    /// is active yet (in-memory-only parity). Failures are swallowed: the WAL
+    /// is a durability shadow, and a transient disk error must not fail the
+    /// in-memory saga transition that already succeeded (D6). PR-2/PR-3 add the
+    /// payload write-through for backend-owned secret-bearing resume data;
+    /// deleting the (possibly absent) payload on terminal here is a harmless
+    /// no-op until then.
+    fn wal_persist(&self, id: &WalletOperationId) {
+        let (Some(store), Some(account)) = (self.wal_store.as_ref(), self.wal_account.as_ref())
+        else {
+            return;
+        };
+        let Some(op) = self.journal.get(id) else {
+            return;
+        };
+        if op.state.is_terminal() {
+            let _ = store.delete_operation(account, id);
+            let _ = store.delete_payload(account, id);
+        } else {
+            let _ = store.upsert_operation(account, op);
+        }
     }
 }
 

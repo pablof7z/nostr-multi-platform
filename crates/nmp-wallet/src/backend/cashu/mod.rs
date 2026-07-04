@@ -51,6 +51,7 @@ mod create_wallet;
 mod deposit;
 mod events;
 mod ingest;
+mod lifecycle;
 mod nutzap_dispatch;
 mod publish_info;
 mod recover;
@@ -69,7 +70,9 @@ use nmp_core::substrate::{KernelEvent, ProtocolCommandContext};
 use nmp_core::ui_token::UiToken;
 
 use crate::fail_closed::fail_closed;
-use crate::journal::{WalletOperationId, WalletOperationKind, WalletOperationState};
+use crate::journal::{
+    WalletOperationId, WalletOperationKind, WalletOperationState, WalletWalStore,
+};
 use crate::projection::{WalletBalanceRow, WalletProjection, WalletReadiness};
 
 use super::{
@@ -90,41 +93,12 @@ pub const CASHU_BACKEND_ID: &str = "cashu";
 /// HTTP lane.
 pub struct CashuWalletBackend {
     state: Arc<Mutex<CashuWalletState>>,
-}
-
-impl CashuWalletBackend {
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            state: Arc::new(Mutex::new(CashuWalletState::new())),
-        }
-    }
-
-    /// Discard all in-memory wallet state (created flag, mints, Cashu P2PK
-    /// pubkey, ledger, journal, pending deposits) and start fresh.
-    ///
-    /// Required because this backend, unlike `NwcWalletBackend`'s connection
-    /// state, holds NIP-44-encrypted-to-a-specific-identity material
-    /// (`kind:17375`'s Cashu private key + accepted mints, `kind:7375`
-    /// proofs): it is constructed once per app instance
-    /// (`register.rs`), not once per signed-in account, so without this reset
-    /// a Nostr account switch within one running app would leave the
-    /// PREVIOUS account's balance/mint list/pending deposits visible to
-    /// (and, via `complete_deposit`, completable as) the NEWLY active
-    /// account — a cross-account data/fund leak. Callers wire this to fire
-    /// on every active-account change (`nmp_core::substrate::IdentityChangeRegistrar`),
-    /// mirroring how `nmp-nip51`'s `MuteListProjection` resets on the same
-    /// signal. Losing in-memory wallet state on account switch is expected
-    /// and safe: nothing here is the source of truth — the durable
-    /// `kind:17375`/`kind:7375`/`kind:7376` events are, and `created = false`
-    /// after this reset is exactly what lets the NEWLY active account's own
-    /// wallet get reloaded — `runtime.rs`'s identity-change observer re-syncs
-    /// `wallet_self_authored_shape`'s reconciler on every account switch,
-    /// whose replay `on_self_authored_wallet_event` (#2965, `events.rs`)
-    /// folds back into this fresh state the same way cold start does.
-    pub fn reset(&self) {
-        *lock_state(&self.state) = CashuWalletState::new();
-    }
+    /// The durable pre-publish WAL store (PR-1 of #2910/#2960/#2931), or `None`
+    /// for in-memory-only. Held here — not only inside `state` — because
+    /// [`Self::reset`] replaces the whole `CashuWalletState` on every account
+    /// switch, so the app-lifetime store has to be re-threaded into the fresh
+    /// state each time from this field, which survives the reset.
+    wal_store: Option<Arc<dyn WalletWalStore>>,
 }
 
 impl Default for CashuWalletBackend {

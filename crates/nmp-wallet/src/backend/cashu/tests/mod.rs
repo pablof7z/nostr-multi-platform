@@ -59,6 +59,7 @@ mod reset_tests;
 mod send_tests;
 mod send_worker_tests;
 mod snapshot_tests;
+mod wal_restore_tests;
 
 /// Captures every `ActorCommand` a `run()` call sends synchronously via
 /// `ctx.send`.
