@@ -36,9 +36,11 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "publish-info");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) =
-                state.begin_operation(operation_id.clone(), WalletOperationKind::PublishNutzapInfo)
-            {
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::PublishNutzapInfo,
+                ctx.now_secs,
+            ) {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
         }
@@ -76,11 +78,19 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "send-nutzap");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) =
-                state.begin_operation(operation_id.clone(), WalletOperationKind::SendNutzap)
-            {
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::SendNutzap,
+                ctx.now_secs,
+            ) {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
+            // #2966 — the intended send amount is known right now, before
+            // recipient/mint/proof resolution ever runs, and is the correct
+            // history-row display amount even if every later step fails
+            // (`consumed_inputs` only gets populated once proofs are
+            // actually selected — see `snapshot.rs`'s `history_row`).
+            let _ = state.journal.record_amount(&operation_id, amount_sats);
         }
         vec![ActorCommand::Protocol(Box::new(SendNutzapCommand {
             state: Arc::clone(&self.state),
@@ -115,9 +125,11 @@ impl CashuWalletBackend {
         let operation_id = redeem_operation_id(&event_id);
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) =
-                state.begin_operation(operation_id.clone(), WalletOperationKind::RedeemNutzap)
-            {
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::RedeemNutzap,
+                ctx.now_secs,
+            ) {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
         }

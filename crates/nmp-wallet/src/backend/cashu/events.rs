@@ -42,7 +42,11 @@ impl CashuWalletBackend {
         {
             let mut state = lock_state(&self.state);
             if state
-                .begin_operation(operation_id.clone(), WalletOperationKind::RedeemNutzap)
+                .begin_operation_at(
+                    operation_id.clone(),
+                    WalletOperationKind::RedeemNutzap,
+                    ctx.now_secs,
+                )
                 .is_err()
             {
                 return Vec::new();

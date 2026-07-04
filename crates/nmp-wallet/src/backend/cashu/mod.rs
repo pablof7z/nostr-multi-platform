@@ -282,9 +282,11 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "create");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) =
-                state.begin_operation(operation_id.clone(), WalletOperationKind::CreateCashuWallet)
-            {
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::CreateCashuWallet,
+                ctx.now_secs,
+            ) {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
         }
@@ -332,9 +334,11 @@ impl CashuWalletBackend {
         let operation_id = operation_id_for(&correlation_id, ctx.now_secs, "deposit-quote");
         {
             let mut state = lock_state(&self.state);
-            if let Err(e) =
-                state.begin_operation(operation_id.clone(), WalletOperationKind::DepositCashu)
-            {
+            if let Err(e) = state.begin_operation_at(
+                operation_id.clone(),
+                WalletOperationKind::DepositCashu,
+                ctx.now_secs,
+            ) {
                 return fail_closed(ui_codes::JOURNAL_ERROR, correlation_id, format!("{e:?}"));
             }
             // Pre-effect record: this operation has an HTTP round-trip in

@@ -35,6 +35,13 @@ pub struct WalletHistoryRow {
     pub kind: WalletHistoryKind,
     pub amount: u64,
     pub unit: String,
+    /// The counterparty pubkey, when one exists (`RedeemNutzap` only as of
+    /// #2966 — `None` for `Deposit`/`SendNutzap`, which have no external
+    /// sender to name).
+    pub sender: Option<String>,
+    /// When this operation was recorded, in unix seconds (#2966) — `None`
+    /// only for a row folded from state that predates this field.
+    pub timestamp: Option<u64>,
     pub state: String,
 }
 
@@ -44,6 +51,11 @@ pub struct WalletReceiveRow {
     pub mint: String,
     pub amount: u64,
     pub unit: String,
+    /// The kind:9321 nutzap's sender pubkey (#2966) — a nutzap feed's "from
+    /// <pubkey>". `None` only if the operation predates this field.
+    pub sender: Option<String>,
+    /// When this operation was recorded, in unix seconds (#2966).
+    pub timestamp: Option<u64>,
     pub accepted: bool,
 }
 
@@ -133,6 +145,8 @@ mod tests {
             kind: WalletHistoryKind::Deposit,
             amount: idx,
             unit: "sat".to_string(),
+            sender: None,
+            timestamp: None,
             state: "settled".to_string(),
         });
 

@@ -95,6 +95,15 @@ impl ProtocolCommand for RedeemNutzapCommand {
                 "nutzap event not found in this backend's cache".to_string(),
             );
         };
+        // #2966 — record the sender as soon as the event resolves, before
+        // any of the checks below can fail this operation: a nutzap feed's
+        // "from <pubkey>" needs this on a rejected/unverifiable receive row
+        // exactly as much as on a settled one (see `snapshot.rs`'s
+        // `receive_rows`/`history_row`), and `event.author` is already this
+        // wallet's own verified copy of who authored the kind:9321.
+        let _ = lock_state(&state)
+            .journal
+            .record_sender(&operation_id, event.author.clone());
         if event.kind != KIND_NIP61_NUTZAP {
             return fail(
                 ctx,
