@@ -241,6 +241,18 @@ impl CashuWalletState {
         }));
     }
 
+    /// Drop every held proof attached to `token_event` — the recovery-path
+    /// (#2965) counterpart to [`Self::remove_proofs`]: a kind:7375 token
+    /// event superseded by a newer one's `del` field is dead regardless of
+    /// which proofs it carried, so this removes by token-event id rather
+    /// than needing the superseded event's own (possibly not-yet-decrypted)
+    /// proof list. Safe to call for a `token_event` this wallet never
+    /// actually held (out-of-order recovery replay) — a plain no-op.
+    pub(super) fn remove_proofs_for_token_event(&mut self, token_event: &str) {
+        self.proofs
+            .retain(|p| p.token_event.as_deref() != Some(token_event));
+    }
+
     /// Insert a fresh operation and drive it Draft -> Prepared, folding the
     /// resulting `WalletSagaEvent` into the ledger as `SagaTransition` facts
     /// (the saga is a *producer* into the trail — see `journal` module docs).

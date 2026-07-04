@@ -82,17 +82,32 @@ fn create_execute_reaches_the_cashu_backend_and_dispatches_a_command() {
 // ── cashu.recover ────────────────────────────────────────────────────────────
 
 #[test]
-fn recover_always_rejects_regardless_of_registered_backends() {
-    let module = CashuRecoverModule::new();
+fn recover_start_fails_closed_with_no_capable_backend() {
+    let module = CashuRecoverModule::new(empty_selector(), active_pubkey(Some(PK)));
     let err = module
         .start(&mut ctx(), CashuRecoverAction {})
-        .expect_err("recover is never implemented today");
+        .expect_err("no registered backend must be rejected");
     match err {
         ActionRejection::InvalidCoded { code, .. } => {
-            assert_eq!(code, ui_codes::CASHU_RECOVER_NOT_IMPLEMENTED);
+            assert_eq!(code, ui_codes::NO_CAPABLE_BACKEND)
         }
         other => panic!("expected InvalidCoded, got {other:?}"),
     }
+}
+
+#[test]
+fn recover_execute_reaches_the_cashu_backend_and_dispatches_a_command() {
+    let module = CashuRecoverModule::new(cashu_selector(), active_pubkey(Some(PK)));
+    let dispatched = std::cell::Cell::new(0);
+    module
+        .execute(&ctx(), CashuRecoverAction {}, "corr-1", &|_cmd| {
+            dispatched.set(dispatched.get() + 1)
+        })
+        .expect("execute must succeed");
+    assert!(
+        dispatched.get() > 0,
+        "recover must dispatch at least one command"
+    );
 }
 
 // ── cashu.deposit_quote ──────────────────────────────────────────────────────

@@ -88,3 +88,12 @@ pub const ALREADY_REDEEMED: &str = "wallet_cashu_already_redeemed";
 /// No Cashu wallet is active (no `cashu_pubkey_hex`/`cashu_privkey`) — every
 /// nutzap operation requires a created wallet first.
 pub const NO_CASHU_WALLET: &str = "wallet_cashu_no_wallet";
+
+// ─── #2965 (epic #2864) — wallet recovery ──────────────────────────────────
+
+/// `RecoverCashuWallet` found no cached kind:17375 wallet event for this
+/// account (`ctx.latest_author_kind` — see `recover.rs`): either this account
+/// genuinely has no existing NIP-60 wallet on relays (the caller should use
+/// `cashu.create` instead), or `wallet_self_authored_shape`'s cold-start
+/// replay simply has not delivered it into this session's cache yet.
+pub const NO_EXISTING_WALLET: &str = "wallet_cashu_no_existing_wallet";

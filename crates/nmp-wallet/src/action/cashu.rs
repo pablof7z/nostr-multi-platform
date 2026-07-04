@@ -1,21 +1,19 @@
 //! `nmp.wallet.cashu.*` — W5 (#2908, epic #2864).
 //!
-//! `create`/`deposit_quote`/`complete_deposit` translate their typed payload
-//! into the matching `WalletIntent` and dispatch through the W4 selector
-//! (`action::dispatch_and_forward`), so they route to whichever registered
-//! backend advertises the capability — today always `CashuWalletBackend`,
-//! but the action modules themselves name no backend.
+//! `create`/`recover`/`deposit_quote`/`complete_deposit` all translate their
+//! typed payload into the matching `WalletIntent` and dispatch through the W4
+//! selector (`action::dispatch_and_forward`), so they route to whichever
+//! registered backend advertises the capability — today always
+//! `CashuWalletBackend`, but the action modules themselves name no backend.
 //!
-//! `recover` is different: `WalletCapability::CreateCashuWallet` bundles
-//! BOTH the `create` and `recover` action namespaces for UI-surfacing
-//! purposes (`WalletCapabilities::action_namespaces`), so the generic
-//! capability-resolution check the other three modules rely on cannot tell
-//! "a backend can create" from "a backend can also recover" — and no backend
-//! implements recovery yet (`CashuWalletBackend::start_intent` documents
-//! `RecoverCashuWallet` as an out-of-scope no-op). `CashuRecoverModule`
-//! therefore rejects unconditionally in `start()` rather than trusting
-//! capability resolution to catch it — an honest, narrow special case, not a
-//! silent no-op-that-looks-like-success.
+//! `recover` (#2965, epic #2864) loads an account's EXISTING on-relay
+//! kind:17375 wallet config into state rather than minting fresh —
+//! `CashuWalletBackend::start_intent` now implements `RecoverCashuWallet` via
+//! `recover::RecoverCashuWalletCommand`. `WalletCapability::CreateCashuWallet`
+//! still bundles BOTH the `create` and `recover` action namespaces for
+//! UI-surfacing purposes (`WalletCapabilities::action_namespaces`), which is
+//! fine here: both namespaces map to the SAME capability a backend either
+//! has or doesn't, and `CashuWalletBackend` now implements both.
 
 use std::sync::Arc;
 
@@ -30,6 +28,7 @@ use nmp_core::substrate::{
 
 use crate::backend::WalletIntent;
 use crate::selector::WalletBackendSelector;
+#[cfg(test)]
 use crate::ui_codes;
 use crate::{
     ACTION_CASHU_COMPLETE_DEPOSIT, ACTION_CASHU_CREATE, ACTION_CASHU_DEPOSIT_QUOTE,
@@ -110,18 +109,18 @@ impl ActionModule for CashuCreateModule {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct CashuRecoverAction {}
 
-pub struct CashuRecoverModule;
+pub struct CashuRecoverModule {
+    selector: Arc<WalletBackendSelector>,
+    active_pubkey: ActiveAccountSlot,
+}
 
 impl CashuRecoverModule {
     #[must_use]
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for CashuRecoverModule {
-    fn default() -> Self {
-        Self::new()
+    pub fn new(selector: Arc<WalletBackendSelector>, active_pubkey: ActiveAccountSlot) -> Self {
+        Self {
+            selector,
+            active_pubkey,
+        }
     }
 }
 
@@ -134,35 +133,33 @@ impl ActionModule for CashuRecoverModule {
     /// Typed FlatBuffers payload decode (ADR-0071 / #2920) — delegates to the
     /// `nmp.wallet.cashu.recover` `ActionPayload` codec (`NWCR`). The registry
     /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
-    /// `start()` still rejects unconditionally (see below); this only makes
-    /// the namespace reachable by name.
     fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<Self::Action as ActionPayload>::decode(bytes))
     }
 
-    /// See the module doc comment: no backend implements Cashu wallet
-    /// recovery yet, and the generic capability check cannot distinguish
-    /// this from `create`, so this rejects unconditionally.
     fn start(
         &self,
         _ctx: &mut ActionContext,
         _action: Self::Action,
     ) -> Result<(), ActionRejection> {
-        Err(ActionRejection::InvalidCoded {
-            code: ui_codes::CASHU_RECOVER_NOT_IMPLEMENTED,
-            message: "wallet recovery is not implemented yet".to_string(),
-        })
+        require_capable_backend(&self.selector, &WalletIntent::RecoverCashuWallet)
     }
 
     fn execute(
         &self,
         _ctx: &ActionContext,
         _action: Self::Action,
-        _correlation_id: &str,
-        _send: &dyn Fn(ActorCommand),
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        // Unreachable — `start()` always rejects.
-        Err("cashu.recover is not implemented".to_string())
+        dispatch_and_forward(
+            &self.selector,
+            &self.active_pubkey,
+            WalletIntent::RecoverCashuWallet,
+            correlation_id,
+            send,
+        );
+        Ok(())
     }
 }
 

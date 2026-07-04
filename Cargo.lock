@@ -5062,6 +5062,7 @@ name = "nmp-wallet"
 version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
+ "hex",
  "nmp-core",
  "nmp-nip47",
  "nmp-nip60",

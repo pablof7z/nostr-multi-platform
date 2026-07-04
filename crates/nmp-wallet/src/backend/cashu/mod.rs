@@ -8,11 +8,11 @@
 //!   `WalletCapabilities::cashu_nutzaps`'s doc comment).
 //! * `start_intent()` maps every `WalletIntent` this backend implements onto
 //!   `ActorCommand::Protocol` commands (`create_wallet.rs`, `deposit.rs`,
-//!   `publish_info.rs`, `send.rs`, `redeem.rs`) that drive the
+//!   `publish_info.rs`, `send.rs`, `redeem.rs`, `recover.rs`) that drive the
 //!   signer-transparent NIP-44 + sign ports and `nmp-nip60`'s mint HTTP lane.
-//!   `RecoverCashuWallet`/`MeltCashu` remain unimplemented, so `start_intent`
-//!   is a documented no-op for those (never a panic — D6), same as
-//!   `backend::nwc` treats its own out-of-capability intents.
+//!   `MeltCashu` remains unimplemented, so `start_intent` is a documented
+//!   no-op for it (never a panic — D6), same as `backend::nwc` treats its own
+//!   out-of-capability intents.
 //! * `snapshot()` reads the shared [`state::CashuWalletState`] this backend's
 //!   own commands/workers write (D4: this backend's commands are the sole
 //!   writer, mirroring `NwcWalletBackend`'s `WalletStatusSlot`), including
@@ -25,13 +25,16 @@
 //! the `WalletBackendSelector`, and (via `crate::runtime::WalletRuntime`)
 //! routes every observed kind:9321/10019/17375/7375/7376/7374 `KernelEvent`
 //! into `on_wallet_event`. As of #2917, `on_wallet_event` acts on kind:9321
-//! (dispatches `redeem::RedeemNutzapCommand` — see that method's doc comment)
-//! but still no-ops kind:17375/7375/7376/10019: reconciling THOSE durable
-//! events into `WalletLedger::rebuild_from` on cold start needs a
-//! signer-mediated NIP-44 decrypt this backend does not yet perform (this
-//! backend's in-memory state today is populated only by its own
-//! `start_intent`-driven operations, plus whatever `on_wallet_event` folds
-//! from observed kind:9321s). A documented no-op, not a silent partial read.
+//! (dispatches `redeem::RedeemNutzapCommand` — see that method's doc comment).
+//! As of #2965, it ALSO acts on the account's own self-authored kind:17375/
+//! 7375 (`on_self_authored_wallet_event`, below): a signer-mediated NIP-44
+//! decrypt (`ingest.rs`) loads an existing wallet's config/proofs into this
+//! backend's in-memory state, rather than leaving a returning user's
+//! already-published wallet invisible behind a fresh `CreateCashuWallet`.
+//! kind:7376/10019 stay a documented no-op — history replay and the
+//! account's own nutzap-info cache are not this backend's concern (the
+//! former is display-only, the latter is read on demand via
+//! `ctx.latest_author_kind` where needed, e.g. `publish_info.rs`).
 //! * `on_mint_result` — this backend's own `ProtocolCommand` workers
 //!   (`CashuDepositQuoteCommand`, `CashuCompleteDepositCommand`, and #2917's
 //!   send/redeem workers) own the full mint-round-trip -> state/publish
@@ -45,8 +48,11 @@
 mod chain;
 mod create_wallet;
 mod deposit;
+mod events;
+mod ingest;
 mod nutzap_dispatch;
 mod publish_info;
+mod recover;
 mod redeem;
 mod redeem_worker;
 mod send;
@@ -73,8 +79,7 @@ use crate::capability::WalletCapabilities;
 
 use create_wallet::CreateCashuWalletCommand;
 use deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
-use nutzap_dispatch::redeem_operation_id;
-use redeem::RedeemNutzapCommand;
+use recover::RecoverCashuWalletCommand;
 use state::{canonicalize_mint_url, is_well_formed_mint_url, lock_state, CashuWalletState};
 
 /// Canonical id this backend registers under.
@@ -108,12 +113,14 @@ impl CashuWalletBackend {
     /// account — a cross-account data/fund leak. Callers wire this to fire
     /// on every active-account change (`nmp_core::substrate::IdentityChangeRegistrar`),
     /// mirroring how `nmp-nip51`'s `MuteListProjection` resets on the same
-    /// signal. Losing durable wallet history on account switch is expected
+    /// signal. Losing in-memory wallet state on account switch is expected
     /// and safe: nothing here is the source of truth — the durable
-    /// `kind:17375`/`kind:7375`/`kind:7376` events are — cold-start
-    /// reconciliation from that event stream back into this state is a
-    /// separate, already-documented deferral (see `on_wallet_event`'s doc
-    /// comment on this backend), not something this reset regresses.
+    /// `kind:17375`/`kind:7375`/`kind:7376` events are, and `created = false`
+    /// after this reset is exactly what lets the NEWLY active account's own
+    /// wallet get reloaded — `runtime.rs`'s identity-change observer re-syncs
+    /// `wallet_self_authored_shape`'s reconciler on every account switch,
+    /// whose replay `on_self_authored_wallet_event` (#2965, `events.rs`)
+    /// folds back into this fresh state the same way cold start does.
     pub fn reset(&self) {
         *lock_state(&self.state) = CashuWalletState::new();
     }
@@ -195,16 +202,12 @@ impl WalletBackend for CashuWalletBackend {
             WalletIntent::RedeemNutzap { event_id } => {
                 self.start_redeem_nutzap(ctx, event_id, correlation_id)
             }
+            WalletIntent::RecoverCashuWallet => self.start_recover_wallet(ctx, correlation_id),
             // Not this backend's capability — `capabilities()` already tells
             // callers not to route these here. A no-op rather than a panic
             // keeps a stray dispatch harmless (D6), same as `backend::nwc`.
-            // `RecoverCashuWallet` is nominally reachable via
-            // `create_cashu_wallet`'s action-namespace bundling
-            // (`WalletCapabilities::action_namespaces`) but is separate
-            // epic #2864 scope this backend does not implement yet.
             WalletIntent::SelectBackend { .. }
             | WalletIntent::PayBolt11 { .. }
-            | WalletIntent::RecoverCashuWallet
             | WalletIntent::MeltCashu { .. } => Vec::new(),
         }
     }
@@ -214,38 +217,17 @@ impl WalletBackend for CashuWalletBackend {
         ctx: WalletBackendContext<'_>,
         event: &KernelEvent,
     ) -> Vec<ActorCommand> {
-        // #2917 (W9) — a received nutzap. Everything else (kind:17375/7375/
-        // 7376/10019 cold-start reconciliation) stays the documented no-op
-        // from the module doc comment.
-        if event.kind != nmp_nip60::kinds::KIND_NIP61_NUTZAP {
-            return Vec::new();
+        if event.kind == nmp_nip60::kinds::KIND_NIP61_NUTZAP {
+            return self.on_nutzap_event(ctx, event);
         }
-        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
-            return Vec::new();
-        };
-        // Keyed by the nutzap's own event id (not a correlation id — this
-        // path has none): re-observing the same kind:9321 (a relay resend,
-        // or an explicit `nmp.wallet.nutzap.redeem` retry for one the
-        // observer already started) hits `DuplicateOperation` here and is
-        // silently skipped rather than double-dispatched — a natural
-        // at-most-once guard shared with `start_redeem_nutzap` below.
-        let operation_id = redeem_operation_id(&event.id);
+        if event.kind == nmp_nip60::kinds::KIND_NIP60_WALLET
+            || event.kind == nmp_nip60::kinds::KIND_NIP60_TOKEN
         {
-            let mut state = lock_state(&self.state);
-            if state
-                .begin_operation(operation_id.clone(), WalletOperationKind::RedeemNutzap)
-                .is_err()
-            {
-                return Vec::new();
-            }
+            return self.on_self_authored_wallet_event(ctx, event);
         }
-        vec![ActorCommand::Protocol(Box::new(RedeemNutzapCommand {
-            state: Arc::clone(&self.state),
-            operation_id,
-            account_pubkey,
-            event_id: event.id.clone(),
-            correlation_id: None,
-        }))]
+        // kind:7376/10019 stay the documented no-op — see the module doc
+        // comment.
+        Vec::new()
     }
 
     fn on_mint_result(
@@ -411,6 +393,28 @@ impl CashuWalletBackend {
         ))]
     }
 
+    /// #2965 — the explicit `nmp.wallet.cashu.recover` action path. See
+    /// `recover.rs`'s module docs for why only the kind:17375 config is
+    /// resolved deterministically here, with proof recovery left to the
+    /// passive `on_self_authored_wallet_event` path regardless.
+    fn start_recover_wallet(
+        &self,
+        ctx: WalletBackendContext<'_>,
+        correlation_id: Option<String>,
+    ) -> Vec<ActorCommand> {
+        let Some(account_pubkey) = ctx.account_pubkey.map(str::to_string) else {
+            return fail_closed(
+                ui_codes::NO_ACCOUNT,
+                correlation_id,
+                "no active account".to_string(),
+            );
+        };
+        vec![ActorCommand::Protocol(Box::new(RecoverCashuWalletCommand {
+            state: Arc::clone(&self.state),
+            account_pubkey,
+            correlation_id,
+        }))]
+    }
 }
 
 /// The operation id `start_intent`'s pre-dispatch journal writes key on. Uses
