@@ -182,7 +182,7 @@ impl OutboxResolver for Nip65OutboxResolver {
 
         // 2. Author write-relays (when a kind:10002 is cached).
         //
-        // Two distinct cases:
+        // Three distinct cases:
         //
         // a) `lookup_kind10002` returns `None` — the author has no kind:10002
         //    on file at all. This is the cold-start / bootstrap window: the
@@ -190,15 +190,28 @@ impl OutboxResolver for Nip65OutboxResolver {
         //    not yet come back from a relay. In this case the local_write_relays
         //    fallback (step 2b) is consulted so the user can still publish.
         //
-        // b) `lookup_kind10002` returns `Some((writes, _))` — a kind:10002
-        //    *exists*, even if `writes` is empty (all entries are read-marked).
-        //    An empty write set is a deliberate "publish nowhere" signal; the
-        //    local_write_relays fallback must NOT override it. For a
-        //    non-discovery kind this is fail-closed per D3: the engine maps the
-        //    empty resolve to `PublishEngineError::NoTargets` and surfaces a
-        //    visible toast. This mirrors T134's subscription-side
+        // b) `lookup_kind10002` returns `Some((writes, _))` with `writes` EMPTY
+        //    (all entries are read-marked). An empty write set is a deliberate
+        //    "publish nowhere" signal; the local_write_relays fallback must NOT
+        //    override it. For a non-discovery kind this is fail-closed per D3:
+        //    the engine maps the empty resolve to `PublishEngineError::NoTargets`
+        //    and surfaces a visible toast. This mirrors T134's subscription-side
         //    `unroutable_authors` discipline — unroutable is surfaced honestly,
         //    never silently widened. Discovery kinds escape via step 3 below.
+        //
+        // c) `lookup_kind10002` returns `Some((writes, _))` with `writes`
+        //    NON-empty. The cached NIP-65 write set is used, AND the active
+        //    account's locally-configured write relays (step 2b) are ALSO
+        //    unioned in — unconditionally, not merely as a cold-start fallback.
+        //    A relay a user just added in Settings (or a live test/dev harness
+        //    just configured) with a write-capable role must always receive the
+        //    account's own writes; NIP-65 is how OTHER clients discover where to
+        //    read your content from, it is not an allowlist that silently
+        //    overrides your own client's local relay configuration. Without this
+        //    union, adding a new write relay while an (unrelated, possibly
+        //    stale) kind:10002 is already cached permanently and silently
+        //    excludes that relay from every future self-authored publish — see
+        //    NMP write/outbox-routing investigation, chirp#69.
         let kind10002 = self.lookup_kind10002(author_pubkey);
         if let Some((writes, _reads)) = &kind10002 {
             for url in writes.iter().cloned() {
@@ -208,10 +221,14 @@ impl OutboxResolver for Nip65OutboxResolver {
                 });
             }
         }
-        // Bootstrap fallback: only when no kind:10002 exists at all (None).
-        // A Some with an empty write list is a deliberate "publish nowhere"
-        // — do not override it with locally configured relays.
-        if kind10002.is_none() && self.is_active_account(author_pubkey) {
+        // Local-config union: fires whenever kind:10002 is absent (case a,
+        // cold-start bootstrap) OR present with a non-empty write set (case c,
+        // supplementary lane). The ONLY case this must NOT fire is a `Some`
+        // with an explicitly EMPTY write set (case b) — that is the deliberate
+        // "publish nowhere" signal (audit finding 13) which local config must
+        // never override.
+        let kind10002_explicitly_empty = matches!(&kind10002, Some((writes, _)) if writes.is_empty());
+        if !kind10002_explicitly_empty && self.is_active_account(author_pubkey) {
             if let Ok(guard) = self.local_write_relays.lock() {
                 for url in guard.as_slice().iter().cloned() {
                     out.push(ResolvedRelay {
