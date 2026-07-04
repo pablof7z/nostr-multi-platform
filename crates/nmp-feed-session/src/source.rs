@@ -105,8 +105,11 @@ impl AcquisitionInterest {
 /// The compiled product of one reduced feed source.
 pub(super) struct ReducedSource {
     /// Session bootstrap policy. Most scopes require an active viewer at open;
-    /// `ActiveUserFollows` is intentionally view-driven and may open before
-    /// sign-in, with acquisition failing closed until identity resolves.
+    /// `ActiveUserFollows` and the active-mute `ListMembers` source are
+    /// intentionally view-driven and may open before sign-in, degrading to an
+    /// empty set with acquisition failing closed until identity resolves
+    /// (#2930 — this keeps `difference(follows, mute)` open-symmetric with
+    /// plain `follows`).
     pub op_session_identity: OpSessionIdentity,
     /// The engine's event-aware root-admission predicate.
     pub admission: RootAdmission,

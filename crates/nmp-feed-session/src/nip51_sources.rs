@@ -127,9 +127,13 @@ pub(super) fn resolve_active_mute_list_members(
     app: &impl FeedSessionHost,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
-    let viewer = crate::read_active(&app.active_account_handle()).ok_or_else(|| {
-        super::resolve::not_supported("ListMembers-active-mute-no-active-account")
-    })?;
+    // No active account yet: degrade gracefully to an empty mute set instead
+    // of failing the whole open (mirrors `ActiveUserFollows`'s
+    // `AllowMissingActive` semantics — see #2930). This lets
+    // `difference(active_user().follows(), list_members(mute))` open
+    // pre-login and simply admit everything until sign-in populates both
+    // sides.
+    let initial_viewer = crate::read_active(&app.active_account_handle());
 
     let projection = Arc::new(nmp_nip51::MuteListProjection::new(
         app.active_account_handle(),
@@ -166,11 +170,13 @@ pub(super) fn resolve_active_mute_list_members(
             );
         }
     });
-    super::source_replay::replay_source_shape(
-        app,
-        projection.as_ref(),
-        active_mute_list_shape(&viewer),
-    );
+    if let Some(viewer) = &initial_viewer {
+        super::source_replay::replay_source_shape(
+            app,
+            projection.as_ref(),
+            active_mute_list_shape(viewer),
+        );
+    }
 
     let admission: RootAdmission = {
         let projection = Arc::clone(&projection);
@@ -209,7 +215,7 @@ pub(super) fn resolve_active_mute_list_members(
     );
 
     Ok(ReducedSource {
-        op_session_identity: OpSessionIdentity::RequireActive,
+        op_session_identity: OpSessionIdentity::AllowMissingActive,
         admission,
         attribution,
         interests: Vec::new(),
