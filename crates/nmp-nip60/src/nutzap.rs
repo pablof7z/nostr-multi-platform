@@ -1,26 +1,13 @@
 //! NIP-61 NutZap — send and receive Cashu ecash via Nostr.
 //!
-//! # Send flow
+//! Send: look up recipient's kind:10019 (accepted mints + P2PK pubkey), swap
+//! sender proofs for P2PK-locked proofs at that mint, publish kind:9321.
+//! Receive: subscribe to kind:9321 `#p`-tagged to self, verify each proof's
+//! DLEQ, swap to fresh proofs (unlink from sender), publish kind:7376.
 //!
-//! 1. Look up recipient's kind:10019 (NutZap info) to find their accepted mints
-//!    and P2PK receiving pubkey.
-//! 2. Swap sender's proofs for P2PK-locked proofs at the recipient's mint.
-//! 3. Publish kind:9321 nutzap event containing the locked proofs.
-//!
-//! # Receive flow
-//!
-//! 1. Subscribe to kind:9321 events `#p`-tagged to the receiver's pubkey.
-//! 2. For each nutzap, verify the DLEQ proofs in the included `proof` tags.
-//! 3. Swap the received proofs for fresh proofs at the mint (unlink from sender).
-//! 4. Publish kind:7376 spending history event marking the nutzap as redeemed.
-//!
-//! # P2PK spending conditions (NUT-11)
-//!
-//! The proof secret is a JSON spending condition:
-//! ```json
-//! {"kind":"P2PK","data":"02..pubkey..","tags":[["sigflag","SIG_INPUTS"]]}
-//! ```
-//! The witness (spend authorization) is a list of Schnorr signatures.
+//! P2PK spending conditions (NUT-11): the proof secret is a JSON condition
+//! `{"kind":"P2PK","data":"02..pubkey..","tags":[["sigflag","SIG_INPUTS"]]}`;
+//! the witness is a list of Schnorr signatures.
 
 use nostr::{EventBuilder, EventId, Keys, Kind, PublicKey, Tag, TagKind};
 use serde::{Deserialize, Serialize};
@@ -389,6 +376,13 @@ pub(crate) fn verify_nutzap_dleq_against_keyset(
                 proof.c
             )));
         };
+        // Bind to the proof's claimed keyset (#2963, mirrors `blinded.rs`).
+        if proof.id != keyset.id {
+            return Err(Nip60Error::Crypto(format!(
+                "nutzap proof (C={}) claims keyset {}, expected {}",
+                proof.c, proof.id, keyset.id
+            )));
+        }
 
         let mint_pk = pubkey_map.get(&proof.amount).ok_or_else(|| {
             Nip60Error::Crypto(format!("no mint pubkey for amount {}", proof.amount))
