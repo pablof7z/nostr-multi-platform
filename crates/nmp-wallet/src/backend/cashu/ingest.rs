@@ -258,11 +258,12 @@ pub(super) fn build_passive_ingest_command(
                 // module docs ("Mint check-state on recovered proofs").
                 // Silent and off the actor thread, same posture as the
                 // rest of this passive path — no correlation id to report
-                // against here.
-                let state_for_probe = Arc::clone(&state);
-                std::thread::spawn(move || {
-                    super::check_state::run_check_state_pass(&state_for_probe);
-                });
+                // against here. Debounced (`spawn_debounced`, not a raw
+                // `run_check_state_pass` thread per event): cold-start
+                // replay can fold many kind:7375 events in a tight,
+                // unordered burst, and this collapses that burst into at
+                // most two outstanding mint round-trips regardless of size.
+                super::check_state::spawn_debounced(Arc::clone(&state));
             }
         },
     )

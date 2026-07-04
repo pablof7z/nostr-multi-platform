@@ -28,7 +28,7 @@
 //! spawner itself.
 
 use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use nmp_nip60::cashu::types::ProofSpendState;
 use nmp_nip60::cashu::MintClient;
@@ -36,6 +36,48 @@ use nmp_nip60::cashu::MintClient;
 use crate::journal::{ProofRef, ProofVerdict, WalletFact};
 
 use super::state::{canonicalize_mint_url, lock_state, CashuWalletState, StoredProof};
+
+/// Coalescing entry point for the PASSIVE trigger (`ingest.rs`'s
+/// `build_passive_ingest_command`) — cold-start replay can fold fresh
+/// proofs from many kind:7375 events in a tight, unordered burst (see that
+/// module's docs on `REPLAY_LIMIT`), and each would otherwise spawn its own
+/// full [`run_check_state_pass`] over every held proof, hammering the same
+/// mint(s) with redundant concurrent `/v1/checkstate` calls. This collapses
+/// any burst into at most two outstanding passes regardless of burst size:
+/// one already in flight, plus (if a trigger arrives while it's running)
+/// exactly one more once it finishes, to pick up whatever else folded
+/// meanwhile.
+///
+/// `recover.rs`'s explicit `RecoverCashuWallet` action deliberately does NOT
+/// go through this — it needs to know precisely when ITS OWN pass finished
+/// (to defer `RecordActionSuccess` until then), and it is never called in a
+/// replay-sized burst, so a dedicated thread per call is the right shape
+/// there instead.
+pub(super) fn spawn_debounced(state: Arc<Mutex<CashuWalletState>>) {
+    let should_spawn = {
+        let mut s = lock_state(&state);
+        if s.check_state_in_flight {
+            s.check_state_rerun_needed = true;
+            false
+        } else {
+            s.check_state_in_flight = true;
+            true
+        }
+    };
+    if !should_spawn {
+        return;
+    }
+    std::thread::spawn(move || loop {
+        run_check_state_pass(&state);
+        let mut s = lock_state(&state);
+        if s.check_state_rerun_needed {
+            s.check_state_rerun_needed = false;
+            continue;
+        }
+        s.check_state_in_flight = false;
+        break;
+    });
+}
 
 /// Reconcile every currently-held proof against its mint and drop the ones
 /// the mint affirmatively reports spent — folding a `WalletFact::MintProbed`

@@ -184,3 +184,54 @@ fn distinct_mints_are_checked_and_folded_independently() {
     assert_eq!(state.proofs.len(), 1);
     assert_eq!(state.proofs[0].proof.c, "c-b");
 }
+
+/// #2977 — `spawn_debounced`'s single-flight guard: a trigger that arrives
+/// while a pass is already marked in-flight must coalesce into a rerun
+/// rather than spawn a second concurrent pass. Deterministic (no real
+/// thread race): sets the in-flight flag directly, the way a genuinely
+/// running pass would hold it, then asserts the second trigger only flips
+/// `check_state_rerun_needed`.
+#[test]
+fn spawn_debounced_coalesces_a_trigger_that_arrives_while_a_pass_is_in_flight() {
+    let backend = CashuWalletBackend::new();
+    lock_state(&backend.state).check_state_in_flight = true;
+
+    spawn_debounced(std::sync::Arc::clone(&backend.state));
+
+    let state = lock_state(&backend.state);
+    assert!(
+        state.check_state_in_flight,
+        "still marked in-flight — the already-running pass owns clearing it"
+    );
+    assert!(
+        state.check_state_rerun_needed,
+        "the second trigger must coalesce into a rerun, not spawn its own pass"
+    );
+}
+
+/// The ordinary case: no pass in flight, `spawn_debounced` actually spawns
+/// one and it runs to completion (observable via the same drop-spent-proofs
+/// effect `run_check_state_pass` itself produces), leaving no in-flight
+/// state behind once done.
+#[test]
+fn spawn_debounced_runs_a_pass_and_clears_the_in_flight_flag_when_none_was_running() {
+    let a = proof(10, "c-a", "secret-a");
+    let body =
+        serde_json::json!({ "states": [{"Y": y_hex("secret-a"), "state": "SPENT"}] }).to_string();
+    let mock_mint = spawn_mock_mint(vec![(200, body)]);
+
+    let backend = CashuWalletBackend::new();
+    ingest_token_event(&backend.state, "token-1", &token_event_json(&mock_mint, &[a]), "")
+        .expect("ingest must succeed");
+
+    spawn_debounced(std::sync::Arc::clone(&backend.state));
+
+    // The pass runs on its own thread; give it a bounded window to finish
+    // rather than asserting immediately (no polling loop — a single sleep
+    // bounded well above what a local-socket mock mint round-trip needs).
+    std::thread::sleep(std::time::Duration::from_millis(200));
+
+    let state = lock_state(&backend.state);
+    assert!(state.proofs.is_empty(), "the spent proof must be dropped");
+    assert!(!state.check_state_in_flight, "must clear the flag once no rerun is pending");
+}
