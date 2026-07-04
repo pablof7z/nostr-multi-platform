@@ -8,7 +8,7 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-29
-updated: 2026-07-03
+updated: 2026-07-04
 verified: 2026-06-29
 compiled-from: conversation
 sources:
@@ -18,6 +18,7 @@ sources:
   - session:5ad70acc-1442-4343-92a7-f79b2fc59071
   - session:04745411-a0c1-4523-ac83-71dc983f410b
   - session:1c293d33-5ec2-4689-b6c2-cd159d8b6bb7
+  - session:d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5
 ---
 
 # NMP Project Status: NIP Scope and ADR Spine
@@ -43,13 +44,15 @@ decision files are deleted after surviving rules move to their current owners.
 
 NIP-57/zaps and NIP-47/NWC are formally post-v1; NIP-96 is never. Zap semantics are removed from the nmp-relations classifier.
 
-Issue #1001 is closed in favor of epic #2864 and serves only as historical context. Epic #2864 is the tracking epic for NIP-60/61 wallet work; Phase 0 is delivered — nmp-nip60 was reactivated and PR #2866 merged — and Phase 1 is the `nmp-wallet` composition crate, which remains out of scope for Phase 0 and is not started during Phase 0. The nips.md matrix note for NIP-60/61 was flipped from "Requires product/architecture decision before activation" to "Requires activation work before any support claim," erasing the deferral marker (PR #2854). The nips.md NIP-60/61 row no longer says nmp-wallet is "not yet added" or that #2870 is open — both are resolved by #2876 and #2874. A one-line addition to docs/nips.md links the new builder guide from the NIP-60/61 support-matrix row. The `nwc.*` names (nmp.wallet.nwc.connect/nwc.disconnect) from the design doc's Product Surface list were not renamed because nothing implements that name today — nmp-nip47 is the only real backend under the current names; renaming requires moving nmp-nip47's ActionModule + wire-schema registration, which is epic #2864 Phase 2 (NWC consolidation). Issue #2880 was filed to support NIP-87 (Ecash Mint Discoverability) — kind:38172 announcements / kind:38000 recommendations, scoped post-v1 as a future enhancement.
+Issue #1001 is closed in favor of epic #2864 and serves only as historical context. Epic #2864 is the tracking epic for NIP-60/61 wallet work and is labeled phase:post-v1 — the wallet is a feature app on top of the framework, not a v1 framework surface. Phase 0 is delivered — nmp-nip60 was reactivated and PR #2866 merged — and Phase 1 is the `nmp-wallet` composition crate, which remains out of scope for Phase 0 and is not started during Phase 0. The nips.md matrix note for NIP-60/61 was flipped from "Requires product/architecture decision before activation" to "Requires activation work before any support claim," erasing the deferral marker (PR #2854). The nips.md NIP-60/61 row no longer says nmp-wallet is "not yet added" or that #2870 is open — both are resolved by #2876 and #2874. A one-line addition to docs/nips.md links the new builder guide from the NIP-60/61 support-matrix row. The `nwc.*` names (nmp.wallet.nwc.connect/nwc.disconnect) from the design doc's Product Surface list were not renamed because nothing implements that name today — nmp-nip47 is the only real backend under the current names; renaming requires moving nmp-nip47's ActionModule + wire-schema registration, which is epic #2864 Phase 2 (NWC consolidation). Issue #2880 was filed to support NIP-87 (Ecash Mint Discoverability) — kind:38172 announcements / kind:38000 recommendations, scoped post-v1 as a future enhancement.
 
 Issue #2882 was filed to release-classify nmp-wallet ([[private_packages]]) and nmp-nip60 (not a [[public_crates]] entry) so external consumers can git-rev pin them — this is not covered by #2864 and is the single most important blocker to a green end-to-end nutsack run. The natural gate for flipping #2882's release classification is once Wave C (W4–W7) gives nmp-wallet a real action/projection surface.
 
 Issue #2872 covers NIP-60/61 builder documentation and is safe to start before Phase 1 lands.
 
-<!-- citations: [^898a4-bfe17] [^91a86-bf80b] [^5ad70-d096f] [^5ad70-3a9ef] [^91a86-2db86] [^91a86-e34f7] [^1c293-74c5b] [^1c293-cc80c] -->
+Issue #2927 (NIP-AD) is closed as delivered — the full crate `crates/nmp-nip-ad` exists on master with wired components. Issue #2927's rich-render follow-up tails (#2979 and #2981) are tracked as post-v1.
+
+<!-- citations: [^898a4-bfe17] [^91a86-bf80b] [^5ad70-d096f] [^5ad70-3a9ef] [^91a86-2db86] [^91a86-e34f7] [^1c293-74c5b] [^1c293-cc80c] [^d8bc6-3dc6c] -->
 ## Active Pre-V1 Workstreams
 
 The profile-claim loop stash (#2298) is active pre-v1 correctness work, not post-v1 deferral. <!-- [^898a4-f7531] -->
@@ -58,6 +61,15 @@ NIP-29 owns only the h-tag routing concern, not kinds; the kinds filter was deli
 
 The `nmp-native-runtime` extraction is incomplete and retains dual-ownership, so drift becomes a recurring tax when master moves fast and extractions leave the old path behind. <!-- [^3c942-83d7b] -->
 
+Issue #2993 (split NIP-55 onboarding out of signer_state) is deferred to post-v1 — it is a real FlatBuffers wire change with zero user-visible gain near 1.0, and has a reconciliation prerequisite with existing `bunker_handshake` and `nip46_onboarding` projections that risks a duplicate-path violation.
+
+Issues #2918 and #2981 are consumer-repo work explicitly designated to be implemented in Chirp, not NMP.
+
+<!-- citations: [^898a4-f7531] [^898a4-4d4bb] [^3c942-83d7b] [^d8bc6-709aa] -->
 ## Post-V1 Sequencing
 
-The group-chat epic (#2695) is sequenced for post-v1 first minor, not as a v1 blocker. <!-- [^04745-5f4f8] -->
+The group-chat epic (#2695) is sequenced for post-v1 first minor, not as a v1 blocker. Issues #2864 (wallet), #2858 (X-Ray), and #2974 (Marmot MLS) are labeled phase:post-v1 and placed in Backlog — per docs/nips.md these are feature-app / dev-tool / non-v1-claimed surfaces, not framework blockers. Issue #2974 (Marmot MLS keyring CredentialStore never wired) is a genuine correctness defect — set_default_store has zero matches in the codebase, so Marmot identity registration is permanently false on every platform — but it stays open as post-v1 because MLS groups are not a v1-claimed feature. Issues #2995 and #2979 are deferred wallet/NIP-AD follow-ups on the Backlog.
+
+v1 is defined as the owner-gated publish act: name → rc rehearsal → 1.0.0 tag → crates.io/npm → external-consumption proof, gated only on the owner's go, not on any pending code work. docs/nips.md is the v1 pre-release truth source that classifies which NIPs are in-scope vs post-v1. Issue #2690 is the v1 release train epic that defines what pre-v1 means and gates the v1 publish act. <!-- [^d8bc6-0841c] -->
+
+<!-- citations: [^d8bc6-0841c] [^04745-5f4f8] [^d8bc6-caec7] [^d8bc6-4649c] -->

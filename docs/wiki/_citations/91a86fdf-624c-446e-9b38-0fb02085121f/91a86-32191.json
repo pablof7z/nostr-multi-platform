@@ -1,0 +1,6 @@
+{
+  "id": "91a86-32191",
+  "ts": "2026-07-04T12:15:15Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "1. **A mistake I made:** I ran real-money cross-mint sends while nutsack composed the wallet with `Config::new(None)` — **no persistent WAL**, which defeats the money-safe saga's whole purpose (a stalled melt couldn't reconcile). I've fixed it: nutsack now uses a durable WAL at `~/.nutsack-wal`. I should have caught that before the first real-money run."
+}

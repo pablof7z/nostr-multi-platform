@@ -1,0 +1,6 @@
+{
+  "id": "f308b-34baa",
+  "ts": "2026-07-04T11:46:43Z",
+  "session": "f308bb0b-7b74-4684-9a5b-1fce8ffcab35",
+  "text": "2. A CI presence check in `.github/workflows/codegen-drift.yml`: fail if any `FlatbufferVector<UInt8>` accessor lacks the annotation — catches future hand-run flatc regens.\n3. First migrate the one in-tree consumer of a slow accessor besides your fix, if any (I found only `KernelUpdateFrameDecoder.swift` and `TypedHomeFeedDecoder.swift` touch these; the latter already uses the fast path). [...] Assistant: Now the CI gate script.\n\nAssistant: Now let's verify it actually catches a regression, then wire it into the `codegen-drift.yml` workflow.\n\nAssistant: Confirmed working both ways. Now wiring it into the `codegen-drift.yml` workflow. [...] - New `ci/check-flatbuffer-byte-vector-accessors.sh` + a `flatbuffer-byte-vector-accessors` job in `codegen-drift.yml` — verified it actually fails when an annotation is stripped, and passes when restored."
+}

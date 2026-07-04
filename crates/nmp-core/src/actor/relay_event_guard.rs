@@ -56,6 +56,7 @@ pub(super) fn process_relay_event(
     last_emit: &mut Instant,
     startup_sent: &mut bool,
     running: bool,
+    emit_hz: u32,
 ) {
     let result = panic::catch_unwind(AssertUnwindSafe(|| {
         handle_relay_event(
@@ -70,6 +71,7 @@ pub(super) fn process_relay_event(
             last_emit,
             startup_sent,
             running,
+            emit_hz,
         );
     }));
     if let Err(panic_payload) = result {

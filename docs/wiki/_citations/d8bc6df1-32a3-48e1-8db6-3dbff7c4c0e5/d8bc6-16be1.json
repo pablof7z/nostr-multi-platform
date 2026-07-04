@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-16be1",
+  "ts": "2026-07-04T12:40:58Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "3. Melt stays terminal: PAID advances; anything else -> Unknown+resume, NEVER retried against a fresh source (respects \"do NOT advance on Unknown\")."
+}

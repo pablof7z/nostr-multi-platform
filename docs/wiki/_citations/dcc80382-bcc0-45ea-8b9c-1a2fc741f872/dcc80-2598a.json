@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-2598a",
+  "ts": "2026-07-04T17:19:43Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- NMP side: genuine latent desync (Reset+Start doesn't restore active) → filed NMP#2932 with the minimal failing test. Recommended fix: don't gate `restore_active_session` solely on `identity.active_pubkey().is_some()` — after a kernel rebuild, re-`set_accounts` from the surviving identity (or reset identity in `reset()`, or re-sync the rebuilt kernel).\n- Chirp side: find who calls `reset()`+`start()` (or removeAccount / app-managed re-add of the active signer) after sign-in and stop it — or ensure it's always followed by an active-account restore. This is the device trigger; the framework fix (#2932) makes it non-fatal even if it fires."
+}

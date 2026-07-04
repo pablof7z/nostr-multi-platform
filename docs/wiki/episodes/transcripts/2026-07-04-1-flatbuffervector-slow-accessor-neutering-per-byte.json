@@ -1,0 +1,70 @@
+[
+  [
+    "user",
+    "sample the running chirp ios running on the ios sim right now"
+  ],
+  [
+    "assistant",
+    "Reports working in the Chirp repo on a byte-copy perf fix in KernelUpdateFrameDecoder.swift, and notes the nmp-defaults build break is pre-existing and unrelated to the change."
+  ],
+  [
+    "user",
+    "are there maybe other git worktrees that have fixed that? maybe checkout master?"
+  ],
+  [
+    "assistant",
+    "Confirms the fix works—CPU dropped from 195%+ to 0% idle. Root cause was a per-byte copy in KernelUpdateFrameDecoder.swift fixed by switching to the bulk accessor; also resolved stale branch conflicts and regenerated the Xcode project."
+  ],
+  [
+    "user",
+    "yes, use a fable agent to get a second opinion on that direction and where/how that needs to happen"
+  ],
+  [
+    "assistant",
+    "Fable agent agrees with the direction, recommending annotating the slow accessor with @available(*, unavailable) via a post-process script rather than forking flatc, and surfaced a gap where most generated Swift files lack a reproducible regen path."
+  ],
+  [
+    "user",
+    "explain what this @available mark is"
+  ],
+  [
+    "assistant",
+    "Explains that @available(*, unavailable) is a Swift compiler attribute that makes a symbol impossible to reference, producing a hard compile error with a custom message—stronger than a deprecation warning."
+  ],
+  [
+    "user",
+    "and why do we need to put that?"
+  ],
+  [
+    "assistant",
+    "Explains the annotation prevents the same performance bug from recurring by making misuse a compile error, since the bad call site looks idiomatic and the failure mode is silent and delayed."
+  ],
+  [
+    "user",
+    "but is having that data payload with O(n) access still necessary/a good thing? or are we just addressing a symptom?"
+  ],
+  [
+    "assistant",
+    "Clarifies the O(n) copy is legitimate since the payload needs independent ownership, and the bug was the constant factor (per-byte vs bulk copy). Notes a potential real symptom: eager copying of all projections regardless of whether they're consumed."
+  ],
+  [
+    "user",
+    "delegate to fable to decide what to do, how to do it, whether the design is ther right one and how to approach things"
+  ],
+  [
+    "assistant",
+    "Implemented the @available annotation script, CI check, and applied it to 8 accessors across 5 files, which immediately caught and fixed two more instances of the same bug in KeyedRefCache and TypedProjectionGlueEmbed. Verified live with CPU settling to <1% idle."
+  ],
+  [
+    "user",
+    "it's still pegged... -- did you even check?"
+  ],
+  [
+    "assistant",
+    "Could not find a hang on the main simulator, but realized the \"iPhone 16 ci\" simulator still had the old unfixed binary running and set out to rebuild it."
+  ],
+  [
+    "assistant",
+    "Investigated the data-heavy simulator and found CPU genuinely spiked to 150–220% for ~3.5 minutes after rebuild—likely a one-time resync/reindex—then settled to near-idle with only brief scrolling spikes. Asks the user if it's still unresponsive."
+  ]
+]

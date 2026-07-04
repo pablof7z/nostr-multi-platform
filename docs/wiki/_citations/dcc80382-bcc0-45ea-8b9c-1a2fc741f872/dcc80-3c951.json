@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-3c951",
+  "ts": "2026-07-04T13:48:47Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- The `Difference(follows, mute)` composition exists only in the Rust Android/desktop/TUI shells of the newest worktrees (`chirp/.wt-*`, branch chirp-android-platform 7be5d64). Its `home_feed_params` = RootIndexed / primary_kinds [1] / admission All. Also sound per my test. [...] ## Faithful repros built (exact Chirp master `home_feed_params`: `Difference(follows, list_members(ACTIVE_MUTE))`, RootIndexed, FeedRows), asserted on the REAL emitted frame bytes (capture update-listener → `decode_snapshot_typed_projections` + `decode_op_feed_snapshot` + `decode_snapshot_envelope`, the device's decode). All GREEN, all 3 of Bob's notes appear: [...] - The iOS device home feed uses PLAIN `ActiveUserFollows`, built in Swift (`KernelBridge+FeedOperations.swift:51`), NOT the difference composition. My `control` test proves that path is sound."
+}

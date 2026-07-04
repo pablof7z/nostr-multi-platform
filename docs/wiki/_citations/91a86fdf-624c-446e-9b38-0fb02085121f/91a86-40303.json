@@ -1,0 +1,6 @@
+{
+  "id": "91a86-40303",
+  "ts": "2026-07-04T12:15:15Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Wallet view** — 6 tabs now: Home, Deposit, Send, Receive, **Feed** (new), Settings. Deposit/Send/Receive unchanged from the last pass (capability-gated, retry-on-transient-error). Settings now shows session pubkey only (nsec never shown again after the backup screen) + 3 columns: what's actually published in your own kind:10019, your configured relays, your configured mints.\n\n**Feed tab (new)** — top pane = `receive_candidates` (received nutzaps, verified/rejected badge, amount, mint, event id — reuses the exact same row-formatting as the Receive tab, factored into a shared helper). Bottom pane = `history` filtered to `nutzap_send`/`nutzap_redeem` only (not deposits/pay_bolt11) — dir/kind/amount/unit/counterparty. Both panes are empty-state-honest (\"no received nutzaps yet — sender pubkey/timestamp aren't in the projection yet\") when there's nothing to show."
+}

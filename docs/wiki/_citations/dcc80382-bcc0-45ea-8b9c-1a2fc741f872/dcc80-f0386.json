@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-f0386",
+  "ts": "2026-07-04T13:49:56Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "4. Publish attempt correctly fails *closed* with a Rust-owned diagnostic (\"pre-signed publish target rejected: requires an explicit non-empty imported/protocol relay target\") rather than crashing — proves the dispatch/signing/relay path is wired end-to-end even though this fresh throwaway key had no relay list to resolve against. Didn't chase this further since it's orthogonal to the re-pin (pre-existing app relay-target-resolution behavior, not a regression from the version bump) — flagging in case you want it looked at separately."
+}

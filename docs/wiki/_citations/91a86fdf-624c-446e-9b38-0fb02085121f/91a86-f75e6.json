@@ -1,0 +1,6 @@
+{
+  "id": "91a86-f75e6",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "```rust\npub fn create_melt_quote(&self, bolt11: &str) -> Result<MeltQuoteResponse, Nip60Error>;\npub fn get_melt_quote_status(&self, quote_id: &str) -> Result<MeltQuoteResponse, Nip60Error>;\npub fn melt(&self, quote_id: &str, fee_reserve: u64, inputs: Vec<Proof>, keyset: &KeySet) -> Result<MeltResponse, Nip60Error>;\n```\n`MeltQuoteResponse` is a type alias for the pre-existing `MeltQuoteBolt11Response`; `MeltResponse` is new (`{ response: MeltBolt11Response, change: Vec<Proof> }` — already-unblinded NUT-08 change). `melt()` takes `fee_reserve` (not just `quote_id`) since it's needed to size the NUT-08 blank change outputs — a deliberate deviation from the prompt's summary signature."
+}

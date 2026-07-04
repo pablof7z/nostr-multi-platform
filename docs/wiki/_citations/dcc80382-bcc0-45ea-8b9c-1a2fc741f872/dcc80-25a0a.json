@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-25a0a",
+  "ts": "2026-07-04T16:39:45Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "\nImportant gap I found and fixed beyond the re-pin: the production `vite build` reported success but was silently broken. Vite copies @nmpis/runtime-web's wasm-loader JS into dist/assets/ verbatim (it's only reached through a runtime-computed import()), but never follows THAT module's own internal `new URL(...)` references — so the actual wasm binary and SQLite vendor snippets never landed in dist/. A real prod build would fetch the wasm, silently get the SPA index.html back instead (200 OK, wrong content-type), and hang forever on \"Connecting\" — confirmed this with a `vite preview` + Playwright screenshot before/after. Fixed with a `closeBundle` plugin in vite.config.ts that stages the package's dist/wasm/ tree into dist/assets/ post-build; re-verified with preview+Playwright that it now reaches \"connected\" same as dev."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-10a76",
+  "ts": "2026-07-04T17:43:22Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "## Secondary latent finding (NOT the current cause, p3-worthy)\nThe op-feed per-key `projection_rev` is stuck at 0 across ALL frames — it does NOT advance when cards change 0→1. Chirp gates on `env.rev` (frame-level), so this doesn't bite today. But ADR-0070 Rung 3 intends `projection_rev` to advance so hosts can skip re-decode of unchanged keys; any host that adopts projection_rev-based skip for the op-feed key would freeze permanently (0==0). Worth filing as a latent Rung-3 gap if you want; say the word and I'll file it. It is NOT what's breaking the device (env.rev advances correctly).\n"
+}

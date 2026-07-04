@@ -16,6 +16,7 @@ sources:
   - session:3c942260-311d-4e00-8bcc-204045ea87b3
   - session:91a86fdf-624c-446e-9b38-0fb02085121f
   - session:fb992e80-b32b-4673-b2c2-40e8044504ee
+  - session:dcc80382-bcc0-45ea-8b9c-1a2fc741f872
 ---
 
 # In-Tree Conformance Harnesses and Extracted Apps
@@ -33,3 +34,9 @@ The nutsack `SPEC.md` covers product scope + non-goals, 6 user flows, a TUI scre
 The nutsack acceptance test is a headless two-party nutzap round-trip: two fresh nsecs → each `cashu.create` + `nutzap.publish_info` → each deposit value-less ecash from testnut.cashu.space (deposit_quote → complete_deposit, auto-settle, no Lightning) → A nutzaps B, B nutzaps A → each redeems → assert both balances/history via the projection only, with an ephemeral relay via `nak serve`.
 
 <!-- citations: [^898a4-ca491] [^3c942-c551d] [^91a86-d8b97] [^fb992-5d7bf] -->
+
+## Validation Scope
+
+App validation requires driving the real app on a simulator/emulator/browser with screenshots posted to GitHub issues, not just compiling or running test suites. It requires driving every screen of the actual app — onboarding, timeline, profile, groups, DMs, wallet, and the rest — not checking one screen on one platform. iOS and Android platform validation agents run on simulators/emulators respectively, and web validation runs via Playwright in a browser. The P2 validation sweep covers compose→publish→appears, follow/react round-trips, threads, notifications, wallet-to-invoice, account switch, and cross-platform parity. The P2 validation plan includes 50+ scenarios each with an acceptance list, required perf metrics (startup, CPU, memory, scroll, render), relay-provenance checks, and offline behavior, created as a GH issue with checkboxes. Offline validation scenarios put the simulator offline via `simctl`, never the host machine. The iOS test plan (chirp#60) defines 70 scenarios (S01–S70), each with a 'perfect' acceptance list, required perf metrics, and relay/offline criteria.
+
+<!-- citations: [^dcc80-e858d] [^dcc80-882da] -->

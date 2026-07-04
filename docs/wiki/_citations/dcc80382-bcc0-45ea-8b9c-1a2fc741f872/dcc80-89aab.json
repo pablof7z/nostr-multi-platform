@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-89aab",
+  "ts": "2026-07-04T17:19:43Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "## The NMP mechanism (real latent bug) — filed NMP#2932 (p1)\n`LifecycleCommand::Reset` (cmd_lifecycle.rs:144-159) rebuilds the kernel with empty `active_account` and intentionally nulls the shared slot, but does NOT touch `IdentityRuntime` — so `IdentityRuntime::active` survives as Some. The following `Start` → `restore_active_session` early-returns at session_persistence.rs:61 (`if identity.active_pubkey().is_some() { return }`), so it NEVER re-syncs the account into the rebuilt kernel. Result: kernel/slot stay None while identity thinks it's signed in — silent desync, no crash, no restart. Exactly the chirp#40 symptom. Minimal failing test attached to the issue."
+}

@@ -15,6 +15,7 @@ sources:
   - session:91a86fdf-624c-446e-9b38-0fb02085121f
   - session:dcc80382-bcc0-45ea-8b9c-1a2fc741f872
   - session:fb992e80-b32b-4673-b2c2-40e8044504ee
+  - session:f308bb0b-7b74-4684-9a5b-1fce8ffcab35
 ---
 
 # Trellis Reconciliation Substrate
@@ -36,5 +37,7 @@ The read engine now owns dependent-demand lifecycle reconciliation generically a
 InterestLifecycle threads through `ReadDemand`, `ObservedProjection`, the `OpenObservedInterest` command, dispatch arms, and `build_interest_pair`, deleting the hardcode that `open_interest` is always tailing. Every existing site defaults to `Tailing` explicitly. `InterestLifecycle` does not participate in the SubKey — it changes when a sub closes, not where it routes — so close reconstruction/dedup are unaffected and existing `Tailing` keys don't re-hash. A `OneShot` read demand's REQ is not re-emitted after EOSE evicts the wire sub, because the coverage ledger records EOSE coverage and a plan recompile retains it as an empty diff.
 
 The following are kept as private implementation only: `ObservedProjectionSink`, source reducers, typed snapshot projection registration, the Trellis adapter, `InterestShape` / `LogicalInterest` machinery, `InterestLifecycle`, `DependentDemandReconciler`, and replay-before-live internals.
+
+Post-launch resync/reindex against an existing large local dataset produces a bounded CPU spike of roughly 150–220% lasting about 3.5 minutes that then settles on its own. This transient is distinct from the earlier indefinite busy-loop peg and requires no user intervention. <!-- [^f308b-be3d2] -->
 
 <!-- citations: [^91a86-88ac8] [^91a86-ce723] [^91a86-2fb1f] [^91a86-298b3] [^91a86-f20e5] [^dcc80-e4c80] [^91a86-c1919] [^fb992-282e3] -->

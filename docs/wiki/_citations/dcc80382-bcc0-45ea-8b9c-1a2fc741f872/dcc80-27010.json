@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-27010",
+  "ts": "2026-07-04T16:39:10Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "3. The real scope-changer: regenerating `ActionBuilders.generated.swift` (`cargo run -p nmp-codegen -- gen action-builders --platform swift`, run from the pinned NMP checkout — this DOES drop `visibleNoteRelations`, confirming the dead builder is gone from the current registry) also removes four OTHER builder functions Chirp iOS/Android still call: `zap`, `postComment`, `topicArticles`, and `createPublicGroup` (renamed to `createGroup`, matching the NIP-29 rename I already handled on the Rust side for tui/desktop). Real call sites exist in `apps/ios/Chirp/Bridge/KernelBridge+PublishOperations.swift`, `apps/ios/Chirp/Bridge/PublicGroupBridge.swift`, and `apps/android/.../SocialActions.kt`. Two new builders were added too (`editGroupMetadata`, `reply` — the last maybe subsuming `postComment`, unconfirmed). I haven't looked at what changed in `zap`'s and `postComment`'s underlying shape/namespace yet."
+}

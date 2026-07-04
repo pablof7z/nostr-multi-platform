@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-acad5",
+  "ts": "2026-07-04T13:48:30Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Bonus fix (found because I actually drove the app): 14 `internal external fun` JNI declarations in KernelBridge.kt crashed with UnsatisfiedLinkError on the very first native call — sign-in, publish, ref resolution, all of it. Kotlin mangles `internal` JVM method names with a module-name suffix (`$app_debug`); the Rust cdylib's exported Java_... symbols don't carry that suffix. Made them plain `external fun` (public) — single Gradle module, `internal` bought nothing here. This was blocking literally any live validation of any Android build, unrelated to my two issues, so I fixed it rather than working around it."
+}

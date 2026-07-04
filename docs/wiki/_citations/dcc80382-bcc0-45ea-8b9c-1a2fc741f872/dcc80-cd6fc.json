@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-cd6fc",
+  "ts": "2026-07-04T13:49:42Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "npm install: RESOLVES cleanly against the public registry. Note the scope mismatch you flagged was real — renamed @nmp/runtime-web -> @nmpis/runtime-web and @nmp/components-web -> @nmpis/components-web (^1.0.0-rc.1) in apps/web/package.json, dropped the dead tsconfig.json `paths` mapping to nonexistent ../packages/*, and moved several deep `@nmp/components-web/src/user-avatar/{ProfileWire,NostrProfileHost,NostrAvatar}` reach-through imports onto the package's actual public `./user-avatar` subpath export (confirmed via npm pack that all three re-export from there). [...] CORRECTION TO YOUR ASSUMPTION: components-web does NOT depend on runtime-web. I grepped both packages' source and package.json — no reference either direction. They're independent sibling packages; each generates/vendors its own FlatBuffers wire bindings under src/generated/nmp/, and both merely happen to share the `flatbuffers` npm dependency. Only the in-repo, unpublished nmp-gallery and registry apps import both together. So there's no build-order requirement and no cross-package dependency to declare for consumers — each publishes fully independently."
+}

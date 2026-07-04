@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-ef983",
+  "ts": "2026-07-04T12:36:00Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- app_registry_format.rs: added `rust_module: String` to `FacadeRow` with `#[serde(default = \"default_rust_module\")]` returning `\"facade\"`.\n- app_registry.rs: added `rust_module` to `ConceptReadFacade`, a new `validate_module_path` validator (accepts `::`-separated lower_ident segments, so nested module paths work too), and threaded the field through construction.\n- rust.rs: `render_imports` now emits `use crate::{registry.facade.rust_module}::{rust_type};` instead of the hardcoded `crate::facade::`. [...] - app_registry.rs: added `rust_module` to `ConceptReadFacade`, a new `validate_module_path` validator (accepts `::`-separated lower_ident segments, so nested module paths work too), and threaded the field through construction. [...] - app_registry_tests.rs: added a locked-in assertion that the existing fixture (no `rust_module` field) still renders `use crate::facade::GalleryApp;` (proves the default), plus two new tests — custom module renders correctly, and an invalid module value (e.g. `\"App\"`, uppercase) is rejected. [...] - rust.rs: `render_imports` now emits `use crate::{registry.facade.rust_module}::{rust_type};` instead of the hardcoded `crate::facade::`."
+}

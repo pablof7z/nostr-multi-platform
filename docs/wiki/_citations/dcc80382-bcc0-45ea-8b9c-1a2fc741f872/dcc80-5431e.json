@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-5431e",
+  "ts": "2026-07-04T18:48:25Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- The `Difference(follows, mute)` composition exists only in the Rust Android/desktop/TUI shells of the newest worktrees (`chirp/.wt-*`, branch chirp-android-platform 7be5d64). Its `home_feed_params` = RootIndexed / primary_kinds [1] / admission All. Also sound per my test.\n- The stale `/Users/pablofernandez/Work/chirp` checkout calls `register_op_feed_defaults` which no longer exists at the pin — that checkout can't build against pinned NMP; ignore it. [...] - The iOS device home feed uses PLAIN `ActiveUserFollows`, built in Swift (`KernelBridge+FeedOperations.swift:51`), NOT the difference composition. My `control` test proves that path is sound.\n- The `Difference(follows, mute)` composition exists only in the Rust Android/desktop/TUI shells of the newest worktrees (`chirp/.wt-*`, branch chirp-android-platform 7be5d64). Its `home_feed_params` = RootIndexed / primary_kinds [1] / admission All. Also sound per my test."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-45081",
+  "ts": "2026-07-04T17:08:25Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Test plan is live: [chirp#60](https://github.com/pablof7z/chirp/issues/60) — 70 scenarios** (S01–S70), each with a \"perfect\" acceptance list, required perf metrics, and relay/offline criteria, grounded in the real iOS surface. Two things the Opus author caught by reading source instead of trusting assumptions:\n- **Zap UI is still in the code** — PR #58's \"removed zaps entirely\" didn't fully land. The sweep will confirm actual state (S28/S33/S54), and it'll get fixed properly.\n- **Search was deleted** (chirp#27) — so no search scenarios.\n\n**Now running: pilot Batch 1** (S01–S10, launch + onboarding) — one haiku tester driving the real sim, capturing screenshots + Diagnostics perf metrics per scenario, posting per-scenario PASS/FAIL comments to chirp#60, filing bug issues for failures, and checking boxes only on genuine passes. I'm piloting one batch first deliberately: to prove the full pipeline (build → drive → capture → post evidence) works before launching 8 more heavy sim agents, and to avoid the disk/CPU/sim-collision blowups that would come from firing all 9 at once."
+}

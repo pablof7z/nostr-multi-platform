@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-07-04
 verified: 2026-06-29
 compiled-from: conversation
 sources:
   - session:898a41b5-68e0-4b0f-b16c-c6072454bd6a
+  - session:dcc80382-bcc0-45ea-8b9c-1a2fc741f872
 ---
 
 # The Write Pipeline: Construction, Signing, Publishing
@@ -33,9 +34,9 @@ The pipeline separates construction, signing, and publishing into three distinct
 <!-- citations: [^898a4-a8ec9] [^898a4-7ff83] [^898a4-dcb20] -->
 ## Dispatch ≠ Success
 
-Dispatch is not success — handing an event to the publish pipeline is not the same as it landing. Rust owns a local publish-intent/status fact that progresses through states: pending → signed → stored → planned → sent → failed/exhausted. A write in NMP is a durable, observable status fact with a lifecycle, not a fire-and-forget function call.
+Dispatch is not success — handing an event to the publish pipeline is not the same as it landing. Rust owns a local publish-intent/status fact that progresses through states: pending → signed → stored → planned → sent → failed/exhausted. A write in NMP is a durable, observable status fact with a lifecycle, not a fire-and-forget function call. For replaceable event kinds (kind:3 unfollow, kind:0 profile-edit, kind:6 repost), the pipeline must actually publish to the relay — the Outbox must not falsely report 'All published' when the relay was never updated. Replaceable writes are held to the same durable-success bar as any other write: the status fact reflects real relay acceptance, not a local-only assumption.
 
-<!-- citations: [^898a4-afd9e] [^898a4-82a63] -->
+<!-- citations: [^898a4-afd9e] [^898a4-82a63] [^dcc80-86789] -->
 ## Route Provenance
 
 Every publish must declare explicit route provenance. A publish can never silently route without declared provenance. <!-- [^898a4-4c843] -->

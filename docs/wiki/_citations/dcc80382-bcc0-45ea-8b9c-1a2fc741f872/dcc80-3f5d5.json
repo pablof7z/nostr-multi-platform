@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-3f5d5",
+  "ts": "2026-07-04T17:19:43Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Verified (lifecycle trace + the agent's audit): NMP has NO autonomous/async/timer path that clears the active account. The slot only goes None via an explicit host command: `Reset`, `RemoveAccount`, or `AddSigner(AppManagedLocalNsec)` of the currently-active pubkey (runtime.rs:212-214). So on device, Chirp is issuing one of these post-sign-in."
+}

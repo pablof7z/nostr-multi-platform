@@ -1,0 +1,6 @@
+{
+  "id": "91a86-1d2e6",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "`crates/nmp-wallet/src/backend/cashu/cross_mint_worker.rs`: `run_cross_mint_transfer_worker` now computes `funded_amount_sats = amount_sats + headroom` **only when `on_settled.is_some()`** (the internal auto-fallback path). Headroom comes from fetching the target mint's keyset and calling `MintClient::compute_fee(HEADROOM_ESTIMATE_INPUT_COUNT=6, input_fee_ppk)`, falling back to `MIN_CROSS_MINT_FEE_HEADROOM_SATS=2` if that fetch fails. The standalone `nmp.wallet.cashu.cross_mint_transfer` action is untouched — it still requests exactly `amount_sats`. [...] - `send_worker.rs::finish_send` derives its own swap fee from conservation (`selected_total - new_total`) — works for both the live and WAL-resume paths with no new params."
+}

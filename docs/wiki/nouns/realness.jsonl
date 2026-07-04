@@ -1,62 +1,273 @@
 {"canonical":"abi","name":"ABI The","signed":1,"status":"provisional"}
-{"canonical":"acceptance test design","name":"ACCEPTANCE-TEST DESIGN","signed":3,"status":"real"}
+{"canonical":"acceptance test design","name":"ACCEPTANCE-TEST DESIGN","signed":4,"status":"real"}
+{"canonical":"account summary signer is remote","name":"AccountSummary.signer_is_remote","signed":10,"status":"real"}
 {"canonical":"adcl flat buffer","name":"ADCL FlatBuffers","signed":1,"status":"provisional"}
 {"canonical":"alway ad resolution policy","name":"Always AdResolutionPolicy","signed":1,"status":"provisional"}
-{"canonical":"another claude","name":"Another Claude","signed":45,"status":"real"}
+{"canonical":"android op feed decoder test","name":"Android OpFeedDecoderTest","signed":10,"status":"real"}
+{"canonical":"android uni ffi kotlin","name":"Android UniFFI Kotlin","signed":10,"status":"real"}
+{"canonical":"another claude","name":"Another Claude","signed":216,"status":"real"}
+{"canonical":"app test debug unit test","name":"app:testDebugUnitTest","signed":10,"status":"real"}
+{"canonical":"arc","name":"Arc","signed":0,"status":"provisional"}
 {"canonical":"article card actual","name":"ArticleCard Actual","signed":0,"status":"provisional"}
 {"canonical":"article card print","name":"ArticleCard Prints","signed":0,"status":"provisional"}
 {"canonical":"article card verified","name":"ArticleCard Verified","signed":1,"status":"provisional"}
-{"canonical":"cargo test p nmp core lib publish unsigned","name":"cargo test -p nmp-core --lib publish_unsigned","signed":1,"status":"provisional"}
+{"canonical":"auto arm finaliz before parking remote sign","name":"auto_arm_finalizes_before_parking_remote_sign","signed":3,"status":"real"}
+{"canonical":"bob test","name":"Bob Test","signed":8,"status":"real"}
+{"canonical":"both defer","name":"Both DEFER","signed":0,"status":"provisional"}
+{"canonical":"bunker handshake","name":"bunker_handshake","signed":0,"status":"provisional"}
+{"canonical":"cargo build p chirp tui","name":"cargo build -p chirp-tui","signed":10,"status":"real"}
+{"canonical":"cargo build p nmp native runtime","name":"cargo build -p nmp-native-runtime","signed":0,"status":"provisional"}
+{"canonical":"cargo build p nmp nip 47 p nmp wallet","name":"cargo build -p nmp-nip47 -p nmp-wallet","signed":1,"status":"provisional"}
+{"canonical":"cargo fmt p nmp codegen check","name":"cargo fmt -p nmp-codegen -- --check","signed":1,"status":"provisional"}
+{"canonical":"cargo lock nothing","name":"Cargo.lock Nothing","signed":0,"status":"provisional"}
+{"canonical":"cargo test","name":"cargo test","signed":0,"status":"provisional"}
+{"canonical":"cargo test p chirp tui","name":"cargo test -p chirp-tui","signed":10,"status":"real"}
+{"canonical":"cargo test p nmp codegen","name":"cargo test -p nmp-codegen","signed":2,"status":"provisional"}
+{"canonical":"cargo test p nmp core lib publish unsigned","name":"cargo test -p nmp-core --lib publish_unsigned","signed":3,"status":"real"}
+{"canonical":"cargo test p nmp native runtime feature wallet","name":"cargo test -p nmp-native-runtime --features wallet","signed":0,"status":"provisional"}
+{"canonical":"cargo test p nmp nip 47 p nmp wallet","name":"cargo test -p nmp-nip47 -p nmp-wallet","signed":0,"status":"provisional"}
+{"canonical":"cargo test p nmp wallet","name":"cargo test -p nmp-wallet","signed":4,"status":"real"}
+{"canonical":"chat new","name":"Chats New","signed":10,"status":"real"}
+{"canonical":"chirp read proof 15","name":"chirp-read-proof-15","signed":15,"status":"real"}
+{"canonical":"chirp repin projrev fix","name":"chirp-repin-projrev-fix","signed":10,"status":"real"}
+{"canonical":"chirp tui","name":"chirp-tui","signed":10,"status":"real"}
+{"canonical":"claim rs","name":"claims.rs","signed":8,"status":"real"}
+{"canonical":"claim visible note relation count","name":"claim_visible_note_relation_counts","signed":10,"status":"real"}
+{"canonical":"clean cleaned","name":"CLEAN Cleaned","signed":0,"status":"provisional"}
+{"canonical":"clean full","name":"CLEAN Full","signed":0,"status":"provisional"}
+{"canonical":"clean merged sha","name":"CLEAN-MERGED SHA","signed":0,"status":"provisional"}
+{"canonical":"clean monitor","name":"CLEAN Monitor","signed":0,"status":"provisional"}
+{"canonical":"cli this","name":"CLI This","signed":0,"status":"provisional"}
+{"canonical":"codex exec","name":"codex exec","signed":1,"status":"provisional"}
+{"canonical":"command apply publish timestamp test rs","name":"command_apply_publish_timestamp_tests.rs","signed":3,"status":"real"}
 {"canonical":"complete deposit","name":"complete_deposit","signed":0,"status":"provisional"}
+{"canonical":"concept read facade","name":"ConceptReadFacade","signed":3,"status":"real"}
+{"canonical":"content view rs","name":"content_view.rs","signed":3,"status":"real"}
+{"canonical":"create group","name":"createGroup","signed":10,"status":"real"}
+{"canonical":"create public group","name":"createPublicGroup","signed":10,"status":"real"}
+{"canonical":"ctx ensure interest","name":"ctx.ensure_interest","signed":1,"status":"provisional"}
+{"canonical":"ctx latest author kind","name":"ctx.latest_author_kind","signed":1,"status":"provisional"}
+{"canonical":"d warning","name":"-D warnings","signed":0,"status":"provisional"}
+{"canonical":"debug for handle","name":"Debug for Handles","signed":1,"status":"provisional"}
+{"canonical":"decode op feed snapshot","name":"decode_op_feed_snapshot","signed":10,"status":"real"}
 {"canonical":"deleted success txt","name":"deleted_success.txt","signed":2,"status":"provisional"}
 {"canonical":"deposit quote","name":"deposit_quote","signed":0,"status":"provisional"}
+{"canonical":"deposit rs","name":"deposit.rs","signed":1,"status":"provisional"}
 {"canonical":"did not","name":"Did NOT","signed":0,"status":"provisional"}
+{"canonical":"dispatch token event","name":"dispatch_token_event","signed":1,"status":"provisional"}
+{"canonical":"doctrine lint smoke","name":"doctrine_lint_smoke","signed":0,"status":"provisional"}
+{"canonical":"dynamic feed rs","name":"dynamic_feeds.rs","signed":10,"status":"real"}
 {"canonical":"dynamic observed projection set","name":"DynamicObservedProjectionSet","signed":1,"status":"provisional"}
+{"canonical":"embed kind projection","name":"EmbedKindProjection","signed":2,"status":"provisional"}
+{"canonical":"ensure interest","name":"ensure_interest","signed":2,"status":"provisional"}
+{"canonical":"explicit arm finaliz before parking remote sign","name":"explicit_arm_finalizes_before_parking_remote_sign","signed":2,"status":"provisional"}
+{"canonical":"facade row","name":"FacadeRow","signed":3,"status":"real"}
+{"canonical":"facade runtime accessor shape","name":"facade.runtime_accessor_shape","signed":1,"status":"provisional"}
+{"canonical":"failed","name":"Failed","signed":1,"status":"provisional"}
+{"canonical":"feed decoder ts","name":"feedDecoder.ts","signed":10,"status":"real"}
+{"canonical":"feed param","name":"FeedParams","signed":10,"status":"real"}
+{"canonical":"feed store ts","name":"feedStore.ts","signed":10,"status":"real"}
+{"canonical":"feed window kt","name":"FeedWindow.kt","signed":10,"status":"real"}
+{"canonical":"fix 2962 flaky auto arm","name":"fix-2962-flaky-auto-arm","signed":3,"status":"real"}
+{"canonical":"fixed clock","name":"FixedClock","signed":3,"status":"real"}
 {"canonical":"flat buffer you","name":"FlatBuffers You","signed":-1,"status":"provisional"}
 {"canonical":"flat buffer your uni ffi","name":"FlatBuffers Your UniFFI","signed":2,"status":"provisional"}
+{"canonical":"flat feed key prefix","name":"FLAT_FEED_KEY_PREFIXES","signed":10,"status":"real"}
+{"canonical":"flat feed rs","name":"flat_feed.rs","signed":10,"status":"real"}
+{"canonical":"gh pr check 2896","name":"gh pr checks 2896","signed":1,"status":"provisional"}
+{"canonical":"gh pr check 2938","name":"gh pr checks 2938","signed":1,"status":"provisional"}
+{"canonical":"gh pr check 33","name":"gh pr checks 33","signed":15,"status":"real"}
 {"canonical":"gh pr list state merged","name":"gh pr list --state merged","signed":2,"status":"provisional"}
 {"canonical":"gh pr list state open","name":"gh pr list --state open","signed":2,"status":"provisional"}
+{"canonical":"git add","name":"git add -A","signed":8,"status":"real"}
 {"canonical":"git fetch origin prune","name":"git fetch origin --prune","signed":2,"status":"provisional"}
 {"canonical":"git ls remote head origin","name":"git ls-remote --heads origin","signed":2,"status":"provisional"}
 {"canonical":"git push origin delete","name":"git push origin --delete","signed":2,"status":"provisional"}
-{"canonical":"harness tod os","name":"Harness TODOs","signed":3,"status":"real"}
+{"canonical":"gradle app compile debug kotlin","name":"gradle :app:compileDebugKotlin","signed":10,"status":"real"}
+{"canonical":"green rust","name":"GREEN Rust","signed":0,"status":"provisional"}
+{"canonical":"group projection","name":"GroupProjection","signed":3,"status":"real"}
+{"canonical":"handle","name":"Handles","signed":1,"status":"provisional"}
+{"canonical":"handle status","name":"Handles.status","signed":0,"status":"provisional"}
+{"canonical":"handle status slot","name":"handles_status_slot","signed":1,"status":"provisional"}
+{"canonical":"harness tod os","name":"Harness TODOs","signed":4,"status":"real"}
+{"canonical":"home feed","name":"homeFeed","signed":0,"status":"provisional"}
+{"canonical":"home feed key","name":"HOME_FEED_KEY","signed":10,"status":"real"}
+{"canonical":"home feed live path freez on stuck projection rev","name":"homeFeedLivePathFreezesOnStuckProjectionRev","signed":10,"status":"real"}
+{"canonical":"home feed live path render on advancing projection rev","name":"homeFeedLivePathRendersOnAdvancingProjectionRev","signed":10,"status":"real"}
+{"canonical":"identity","name":"_identity","signed":2,"status":"provisional"}
 {"canonical":"injected alway ad resolution policy","name":"Injected Always AdResolutionPolicy","signed":1,"status":"provisional"}
-{"canonical":"kind 1","name":"kind:1","signed":2,"status":"provisional"}
+{"canonical":"is known valueless mint","name":"is_known_valueless_mint","signed":4,"status":"real"}
+{"canonical":"issued","name":"ISSUED","signed":1,"status":"provisional"}
+{"canonical":"kernel bridge ref kt","name":"KernelBridgeRefs.kt","signed":10,"status":"real"}
+{"canonical":"kernel model decode update","name":"KernelModel.decodeUpdate","signed":10,"status":"real"}
+{"canonical":"key package lookup interest","name":"key_package_lookup_interest","signed":0,"status":"provisional"}
+{"canonical":"kind 0","name":"kind:0","signed":1,"status":"provisional"}
+{"canonical":"kind 1","name":"kind:1","signed":3,"status":"real"}
+{"canonical":"kind 10002","name":"kind:10002","signed":1,"status":"provisional"}
+{"canonical":"kind 10019","name":"kind:10019","signed":0,"status":"provisional"}
+{"canonical":"kind 10050","name":"kind:10050","signed":10,"status":"real"}
+{"canonical":"kind 10050 parser dm relay cache","name":"Kind10050Parser DmRelayCache","signed":10,"status":"real"}
+{"canonical":"kind 1059","name":"kind:1059","signed":10,"status":"real"}
 {"canonical":"kind 17375","name":"kind:17375","signed":3,"status":"real"}
+{"canonical":"kind 23195","name":"kind:23195","signed":1,"status":"provisional"}
 {"canonical":"kind 30023","name":"kind:30023","signed":3,"status":"real"}
+{"canonical":"kind 39000","name":"kind:39000","signed":4,"status":"real"}
+{"canonical":"kind 7375","name":"kind:7375","signed":1,"status":"provisional"}
+{"canonical":"kind 7376","name":"kind:7376","signed":1,"status":"provisional"}
+{"canonical":"kind 9321","name":"kind:9321","signed":1,"status":"provisional"}
+{"canonical":"limit none","name":"limit:None","signed":1,"status":"provisional"}
 {"canonical":"live proof","name":"LIVE PROOF","signed":1,"status":"provisional"}
 {"canonical":"m 14 d coordinator","name":"M14-D Coordinator","signed":1,"status":"provisional"}
+{"canonical":"match event kind","name":"match event.kind","signed":2,"status":"provisional"}
+{"canonical":"merge sha","name":"Merge SHA","signed":2,"status":"provisional"}
+{"canonical":"mint token","name":"mint_tokens","signed":1,"status":"provisional"}
+{"canonical":"minted proof","name":"minted_proofs","signed":1,"status":"provisional"}
 {"canonical":"moment 1 ad url resolver","name":"Moment-1 AdUrlResolver","signed":1,"status":"provisional"}
 {"canonical":"moment 2 ad candidate","name":"Moment-2 AdCandidate","signed":1,"status":"provisional"}
-{"canonical":"nak serve","name":"nak serve","signed":0,"status":"provisional"}
+{"canonical":"mut self","name":"mut self","signed":0,"status":"provisional"}
+{"canonical":"nak serve","name":"nak serve","signed":14,"status":"real"}
+{"canonical":"nak verify","name":"nak verify","signed":10,"status":"real"}
+{"canonical":"native claim event","name":"nativeClaimEvent","signed":8,"status":"real"}
+{"canonical":"native release event","name":"nativeReleaseEvent","signed":4,"status":"real"}
+{"canonical":"native release ref","name":"nativeReleaseRef","signed":10,"status":"real"}
+{"canonical":"native resolve ref","name":"nativeResolveRef","signed":10,"status":"real"}
 {"canonical":"nip 01","name":"NIP-01","signed":0,"status":"provisional"}
 {"canonical":"nip 01 json","name":"NIP-01 JSON","signed":0,"status":"provisional"}
-{"canonical":"nip 17","name":"nip-17","signed":2,"status":"provisional"}
+{"canonical":"nip 17","name":"nip-17","signed":3,"status":"real"}
 {"canonical":"nip 22","name":"nip-22","signed":2,"status":"provisional"}
 {"canonical":"nip 29","name":"nip-29","signed":2,"status":"provisional"}
+{"canonical":"nip 46","name":"NIP-46","signed":9,"status":"real"}
+{"canonical":"nip 46 onboarding","name":"nip46_onboarding","signed":0,"status":"provisional"}
 {"canonical":"nip 50","name":"NIP-50","signed":1,"status":"provisional"}
-{"canonical":"nip 87","name":"NIP-87","signed":2,"status":"provisional"}
+{"canonical":"nip 55","name":"NIP-55","signed":0,"status":"provisional"}
+{"canonical":"nip 55 test avd","name":"nip55_test_avd","signed":10,"status":"real"}
+{"canonical":"nip 65","name":"NIP-65","signed":1,"status":"provisional"}
+{"canonical":"nip 87","name":"NIP-87","signed":3,"status":"real"}
 {"canonical":"nip ad proof","name":"nip-ad-proof","signed":1,"status":"provisional"}
+{"canonical":"nm d","name":"nm -D","signed":0,"status":"provisional"}
+{"canonical":"nmp app chirp","name":"nmp-app-chirp","signed":0,"status":"provisional"}
+{"canonical":"nmp app chirp claim note read","name":"nmp_app_chirp_claim_note_reads","signed":10,"status":"real"}
 {"canonical":"nmp app in process","name":"NmpApp IN-PROCESS","signed":1,"status":"provisional"}
-{"canonical":"nmp backend","name":"nmp-backend","signed":3,"status":"real"}
-{"canonical":"nmp gap issue","name":"NMP GAP ISSUES","signed":3,"status":"real"}
+{"canonical":"nmp app open feed","name":"nmp_app_open_feed","signed":10,"status":"real"}
+{"canonical":"nmp app release ref","name":"nmp_app_release_ref","signed":8,"status":"real"}
+{"canonical":"nmp app resolve ref","name":"nmp_app_resolve_ref","signed":8,"status":"real"}
+{"canonical":"nmp backend","name":"nmp-backend","signed":4,"status":"real"}
+{"canonical":"nmp chirp android ffi","name":"nmp-chirp-android-ffi","signed":20,"status":"real"}
+{"canonical":"nmp cli","name":"nmp-cli","signed":1,"status":"provisional"}
+{"canonical":"nmp gap issue","name":"NMP GAP ISSUES","signed":4,"status":"real"}
+{"canonical":"nmp gen builtin key","name":"nmp gen builtin-keys","signed":9,"status":"real"}
+{"canonical":"nmp gen feed helper","name":"nmp gen feed-helpers","signed":8,"status":"real"}
+{"canonical":"nmp gen typed decoder","name":"nmp gen typed-decoders","signed":9,"status":"real"}
+{"canonical":"nmp native runtime","name":"nmp-native-runtime","signed":1,"status":"provisional"}
+{"canonical":"nmp testing test doctrine lint smoke","name":"nmp-testing --test doctrine_lint_smoke","signed":0,"status":"provisional"}
+{"canonical":"nnf","name":"NNFS","signed":10,"status":"real"}
+{"canonical":"no recipient nutzap info independent","name":"NO_RECIPIENT_NUTZAP_INFO Independent","signed":0,"status":"provisional"}
+{"canonical":"nof","name":"NOFS","signed":17,"status":"real"}
+{"canonical":"nostr avatar","name":"NostrAvatar","signed":8,"status":"real"}
+{"canonical":"nostr kind registry kt","name":"NostrKindRegistry.kt","signed":3,"status":"real"}
+{"canonical":"nostr kind registry rs","name":"nostr_kind_registry.rs","signed":3,"status":"real"}
+{"canonical":"nostr kind registry swift","name":"NostrKindRegistry.swift","signed":3,"status":"real"}
+{"canonical":"nostr multi platform","name":"nostr-multi-platform","signed":5,"status":"real"}
+{"canonical":"not edit","name":"NOT EDIT","signed":0,"status":"provisional"}
+{"canonical":"npm install","name":"npm install","signed":10,"status":"real"}
 {"canonical":"nutsack app","name":"NutsackApp","signed":0,"status":"provisional"}
 {"canonical":"nutzap publish info","name":"nutzap.publish_info","signed":0,"status":"provisional"}
+{"canonical":"nwc wallet backend","name":"NwcWalletBackend","signed":0,"status":"provisional"}
+{"canonical":"on wallet event","name":"on_wallet_event","signed":1,"status":"provisional"}
+{"canonical":"once lock","name":"OnceLock","signed":2,"status":"provisional"}
+{"canonical":"one shot","name":"OneShot","signed":0,"status":"provisional"}
+{"canonical":"only then","name":"Only THEN","signed":0,"status":"provisional"}
+{"canonical":"op feed decoder test","name":"OpFeedDecoderTest","signed":24,"status":"real"}
+{"canonical":"open reaction","name":"open_reactions","signed":10,"status":"real"}
+{"canonical":"open reply","name":"open_replies","signed":10,"status":"real"}
+{"canonical":"open repost","name":"open_reposts","signed":10,"status":"real"}
+{"canonical":"open zap","name":"open_zaps","signed":10,"status":"real"}
+{"canonical":"parse dm relay list","name":"parse_dm_relay_list","signed":4,"status":"real"}
+{"canonical":"pending deposit","name":"pending_deposits","signed":1,"status":"provisional"}
+{"canonical":"pending deposit minted proof","name":"PendingDeposit.minted_proofs","signed":1,"status":"provisional"}
+{"canonical":"pending deposit minted proof before","name":"PendingDeposit.minted_proofs BEFORE","signed":1,"status":"provisional"}
+{"canonical":"pending signer onboarding","name":"pending_signer_onboarding","signed":0,"status":"provisional"}
+{"canonical":"phase post v 1","name":"phase:post-v1","signed":4,"status":"real"}
 {"canonical":"pointer target hydration rs","name":"pointer_target_hydration.rs","signed":1,"status":"provisional"}
-{"canonical":"product surface","name":"Product Surface","signed":3,"status":"real"}
+{"canonical":"post card tsx","name":"PostCard.tsx","signed":10,"status":"real"}
+{"canonical":"post comment","name":"postComment","signed":10,"status":"real"}
+{"canonical":"precedent confirmed","name":"Precedent CONFIRMED","signed":1,"status":"provisional"}
+{"canonical":"product surface","name":"Product Surface","signed":4,"status":"real"}
+{"canonical":"profile screen kt","name":"ProfileScreen.kt","signed":10,"status":"real"}
+{"canonical":"project signer state","name":"project_signer_state","signed":0,"status":"provisional"}
+{"canonical":"projection cache kt","name":"ProjectionCache.kt","signed":10,"status":"real"}
+{"canonical":"projection cache test","name":"ProjectionCacheTest","signed":10,"status":"real"}
+{"canonical":"projection merge cache","name":"ProjectionMergeCache","signed":10,"status":"real"}
+{"canonical":"projection merge cache merge","name":"ProjectionMergeCache.merge","signed":10,"status":"real"}
 {"canonical":"ran it","name":"RAN IT","signed":1,"status":"provisional"}
 {"canonical":"reading entrail","name":"Reading Entrails","signed":0,"status":"provisional"}
 {"canonical":"reading entrail proof","name":"Reading Entrails PROOF","signed":0,"status":"provisional"}
-{"canonical":"real nmp","name":"Real NMP","signed":3,"status":"real"}
+{"canonical":"real nmp","name":"Real NMP","signed":4,"status":"real"}
 {"canonical":"reduced source","name":"ReducedSource","signed":1,"status":"provisional"}
+{"canonical":"ref namespace","name":"RefNamespace","signed":1,"status":"provisional"}
+{"canonical":"register action","name":"register_actions","signed":10,"status":"real"}
+{"canonical":"register article projection adapter","name":"register_article_projection_adapter","signed":3,"status":"real"}
+{"canonical":"register follow action","name":"register_follow_actions","signed":10,"status":"real"}
+{"canonical":"register group projection adapter","name":"register_group_projection_adapter","signed":1,"status":"provisional"}
+{"canonical":"release note read","name":"_release_note_reads","signed":10,"status":"real"}
+{"canonical":"release visible note relation count","name":"release_visible_note_relation_counts","signed":10,"status":"real"}
+{"canonical":"render import","name":"render_imports","signed":3,"status":"real"}
+{"canonical":"request key package fetch","name":"request_key_package_fetch","signed":1,"status":"provisional"}
+{"canonical":"resolve embed projection","name":"resolve_embed_projection","signed":2,"status":"provisional"}
+{"canonical":"resolve profile","name":"resolveProfile","signed":8,"status":"real"}
+{"canonical":"runtime accessor","name":"runtime_accessor","signed":1,"status":"provisional"}
+{"canonical":"runtime accessor shape","name":"runtime_accessor_shape","signed":0,"status":"provisional"}
+{"canonical":"runtime rs","name":"runtime.rs","signed":10,"status":"real"}
 {"canonical":"rust foreign but","name":"Rust→foreign But","signed":2,"status":"provisional"}
+{"canonical":"rust module","name":"rust_module","signed":4,"status":"real"}
+{"canonical":"rust note","name":"Rust Note","signed":0,"status":"provisional"}
 {"canonical":"rust shell flat buffer","name":"Rust→shell FlatBuffers","signed":-4,"status":"suppressed"}
 {"canonical":"same article card","name":"SAME ArticleCard","signed":0,"status":"provisional"}
 {"canonical":"send nmp read host","name":"Send NmpReadHost","signed":1,"status":"provisional"}
+{"canonical":"sha self only","name":"SHA Self-only","signed":1,"status":"provisional"}
+{"canonical":"sha will","name":"SHA Will","signed":0,"status":"provisional"}
+{"canonical":"signer is remote","name":"signerIsRemote","signed":10,"status":"real"}
+{"canonical":"signer state","name":"signer_state","signed":0,"status":"provisional"}
 {"canonical":"single most","name":"SINGLE MOST","signed":0,"status":"provisional"}
+{"canonical":"spendable source candidate excluding","name":"spendable_source_candidates_excluding","signed":1,"status":"provisional"}
+{"canonical":"start complete deposit","name":"start_complete_deposit","signed":1,"status":"provisional"}
+{"canonical":"state cross mint","name":"state_cross_mint","signed":4,"status":"real"}
+{"canonical":"state rs","name":"state.rs","signed":1,"status":"provisional"}
+{"canonical":"status slot","name":"status_slot","signed":2,"status":"provisional"}
+{"canonical":"sub key","name":"SubKey","signed":1,"status":"provisional"}
+{"canonical":"sub owner key","name":"SubOwnerKey","signed":1,"status":"provisional"}
+{"canonical":"system clock","name":"SystemClock","signed":3,"status":"real"}
+{"canonical":"tailing","name":"Tailing","signed":1,"status":"provisional"}
+{"canonical":"thread screen kt","name":"ThreadScreen.kt","signed":10,"status":"real"}
+{"canonical":"timeline traced","name":"Timeline Traced","signed":8,"status":"real"}
+{"canonical":"topic article","name":"topicArticles","signed":10,"status":"real"}
+{"canonical":"tsc no emit","name":"tsc --noEmit","signed":10,"status":"real"}
+{"canonical":"two head up","name":"TWO HEADS-UP","signed":2,"status":"provisional"}
 {"canonical":"typed adcl flat buffer","name":"Typed ADCL FlatBuffers","signed":0,"status":"provisional"}
+{"canonical":"typed home feed decoder contract test","name":"TypedHomeFeedDecoderContractTest","signed":10,"status":"real"}
+{"canonical":"typed home feed decoder decode","name":"TypedHomeFeedDecoder.decode","signed":10,"status":"real"}
+{"canonical":"typed home feed decoder kt","name":"TypedHomeFeedDecoder.kt","signed":20,"status":"real"}
+{"canonical":"typed home feed decoder projection key","name":"TypedHomeFeedDecoder.PROJECTION_KEY","signed":10,"status":"real"}
+{"canonical":"typed home feed decoder swift","name":"TypedHomeFeedDecoder.swift","signed":10,"status":"real"}
+{"canonical":"typed projection slot","name":"typed_projection_slot","signed":1,"status":"provisional"}
 {"canonical":"uni ffi","name":"UniFFI The","signed":2,"status":"provisional"}
+{"canonical":"uni ffi swift","name":"UniFFI Swift","signed":4,"status":"real"}
+{"canonical":"unknown","name":"Unknown","signed":1,"status":"provisional"}
+{"canonical":"unknown mint pending","name":"Unknown → MintPending","signed":1,"status":"provisional"}
+{"canonical":"unknown quote","name":"UNKNOWN_QUOTE","signed":0,"status":"provisional"}
+{"canonical":"unsatisfied link error","name":"UnsatisfiedLinkError","signed":10,"status":"real"}
+{"canonical":"updated debug","name":"Updated Debug","signed":0,"status":"provisional"}
+{"canonical":"validate module path","name":"validate_module_path","signed":3,"status":"real"}
 {"canonical":"very high level","name":"VERY HIGH LEVEL","signed":1,"status":"provisional"}
+{"canonical":"visible note relation","name":"visible_note_relations","signed":10,"status":"real"}
+{"canonical":"wal reran","name":"WAL Reran","signed":0,"status":"provisional"}
+{"canonical":"wallet handle wallet","name":"wallet_handles.wallet","signed":1,"status":"provisional"}
+{"canonical":"wallet interceptor relay text interceptor","name":"WalletInterceptor RelayTextInterceptor","signed":1,"status":"provisional"}
+{"canonical":"wallet npub","name":"wallet_npub","signed":10,"status":"real"}
 {"canonical":"wallet projection","name":"WalletProjection","signed":0,"status":"provisional"}
+{"canonical":"wallet pubkey hex","name":"wallet_pubkey_hex","signed":10,"status":"real"}
+{"canonical":"wallet runtime","name":"WalletRuntime","signed":2,"status":"provisional"}
 {"canonical":"wire node kind ad candidate url","name":"WireNodeKind.AdCandidateUrl","signed":1,"status":"provisional"}
 {"canonical":"work nmp","name":"Work NMP","signed":4,"status":"real"}
+{"canonical":"worktree fix 2962 flaky auto arm","name":"worktree-fix-2962-flaky-auto-arm","signed":3,"status":"real"}
+{"canonical":"x projection","name":"XProjection","signed":2,"status":"provisional"}

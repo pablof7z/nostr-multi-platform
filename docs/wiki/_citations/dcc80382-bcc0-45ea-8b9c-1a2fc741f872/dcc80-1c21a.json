@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-1c21a",
+  "ts": "2026-07-04T13:49:42Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "\n`--tag rc` is required for both: npm's default dist-tag is always `latest` regardless of the version string being a prerelease (npm does NOT auto-detect prerelease semver and skip `latest`), so omitting it would make `latest` point at 1.0.0-rc.1 on the very first publish. `--access public` is redundant since both package.json already set `publishConfig.access: \"public\"`, but it's a harmless explicit safety net for scoped packages.\n"
+}

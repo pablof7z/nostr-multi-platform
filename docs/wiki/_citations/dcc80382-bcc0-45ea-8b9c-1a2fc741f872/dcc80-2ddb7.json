@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-2ddb7",
+  "ts": "2026-07-04T18:28:44Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "1. **Opus authors the plan** (in flight) — 50+ scenarios, each with an acceptance list, required perf metrics (startup/CPU/memory/scroll/render), relay-provenance checks, and offline behavior — created as a GH issue with checkboxes.\n2. **Haiku fan-out** — I dispatch testers in batches (per Opus's recommended grouping), each driving the real iOS sim, capturing screenshot(s) + metrics per scenario, and posting a comment per scenario. Offline scenarios put the **simulator** offline (via `simctl`), never the host.\n3. **File + fix + reverify** — anything broken (offline-first, rendering, UX, perf, relay diagnostics) becomes a GH issue, gets fixed, and gets re-tested. No hand-waving, no hacks.\n4. **Opus final review** — an Opus agent reviews *every* screenshot before anything is called done; anything short of perfect (padding/margins, data, relay diagnostics, perf) goes back to step 3."
+}

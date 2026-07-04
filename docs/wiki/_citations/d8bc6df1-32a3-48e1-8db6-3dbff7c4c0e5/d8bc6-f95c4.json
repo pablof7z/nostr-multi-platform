@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-f95c4",
+  "ts": "2026-07-04T12:33:51Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- app_registry_format.rs: added `rust_module: String` to `FacadeRow` with `#[serde(default = \"default_rust_module\")]` returning `\"facade\"`. [...] - `cargo run -p nmp-codegen -- gen concept-reads --registry apps/nmp-gallery/concept-reads.json --platform rust --check` — drift check still passes unchanged (confirms the default didn't perturb the real gallery golden file)\n- `cargo fmt -p nmp-codegen -- --check` — clean\n\nNo golden/snapshot regen was needed since nmp-app-gallery's registry doesn't declare `rust_module` and resolves to the same default. Chirp itself is untouched (external repo, out of scope per the task)."
+}

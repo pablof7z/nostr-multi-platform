@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-4e59e",
+  "ts": "2026-07-04T18:48:05Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "\n**Big finding (systemic, HIGH priority):** writes are silently failing to publish for some event kinds while the app *lies about success*. Concretely — unfollow (kind:3, #69) and profile-edit (kind:0) update the UI and the Outbox says \"All published,\" but the relay is never updated; and B4's repost (kind:6) count never updated. Regular kind:1 notes/replies *do* publish. So it's replaceable/other kinds failing silently + a false-success Outbox. I flagged the full scope on #69. This is exactly the \"we are not just accepting broken things / data integrity\" class you wanted caught.\n"
+}

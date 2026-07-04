@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-9c480",
+  "ts": "2026-07-04T17:19:50Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Root cause: AccountsView.swift gated the \"Signer relay\" health section only on `model.signerState != nil`. That's a kernel-owned GLOBAL slot (`nmp_core::actor::commands::identity::runtime::IdentityRuntime::signer_state`, written from crates/nmp-core/src/actor/commands/identity/signer_state.rs) that is never scoped or cleared per active account. A background NIP-46 bunker reconnect/handshake for a superseded or unrelated account (e.g. restored from a persisted session on cold start) can write into that slot and render against whatever account happens to be active — including a plain local-key account with no remote signer at all. [...] Filed a genuine framework gap: pablof7z/nostr-multi-platform#2976 — signer_state has no per-account identity/keying at all, so even after this fix, two remote-signer accounts could still cross-contaminate each other's health (out of scope for a Chirp-side patch; documented root cause + repro + suggested fix in the issue)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-39e0d",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- `snapshot.rs::history_row` folds these into one user-facing row for `SendNutzap` only (no new `WalletHistoryKind`; `CrossMintTransfer` still surfaces no row of its own)."
+}

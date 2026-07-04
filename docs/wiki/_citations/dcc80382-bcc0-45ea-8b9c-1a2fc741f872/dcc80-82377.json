@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-82377",
+  "ts": "2026-07-04T13:48:47Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "2. **`FeedParams` JSON shape is completely stale — FIXED.** `KernelBridge+FeedOperations.swift` hand-builds the JSON blob for `nmp_app_open_feed` and was still using the OLD field names: `render`/`acquisition`/`ranking: ChronologicalDesc`/`projection` — the exact same shape I migrated three times already this session for tui/desktop/android-ffi. Verified the current struct in `nmp-feed/src/params.rs` (`primary_kinds, shape, source, admission, order, window, key, item_projection`) and rewrote the whole file: `shape`/`source`/`order: NewestByFeedPosition`/`key` (still a bare string — `ProjectionKey` is `#[serde(try_from = \"String\", into = \"String\")]`) plus the new required `item_projection: \"FeedRows\"`. The `source` payload shapes for `ActiveUserFollows`/`Authors`/`Referrer` were already correct (unchanged). Also renamed `nmp.feed.home`/`.author.`/`.thread.` → `chirp.timeline.*` throughout this file plus `KernelModel+Lifecycle.swift`, `KernelUpdateFrameDecoder.swift`, `KernelModel+Apply.swift`. This one I'm confident in (verified field-by-field against source), but I have NOT build-tested it (see below)."
+}

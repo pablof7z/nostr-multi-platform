@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-edf18",
+  "ts": "2026-07-04T12:36:09Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- Action: Label phase:post-v1. Do not block v1. [...] - Action: Label phase:post-v1. Do not block v1. [...] - Action: Keep OPEN (it is a real bug for anyone using Marmot), label phase:post-v1. Fix it in the post-v1 DM/groups milestone, not before publishing 1.0. NEEDS-OWNER only if the owner wants Marmot groups pulled *into* v1 — nips.md says no. [...] **BOTTOM LINE:** There is NO genuine framework code work in these four blocking v1. #2927 is already done (close it). #2864, #2858, #2974 are all post-v1 (feature app / dev tool / non-v1-claimed MLS feature) and should be labeled phase:post-v1 so they stop looking like un-phased p2 blockers against #2690's \"zero open p2 besides #1626\" bar. Consistent with the owner's steer: an issue existing ≠ it must ship in v1. v1 remains what #2690 says it is — the owner-gated publish act (name → rc rehearsal → 1.0.0 tag → crates.io/npm → external-consumption proof), gated on the public-name decision and #1626, not on any of these four. [...] - **#2864 (wallet), #2858 (X-Ray), #2974 (Marmot MLS) → labeled `phase:post-v1` + Backlog** — per `docs/nips.md` these are feature-app / dev-tool / non-v1-claimed surfaces, not framework blockers. #2974 stays open (it's a real bug, just post-v1)."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-1f135",
+  "ts": "2026-07-04T17:35:54Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- Registry: crates/nmp-app-chirp/concept-reads.json (iOS, facade=ChirpApp) and crates/nmp-chirp-android-ffi/concept-reads.json (Android, facade=AppHandle), both declaring replies/reactions/reposts (no zaps). [...] - nostr-multi-platform#3004 — concept-reads codegen hardcodes `crate::facade` module path. [...] - nostr-multi-platform#3005 — concept-reads codegen has no closure/guarded-accessor mode (needed for Android's Session::with_app pattern)."
+}

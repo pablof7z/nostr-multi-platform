@@ -1,0 +1,6 @@
+{
+  "id": "91a86-44c0c",
+  "ts": "2026-07-04T12:15:15Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "Assistant: Fable's pass materially improved the design — the split holds (**SOUND-WITH-CORRECTIONS**), and it surfaced one thing I missed that changes the durability answer. Here's the validated picture plus the concrete vocabulary.\n\n## The three-way split — confirmed, with the real seam identified\n [...]    - SECURITY CONSTRAINTS (must persist): The real nsec at ~/.nsec-for-nutsack.txt must NEVER be logged, echoed, committed, or posted — pass only via NUTSACK_NSEC env. Never expose Cashu proof secrets. Do NOT misuse NWC connection strings found in old goose/node logs (unauthorized funds). Global CLAUDE.md: \"Send me important notifications by running the `say` command.\""
+}

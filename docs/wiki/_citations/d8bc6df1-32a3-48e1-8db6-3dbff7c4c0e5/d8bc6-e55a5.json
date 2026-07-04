@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-e55a5",
+  "ts": "2026-07-04T12:34:00Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "Assistant: Key finding: #2690's public-name blocker is already resolved per memory (KEEP NMP), but actual publishing is an irreversible owner act. #2711 is blocked on upstream (can't force). Let me read the smaller unlabeled issues to classify them as pre-v1 vs post-v1 and slam-dunk vs subjective. [...] - Blocked on upstream (can't force): #2711 (quick-xml RUSTSEC — needs a wayland-scanner release that allows quick-xml ≥0.41; deadline 2026-09-30)"
+}

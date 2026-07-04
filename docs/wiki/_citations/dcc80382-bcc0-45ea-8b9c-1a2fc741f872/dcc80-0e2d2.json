@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-0e2d2",
+  "ts": "2026-07-04T17:36:06Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Deleted entirely, not stubbed: ZapAmountSheet.swift + its tests (iOS), the zapNote() dispatch stub in SocialActions.kt (Android), all onZap/PendingZap/zapNote call sites through HomeFeedView/ModularBlockView/NoteRowView/NoteActions, plus the now-dead nip57_zap_* error-toast mappings on both platforms and the dead NoteRelationCounts/RelationCount decode path (chirp#35 already dropped relation_counts from the wire; both platforms still carried permanently-nil dead types for it — removed)."
+}

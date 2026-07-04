@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-6a2ce",
+  "ts": "2026-07-04T12:34:27Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "**#2858 — X-Ray diagnostic surface epic → DEFER-POST-V1 (add phase:post-v1)**\n- Verdict: Dev-build-only diagnostic tooling; by its own invariants it is NOT part of the shipped public/app surface.\n- Evidence: Issue's own invariants: \"Diagnostic surface is dev-build-only… `nmp-devtools` is a separate crate behind an off-by-default cargo feature, never linked by app code; CI asserts each platform's release-artifact dependency graph contains no `nmp-devtools`.\" It cannot be a 1.0 public-crate blocker because it is mechanically excluded from release artifacts. Flagship consumer is chirp#30 (external app). Most phases (B/C/D/E) are still open with large items (headless host runner, MCP server, Chirp pane) — clearly a post-v1 build-out.\n- Action: Label phase:post-v1. Do not block v1. [...] - **#2864 (wallet), #2858 (X-Ray), #2974 (Marmot MLS) → labeled `phase:post-v1` + Backlog** — per `docs/nips.md` these are feature-app / dev-tool / non-v1-claimed surfaces, not framework blockers. #2974 stays open (it's a real bug, just post-v1)."
+}

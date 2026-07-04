@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-2028d",
+  "ts": "2026-07-04T13:48:47Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "My harness `NmpApp::open_feed(params)` → `nmp_feed_session::compile_feed_params` → `FeedShape::RootIndexed` → `build_op_scope_session` (session_engine.rs:71) — the exact PullFeedController + op-feed observer + snapshot-emission wiring the device's home feed uses. I capture the actual bytes the host update-listener receives and decode via `decode_snapshot_typed_projections` + `decode_op_feed_snapshot` + `decode_snapshot_envelope` — the device's own decode path (`emission_frame_repro.rs`)."
+}

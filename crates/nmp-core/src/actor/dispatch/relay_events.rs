@@ -16,7 +16,7 @@ use nmp_network::role::RelayRole;
 
 use super::super::relay_mgmt::{maybe_send_startup, send_all_outbound};
 use super::super::relay_runtime::RelayRuntime;
-use super::super::tick::emit_now;
+use super::super::tick::emit_rate_limited;
 
 /// Convert a [`nmp_network::pool::RelayFrame`] (the wire frame variant the
 /// pool's translator emits) into the kernel's wire-transport-agnostic
@@ -80,6 +80,7 @@ pub(crate) fn handle_relay_event(
     last_emit: &mut Instant,
     startup_sent: &mut bool,
     running: bool,
+    emit_hz: u32,
 ) {
     match event {
         // ── Opened ───────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ pub(crate) fn handle_relay_event(
                 kernel,
                 Instant::now(),
             );
-            emit_now(kernel, running, update_tx, last_emit);
+            emit_rate_limited(kernel, running, update_tx, last_emit, emit_hz);
         }
         // ── Failed ───────────────────────────────────────────────────────
         // Pool→kernel "socket dial / mid-session failed". The pool decides
@@ -168,7 +169,7 @@ pub(crate) fn handle_relay_event(
             // failed — sibling sockets sharing this role lane are still live.
             kernel.relay_failed(role, &url, error.message);
             kernel.mark_publish_relay_unavailable(&url);
-            emit_now(kernel, running, update_tx, last_emit);
+            emit_rate_limited(kernel, running, update_tx, last_emit, emit_hz);
         }
         // ── Closed ───────────────────────────────────────────────────────
         // Pool→kernel "socket torn down, no retry". Mirrors the legacy
@@ -187,7 +188,7 @@ pub(crate) fn handle_relay_event(
             // not the whole role lane (sibling sockets keep their subs).
             kernel.relay_closed(role, &url);
             kernel.mark_publish_relay_unavailable(&url);
-            emit_now(kernel, running, update_tx, last_emit);
+            emit_rate_limited(kernel, running, update_tx, last_emit, emit_hz);
         }
         // ── Frame ────────────────────────────────────────────────────────
         // Pool→kernel inbound wire frame. The pool's translator already

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-b2246",
+  "ts": "2026-07-04T17:36:22Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Test plan is live: [chirp#60](https://github.com/pablof7z/chirp/issues/60) — 70 scenarios** (S01–S70), each with a \"perfect\" acceptance list, required perf metrics, and relay/offline criteria, grounded in the real iOS surface. Two things the Opus author caught by reading source instead of trusting assumptions: [...] - **Zap UI is still in the code** — PR #58's \"removed zaps entirely\" didn't fully land. The sweep will confirm actual state (S28/S33/S54), and it'll get fixed properly.\n- **Search was deleted** (chirp#27) — so no search scenarios. [...] 3. **File + fix + reverify** — anything broken (offline-first, rendering, UX, perf, relay diagnostics) becomes a GH issue, gets fixed, and gets re-tested. No hand-waving, no hacks.\n4. **Opus final review** — an Opus agent reviews *every* screenshot before anything is called done; anything short of perfect (padding/margins, data, relay diagnostics, perf) goes back to step 3."
+}

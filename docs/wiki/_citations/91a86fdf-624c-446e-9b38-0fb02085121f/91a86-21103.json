@@ -1,0 +1,6 @@
+{
+  "id": "91a86-21103",
+  "ts": "2026-07-04T12:13:32Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Mint HTTP off-thread:** yes throughout — `run_check_state_pass` is only ever invoked as a spawned thread's body (mirrors `send_worker.rs`/`deposit/quote.rs`'s `std::thread::spawn` + `ctx.command_sender_clone()` idiom); it never holds the state `Mutex` across the blocking HTTP call (snapshots proofs under a short lock, calls the mint unlocked, re-locks only to fold/remove). [...] (b) No deadlock / off-thread (D8) — VERIFIED: run_check_state_pass snapshots proofs under a short lock scope (group_by_mint), drops the lock, calls MintClient::check_state UNLOCKED, then re-locks to fold+remove. No lock held across HTTP, no nested locks. Only ever runs as a spawned std::thread body (recover.rs both branches; ingest via spawn_debounced). lock_state recovers poisoned mutexes."
+}

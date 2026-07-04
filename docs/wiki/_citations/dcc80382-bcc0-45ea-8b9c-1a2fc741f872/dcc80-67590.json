@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-67590",
+  "ts": "2026-07-04T17:08:25Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "User: [Image #1] in the very screenshots you shared the kind:0 of the user doesn't seem to resolve, [Image #2] the status bar is a hotmess of packed shit (terrible UI!)\n\nthis looks like a half-baked proof of concept and not an end-product -- plus, there're no iOS screenshots? no onboarding flow, no groups, etc, etc? there's a lot more -- also, the screnshots were supposed to be published to github to close the issues! [...] - Both are required to **post screenshots to the GitHub issues** (committed to the branch, referenced by raw URL) — where you asked for them, not a claude.ai link.\n- **Fable scope-audit agent** — enumerating the *complete* Chirp surface per platform and what's genuinely unvalidated/broken/missing, precisely because you said \"there's a lot more\" and I keep under-scoping. I'll calibrate the real remaining work off its map rather than my own optimistic guess. [...] - **Full-surface drives** committed to `docs/validation/{android,ios}/` and referenced on issues #50 (Android gallery) and #51 (iOS gallery). PR #49 merged; PR #52 (iOS) is finishing CI."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-e3831",
+  "ts": "2026-07-04T12:33:51Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- Ref-mode output is byte-identical (early dispatch), so no existing iOS facade drifts. Swift/Kotlin wrappers untouched — signatures identical, only Rust host access changes."
+}

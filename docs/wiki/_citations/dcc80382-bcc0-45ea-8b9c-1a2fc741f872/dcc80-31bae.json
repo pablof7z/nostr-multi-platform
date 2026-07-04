@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-31bae",
+  "ts": "2026-07-04T18:28:44Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Infrastructure I set up so testing is real and reproducible:**\n- 3 iOS sims booted, app installed on each (so batches run in parallel without colliding)\n- A seeded local relay (`ws://127.0.0.1:10547`, 16 events) with two profiles, a follow graph, all the content types (link/image/video/hashtag/mention/quote/long note), and a target note with exactly 2 replies / 3 reactions / 1 repost — so testers can verify *correctness* (do the counts match?), not just \"it rendered something\"\n- An evidence pipeline: each batch pushes screenshots to its own branch and posts one comment per scenario to the issue"
+}

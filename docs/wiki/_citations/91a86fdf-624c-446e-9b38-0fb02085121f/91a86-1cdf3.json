@@ -1,0 +1,6 @@
+{
+  "id": "91a86-1cdf3",
+  "ts": "2026-07-04T12:14:21Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "Applied at: proof storage (`add_proofs`), proof lookup (`select_proofs`), deposit accepted-mint check (`mod.rs`), send mint resolution (`send.rs`, keeping the recipient's raw string for the actual `u` tag — never rewritten, only the comparison is canonical), redeem accepted-mint check (`redeem.rs`), and the ledger's `TokenAdded` fact mint key in `token_event.rs`/`send_worker.rs`/`redeem_worker.rs` (so balances don't fragment into multiple rows for one real mint spelled two ways — this last part wasn't in your original checklist but a codex review round caught it as a real projection-correctness gap and I closed it)."
+}

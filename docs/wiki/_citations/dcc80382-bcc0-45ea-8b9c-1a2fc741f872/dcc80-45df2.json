@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-45df2",
+  "ts": "2026-07-04T17:19:55Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "2. **Haiku fan-out** — I dispatch testers in batches (per Opus's recommended grouping), each driving the real iOS sim, capturing screenshot(s) + metrics per scenario, and posting a comment per scenario. Offline scenarios put the **simulator** offline (via `simctl`), never the host."
+}

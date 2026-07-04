@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-e73ba",
+  "ts": "2026-07-04T12:23:26Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "**#2927 — NIP-AD → CLOSE (already delivered on master)**\n- Verdict: Core deliverables DONE and desktop-proven; the issue is stale (still carries status:needs-adr / category:decision though the design+impl landed).\n- Evidence (verified on master, `grep --include=*.rs crates`): the full crate `crates/nmp-nip-ad` exists; `WireNode::AdCandidateUrl`, `nmp_content::AdUrlResolver`, `AdUrlState`, and `nmp_nip_ad::open_ad_collection` are all present and wired in `crates/nmp-native-runtime/src/ad.rs` (fail-open D1/D6 via `AdUrlState::ResolutionFailed`, `AdResolutionPolicy` seam, `resolve_ad_url_blocking`). Companion crates `nmp-wellknown-http` also present. Memory records desktop-iced live proof (#3000) and that FFI-shell/Chirp follow-ups (#2979/#2981) are already split out and deferred.\n- Action: CLOSE #2927 as delivered (or mark Done + strip needs-adr), leaving #2979/#2981 as the tracked post-v1 tails. Either way it is NOT a v1 blocker. [...] - **#2927 → Done** (closed as delivered — NIP-AD core verified on master, rich-render tails #2979/#2981 tracked post-v1)"
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-a56d2",
+  "ts": "2026-07-04T17:08:20Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Assistant: Chirp tracker is now honest: **23 → 14 open issues**, with 9 verified-resolved closes and the toast bug (#21) fixed and merged (PR #43). The remaining 14 are all genuinely-open work — real feature follow-ups (#26/#30/#32), publish-gated items (#16/#19), or things tracked on the NMP-side fixes (#39→NMP#2944, #37→NMP#2918)."
+}

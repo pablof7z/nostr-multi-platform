@@ -1,0 +1,6 @@
+{
+  "id": "91a86-61e98",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**1. Multi-source melt** — the saga now loops candidate source mints (largest-first, no hardcoded fake-mint detection). testnut's melt confirms unpaid → it moves on to chorus/flashapp automatically. The one hard rule baked in: it advances to the next source **only** on positive confirmation the current one didn't pay (definite-unpaid, or a `get_melt_quote_status` recheck saying unpaid) — never on an ambiguous melt, because a possibly-paid source plus a second melt would double-spend. That ambiguous case stays `Unknown` and reconciles from the WAL on restart, which now can also advance sources."
+}

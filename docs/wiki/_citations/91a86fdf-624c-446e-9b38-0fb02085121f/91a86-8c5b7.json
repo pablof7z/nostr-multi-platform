@@ -1,0 +1,6 @@
+{
+  "id": "91a86-8c5b7",
+  "ts": "2026-07-04T12:15:20Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "The binding added, in `crates/nmp-nip60/src/nutzap.rs::verify_nutzap_dleq_against_keyset`, right after the existing missing-DLEQ/missing-`r` checks and before the mint pubkey lookup:\n\n```rust\n// Bind to the proof's claimed keyset (#2963, mirrors `blinded.rs`).\nif proof.id != keyset.id {\n    return Err(Nip60Error::Crypto(format!(\n        \"nutzap proof (C={}) claims keyset {}, expected {}\",\n        proof.c, proof.id, keyset.id\n    )));\n}\n```\n\nThis mirrors `blinded.rs`'s `sig.id != keyset.id` guard on the mint/swap path and fails closed before `pubkey_map.get(&proof.amount)` is ever consulted. [...] What happened on the trim: when I went to push my condensation, the branch had already advanced — a trim (`eff514dc0`, \"condense module doc to clear the 500-LOC hard cap\") was already pushed, bringing nutzap.rs to 487 LOC. Rather than force-push my redundant alternative, I discarded my local commit and reset to that head. Verified on it:\n- Guard intact (`proof.id != keyset.id` at nutzap.rs:380), logic and tests untouched."
+}

@@ -8,11 +8,12 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-29
-updated: 2026-06-29
+updated: 2026-07-04
 verified: 2026-06-29
 compiled-from: conversation
 sources:
   - session:3c942260-311d-4e00-8bcc-204045ea87b3
+  - session:dcc80382-bcc0-45ea-8b9c-1a2fc741f872
 ---
 
 # NmpApp Lifecycle and Shutdown
@@ -45,3 +46,7 @@ The UniFFI `LifecycleSink` callback interface uses `on_lifecycle_transition(phas
 ActionRegistry in nmp-core has no drain/clear gate for the result observer — it holds a mutex across the call — so its callback-interface migration and M14-D deletion are blocked until a drain gate is added.
 
 LifecycleObserverSlot in nmp-core uses a snapshot-then-call pattern with no in_flight counter + Condvar drain gate, so `set_lifecycle_callback` could not migrate until a drain gate is added; this is the same structural gap as ActionRegistry. <!-- [^3c942-ec5ec] -->
+
+## Reset/Start Desync (NMP#2932)
+
+`LifecycleCommand::Reset` rebuilds the kernel with an empty `active_account` but leaves `IdentityRuntime::active` set, so the following `Start`'s `restore_active_session` early-returns and never re-syncs the account — a silent desync. <!-- [^dcc80-ea0c6] -->

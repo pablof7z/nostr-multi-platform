@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-76200",
+  "ts": "2026-07-04T16:39:28Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- Re-scoped chirp#46 from \"cosmetic\" to a **core bug** — profile resolution failing means every row shows raw hex instead of names/avatars, which is exactly why it looks half-baked.\n- Filed chirp#47 for the **broken nav bar** (8 cramped tabs, mid-word wrapping) — which I should have caught by just looking."
+}

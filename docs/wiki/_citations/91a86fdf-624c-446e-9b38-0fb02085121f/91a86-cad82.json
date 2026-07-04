@@ -1,0 +1,6 @@
+{
+  "id": "91a86-cad82",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "**Blocking bug found and fixed while writing the acceptance test**: `cross_mint_publish.rs`'s retry dispatch derived its new `SendNutzap` journal operation id from the caller's `correlation_id` via `operation_id_for` — the *same* id the original (now-terminal) send used, so `begin_operation_at` hit `DuplicateOperation` on every real dispatch (production always supplies a correlation id) and silently dropped the retry with no error ever surfaced. Fixed by keying the retry off the mint-issued `target_quote_id` instead, plus added a failure report on a genuine `began: false`.\n"
+}

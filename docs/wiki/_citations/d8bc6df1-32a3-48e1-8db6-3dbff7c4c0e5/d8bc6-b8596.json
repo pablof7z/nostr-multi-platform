@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-b8596",
+  "ts": "2026-07-04T12:23:22Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "User: A session-scoped Stop hook is now active with condition: \"read all current github issues and categorize them -- triage them in the https://github.com/users/pablof7z/projects/4/views/2 project\n\nfor issues that require some subjectivity, use an opus agent to review them -- just because an issue exists doesn't mean it should be done -- don't just follow things blindly [...] **Opus — subjective review (with authority to close/defer, not just implement):**\n- `review-v1-scope` — the key ruling: are #2864 (wallet), #2858 (X-Ray), #2927 (NIP-AD), #2974 (MLS defect) genuine **v1 blockers** or post-v1? Verifying #2927's core is actually done on master. [...] for things that are straightforward and slum-dunks to do, deploy a sonnet agent to PR + land them [...] **Sonnet — slam-dunks:**"
+}

@@ -1,0 +1,6 @@
+{
+  "id": "91a86-17fd0",
+  "ts": "2026-07-04T12:15:20Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "## (c) DLEQ fail-closed\n- blinded.rs (mint/swap): `(None, Require)=>Err` preserved; mint_pk bound to keyset via build_pubkey_map + upstream `sig.id != keyset.id` check. Sound. ✓\n- **nutzap RECEIVE path**: on master (where #2964 is branched) `verify_nutzap_dleq` STILL has the two `continue` fail-opens (absent dleq / absent r). #2964 does NOT touch them — it only changes the `verify_dleq` call args. So #2964 *alone* does not close the receive-path fail-open. **#2959 is what fixes it** (turns both continues into hard errors). After #2964 rebases onto #2959, fail-closed is preserved because #2964 only edits the call ARGS, not the surrounding error structure. Net ≥ #2959. Good — but see rebase risk."
+}

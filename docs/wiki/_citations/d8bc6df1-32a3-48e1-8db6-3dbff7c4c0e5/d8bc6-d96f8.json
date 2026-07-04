@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-d96f8",
+  "ts": "2026-07-04T12:23:20Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- Every platform dispatch registry exhaustively matches the enum too: tui `nostr_kind_registry.rs`, swiftui `NostrKindRegistry.swift`, compose `NostrKindRegistry.kt`, desktop `content_view.rs` — plus the nmp-gallery preview apps (tui + desktop) that also match exhaustively."
+}

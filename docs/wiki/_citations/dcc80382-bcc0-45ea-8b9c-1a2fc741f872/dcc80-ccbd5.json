@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-ccbd5",
+  "ts": "2026-07-04T18:28:44Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Launched real validation — driving the actual apps, not checking one screen:**\n- **iOS agent** (on the booted iPhone 16 sim) — the platform that was never once driven to a rendered screen. It'll go through onboarding, timeline, profile, groups, DMs, wallet, all of it; screenshot every screen; fix the profile resolution; and report an honest works/broken/stub inventory.\n- **Android agent** (on the emulator) — full surface drive, plus fixing the two known bugs (profile resolution #46, nav bar #47).\n- Both are required to **post screenshots to the GitHub issues** (committed to the branch, referenced by raw URL) — where you asked for them, not a claude.ai link.\n- **Fable scope-audit agent** — enumerating the *complete* Chirp surface per platform and what's genuinely unvalidated/broken/missing, precisely because you said \"there's a lot more\" and I keep under-scoping. I'll calibrate the real remaining work off its map rather than my own optimistic guess."
+}

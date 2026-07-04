@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-20b35",
+  "ts": "2026-07-04T13:48:37Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- Android: ran `--platform kotlin` cleanly (apps/android/.../uniffi/ConceptReads.generated.kt) but the Rust half had to be hand-authored (crates/nmp-chirp-android-ffi/src/uniffi_app_loop/concept_reads.rs) — AppHandle guards its NmpApp pointer behind `Session::with_app` (a UAF-prevention closure), which the codegen's direct-accessor emitter can't target. Matches the registry's declared shape exactly so the generated Kotlin wrapper works against it unmodified. `ui/NoteSocialCounts.kt` mirrors the iOS lifecycle via `LaunchedEffect`+`try/finally`."
+}

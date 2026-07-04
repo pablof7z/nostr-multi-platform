@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-43746",
+  "ts": "2026-07-04T12:23:20Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "Recommendation: split #2928 into (a) a prerequisite domain/wire issue — \"wire kind:39000 into nmp-content's EmbedKindProjection + FlatBuffers embed_sidecar wire\" (nmp-content + nmp-nip29 + gallery-app dispatch updates), and (b) keep #2928 scoped to just the 4 platform card components + registry manifests once (a) lands. Or accept it as one larger single-PR feature with the full blast radius above — your call on which. Not attempting either without direction since it's a real cross-cutting change, not the isolated registry add it was filed as."
+}

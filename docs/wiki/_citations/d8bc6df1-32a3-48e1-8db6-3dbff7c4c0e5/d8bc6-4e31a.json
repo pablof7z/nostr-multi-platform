@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-4e31a",
+  "ts": "2026-07-04T12:36:03Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "Root cause confirmed (not a guess): `auto_arm_finalizes_before_parking_remote_sign` sets `created_at: 0`, so `publish_finalize::stamp_unsigned_if_needed` stamps it via `kernel.now_secs()` inside the call, then the test independently calls `kernel.now_secs()` again at line 352 to assert equality. Kernel's default clock is real wall-clock (`SystemClock`), so these are two live reads — a second-boundary tick between them makes the assertion non-deterministically fail. Found the identical bug in the sibling test `explicit_arm_finalizes_before_parking_remote_sign` (publish_unsigned_to.rs:260) and fixed both in the same PR."
+}

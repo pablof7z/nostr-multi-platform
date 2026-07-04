@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-7e62d",
+  "ts": "2026-07-04T17:36:06Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Android read-path is genuinely validated and screenshot-verified** — onboarding (both nsec-import and create-account), timeline with resolved names, profile, DMs, relays, account, wallet, outbox, diagnostics all work under real interaction, no crashes or blank screens. The two bugs you flagged are fixed: profile resolution (a real race in `KernelProfileHost` — a collector attaching after the single no-replay event fired) and the nav bar (8 tabs → 5 + a More screen). One honesty note the agent made explicit: it couldn't photograph a \"before\" for the profile race because a loopback relay resolves too fast to reliably trigger it — the fix is code-level verified, not before/after-photographed. I'd rather you know that than have it claimed as a clean visual proof.\n"
+}

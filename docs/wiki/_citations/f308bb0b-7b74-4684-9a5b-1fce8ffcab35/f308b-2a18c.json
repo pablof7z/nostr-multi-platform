@@ -1,0 +1,6 @@
+{
+  "id": "f308b-2a18c",
+  "ts": "2026-07-04T11:46:43Z",
+  "session": "f308bb0b-7b74-4684-9a5b-1fce8ffcab35",
+  "text": "Assistant: `plainText(fromContentTree:)` takes the raw `FlatbufferVector<UInt8>` directly and does `Data(vector.map { $0 })` — the same anti-pattern via `.map` instead of `Data(_:)` directly. Fixing the function to accept already-copied `Data`, and doing the bulk copy at each call site. [...] Assistant: Now inlining the bulk-copy directly at each call site instead. [...] - `TypedProjectionGlueEmbed.swift` (2 call sites, hand-written glue code) — `plainText(fromContentTree:)` was doing `Data(vector.map { $0 })`, same anti-pattern via `.map`. Changed its signature to accept already-copied `Data`, with the bulk copy done at each call site.\n"
+}

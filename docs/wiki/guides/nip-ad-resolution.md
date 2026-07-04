@@ -13,6 +13,7 @@ verified: 2026-07-04
 compiled-from: conversation
 sources:
   - session:fb992e80-b32b-4673-b2c2-40e8044504ee
+  - session:d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5
 ---
 
 # NIP-AD URL Resolution and AdResolutionPolicy
@@ -47,4 +48,6 @@ AD relay routing uses `InterestShape.relay_pin` — one-shot, client-side routin
 
 ## End-to-End Verification
 
-NIP-AD is proven live end-to-end on desktop: https://trellis.rs/legible resolves through `.well-known/nostr.json?ad=/legible` to a kind:30023 event rendered via `ArticleCard` with the title 'Stop Reading Entrails'. <!-- [^fb992-a5b76] -->
+Issue #2927 (NIP-AD) is closed as delivered — the full `nmp-nip-ad` crate exists on master and is wired into `nmp-native-runtime/src/ad.rs` with fail-open D1/D6 resolution. NIP-AD is proven live end-to-end on desktop: https://trellis.rs/legible resolves through `.well-known/nostr.json?ad=/legible` to a kind:30023 event rendered via `ArticleCard` with the title 'Stop Reading Entrails'.
+
+<!-- citations: [^fb992-a5b76] [^d8bc6-e73ba] -->

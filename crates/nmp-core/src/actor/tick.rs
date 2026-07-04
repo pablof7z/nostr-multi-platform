@@ -94,6 +94,36 @@ pub(super) fn emit_now(
     *last_emit = Instant::now();
 }
 
+/// D8-respecting relay-lifecycle emit gate.
+///
+/// `PoolEvent::Opened` / `Failed` / `Closed` need connection-state changes to
+/// reach the UI promptly, but calling [`emit_now`] unconditionally on every
+/// one of those events — as the relay-event handler previously did — bypasses
+/// the `emit_hz` ceiling entirely (D8 exists precisely to bound this). Under
+/// relay churn (many configured relays reconnecting/retrying during a resync,
+/// or one flapping relay) this produced a full snapshot re-serialization far
+/// above the configured rate — measured live at 5-10x the configured 4 Hz,
+/// with the snapshot payload growing every time (2026-07-04 perf incident:
+/// sustained 100%+ CPU and, downstream, SwiftUI view-identity churn severe
+/// enough to retry-loop a video player indefinitely).
+///
+/// This emits immediately only when the `emit_hz` interval has actually
+/// elapsed since the last emit; otherwise it does nothing here — the mutation
+/// already ran (`changed_since_emit()` is true), so the next scheduled tick's
+/// `flush_due` check delivers it within one emit interval. No state is lost,
+/// only the emit is deferred to stay within the D8 ceiling.
+pub(super) fn emit_rate_limited(
+    kernel: &mut Kernel,
+    running: bool,
+    update_tx: &Sender<UpdateFrameBytes>,
+    last_emit: &mut Instant,
+    emit_hz: u32,
+) {
+    if running && last_emit.elapsed() >= emit_interval(emit_hz) {
+        emit_now(kernel, running, update_tx, last_emit);
+    }
+}
+
 /// T114b — post-dispatch emit gate (per-dispatch retention audit).
 ///
 /// View-command dispatchers (`ResolveRef`, … — everything in

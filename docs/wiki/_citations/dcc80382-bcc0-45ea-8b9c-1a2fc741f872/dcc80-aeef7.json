@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-aeef7",
+  "ts": "2026-07-04T17:19:46Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Minor unrelated observation** (logged in the writeup, not investigated further): during the real-relay session, a \"publish already in flight: <event id>\" toast got stuck on screen and visually blocked the Chats \"New message\" button until I navigated away and back. The referenced event (a kind:10050 republish) had actually already succeeded on the relay — looks like a stale in-flight-publish tracking entry that never cleared on ack. Flagging in case it's worth its own issue later; didn't chase it down since it wasn't blocking. [...] **Filed honestly:** stuck publish-in-flight toast (chirp#54)."
+}

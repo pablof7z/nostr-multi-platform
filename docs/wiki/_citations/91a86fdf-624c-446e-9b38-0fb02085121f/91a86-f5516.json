@@ -1,0 +1,6 @@
+{
+  "id": "91a86-f5516",
+  "ts": "2026-07-04T12:15:15Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "`~/.config/nutsack/config.toml` (or `$XDG_CONFIG_HOME/nutsack/config.toml`), TOML, `0600`:\n```toml\nnsec = \"nsec1...\"\nrelays = [\"wss://...\", ...]\nmints = [\"https://...\", ...]\n```\n`NUTSACK_NSEC` env var still bypasses onboarding AND this file entirely (dev/power-user override — never persisted, never echoed back, since the caller already has it)."
+}

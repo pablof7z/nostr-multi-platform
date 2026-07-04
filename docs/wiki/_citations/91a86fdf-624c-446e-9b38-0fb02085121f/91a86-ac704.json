@@ -1,0 +1,6 @@
+{
+  "id": "91a86-ac704",
+  "ts": "2026-07-04T12:13:44Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "\n**2. Await the recipient's kind:10019** — the send already opens the fetch subscription on a miss but then fails-fast; it'll now register a one-shot continuation that re-drives the send when the info arrives (bounded, event-driven, no polling), so from the app's side `nutzap.send` just works."
+}

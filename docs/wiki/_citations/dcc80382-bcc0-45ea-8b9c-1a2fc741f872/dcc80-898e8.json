@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-898e8",
+  "ts": "2026-07-04T18:48:28Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Assistant: Report: the device-render bug is **root-caused and fixed** (PR #2952), and it's the elegant kind — one wire-contract fix that closes iOS, Android, and web at once, verified by a reproducing test that failed before and passes after. Because it's load-bearing (the incremental-emission ladder) and the same agent's read flipped once during this chase, I've got Fable reviewing it before I merge, per your standing instruction — checking specifically that content-driven `projection_rev` for app-owned keys doesn't regress omit-unchanged or any other consumer, and that fixing the emitter (vs a host workaround) is the right layer.\n"
+}

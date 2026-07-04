@@ -1,0 +1,6 @@
+{
+  "id": "91a86-0b87c",
+  "ts": "2026-07-04T12:13:32Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- `ingest.rs`: `ingest_token_event` now returns `Result<bool, String>` (whether it actually folded fresh proofs, vs. a relay-resend/del-superseded no-op). The passive cold-start-replay/live-tail path kicks off the same pass silently (no correlation id) whenever a kind:7375 event adds proofs — via `check_state::spawn_debounced`, a single-flight guard I added after code review flagged that a bursty cold-start replay (up to `REPLAY_LIMIT`, potentially hundreds of events) would otherwise spawn hundreds of concurrent full passes against the same mint. It now collapses any burst into at most two outstanding passes. [...] (c) Debounce runs the final reconciling pass — VERIFIED by reasoning through the race: the in_flight check + clear happen atomically under one lock hold, so a trigger either sets rerun_needed while the pass still owns in_flight (loop's `continue` picks it up) or arrives after in_flight is cleared (spawns a fresh pass). No trigger is ever lost; the last ingest always results in a pass running after it. Coalesces any burst into ≤2 outstanding passes. Both determinism tests green.\n"
+}

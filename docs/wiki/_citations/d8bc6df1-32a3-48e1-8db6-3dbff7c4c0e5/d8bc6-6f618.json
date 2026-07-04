@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-6f618",
+  "ts": "2026-07-04T12:36:03Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "Fix: pin the kernel clock via the existing `Kernel::set_clock` + `FixedClock` test seam (same pattern already used in `kernel_reducer/command_apply_contacts_tests.rs` and `command_apply_publish_timestamp_tests.rs`) before driving each publish. No sleeps/retries, no weakened assertions — this removes the race entirely rather than papering over it."
+}

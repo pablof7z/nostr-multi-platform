@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-379bc",
+  "ts": "2026-07-04T13:48:12Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Code-level confirmation for *why*: `chirp_default_follows()` (`nmp-chirp-config`) is wired only into `nmp_app_chirp_create_new_account` / `ChirpApp::create_new_account` (`crates/nmp-app-chirp/src/ffi/create_account.rs`, `account_relay.rs`). `signin_nsec` / `nmp_app_signin_nsec` (both iOS `KernelModel+Commands.swift` and Android's `Java_org_nmp_android_KernelBridge_nativeSignInNsec`) call the plain generic `add_signer` path only — it never touches `chirp_default_follows`. There's no code path by which sign-in (as opposed to create-account) could publish a default kind:3."
+}

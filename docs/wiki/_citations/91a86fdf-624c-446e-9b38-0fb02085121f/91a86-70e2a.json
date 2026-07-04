@@ -1,0 +1,6 @@
+{
+  "id": "91a86-70e2a",
+  "ts": "2026-07-04T12:15:20Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "2. #2954 fail() TELEMETRY INTACT on BOTH fail() calls in the block (and in fact on all fail() calls in the verification gate): each passes the two new params `&event_id` and `Some(&nutzap)` in the correct positions, and `fail()` itself records `WalletConsumedInput` (event_id + nutzap-derived mint/amount) before transitioning to Failed. The privkey `fail(...NO_CASHU_WALLET...)` and the DLEQ `fail(...INVALID_NUTZAP...)` both carry both params correctly."
+}

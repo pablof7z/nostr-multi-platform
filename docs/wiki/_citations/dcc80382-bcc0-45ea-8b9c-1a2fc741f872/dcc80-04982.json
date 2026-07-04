@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-04982",
+  "ts": "2026-07-04T18:27:58Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "STILL BROKEN — said so honestly on the issues, did NOT claim these are fixed:\n- #65 (quote card): Chirp-side card shape is now correct (real `ShortNoteEmbed`, not the old stub) but the resolved envelope still comes back with empty author name/content for this specific note, even though that same author resolves fine everywhere else in the app. This is a Rust-side embed-resolver data bug, not fixable from Chirp. Screenshot shows the card still only displays avatar + short pubkey.\n- #66 (article): still shows the raw image URL as the headline instead of the title. `ArticleEmbed` is correctly wired and its code is right — the Rust resolver hands Swift the wrong field value. Screenshot confirms unchanged.\n\nBoth #65/#66 root causes are filed as pablof7z/nostr-multi-platform#3016 with exact repro steps and suspected cause (FlatBuffers field mismatch for article; missing author-resolution chain for shortNote quotes).\n"
+}

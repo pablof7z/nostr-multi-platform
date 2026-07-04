@@ -1,0 +1,6 @@
+{
+  "id": "f308b-87b2d",
+  "ts": "2026-07-04T11:46:43Z",
+  "session": "f308bb0b-7b74-4684-9a5b-1fce8ffcab35",
+  "text": "1. A small idempotent script (e.g. `apps/ios/scripts/neuter-slow-flatbuffer-accessors.sh`, sed/python): for every `public var <name>: FlatbufferVector<UInt8>` with a sibling `withUnsafePointerTo<Name>` in `apps/ios/Chirp/Bridge/Generated/*.generated.swift`, prepend the `@available(*, unavailable, ...)` line. Run it once now over checked-in files; call it from `regen-flatbuffers.sh` after each flatc invocation.\n2. A CI presence check in `.github/workflows/codegen-drift.yml`: fail if any `FlatbufferVector<UInt8>` accessor lacks the annotation — catches future hand-run flatc regens.\n3. First migrate the one in-tree consumer of a slow accessor besides your fix, if any (I found only `KernelUpdateFrameDecoder.swift` and `TypedHomeFeedDecoder.swift` touch these; the latter already uses the fast path). [...] - New `apps/ios/scripts/neuter-slow-flatbuffer-accessors.sh` in chirp — idempotent, finds every `FlatbufferVector<UInt8>` accessor with a fast sibling and marks it `@available(*, unavailable, ...)`. Verified idempotent (reruns annotate 0).\n- Wired into `regen-flatbuffers.sh` so it runs after every future flatc regen."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-723fd",
+  "ts": "2026-07-04T13:49:42Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "Also found apps/web/vercel.json, scripts/build.sh, and the build:wasm/build:vercel npm scripts still assumed the pre-split monorepo layout (crates/nmp-browser-runtime, pkg/nmp-browser-runtime, a root web/ workspace) that doesn't exist in the split chirp repo — that pipeline was dead on arrival for any real Vercel deploy, unrelated to my change. Removed the dead script + npm scripts, repointed vercel.json at the working `npm install` + `npm run build` path, and updated docs/chirp-web.md's Production Deployment Contract to describe the packages-based reality instead of the stale monorepo-source-build contract. This is consumer-repo work so I fixed it directly rather than filing it."
+}

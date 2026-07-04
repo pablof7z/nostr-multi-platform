@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-2eb0c",
+  "ts": "2026-07-04T16:39:07Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "- The iOS device home feed uses PLAIN `ActiveUserFollows`, built in Swift (`KernelBridge+FeedOperations.swift:51`), NOT the difference composition. My `control` test proves that path is sound.\n- The `Difference(follows, mute)` composition exists only in the Rust Android/desktop/TUI shells of the newest worktrees (`chirp/.wt-*`, branch chirp-android-platform 7be5d64). Its `home_feed_params` = RootIndexed / primary_kinds [1] / admission All. Also sound per my test. [...] ## Secondary real finding (file if you want, not the symptom)\nThe difference composition FAILS TO OPEN before an active account exists: `ScopeNotSupportedYet { scope: \"ListMembers-active-mute-no-active-account\" }` (nip51_sources.rs:130-132, mute source is RequireActive). Plain follows opens fine pre-login (AllowMissingActive) and just shows empty. So the Rust shells that open the home feed with the difference scope get a hard open-error if they open before sign-in, whereas iOS/plain-follows degrades gracefully. This is a Chirp-composition fragility, not the empty-feed symptom (the device DID open + emit a snapshot)."
+}

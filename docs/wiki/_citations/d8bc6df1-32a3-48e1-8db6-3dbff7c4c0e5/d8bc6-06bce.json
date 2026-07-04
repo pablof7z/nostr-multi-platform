@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-06bce",
+  "ts": "2026-07-04T12:34:25Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "The only issues labeled **pre-v1** are #2690 and #2711. #2711 is blocked on an upstream release we don't control. #2690 — the actual v1 act — is the **irreversible owner-gated publish**: bump to 1.0.0, `cargo publish` nmp-* to crates.io, publish @nmp/* to npm, prove external consumption. Its issue-blocker (#1626) is closed and master CI is green, so the framework is *ready*, but I will **not** autonomously publish 1.0.0 permanently to public registries — that needs your go."
+}

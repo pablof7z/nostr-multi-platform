@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-0d3a3",
+  "ts": "2026-07-04T12:23:20Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- `crates/nmp-content/schema/embed_sidecar.fbs` + `src/wire/embed_sidecar_fb/{encode,decode}.rs` — FlatBuffers wire union carries the projection cross-FFI; every variant needs a table + encode/decode arm. Regen is gated through `ci/regenerate-flatbuffers.sh`, not raw flatc (repo rule)."
+}

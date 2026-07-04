@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-d9869",
+  "ts": "2026-07-04T12:47:02Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "**#2970 (NIP-17 wss-only gate blocks nak serve) — DEFER post-v1.**\n- Verdict: keep open as a test-harness task; do NOT relax the parser gate.\n- Justification: Owner already confirmed (issue comment) this is a pure local-testability gap, not a defect — validated e2e vs wss://nos.lol, downgraded to p3, does not block v1. I rejected the `cfg(test)`/feature relaxation on its merits: (a) it buys nothing for Rust tests — the gate lives only in `parse_dm_relay_list`; `DmRelayCache::upsert` doesn't gate scheme, so a test can seed the cache directly; (b) it does nothing for the actual manual `nak serve` loop — that runs through an app binary, not a `cargo test` build, so `cfg(test)` never applies, and a cargo feature enabled for validation would validate the wrong confidentiality posture (a footgun + forked NIP-17 §2 invariant). Correct closures are non-invasive: an in-workspace integration test that injects a `ws://` DmRelayCache entry directly (bypassing the parser), or a cert-trusted wss local-relay recipe (mkcert in front of nak serve — the non-trivial part is client cert trust). Neither is triage-sized, so deferred to the next NIP-17 validation pass.\n- Action: comment #2970#issuecomment-4881977806, label `phase:post-v1`."
+}

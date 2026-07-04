@@ -1,0 +1,6 @@
+{
+  "id": "91a86-d5965",
+  "ts": "2026-07-04T12:14:21Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "CANONICALIZATION RULE (`canonicalize_mint_url`, state.rs): lowercases ONLY the scheme + authority (host[:port]) — split point is the first of `/`, `?`, or `#`; strips exactly ONE trailing `/` from the end of the path portion (before any query/fragment). Deliberately preserves: path case and content entirely (different path = different mint, e.g. minibits' per-unit `/Bitcoin` vs `/Sat`), query strings/fragments untouched, repeated trailing slashes NOT all collapsed (only the single-slash case #2972 actually hit). Falls back to the trimmed original if there's no `scheme://` separator — never panics, never invents a canonical form for malformed input."
+}

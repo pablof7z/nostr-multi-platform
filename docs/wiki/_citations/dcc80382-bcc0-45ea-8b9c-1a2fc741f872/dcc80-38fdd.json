@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-38fdd",
+  "ts": "2026-07-04T18:27:52Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "## Zap removal\nDeleted entirely, not stubbed: ZapAmountSheet.swift + its tests (iOS), the zapNote() dispatch stub in SocialActions.kt (Android), all onZap/PendingZap/zapNote call sites through HomeFeedView/ModularBlockView/NoteRowView/NoteActions, plus the now-dead nip57_zap_* error-toast mappings on both platforms and the dead NoteRelationCounts/RelationCount decode path (chirp#35 already dropped relation_counts from the wire; both platforms still carried permanently-nil dead types for it — removed).\n [...] chirp#36 (Android): regenerated ActionBuilders.kt via `cargo run -p nmp-codegen -- gen action-builders --platform kotlin`. Only `zap` was actually dropped (NMP #2325 removed zap wallet scope from v1, unrelated to this issue but confirmed real); createPublicGroup/postComment/topicArticles never had Android call sites (confirmed via full-tree grep, matching the issue's own uncertainty). SocialActions.zapNote() now fails closed with a clear \"unavailable\" message + log line instead of referencing a builder that no longer exists.\n"
+}

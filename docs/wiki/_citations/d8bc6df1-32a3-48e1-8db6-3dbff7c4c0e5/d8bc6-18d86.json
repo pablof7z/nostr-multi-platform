@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-18d86",
+  "ts": "2026-07-04T12:41:09Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- Added `facade.runtime_accessor_shape` registry field: \"ref\" (default) | \"closure\".\n- Closure mode emits `self.<accessor>(|app| <concept_fn>(app, ...))`, mapping accessor `None` (dead/inert handle) → OpenFailed on open / false on close (idempotent D6), and keeping the concept door's own error on the same variant ref mode uses per target shape (JSON→OpenFailed, plain-string→InvalidTarget).\n- Ref-mode output is byte-identical (early dispatch), so no existing iOS facade drifts. Swift/Kotlin wrappers untouched — signatures identical, only Rust host access changes. [...] - Closure mode emits `self.<accessor>(|app| <concept_fn>(app, ...))`, mapping accessor `None` (dead/inert handle) → OpenFailed on open / false on close (idempotent D6), and keeping the concept door's own error on the same variant ref mode uses per target shape (JSON→OpenFailed, plain-string→InvalidTarget). [...] - Generator stays concept-crate-dependency-free: host-type-agnostic, stamps `app` as the door's first arg (symmetric to ref mode's `self.<accessor>()`)."
+}

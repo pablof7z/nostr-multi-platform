@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-3b8c9",
+  "ts": "2026-07-04T17:36:22Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**Two orchestration lessons I acted on:**\n- Running 3 sim testers concurrently is unsafe — they collide on the shared xcode MCP session profile (Batch 3 caught its profile getting hijacked mid-run). I'm **serializing** the remaining sim testers and having every agent re-assert its sim UDID per call."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-c9dae",
+  "ts": "2026-07-04T13:48:59Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "**But Android is not \"done\" — Groups/Marmot is a fully dead backend** (chirp#48, confirming the audit): a complete, well-built UI wired to a Marmot runtime that the migration removed and never reinstalled. This is exactly the \"screens over nothing\" trap — it would pass a screenshot tour while being non-functional. It's real Rust composition work (re-wire onto `nmp_marmot::install()`), a Wave 2 item. And the feed is still the minimal card (no social bar, #32). [...] Assistant: PR #56 merged — the Marmot composition re-wire is on Chirp master (Groups: dead → installed, snapshots reaching the host, plus the iOS dead-pointer fix). The keyring-persistence finish agent is working to make Groups genuinely functional and persist across restart."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-66957",
+  "ts": "2026-07-04T13:48:28Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "chirp#36 (Android): regenerated ActionBuilders.kt via `cargo run -p nmp-codegen -- gen action-builders --platform kotlin`. Only `zap` was actually dropped (NMP #2325 removed zap wallet scope from v1, unrelated to this issue but confirmed real); createPublicGroup/postComment/topicArticles never had Android call sites (confirmed via full-tree grep, matching the issue's own uncertainty). SocialActions.zapNote() now fails closed with a clear \"unavailable\" message + log line instead of referencing a builder that no longer exists."
+}

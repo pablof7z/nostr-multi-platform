@@ -1,0 +1,6 @@
+{
+  "id": "dcc80-7433b",
+  "ts": "2026-07-04T17:43:22Z",
+  "session": "dcc80382-bcc0-45ea-8b9c-1a2fc741f872",
+  "text": "## (a) + host-decode tests: Chirp PR #44 (https://github.com/pablof7z/chirp/pull/44)\n- Committed the real-shell C-ABI guard `chirp_difference_home_feed_surfaces_followed_author_notes` (full compose + `nmp_app_open_feed` JSON-marshaled difference feed + `decode_op_feed_snapshot` → followed non-self author's notes surface).\n- Added the host live-path tests that cover the exact gap the golden fixtures skip (Android `OpFeedDecoderTest`, both PASS on `:app:testDebugUnitTest`, no device):\n  - `homeFeedLivePathFreezesOnStuckProjectionRev` — reproduces the device freeze through `ProjectionMergeCache.merge` → `TypedHomeFeedDecoder.decode` with a stuck rev.\n  - `homeFeedLivePathRendersOnAdvancingProjectionRev` — an advancing rev (what #2952 now emits) renders the 2 cards.\n\n## Bottom line / next\nThe empty home feed resolves once NMP #2952 merges and Chirp re-pins NMP. No Swift/Kotlin change required. A device re-verify screenshot after the re-pin would confirm the final render — route the device agent then (there's nothing device-specific left to find; it's purely the re-pin). PRs: NMP #2952 (the fix), Chirp #44 (the guards). Do you want me to also open the chirp#39 close on the re-pin, or leave that to the platform agent?"
+}

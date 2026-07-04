@@ -1,0 +1,6 @@
+{
+  "id": "91a86-57e1a",
+  "ts": "2026-07-04T12:13:32Z",
+  "session": "91a86fdf-624c-446e-9b38-0fb02085121f",
+  "text": "- `recover.rs` (`RecoverCashuWalletCommand`): both branches (idempotent \"already loaded\" and the happy-path decrypt chain) now spawn their own `std::thread` that runs the pass and **defers `RecordActionSuccess` until it completes** — so a caller polling balance right after `nmp.wallet.cashu.recover` returns sees the reconciled, UNSPENT-only balance, not a transiently optimistic one."
+}

@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-f72cf",
+  "ts": "2026-07-04T12:33:51Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "- Closure mode emits `self.<accessor>(|app| <concept_fn>(app, ...))`, mapping accessor `None` (dead/inert handle) → OpenFailed on open / false on close (idempotent D6), and keeping the concept door's own error on the same variant ref mode uses per target shape (JSON→OpenFailed, plain-string→InvalidTarget)."
+}

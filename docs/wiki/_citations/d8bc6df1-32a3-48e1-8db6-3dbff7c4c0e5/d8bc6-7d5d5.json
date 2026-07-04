@@ -1,0 +1,6 @@
+{
+  "id": "d8bc6-7d5d5",
+  "ts": "2026-07-04T12:40:58Z",
+  "session": "d8bc6df1-32a3-48e1-8db6-3dbff7c4c0e5",
+  "text": "1. Exclude known valueless test mints (testnut.cashu.space host family) from source candidacy — `is_known_valueless_mint`. This denylist is genuinely necessary, not laziness: the WAL proves testnut's melt QUOTE succeeded and it only failed as PENDING *after* the irreversible melt(). A pre-melt quote-probe can't catch it, and money-safety forbids advancing past a PENDING/Unknown melt. Selection is the ONLY point a fake mint can be kept out of a real Lightning melt. [...] 2. Walk an ORDERED candidate list (largest balance first, settleable only) instead of one blind pick. The worker falls through to the next candidate on any PRE-melt failure (melt-quote/keyset/fee-inclusive reservation — none move funds), covering req 2 & 3. Verified select_proofs is read-only, so iterating is safe. [...] I did NOT implement post-melt Unpaid->restore->advance: the WAL case is PENDING (not definite Unpaid), and adding a reversal on the irreversible leg is unnecessary risk for the reported bug. The pre-melt fall-through delivers req-2's value safely."
+}
