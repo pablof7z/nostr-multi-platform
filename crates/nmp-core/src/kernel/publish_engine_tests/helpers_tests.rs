@@ -74,10 +74,11 @@ pub(crate) fn persist_pending_record(
     relay: &str,
     reason: crate::publish::RelaySelectionReason,
 ) {
-    use crate::publish::{PerRelayState, PublishRecord};
+    use crate::publish::{PerRelayState, PublishRecord, PublishTarget};
     let record = PublishRecord {
         handle: signed.id.clone(),
         event: signed.clone(),
+        target: PublishTarget::Auto,
         per_relay: vec![(relay.to_string(), PerRelayState::Pending)],
         pending_retries: Vec::new(),
         relay_reasons: vec![(relay.to_string(), vec![reason])],

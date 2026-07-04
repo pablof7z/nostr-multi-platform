@@ -157,6 +157,27 @@ pub(super) fn is_complete(in_flight: &InFlight) -> bool {
         .all(super::super::state::PerRelayState::is_terminal)
 }
 
+/// Whether ANY relay targeted by this row has already accepted the event.
+///
+/// #3020: this gates whether the unavailable-relay deadline (#2967) is
+/// allowed to force-settle a row. #2967's bound only makes sense once the
+/// row already has a meaningful result to fall back to — a dead relay must
+/// not block a handle from completing when some OTHER relay already
+/// accepted the event. When NO relay has accepted yet, the row is fully
+/// undelivered; force-settling it to `FailedAfterRetries` would finalize +
+/// evict it from `in_flight`/the durable store (`finalize_completed_rows`),
+/// permanently losing the note even though a relay added to the user's
+/// config moments later (`PublishEngine::retarget_row`, wired into
+/// `mark_relay_available`) could still have delivered it. Offline-first
+/// requires such a row to stay durably `Pending` until it is either
+/// delivered or the user explicitly cancels it (`cancel_by_handle`).
+pub(super) fn has_any_accepted(in_flight: &InFlight) -> bool {
+    in_flight
+        .per_relay
+        .values()
+        .any(|state| matches!(state, PerRelayState::Ok { .. }))
+}
+
 pub(super) fn for_each_terminal(
     in_flight: &InFlight,
     handle: &str,
@@ -253,6 +274,15 @@ pub(super) fn next_deadline_ms(
     now_ms: u64,
     policy: RetryPolicy,
 ) -> Option<u64> {
+    // #3020: mirrors the `sweep_unavailable_timeouts` gate — when the sweep
+    // will never force-settle (no relay has accepted yet), the unavailable
+    // relay's deadline candidate below is a wake-up that would fire and do
+    // nothing forever after `deadline_ms` elapses (the candidate does not
+    // depend on `now_ms`, so it would keep reporting the same past instant
+    // as "due"). Computing it only when the sweep can act keeps the runtime
+    // scheduler honest: no wake is ever scheduled for work that will not
+    // happen (D8 — no busy re-evaluation).
+    let unavailable_deadline_is_live = has_any_accepted(in_flight);
     let mut next: Option<u64> = None;
     for (relay_url, state) in &in_flight.per_relay {
         if let Some(unavailable_since) = unavailable_relays.get(relay_url) {
@@ -261,7 +291,7 @@ pub(super) fn next_deadline_ms(
             // whatever per-state candidate the ladder below would otherwise
             // compute. `None` (NIP-42 auth park) deliberately contributes no
             // deadline — see `PublishEngine::unavailable_relays`'s doc comment.
-            if !state.is_terminal() {
+            if !state.is_terminal() && unavailable_deadline_is_live {
                 if let Some(became_unavailable_ms) = unavailable_since {
                     let candidate =
                         became_unavailable_ms.saturating_add(policy.inflight_deadline_ms);
@@ -307,6 +337,13 @@ pub(super) fn sweep_unavailable_timeouts(
     deadline_ms: u64,
     unavailable_relays: &BTreeMap<RelayUrl, Option<u64>>,
 ) -> bool {
+    // #3020: never force-settle the LAST hope for a row nothing has accepted
+    // yet — see `has_any_accepted`'s doc comment. Leaves the row `Pending`
+    // (bounded only by an explicit user cancel), re-targetable the moment a
+    // relay connects.
+    if !has_any_accepted(in_flight) {
+        return false;
+    }
     let mut changed = false;
     for (relay_url, state) in &mut in_flight.per_relay {
         if state.is_terminal() {
