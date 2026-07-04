@@ -40,6 +40,8 @@ impl ObservedProjectionRegistrar for NoopObservedRegistrar {
     }
 }
 
+type CapturedIdentityObserver = Arc<Mutex<Option<Box<dyn Fn(Option<String>) + Send + Sync>>>>;
+
 struct FakeApp {
     actions: Vec<&'static str>,
     active_pubkey: ActiveAccountSlot,
@@ -48,6 +50,9 @@ struct FakeApp {
     incremental: Arc<AtomicBool>,
     session_id: Arc<AtomicU64>,
     snapshot_epoch: Arc<AtomicU64>,
+    /// Captures the identity-change observer `register` installs so a test can
+    /// fire it and prove the account-switch reset wiring exists (#2916).
+    identity_observer: CapturedIdentityObserver,
 }
 
 impl FakeApp {
@@ -60,6 +65,7 @@ impl FakeApp {
             incremental: Arc::new(AtomicBool::new(false)),
             session_id: Arc::new(AtomicU64::new(0)),
             snapshot_epoch: Arc::new(AtomicU64::new(0)),
+            identity_observer: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -135,10 +141,11 @@ impl ObservedProjectionRegistrar for FakeApp {
 }
 
 impl IdentityChangeRegistrar for FakeApp {
-    fn register_identity_change_observer<F>(&self, _f: F)
+    fn register_identity_change_observer<F>(&self, f: F)
     where
         F: Fn(Option<String>) + Send + Sync + 'static,
     {
+        *self.identity_observer.lock().unwrap() = Some(Box::new(f));
     }
 }
 
@@ -219,6 +226,35 @@ fn register_installs_exactly_this_waves_new_action_namespaces() {
             "{nip47_owned} must be registered exactly once (by nmp-nip47), got {count}"
         );
     }
+}
+
+#[test]
+fn register_wires_an_identity_change_reset_observer_for_both_backends() {
+    // #2916: the composition root must install an identity-change observer that
+    // resets BOTH the Cashu and NWC backends on a Nostr account switch (NWC is
+    // Nostr-account-scoped per the owner's settled decision). Prove the observer
+    // is registered and that firing it — for an account switch and a sign-out —
+    // is safe and leaves the merged projection coherent.
+    let mut app = FakeApp::new();
+    let handles = register(&mut app, Config::default()).expect("register must succeed");
+
+    let observer =
+        app.identity_observer.lock().unwrap().take().expect(
+            "register must wire an identity-change observer that resets the wallet backends",
+        );
+
+    // Switch to a new account, then sign out — neither may panic.
+    observer(Some("b".repeat(64)));
+    observer(None);
+
+    // With nothing connected under any account, the merged NWC contribution is
+    // NotConfigured — the projection stays coherent after the reset fires.
+    let projection = handles.runtime.snapshot();
+    assert_eq!(
+        projection.readiness,
+        crate::projection::WalletReadiness::NotConfigured,
+        "no wallet connected under the switched-to account"
+    );
 }
 
 #[test]

@@ -216,6 +216,49 @@ impl WalletRuntime {
         self.payment_store = Some(store);
     }
 
+    /// Discard all identity-scoped NWC connection state on a Nostr account
+    /// switch and clear the shared status slot back to "no wallet connected".
+    ///
+    /// The `WalletRuntime` is constructed once per app instance
+    /// (`nmp_nip47::register`), not once per signed-in account, but a live
+    /// [`WalletConnection`] is scoped to whoever attached the NWC connection
+    /// URI under the previously-active Nostr account: it carries that relay +
+    /// wallet-service pubkey, the client secret, and all in-flight
+    /// `pay_invoice`/`lookup_invoice` tracking. Without this reset, a Nostr
+    /// account switch within one running app would leave the PREVIOUS account's
+    /// connection and last-written [`WalletStatus`] visible under the merged
+    /// `"wallet"` projection for the NEWLY active account (#2916). The owner's
+    /// settled decision is that an NWC Lightning connection is
+    /// Nostr-account-scoped, exactly like Cashu — so this mirrors
+    /// `nmp_wallet::backend::cashu::CashuWalletBackend::reset()`, wired to the
+    /// same `IdentityChangeRegistrar` signal.
+    ///
+    /// The app-lifetime `payment_store` handle is intentionally KEPT (like
+    /// Cashu keeps its WAL store): the durable per-payment records are the
+    /// source of truth for `lookup_invoice` reconciliation and must not be
+    /// wiped on a switch — a payment left `Unknown` for the previous account
+    /// still needs to settle to its true outcome.
+    ///
+    /// Unlike `wallet_disconnect`, this sends no CLOSE frame and touches no
+    /// kernel subscription: the identity-change observer that calls it has no
+    /// kernel access, and the abandoned subscription expires relay-side.
+    /// Losing in-memory NWC connection state on account switch is expected and
+    /// safe — the newly active account re-attaches its own connection URI via
+    /// `wallet_connect`.
+    pub fn reset(&mut self) {
+        self.connection = None;
+        // D6 poison-lock recovery — same as `wallet_disconnect_inner` /
+        // `sync_wallet_status`: recover rather than silently skip the write.
+        let mut slot = match self.status_slot.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                tracing::error!("nwc: status_slot lock was poisoned on reset — recovering");
+                poisoned.into_inner()
+            }
+        };
+        *slot = None;
+    }
+
     /// True if `relay_url` is the currently connected NWC relay. Used by
     /// the actor's relay-message intercept to decide whether to call
     /// [`handle_nwc_text`] for an inbound text frame.
@@ -257,6 +300,10 @@ mod runtime_utils;
 #[cfg(test)]
 #[path = "../runtime_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../runtime_reset_tests.rs"]
+mod reset_tests;
 
 #[cfg(test)]
 #[path = "../runtime_money_path_tests.rs"]
