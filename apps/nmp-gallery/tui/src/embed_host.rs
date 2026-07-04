@@ -122,6 +122,7 @@ mod tests {
             events: entries.into_iter().collect(),
             profiles: std::collections::BTreeMap::new(),
             relay_statuses: Vec::new(),
+            ad_collections: Default::default(),
         }
     }
 

@@ -6,6 +6,9 @@ mod bridge;
 mod components;
 mod gallery;
 
+#[cfg(test)]
+mod ad_proof_tests;
+
 fn main() -> iced::Result {
     iced::application(gallery::GalleryApp::new, gallery::update, gallery::view)
         .subscription(gallery::subscription)

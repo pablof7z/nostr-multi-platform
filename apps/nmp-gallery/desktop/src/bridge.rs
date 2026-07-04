@@ -87,6 +87,17 @@ impl GalleryBridge {
         self.sink.resolve_profile_card(pubkey, consumer_id);
     }
 
+    /// #2927 — claim a NIP-AD candidate URL (moment-1 render); resolution is
+    /// policy-gated + non-blocking. Idempotent per `(url, consumer_id)`.
+    pub fn claim_ad_url(&self, url: &str, author: &str, consumer_id: &str) {
+        self.sink.claim_ad_url(url, author, consumer_id);
+    }
+
+    /// #2927 — current [`AdUrlState`](nmp_content::AdUrlState) for `url`.
+    pub fn ad_url_state(&self, url: &str) -> nmp_content::AdUrlState {
+        self.sink.ad_url_state(url)
+    }
+
     /// Take the snapshot receiver for use in the iced subscription. Called
     /// once at startup; subsequent calls return None.
     pub fn take_snapshot_receiver(

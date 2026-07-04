@@ -200,12 +200,81 @@ pub(super) fn render_component<'a>(
 
 fn render_content_view<'a>(app: &'a GalleryApp, ex: &'a ContentExample) -> Element<'a, Message> {
     let labels = profile_labels(app, ex);
-    NostrContentView::new(&ex.tree)
+    let base = NostrContentView::new(&ex.tree)
         .render_data(Some(&ex.render_data))
         .embedded_events(Some(app.embed_host.current_envelopes()))
         .profile_labels(labels)
         .media_handles(&app.media_handles)
-        .into_element::<Message>()
+        .into_element::<Message>();
+
+    // #2927 — below the content, render every NIP-AD candidate URL that
+    // resolved into its embedded collection. Each event is drawn through the
+    // SAME per-kind embed renderer used for nevent/naddr embeds (ArticleCard for
+    // kind:30023, …). Unresolved/failed URLs contribute nothing here — the plain
+    // link already rendered inline in `base` (fail-open, D1/D6).
+    let mut cards: Vec<Element<'a, Message>> = Vec::new();
+    for node in &ex.tree.nodes {
+        if let WireNode::AdCandidateUrl(url) = node {
+            if let Some(projections) = app.ad_resolved.get(url) {
+                for proj in projections {
+                    cards.push(render_ad_projection(app, proj));
+                }
+            }
+        }
+    }
+
+    if cards.is_empty() {
+        return base;
+    }
+
+    let section = column![
+        text("Resolved NIP-AD collection").size(11).style(|_| text::Style {
+            color: Some(MUTED_TEXT),
+        }),
+        column(cards).spacing(8),
+    ]
+    .spacing(6);
+
+    column![base, section].spacing(12).into()
+}
+
+/// #2927 — render one resolved NIP-AD collection event through the shell's
+/// EXISTING per-kind embed widget (reuse, not a new renderer). kind:30023 →
+/// [`ArticleCard`]; other kinds fall back to the same compact text shapes the
+/// `embed-*` showcases use.
+fn render_ad_projection<'a>(
+    app: &'a GalleryApp,
+    proj: &'a EmbedKindProjection,
+) -> Element<'a, Message> {
+    match proj {
+        EmbedKindProjection::Article(a) => {
+            let author_name = claim_and_resolve_author(app, &a.author_pubkey);
+            ArticleCard::new(a, author_name).into_element()
+        }
+        EmbedKindProjection::ShortNote(n) => {
+            let author_name = claim_and_resolve_author(app, &n.author_pubkey);
+            text(format!("kind:1 · {author_name}")).size(13).into()
+        }
+        EmbedKindProjection::Highlight(h) => {
+            text(format!("\u{201c}{}\u{201d}", h.highlighted_text))
+                .size(13)
+                .style(|_| text::Style {
+                    color: Some(INACTIVE_TEXT),
+                })
+                .into()
+        }
+        EmbedKindProjection::Profile(p) => text(format!(
+            "Profile: {}",
+            p.display_name
+                .as_deref()
+                .unwrap_or(&p.pubkey[..8.min(p.pubkey.len())])
+        ))
+        .size(13)
+        .into(),
+        EmbedKindProjection::Unknown(u) => {
+            text(format!("kind:{}", u.kind)).size(13).into()
+        }
+    }
 }
 
 fn profile_labels(app: &GalleryApp, ex: &ContentExample) -> BTreeMap<String, String> {

@@ -15,6 +15,13 @@ iced = { version = "0.14", features = ["tokio", "image-without-codecs", "advance
 nmp-app-gallery = { path = "../crates/nmp-app-gallery", version = "1.0.0-rc.1" }
 nmp-content = { path = "../../../crates/nmp-content", version = "1.0.0-rc.1" }
 nmp-core = { path = "../../../crates/nmp-core", version = "1.0.0-rc.1" }
+# #2927 — render NIP-AD resolved-collection rows (AdCollectionSnapshot/Row +
+# to_kernel_event) through the existing per-kind embed renderer.
+nmp-nip-ad = { path = "../../../crates/nmp-nip-ad", version = "1.0.0-rc.1" }
 nmp-gallery-tui = { path = "../tui", version = "1.0.0-rc.1" }
 tokio = { version = "1", features = ["sync"] }
 ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[dev-dependencies]
+# #2927 render proof: register the kind:30023 article embed adapter.
+nmp-nip23 = { path = "../../../crates/nmp-nip23", version = "1.0.0-rc.1" }

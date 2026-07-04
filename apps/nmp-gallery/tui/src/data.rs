@@ -233,7 +233,10 @@ impl GalleryData {
                 .expect("real profile reference must tokenize"),
             content_view: content_example(
                 "relay note content",
-                &format!("relay note {note_nevent}"),
+                // #2927 — the trellis.rs/legible AD URL tokenizes to a
+                // WireNode::AdCandidateUrl. With the gallery's `Always` policy it
+                // resolves to its kind:30023 article, rendered below the content.
+                &format!("relay note {note_nevent}\n\nSee https://trellis.rs/legible"),
             )
             .expect("real note reference must tokenize"),
             content_mention_chip: content_example("relay profile mention", &mention_uri)
@@ -285,6 +288,7 @@ mod live_profile_map_tests {
             events: BTreeMap::new(),
             profiles,
             relay_statuses: Vec::new(),
+            ad_collections: Default::default(),
         }
     }
 

@@ -69,6 +69,13 @@ pub struct GalleryApp {
     media_url_fetching: BTreeSet<String>,
     media_pending: Arc<Mutex<Vec<(String, Vec<u8>)>>>,
     media_handles: BTreeMap<String, ImageHandle>,
+    // #2927 — resolved NIP-AD collections as per-kind embed projections, keyed
+    // by the candidate URL. Computed at snapshot time (resolve_embed_projection
+    // is pure) and OWNED here so the view pass can render them through the
+    // existing per-kind embed renderers (ArticleCard borrows the projection, so
+    // it must outlive the returned Element — exactly like embed_host's
+    // envelopes).
+    ad_resolved: BTreeMap<String, Vec<nmp_content::embed_projection::EmbedKindProjection>>,
     // Snapshot receiver for the iced subscription. Taken from bridge in new()
     // and held in a shared slot. `subscription()` is called by iced after every
     // update and must return a *stable* recipe (same hash, every call) or iced
@@ -104,6 +111,7 @@ impl GalleryApp {
             media_url_fetching: BTreeSet::new(),
             media_pending: Arc::new(Mutex::new(Vec::new())),
             media_handles: BTreeMap::new(),
+            ad_resolved: BTreeMap::new(),
             snapshot_rx: Arc::new(Mutex::new(snapshot_rx)),
         }
     }
@@ -200,6 +208,14 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             claim_tree_refs(&app.bridge, &app.data.content_media_grid.tree.nodes);
             claim_tree_refs(&app.bridge, &app.data.content_quote_card.tree.nodes);
 
+            // #2927 — (re)claim every AdCandidateUrl so moment-1 resolution
+            // fires once a relay connects (idempotent, policy-gated in the
+            // runtime; mirrors `claim_tree_refs`), then recompute the resolved
+            // per-kind projections for any URL whose collection has arrived.
+            claim_tree_ad_urls(&app.bridge, &app.data.content_view.tree.nodes);
+            claim_tree_ad_urls(&app.bridge, &app.data.content_core.tree.nodes);
+            recompute_ad_resolved(app, &snap.ad_collections);
+
             app.last_rev += 1;
 
             // 4. Check if a background avatar fetch completed. Create the Handle
@@ -270,6 +286,61 @@ fn claim_tree_refs(bridge: &GalleryBridge, nodes: &[WireNode]) {
             bridge.resolve_event_uri(&u.uri, CONSUMER_ID);
         }
     }
+}
+
+/// #2927 — claim every NIP-AD candidate URL in a content tree (moment-1). The
+/// note author is the gallery's showcase author. Idempotent + policy-gated in
+/// the runtime; re-claiming every tick makes the claim stick once a relay
+/// connects (same rationale as [`claim_tree_refs`]).
+fn claim_tree_ad_urls(bridge: &GalleryBridge, nodes: &[WireNode]) {
+    for node in nodes {
+        if let WireNode::AdCandidateUrl(url) = node {
+            bridge.claim_ad_url(url, primary_pubkey(), CONSUMER_ID);
+        }
+    }
+}
+
+/// #2927 — recompute the per-URL resolved per-kind projections from this tick's
+/// delivered NIP-AD collections. For each AdCandidateUrl whose `AdUrlState` is
+/// `Resolved`, decode nothing new — the collection is already decoded on the
+/// snapshot — just run each row back through the SAME per-kind dispatch the rest
+/// of the gallery uses (`resolve_embed_projection`) and OWN the results so the
+/// view pass can render them via the existing per-kind embed widgets.
+fn recompute_ad_resolved(
+    app: &mut GalleryApp,
+    ad_collections: &BTreeMap<String, nmp_nip_ad::AdCollectionSnapshot>,
+) {
+    // Collect candidate URLs first (clone) so the immutable tree borrow is
+    // dropped before we touch `app.ad_resolved`.
+    let mut urls: Vec<String> = Vec::new();
+    for nodes in [
+        &app.data.content_view.tree.nodes,
+        &app.data.content_core.tree.nodes,
+    ] {
+        for node in nodes {
+            if let WireNode::AdCandidateUrl(url) = node {
+                if !urls.contains(url) {
+                    urls.push(url.clone());
+                }
+            }
+        }
+    }
+
+    let ctx = nmp_content::RenderContext::new();
+    let mut resolved = BTreeMap::new();
+    for url in urls {
+        if let nmp_content::AdUrlState::Resolved { projection_key } = app.bridge.ad_url_state(&url) {
+            if let Some(collection) = ad_collections.get(&projection_key) {
+                let projections = collection
+                    .rows
+                    .iter()
+                    .map(|row| nmp_content::resolve_embed_projection(&row.to_kernel_event(), &ctx))
+                    .collect::<Vec<_>>();
+                resolved.insert(url, projections);
+            }
+        }
+    }
+    app.ad_resolved = resolved;
 }
 
 /// Synchronous image fetch via ureq. Runs inside a background thread so it
