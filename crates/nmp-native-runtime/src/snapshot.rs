@@ -6,7 +6,53 @@
 //! the typed FlatBuffers sidecar (ADR-0072).
 
 use super::NmpApp;
+use nmp_core::CompositionLedger;
 use nmp_ownership::ProjectionRegistrationKey;
+use nmp_core::__ffi_internal::SnapshotProjectionSlot;
+
+/// Register a typed FlatBuffers projection closure directly against the shared
+/// snapshot registry + composition ledger slots, without borrowing `NmpApp`.
+///
+/// This is the ONE canonical registration body (ADR-0069 disposition
+/// recording). [`NmpApp::register_typed_snapshot_projection_with_time`]
+/// forwards here; the Send [`crate::NmpReadHost`] handle
+/// ([`crate::read_host_handle`]) calls it too so a worker thread can install a
+/// read-session output after an off-thread resolve (#2927) — one path, no fork.
+pub(crate) fn register_typed_snapshot_projection_on(
+    snapshot_projections: &SnapshotProjectionSlot,
+    composition_ledger: &CompositionLedger,
+    key: impl Into<ProjectionRegistrationKey>,
+    f: impl Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+) {
+    use nmp_core::__ffi_internal::TypedAdmission;
+    let key = key.into().into_string();
+    if let Ok(mut registry) = snapshot_projections.lock() {
+        // ADR-0069 / Blocker C — derive the ledger disposition from the ACTUAL
+        // admission result returned by `register_typed` rather than from a
+        // pre-insertion key-presence check. This is the only way to distinguish
+        // a genuine `Installed` from a `DroppedFull` silent no-op when the
+        // registry is at the D5 cap.
+        let admission = registry.register_typed_with_time(key.clone(), f);
+        let disposition = match admission {
+            TypedAdmission::Inserted => Some(nmp_core::Disposition::Installed),
+            TypedAdmission::Replaced => Some(nmp_core::Disposition::ReplacedPrevious),
+            // D5 cap hit: the closure was silently dropped. Record a diagnostic
+            // via the ledger with a dedicated disposition so the host can
+            // observe the cap-induced drop at composition time (tracing::warn
+            // already fired inside `admit_keyed`).
+            TypedAdmission::DroppedFull => None,
+        };
+        if let Some(disp) = disposition {
+            composition_ledger.record(
+                "typed_snapshot_projection",
+                key.clone(),
+                key,
+                disp,
+                None,
+            );
+        }
+    }
+}
 
 // Issue #1283 / ADR-0072 — the `refs.event.envelopes` snapshot-projection
 // producer. A submodule of `snapshot` (both own snapshot-projection wiring);
@@ -62,34 +108,12 @@ impl NmpApp {
         key: impl Into<ProjectionRegistrationKey>,
         f: impl Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
-        use nmp_core::__ffi_internal::TypedAdmission;
-        let key = key.into().into_string();
-        if let Ok(mut registry) = self.snapshot_projections.lock() {
-            // ADR-0069 / Blocker C — derive the ledger disposition from the
-            // ACTUAL admission result returned by `register_typed` rather than
-            // from a pre-insertion key-presence check. This is the only way to
-            // distinguish a genuine `Installed` from a `DroppedFull` silent
-            // no-op when the registry is at the D5 cap.
-            let admission = registry.register_typed_with_time(key.clone(), f);
-            let disposition = match admission {
-                TypedAdmission::Inserted => Some(nmp_core::Disposition::Installed),
-                TypedAdmission::Replaced => Some(nmp_core::Disposition::ReplacedPrevious),
-                // D5 cap hit: the closure was silently dropped. Record a
-                // diagnostic via the ledger with a dedicated disposition so
-                // the host can observe the cap-induced drop at composition
-                // time (tracing::warn already fired inside `admit_keyed`).
-                TypedAdmission::DroppedFull => None,
-            };
-            if let Some(disp) = disposition {
-                self.composition_ledger.record(
-                    "typed_snapshot_projection",
-                    key.clone(),
-                    key,
-                    disp,
-                    None,
-                );
-            }
-        }
+        register_typed_snapshot_projection_on(
+            &self.snapshot_projections,
+            &self.composition_ledger,
+            key,
+            f,
+        );
     }
 
     /// Run every registered typed projection closure and collect the emitted

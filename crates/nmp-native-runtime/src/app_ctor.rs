@@ -350,6 +350,10 @@ pub fn new_app() -> NmpApp {
         nip46_runtime: Arc::new(Mutex::new(None)),
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "nip-ad")]
+        ad_resolution_policy: Arc::new(Mutex::new(None)),
+        #[cfg(feature = "nip-ad")]
+        ad_url_states: Arc::new(Mutex::new(std::collections::HashMap::new())),
         observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,

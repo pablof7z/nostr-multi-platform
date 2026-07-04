@@ -21,7 +21,7 @@
 //!   in reverse order; no polling.
 
 use nmp_core::substrate::ObservedProjection;
-use nmp_core::{ObservedProjectionId, TypedProjectionData};
+use nmp_core::ObservedProjectionId;
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
     ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
@@ -30,73 +30,52 @@ use nmp_read_session::{
 
 use crate::NmpApp;
 
+// The ONE canonical `ReadHost` impl lives on the detached `NmpReadHost` handle
+// (`read_host_handle.rs`) so a worker thread can open reads after an off-thread
+// resolve (#2927). `NmpApp` delegates every method to a freshly-vended handle
+// built from the same Arc-backed registry slots — one implementation, no fork.
 impl ReadHost for NmpApp {
     fn install_read_output(&self, key: ProjectionRegistrationKey, encoder: ReadOutputEncoder) {
-        // Coalesced typed emission (ADR-0070 revision ladder / ADR-0072) is owned by the snapshot
-        // registry; the concept only supplies the per-tick encoder.
-        self.register_typed_snapshot_projection(key, move || -> Option<TypedProjectionData> {
-            encoder()
-        });
+        self.read_host().install_read_output(key, encoder);
     }
 
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        // Replay-before-live + live activation + exact withdrawal are one kernel
-        // primitive; the concept never sequences them by hand.
-        self.observed_projection_handle().open(decl)
+        self.read_host().open_read_interest(decl)
     }
 
     fn open_live_only_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
-        self.observed_projection_handle().open_live_only(decl)
+        self.read_host().open_live_only_read_interest(decl)
     }
 
     fn teardown_close_interest(&self, id: ObservedProjectionId) -> TeardownAction {
-        let handle = self.observed_projection_handle();
-        Box::new(move || {
-            use nmp_core::substrate::ObservedProjectionRegistrar;
-            handle.close_observed_projection(id);
-        })
+        self.read_host().teardown_close_interest(id)
     }
 
     fn teardown_remove_output(&self, key: String) -> TeardownAction {
-        let projections = self.snapshot_projections_handle();
-        Box::new(move || {
-            if let Ok(mut registry) = projections.lock() {
-                let _ = registry.remove(&key);
-            }
-        })
+        self.read_host().teardown_remove_output(key)
     }
 
     fn teardown_mark_changed(&self) -> TeardownAction {
-        let sender = self.command_sender();
-        Box::new(move || {
-            sender.mark_changed_since_emit();
-        })
+        self.read_host().teardown_mark_changed()
     }
 
     fn store_read_session(&self, build: ReadSessionBuild) -> ReadSessionId {
-        self.feed_sessions.as_read_sessions().open(build)
+        self.read_host().store_read_session(build)
     }
 
     fn read_session_projection_key(&self, id: &ReadSessionId) -> Option<String> {
-        self.feed_sessions.as_read_sessions().projection_key(id)
+        self.read_host().read_session_projection_key(id)
     }
 
     fn close_read_session(&self, id: &ReadSessionId) -> bool {
-        self.feed_sessions.as_read_sessions().close(id)
+        self.read_host().close_read_session(id)
     }
 
     fn close_read_session_by_projection_key(&self, projection_key: &str) -> bool {
-        self.feed_sessions
-            .as_read_sessions()
-            .close_by_projection_key(projection_key)
+        self.read_host().close_read_session_by_projection_key(projection_key)
     }
 
     fn read_interest_controller(&self) -> Option<ReadInterestController> {
-        let opener = self.observed_projection_handle();
-        let closer = opener.clone();
-        Some(ReadInterestController::new(
-            move |decl| opener.open(decl),
-            move |id| closer.close(id),
-        ))
+        self.read_host().read_interest_controller()
     }
 }

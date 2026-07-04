@@ -12,6 +12,8 @@ mod app_config_intent;
 mod app_config_search;
 mod app_config_substrate;
 mod app_ctor;
+#[cfg(feature = "nip-ad")]
+mod ad;
 mod app_host_impl;
 mod app_impl_accessors;
 mod app_impl_core;
@@ -41,6 +43,7 @@ mod marmot;
 mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;
+mod read_host_handle;
 mod relay_config;
 #[cfg(feature = "search")]
 mod search;

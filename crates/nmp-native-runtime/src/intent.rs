@@ -88,17 +88,18 @@ impl NmpApp {
             InputIntentTarget::Nip05 { identifier } => {
                 self.act_on_nip05_intent(identifier);
             }
-            InputIntentTarget::AdCandidate { .. } => {
-                // #2927 moment-2: the AD `.well-known` resolution + relay-pinned
-                // collection delivery is the deferred hand-off — it needs the
-                // arbitrary-filter, relay-pinned collection interest primitive
-                // the kernel does not yet expose (no `KernelAction` /
-                // `ActorCommand` opens a plain-`nostr::Filter` interest with
-                // one-shot `relay_pin` into a 0..N-event view; the owner override
-                // forbids reducing a NIP-AD filter to the single-pointer refs
-                // seam). The parallel free-text search (D1) is dispatched from
-                // `dispatch_input_intent`, so an AD URL still yields results; only
-                // the direct AD-resolved collection view is pending.
+            InputIntentTarget::AdCandidate { url } => {
+                // #2927 moment-2: resolve the AD URL and open the relay-pinned
+                // collection (via #2948's `open_ad_collection`). NEVER
+                // policy-gated — this is an explicit per-URL user action. The
+                // parallel free-text search (D1) already fired from
+                // `dispatch_input_intent`, so the user is never blocked on the
+                // `.well-known` round-trip; the direct AD-resolved collection is
+                // a strictly-later upgrade.
+                #[cfg(feature = "nip-ad")]
+                self.act_on_ad_candidate_intent(url);
+                #[cfg(not(feature = "nip-ad"))]
+                let _ = url;
             }
             InputIntentTarget::RelayUrl { .. } | InputIntentTarget::Registered { .. } => {}
         }
