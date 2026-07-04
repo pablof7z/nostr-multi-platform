@@ -48,6 +48,9 @@ pub enum SegmentDto {
     Hashtag { tag: String },
     /// Plain URL (not classified media).
     Url { url: String },
+    /// Plain `http(s)` URL that MIGHT double as a NIP-AD pointer (#2927). Renders
+    /// as a plain link baseline; the distinct kind marks it claimable.
+    AdCandidateUrl { url: String },
     /// One or more grouped media URLs.
     Media {
         /// `"Image"`, `"Video"`, or `"Audio"`.

@@ -185,7 +185,7 @@ function contentTreePreview(tree: ContentTreeWire | undefined): string {
   for (const node of tree.nodes) {
     if (node.kind === "text" && node.text) parts.push(node.text);
     else if (node.kind === "hashtag" && node.tag) parts.push(`#${node.tag}`);
-    else if (node.kind === "url" && node.url) parts.push(node.url);
+    else if ((node.kind === "url" || node.kind === "ad_candidate_url") && node.url) parts.push(node.url);
     else if (node.kind === "inline_code" && node.code) parts.push(node.code);
   }
   return parts.join(" ").trim();

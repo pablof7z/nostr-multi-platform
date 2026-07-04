@@ -133,6 +133,7 @@ public fun nostrContentGroups(tree: ContentTreeWire): List<NostrContentGroup> {
             is WireNode.Mention,
             is WireNode.Hashtag,
             is WireNode.Url,
+            is WireNode.AdCandidateUrl,
             is WireNode.Emoji,
             is WireNode.Invoice,
             is WireNode.Emphasis,

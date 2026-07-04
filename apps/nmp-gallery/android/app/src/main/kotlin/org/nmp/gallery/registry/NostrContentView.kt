@@ -227,6 +227,13 @@ internal fun AnnotatedString.Builder.appendInline(
                 }
             }
         }
+        is WireNode.AdCandidateUrl -> {
+            withAnnotationScope(LINK_ANNOTATION, node.url) {
+                withStyleScope(SpanStyle(color = renderer.linkColor)) {
+                    append(node.url)
+                }
+            }
+        }
         is WireNode.Emoji -> append(":${node.shortcode}:")
         is WireNode.Invoice -> {
             withStyleScope(SpanStyle(color = renderer.linkColor)) {

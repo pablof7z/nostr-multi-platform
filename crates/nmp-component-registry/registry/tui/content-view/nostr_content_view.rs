@@ -295,7 +295,7 @@ impl<'a> NostrContentView<'a> {
                 format!("#{tag}"),
                 Style::default().fg(Color::Rgb(45, 212, 191)),
             )),
-            WireNode::Url(url) => spans.push(Span::styled(
+            WireNode::Url(url) | WireNode::AdCandidateUrl(url) => spans.push(Span::styled(
                 url.clone(),
                 Style::default().fg(Color::Rgb(96, 165, 250)),
             )),

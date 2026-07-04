@@ -32,6 +32,11 @@ search = [
     "native",
     "dep:nmp-nip50",
 ]
+nip-ad = [
+    "native",
+    "dep:nmp-nip-ad",
+    "nmp-nip-ad/native",
+]
 op-feed = [
     "native",
     "dep:nmp-nip02",
@@ -71,6 +76,7 @@ nmp-nip46 = { path = "../nmp-nip46", optional = true, version = "1.0.0-rc.1" }
 nmp-nip46-runtime = { path = "../nmp-nip46-runtime", optional = true, version = "1.0.0-rc.1" }
 nmp-nip47 = { path = "../nmp-nip47", optional = true, version = "1.0.0-rc.1" }
 nmp-nip50 = { path = "../nmp-nip50", optional = true, version = "1.0.0-rc.1" }
+nmp-nip-ad = { path = "../nmp-nip-ad", optional = true, version = "1.0.0-rc.1" }
 nmp-nip51 = { path = "../nmp-nip51", optional = true, version = "1.0.0-rc.1" }
 nmp-nip57 = { path = "../nmp-nip57", optional = true, default-features = false, version = "1.0.0-rc.1" }
 # Wallet composition-root entry point (epic #2864 Wave C, #2908): backend

@@ -25,7 +25,11 @@ enum WireNodeKind:ubyte {
   Heading = 8, Paragraph = 9, BlockQuote = 10, CodeBlock = 11,
   List = 12, Rule = 13, Emphasis = 14, Strong = 15,
   InlineCode = 16, Link = 17, Image = 18,
-  SoftBreak = 19, HardBreak = 20, Placeholder = 21
+  SoftBreak = 19, HardBreak = 20, Placeholder = 21,
+  // #2927 — a plain http(s) URL that MIGHT double as a NIP-AD pointer. Reuses
+  // the `url` field (same as Url); the distinct kind lets hosts know the link
+  // is claimable and may be upgraded to an embedded collection.
+  AdCandidateUrl = 22
 }
 
 enum WireNostrUriKind:ubyte { Profile = 0, Event = 1, Address = 2 }

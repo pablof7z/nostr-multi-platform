@@ -24,6 +24,7 @@ function InlineNode(p: { node: WireNode; tree: ContentTreeWire }): JSX.Element {
     case WireNodeKind.Hashtag:
       return <span class="nostr-hashtag">#{p.node.tag() ?? p.node.text() ?? ""}</span>;
     case WireNodeKind.Url:
+    case WireNodeKind.AdCandidateUrl:
       return (
         <a class="nostr-url" href={p.node.url() ?? "#"} rel="noopener noreferrer" target="_blank">
           {p.node.url() ?? p.node.text() ?? ""}

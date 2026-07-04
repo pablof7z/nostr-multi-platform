@@ -152,7 +152,7 @@ fn url_trailing_punctuation_re_emitted_as_text() {
     let urls: Vec<_> = tree
         .segments
         .iter()
-        .filter(|s| matches!(s, Segment::Url(_) | Segment::Media { .. }))
+        .filter(|s| matches!(s, Segment::AdCandidateUrl(_) | Segment::Media { .. }))
         .collect();
     assert_eq!(urls.len(), 1, "exactly one URL segment");
     // The trimmed `).` suffix must survive as a trailing Text segment.

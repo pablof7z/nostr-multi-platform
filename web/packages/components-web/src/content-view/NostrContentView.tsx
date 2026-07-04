@@ -129,6 +129,7 @@ function RenderNode(p: { node: WireNode; tree: ContentTreeWire; nowSeconds: numb
     case WireNodeKind.Hashtag:
       return <HashtagNode node={p.node} />;
     case WireNodeKind.Url:
+    case WireNodeKind.AdCandidateUrl:
       return <UrlNode node={p.node} />;
     case WireNodeKind.Emoji:
       return <EmojiNode node={p.node} />;

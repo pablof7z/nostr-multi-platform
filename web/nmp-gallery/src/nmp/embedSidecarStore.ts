@@ -176,6 +176,8 @@ function nodeKind(kind: WireNodeKind): string {
       return "hashtag";
     case WireNodeKind.Url:
       return "url";
+    case WireNodeKind.AdCandidateUrl:
+      return "ad_candidate_url";
     case WireNodeKind.InlineCode:
       return "inline_code";
     case WireNodeKind.SoftBreak:

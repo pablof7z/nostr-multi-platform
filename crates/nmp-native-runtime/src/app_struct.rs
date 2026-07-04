@@ -247,6 +247,19 @@ pub struct NmpApp {
     /// ADR-0072 §D3 — per-app NIP-55 driver handle.
     #[cfg(feature = "external-signer")]
     pub(crate) external_signer_driver: Arc<Mutex<Option<Arc<crate::external_signer::Nip55Driver>>>>,
+    /// #2927 — app-injected NIP-AD auto-resolution policy. `None` (the default)
+    /// means the "explicit only" posture (`NeverAutoResolve`): the content
+    /// renderer never passively fetches an AD URL. The app installs a policy at
+    /// its composition root (identical to registering a content component for a
+    /// kind); only moment-1 (passive render) consults it — moment-2 (explicit
+    /// paste/search) is never policy-gated.
+    #[cfg(feature = "nip-ad")]
+    pub(crate) ad_resolution_policy:
+        Arc<Mutex<Option<Arc<dyn nmp_nip_ad::AdResolutionPolicy>>>>,
+    /// #2927 — per-URL NIP-AD resolution state (render-side read-door + claim
+    /// refcount). Shared with off-thread resolve workers.
+    #[cfg(feature = "nip-ad")]
+    pub(crate) ad_url_states: crate::ad::AdUrlStateMap,
     /// Observed-projection sessions keyed by `ObservedProjectionId`. Each
     /// entry maps an observer id returned by `open_observed_projection` to the
     /// close params `(filter_json, consumer_id, scope, relay_pin,

@@ -179,7 +179,7 @@ public extension ContentTreeWire {
             append(label: label, kind: .mention(pubkey: uri.primaryId), runs: &runs, counter: &counter)
         case .hashtag(let tag):
             append(label: "#\(tag)", kind: .hashtag(tag), runs: &runs, counter: &counter)
-        case .url(let value):
+        case .url(let value), .adCandidateUrl(let value):
             if let url = URL(string: value) {
                 append(label: value, kind: .link(url), runs: &runs, counter: &counter)
             } else {
@@ -244,7 +244,7 @@ public extension ContentTreeWire {
     private func collectText(index: UInt32, into out: inout String) {
         guard let node = node(at: index) else { return }
         switch node {
-        case .text(let value), .inlineCode(let value), .url(let value):
+        case .text(let value), .inlineCode(let value), .url(let value), .adCandidateUrl(let value):
             out += value
         case .hashtag(let tag):
             out += "#\(tag)"

@@ -90,7 +90,7 @@ extension NostrContentView {
                 .foregroundColor: uiColor(renderer.hashtagColor),
                 .font: bold(baseFont),
             ])
-        case .url(let value):
+        case .url(let value), .adCandidateUrl(let value):
             return styled(value, [.foregroundColor: uiColor(renderer.linkColor)])
         case .emoji(let shortcode, _):
             return styled(":\(shortcode):")

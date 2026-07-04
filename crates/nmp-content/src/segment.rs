@@ -42,8 +42,19 @@ pub enum Segment {
     EventRef(NostrUri),
     /// `#hashtag` token (without the leading `#`, lowercased).
     Hashtag(String),
-    /// Plain URL (not classified as media).
+    /// Plain URL (not classified as media). Retained as a wire/type variant;
+    /// the autolink tokenizer now emits [`Segment::AdCandidateUrl`] for plain
+    /// `http(s)` URLs so hosts can attempt NIP-AD resolution (#2927).
     Url(Url),
+    /// A plain `http(s)` web URL that MIGHT double as a NIP-AD pointer to Nostr
+    /// events (#2927). Emitted by the autolink tokenizer in place of
+    /// [`Segment::Url`] for every non-media `http(s)` URL: pure/sync (still just
+    /// regex + URL parse, no network). Every candidate renders as a plain link
+    /// immediately (D1); an app MAY, under its injected `AdResolutionPolicy`,
+    /// attempt a `.well-known/nostr.json?ad=<path>` resolution as a strictly
+    /// later, non-blocking upgrade. Most URLs are not AD-enabled — the plain
+    /// link is the baseline, never a blocked render.
+    AdCandidateUrl(Url),
     /// One or more media URLs grouped into a single segment by the
     /// post-pass grouper.
     Media {

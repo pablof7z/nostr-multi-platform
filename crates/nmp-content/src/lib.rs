@@ -56,8 +56,9 @@ pub use embed_projection::{
     ProfileProjection, RenderContextWire, ShortNoteProjection, UnknownProjection,
 };
 pub use embed_registry::{
-    ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec, EmbedClaimState,
-    EmbedRegistrySnapshot, EmbedTarget, EventRefResolver, NoopEventRefResolver, ResolvedEvent,
+    AdUrlResolver, AdUrlState, ClaimHandle, EmbedClaimDelta, EmbedClaimRegistry, EmbedClaimSpec,
+    EmbedClaimState, EmbedRegistrySnapshot, EmbedTarget, EventRefResolver, NoopAdUrlResolver,
+    NoopEventRefResolver, ResolvedEvent,
 };
 pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};

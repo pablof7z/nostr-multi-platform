@@ -244,18 +244,21 @@ fn canonical_nostr_uri(raw: &str) -> String {
     }
 }
 
-/// Strip trailing punctuation, then parse. On success returns the
-/// `Segment::Url` plus the trimmed trailing-punctuation suffix (a slice of
-/// `raw`) so the caller can re-emit it as Text — no source character is
-/// ever dropped (codex finding #8). Returns `None` (text fallback) for
-/// unparseable URLs.
+/// Strip trailing punctuation, then parse. On success returns a
+/// `Segment::AdCandidateUrl` (#2927 — every plain `http(s)` URL is a NIP-AD
+/// candidate) plus the trimmed trailing-punctuation suffix (a slice of `raw`)
+/// so the caller can re-emit it as Text — no source character is ever dropped
+/// (codex finding #8). The candidate still renders as a plain link (D1); AD
+/// resolution is a strictly later, app-policy-gated upgrade. Media-extension
+/// URLs never reach here — the grouping pass folds them into `Segment::Media`.
+/// Returns `None` (text fallback) for unparseable URLs.
 fn parse_url_segment(raw: &str) -> Option<(Segment, &str)> {
     let trimmed = raw.trim_end_matches(['.', ',', ';', ':', '!', '?', ')']);
     let url = Url::parse(trimmed).ok()?;
     // The trim chars are all ASCII, so the byte-length delta is a valid
     // char boundary on `raw`.
     let trailing = &raw[trimmed.len()..];
-    Some((Segment::Url(url), trailing))
+    Some((Segment::AdCandidateUrl(url), trailing))
 }
 
 fn coalesce_text(input: Vec<Segment>) -> Vec<Segment> {
@@ -321,10 +324,12 @@ mod tests {
     }
 
     #[test]
-    fn url_emits_segment() {
+    fn url_emits_ad_candidate_segment() {
+        // #2927: every plain http(s) URL is a NIP-AD candidate (renders as a
+        // plain link; resolution is a later app-gated upgrade).
         let tree = tokenize("see https://example.com/x", &[], RenderMode::Plain);
         assert_eq!(tree.segments.len(), 2);
-        assert!(matches!(tree.segments[1], Segment::Url(_)));
+        assert!(matches!(tree.segments[1], Segment::AdCandidateUrl(_)));
     }
 
     #[test]

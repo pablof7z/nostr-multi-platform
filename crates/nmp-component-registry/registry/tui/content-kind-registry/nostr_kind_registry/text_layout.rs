@@ -130,7 +130,7 @@ fn node_text(tree: &ContentTreeWire, node: &WireNode) -> String {
         WireNode::Mention { uri } => format!("@{}", short_id(&uri.primary_id)),
         WireNode::EventRef { uri } => format!("nostr:{}", short_id(&uri.primary_id)),
         WireNode::Hashtag { tag } => format!("#{tag}"),
-        WireNode::Url { url } => url.clone(),
+        WireNode::Url { url } | WireNode::AdCandidateUrl { url } => url.clone(),
         WireNode::Media { urls, media_kind } => {
             format!("[{:?} media: {}]", media_kind, urls.len())
         }

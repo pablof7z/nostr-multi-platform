@@ -14,6 +14,7 @@ pub enum WireNode {
     EventRef(WireUri),
     Hashtag(String),
     Url(String),
+    AdCandidateUrl(String),
     Media {
         urls: Vec<String>,
         kind: String,
@@ -175,6 +176,7 @@ impl WireNode {
             "event_ref" => uri(value).map_or(Self::Unsupported, Self::EventRef),
             "hashtag" => Self::Hashtag(string(value, "tag")),
             "url" => Self::Url(string(value, "url")),
+            "ad_candidate_url" => Self::AdCandidateUrl(string(value, "url")),
             "media" => Self::Media {
                 urls: strings(value, "urls"),
                 kind: string(value, "media_kind"),
@@ -251,7 +253,7 @@ impl WireNode {
             Self::Mention(uri) => format!("@{}", short_id(&uri.primary_id)),
             Self::EventRef(uri) => format!("nostr:{}", short_id(&uri.primary_id)),
             Self::Hashtag(tag) => format!("#{tag}"),
-            Self::Url(url) => url.clone(),
+            Self::Url(url) | Self::AdCandidateUrl(url) => url.clone(),
             Self::Emoji { shortcode, .. } => format!(":{shortcode}:"),
             Self::Invoice { invoice } => {
                 format!("[{} invoice]", invoice.kind.to_ascii_lowercase())

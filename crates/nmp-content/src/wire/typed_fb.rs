@@ -211,6 +211,10 @@ fn encode_node<'a>(
             args.kind = fb::WireNodeKind::Url;
             args.url = Some(fbb.create_string(url));
         }
+        WireNode::AdCandidateUrl { url } => {
+            args.kind = fb::WireNodeKind::AdCandidateUrl;
+            args.url = Some(fbb.create_string(url));
+        }
         WireNode::Media { urls, media_kind } => {
             args.kind = fb::WireNodeKind::Media;
             let url_offsets: Vec<_> = urls.iter().map(|u| fbb.create_string(u)).collect();
@@ -376,6 +380,9 @@ fn decode_node(node: fb::WireNode) -> Result<WireNode, String> {
         }),
         fb::WireNodeKind::Url => Ok(WireNode::Url {
             url: str_field(node.url(), "Url.url")?,
+        }),
+        fb::WireNodeKind::AdCandidateUrl => Ok(WireNode::AdCandidateUrl {
+            url: str_field(node.url(), "AdCandidateUrl.url")?,
         }),
         fb::WireNodeKind::Media => {
             let urls = match node.media_urls() {
