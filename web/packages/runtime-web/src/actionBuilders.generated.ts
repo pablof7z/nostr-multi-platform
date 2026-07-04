@@ -439,6 +439,37 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.nip17.send", payload);
   },
 
+  /** Send a NIP-57 lightning zap to a recipient (optionally targeting an event). */
+  zap(
+    correlationId: string,
+    recipientPubkey: string,
+    amountMsats: bigint,
+    lnurl: string | null,
+    relays: string[] | null,
+    targetEventId: string | null,
+    comment: string | null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const recipientPubkeyOffset = fbb.createString(recipientPubkey);
+    const lnurlOffset = lnurl === null ? 0 : fbb.createString(lnurl);
+    const relaysOffset =
+      relays === null || relays.length === 0 ? 0 : stringVector(fbb, relays);
+    const targetEventIdOffset = targetEventId === null ? 0 : fbb.createString(targetEventId);
+    const commentOffset = comment === null ? 0 : fbb.createString(comment);
+    fbb.startObject(7);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldOffset(1, recipientPubkeyOffset, 0); // slot 1: recipientPubkey
+    fbb.addFieldInt64(2, amountMsats, BigInt(0)); // slot 2: amountMsats
+    if (lnurlOffset !== 0) fbb.addFieldOffset(3, lnurlOffset, 0); // slot 3: lnurl
+    if (relaysOffset !== 0) fbb.addFieldOffset(4, relaysOffset, 0); // slot 4: relays
+    if (targetEventIdOffset !== 0) fbb.addFieldOffset(5, targetEventIdOffset, 0); // slot 5: targetEventId
+    if (commentOffset !== 0) fbb.addFieldOffset(6, commentOffset, 0); // slot 6: comment
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "N57Z");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.nip57.zap", payload);
+  },
+
   /** Publish a NIP-84 kind:9802 highlight annotation. */
   publishHighlight(
     correlationId: string,
