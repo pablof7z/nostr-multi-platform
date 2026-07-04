@@ -103,7 +103,7 @@ fn swift_registry_keys_resolve_to_contract() {
 /// - `refs.profile` / `refs.event` — the keyed row-delta carriers, served by the
 ///   SEPARATE `KEYED_PROJECTIONS` registry (the `keyed_and_snapshot_registries_are_disjoint`
 ///   test enforces they never appear in `SNAPSHOT_PROJECTIONS`).
-/// - `nmp.nip29.joined_groups` / `nmp.nip29.group_roster` /
+/// - `nmp.nip29.group_roster` /
 ///   `nmp.nip25.reactions` / `nmp.nip51.mute_list` / `nmp.nip51.bookmarks`
 ///   / `nmp.nip23.articles` / `nmp.wot.bootstrap` / `nmp.notifications`
 ///   — runtime-owned outputs registered by `nmp-nip29` / `nmp-nip25` /
@@ -119,7 +119,6 @@ fn swift_presented_contract_keys_match_registry() {
         "signed_events",
         "refs.profile",
         "refs.event",
-        "nmp.nip29.joined_groups",
         "nmp.nip29.group_roster",
         // The group-scoped NIP-25 reaction aggregate: a Tier-1 sidecar 29er
         // decodes directly (N25A); no iOS Swift `SnapshotProjections` field yet.

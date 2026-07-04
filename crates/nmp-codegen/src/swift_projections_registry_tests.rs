@@ -11,7 +11,7 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 25 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
+    // 26 entries: 31 (the #1610 baseline) minus 3 old-surface entries removed
     // in ADR-0070 Lane H (#1671): `claimed_profiles` (KCPR),
     // `resolved_profiles` (KRPR), and the host-visible `claimed_events`
     // whole-map projection. KCEV remains only as the refs.event row codec.
@@ -20,12 +20,14 @@ fn registry_size_is_locked() {
     // minus the deleted framework-owned OP-feed product key (#2574);
     // minus the deleted `nmp.nip29.group_defaults` projection: group-create
     // suggested relay URLs are app/operator config exposed by a leaf-app facade,
-    // not a NIP-29 snapshot contract.
+    // not a NIP-29 snapshot contract; plus `nmp.nip29.joined_groups` (the
+    // relay-confirmed membership row a discover screen cross-checks its
+    // optimistic join state against, chirp#74).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        25,
+        26,
         "registry size changed — update generated decoder/cache outputs and this test"
     );
 }
@@ -72,7 +74,7 @@ fn all_dotted_keys_are_present() {
         .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
-    // Eight dotted keys. App-owned NNFS OP-feed sessions are decoded by their
+    // Nine dotted keys. App-owned NNFS OP-feed sessions are decoded by their
     // caller-selected projection keys and are not shared registry members; the
     // removed NIP-29 group-defaults config is not a projection.
     let expected = [
@@ -80,6 +82,7 @@ fn all_dotted_keys_are_present() {
         "nmp.nip29.discovered_groups",
         "nmp.nip17.dm_inbox",
         "nmp.follow_list",
+        "nmp.nip29.joined_groups",
         "nmp.nip17.dm_relay_list",
         "refs.event.envelopes",
         "nmp.marmot.snapshot",

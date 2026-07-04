@@ -170,6 +170,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
     );
     assert!(out.contains("enum TypedGroupEventsDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
+    assert!(out.contains("enum TypedJoinedGroupsDecoder {"));
     // Profile key — serves via the refs.profile KPRF NRRD row-delta sidecar
     // (ADR-0070). The old claimed_profiles (KCPR) and resolved_profiles (KRPR)
     // JSON-snapshot decoders are deleted in Lane H.
@@ -225,8 +226,8 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 25,
-        "exactly 25 keys have a checked-in flatc --swift reader binding \
+        emitted, 26,
+        "exactly 26 keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
@@ -245,7 +246,9 @@ fn real_registry_emits_exactly_the_proof_keys() {
          #1283 Phase 1: \
          refs.event.envelopes (NEMB); #2091: global zaps sidecar deleted; \
          nmp.nip29.group_defaults DELETED (static app/operator config, not a \
-         projection); if this changed, \
+         projection); chirp#74: nmp.nip29.joined_groups (relay-confirmed \
+         membership, cross-checked against a discover screen's optimistic \
+         join state); if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }
