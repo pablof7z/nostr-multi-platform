@@ -381,6 +381,22 @@ impl MarmotService {
         Ok((welcome, unwrapped.sender))
     }
 
+    /// Receiver side, unwrap ONLY: NIP-59-unwrap an incoming kind:1059
+    /// gift-wrap and return the inner rumor + sender WITHOUT running MDK's
+    /// `process_welcome`.
+    ///
+    /// The ingest chokepoint uses this to triage a kind:1059 before committing
+    /// to Welcome processing: a gift-wrap not addressed to us (or that fails to
+    /// decrypt) is not ours, and a gift-wrap whose inner rumor is NOT a
+    /// [`Kind::MlsWelcome`] (444) is another protocol's envelope (e.g. a NIP-17
+    /// DM sharing kind:1059) — neither is a Marmot ingest ERROR. Only once the
+    /// rumor is confirmed to be a kind:444 Welcome is a subsequent
+    /// `process_welcome` failure a genuine, surface-worthy Marmot failure
+    /// (#3057). Returns the [`nmp_nip59::UnwrappedGift`] `(sender, rumor)`.
+    pub fn unwrap_giftwrap(&self, gift_wrap: &Event) -> Result<nmp_nip59::UnwrappedGift> {
+        nmp_nip59::unwrap_gift_wrap(&self.keys, gift_wrap).map_err(MarmotError::from)
+    }
+
     /// Process an already-unwrapped kind:444 Welcome rumor directly (the
     /// caller performed the NIP-59 unwrap; `wrapper_event_id` is the outer
     /// kind:1059 id). Headless test / actor-bridge entry point.

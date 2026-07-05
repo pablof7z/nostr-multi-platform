@@ -192,23 +192,23 @@ pub(crate) fn dispatch_json_for_tests(
 /// INBOUND ingest seam — CLOSED (the shared core).
 ///
 /// Drives a *signed* `nostr::Event` into `MarmotService`: kind:1059
-/// gift-wrap → `unwrap_and_process_welcome` (+ seed the `group_id→relays`
-/// cache from `Welcome::group_relays` and cache the pending-welcome row);
-/// kind:445 → `process_message`. Any other kind is a deliberate **silent
-/// skip** (`Ok(None)`): the Marmot ingest parser registers the Marmot
-/// envelope kinds defensively, and a bare kind:444 rumor (should never reach the wire —
-/// the wire welcome is the kind:1059 gift-wrap) must not be treated as an
-/// error there.
+/// gift-wrap → [`ingest_giftwrap`] (triage → `process_welcome` → seed the
+/// `group_id→relays` cache + cache the pending-welcome row); kind:445 →
+/// `process_message`; kind:30443 → cache the peer KeyPackage. Any other kind
+/// is a deliberate **silent skip** (`Ok(None)`).
 ///
 /// The crate-owned [`crate::projection::tap::MarmotIngestParser`] is the
 /// caller: the kernel delivers every accepted inbound signed Marmot kind here.
-/// The parser discards the `Result` (D6: a poisoned/duplicate/malformed event
-/// is a silent no-op on the actor thread, never a panic across a host boundary).
+/// The parser discards the returned `Result` — but a genuine Welcome-processing
+/// failure is NOT lost: [`ingest_giftwrap`] records it to the snapshot-visible
+/// `last_op_error` banner BEFORE returning `Err`, so a dropped invite is
+/// user-visible (#3057) even though the tap itself stays a D6 no-op (a
+/// poisoned/duplicate/malformed event never panics across the host boundary).
 ///
 /// `Ok(Some(Value))` carries per-kind informational payload for tests and
 /// deferred-op retry assertions. The projection mutation (pending-welcome row,
-/// relay cache, MDK state) is the load-bearing effect — the next
-/// `nmp.marmot.snapshot` push projection reflects it.
+/// relay cache, MDK state, `last_op_error`) is the load-bearing effect — the
+/// next `nmp.marmot.snapshot` push projection reflects it.
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
@@ -219,25 +219,7 @@ pub(crate) fn ingest_signed_event_core(
         .map_err(|e| format!("ingest_signed_event_core: event verification failed: {e}"))?;
     let kind = event.kind.as_u16();
     if kind == 1059 {
-        // Gift-wrap: unwrap + process the inner kind:444 welcome, then
-        // cache the gift-wrap as a pending welcome row (no MLS type held).
-        match h.service().unwrap_and_process_welcome(event) {
-            Ok((welcome, sender)) => {
-                let wid = event.id.to_hex();
-                let group_name = welcome.group_name.clone();
-                // Seed the relay-pinned cache from the Welcome's
-                // ground-truth group_relays now, so the eventual
-                // post-join self_update kind:445 routes correctly even
-                // if `accept_welcome`'s re-derive path is taken.
-                h.cache_group_relays(
-                    hex_encode(welcome.mls_group_id.as_slice()),
-                    welcome.group_relays.iter().cloned().collect(),
-                );
-                h.cache_welcome(wid.clone(), event.clone(), group_name, sender.to_hex());
-                Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
-            }
-            Err(e) => Err(e.to_string()),
-        }
+        ingest_giftwrap(h, event, now_secs)
     } else if kind == 445 {
         // Group message / commit / proposal.
         match h.service().process_message(event) {
@@ -265,5 +247,75 @@ pub(crate) fn ingest_signed_event_core(
         // filter could admit anything). Not an error for the automatic
         // path — a deliberate skip.
         Ok(None)
+    }
+}
+
+/// kind:1059 gift-wrap ingest — the #3057 triage chokepoint.
+///
+/// kind:1059 is a SHARED envelope: NIP-59 gift-wraps carry Marmot Welcomes
+/// (inner kind:444) AND NIP-17 DMs (inner kind:14/15) AND any other protocol's
+/// sealed rumor. The Marmot ingest parser is handed EVERY delivered kind:1059
+/// addressed to us, so it must distinguish three cases and treat only ONE as a
+/// surface-worthy failure:
+///
+/// 1. **Not ours / not decryptable** — `unwrap_giftwrap` errors (the `#p` tag
+///    does not address us, or the NIP-44 decrypt fails). Silent skip
+///    (`Ok(None)`): it was never ours to process.
+/// 2. **Someone else's protocol** — unwrap succeeds but the inner rumor is NOT
+///    a kind:444 `MlsWelcome` (e.g. a NIP-17 DM rumor). Silent skip: the
+///    sibling `nip17.dm_inbox` parser owns that envelope; a Marmot "not a
+///    welcome" is NOT a Marmot error (surfacing it would spam the banner on
+///    every DM — this conflation is exactly the #3057 pre-fix defect).
+/// 3. **A Welcome we could not process** — the inner rumor IS a kind:444
+///    Welcome, but `process_welcome` fails (e.g. `"No matching key package was
+///    found in the key store"`). This is a GENUINE, user-visible failure: a
+///    real group invite was delivered and dropped. Pre-#3057-round-2 this
+///    returned `Err`, which the tap SILENTLY SWALLOWED — so `pendingWelcomes`
+///    stayed empty AND no error surfaced. We now record it to the
+///    snapshot-visible `last_op_error` banner (never a silent swallow) and
+///    still return `Err` for callers/tests.
+fn ingest_giftwrap(
+    h: &mut InnerHandle<'_>,
+    event: &nostr::Event,
+    now_secs: u64,
+) -> Result<Option<Value>, String> {
+    // Case 1 — unwrap. Not addressed to us / undecryptable → not ours; skip.
+    let Ok(unwrapped) = h.service().unwrap_giftwrap(event) else {
+        return Ok(None);
+    };
+    // Case 2 — only kind:444 MLS Welcome rumors are Marmot's business. Any
+    // other gift-wrapped rumor (NIP-17 DM, etc.) belongs to another parser.
+    if unwrapped.rumor.kind != nostr::Kind::MlsWelcome {
+        return Ok(None);
+    }
+    // Case 3 — a real Welcome. Process it; a failure here is surface-worthy.
+    let sender = unwrapped.sender;
+    match h.service().process_welcome(&event.id, &unwrapped.rumor) {
+        Ok(welcome) => {
+            let wid = event.id.to_hex();
+            let group_name = welcome.group_name.clone();
+            // Seed the relay-pinned cache from the Welcome's ground-truth
+            // group_relays now, so the eventual post-join self_update kind:445
+            // routes correctly even if `accept_welcome`'s re-derive path runs.
+            h.cache_group_relays(
+                hex_encode(welcome.mls_group_id.as_slice()),
+                welcome.group_relays.iter().cloned().collect(),
+            );
+            h.cache_welcome(wid.clone(), event.clone(), group_name, sender.to_hex());
+            Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
+        }
+        Err(e) => {
+            // #3057: surface the dropped Welcome instead of swallowing it. The
+            // gift-wrap id is the correlation handle a host can key the banner
+            // + a retry off.
+            let reason = e.to_string();
+            h.record_last_op_failure(
+                "welcome_ingest".to_string(),
+                reason.clone(),
+                event.id.to_hex(),
+                now_secs,
+            );
+            Err(reason)
+        }
     }
 }
