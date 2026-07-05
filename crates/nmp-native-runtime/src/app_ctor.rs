@@ -66,6 +66,10 @@ pub fn new_app() -> NmpApp {
     // Shared relay-edit rows handle.
     let configured_relays: nmp_core::AppRelaySlot = new_app_relay_slot();
     let actor_configured_relays = Arc::clone(&configured_relays);
+    // #3059 — clone for the relay-config-sidecar persistence observer
+    // registered on `app` below (must fire on every genuine change, not just
+    // first start).
+    let relay_persist_configured_relays = Arc::clone(&configured_relays);
     // V-65 — NIP-46 bootstrap relay slot.
     let nostrconnect_bootstrap_relay = new_nostrconnect_bootstrap_relay_slot();
     // #1493 P9 — NIP-46 perm request slot.
@@ -104,6 +108,8 @@ pub fn new_app() -> NmpApp {
     // FFI-supplied LMDB storage path slot.
     let storage_path = new_storage_path_slot();
     let actor_storage_path = Arc::clone(&storage_path);
+    // #3059 — clone for the relay-config-sidecar persistence observer.
+    let relay_persist_storage_path = Arc::clone(&storage_path);
     // V-51 phase 4 — shared routing-trace projection slot.
     let routing_trace = new_routing_trace_slot();
     let actor_routing_trace = Arc::clone(&routing_trace);
@@ -410,5 +416,35 @@ pub fn new_app() -> NmpApp {
     // send `Start`.
     #[cfg(feature = "external-signer")]
     crate::external_signer::init_external_signer_driver(&app);
+
+    // #3059 — mirror every genuine `configured_relays` change back to the
+    // on-disk sidecar, not just the one first-start write. Without this a
+    // relay added at runtime (add_relay/remove_relay dispatch, an inbound
+    // kind:10002 relay-list sync, ...) never survives a cold relaunch: the
+    // next start reloads the stale first-run sidecar, and `nmp-nip17`'s
+    // DmRuntimeController faithfully republishes kind:10050 from that stale,
+    // narrower set — silently dropping a relay (e.g. the user's DM-inbox
+    // relay) the account genuinely still had. See `relay_config` module doc.
+    app.register_configured_relays_change_observer(move || {
+        let storage_dir = relay_persist_storage_path
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .filter(|path| !path.trim().is_empty());
+        let rows: Vec<(String, String)> = relay_persist_configured_relays
+            .lock()
+            .map(|rows| {
+                rows.as_slice()
+                    .iter()
+                    .map(|row| (row.url().to_string(), row.role().to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        crate::relay_config::persist_configured_relays(
+            storage_dir.as_deref().map(std::path::Path::new),
+            &rows,
+        );
+    });
+
     app
 }

@@ -1,9 +1,17 @@
 //! Relay configuration helpers for the native runtime.
 //!
 //! The sidecar file (`{storage_dir}/.nmp-relay-config.json`) stores the full
-//! (url, role) list. Written on first start from the builder-declared defaults;
-//! updated by `add_relay`/`remove_relay` dispatch (future work: hook the
-//! dispatch callback). Read on every subsequent start.
+//! (url, role) list. Written on first start from the builder-declared
+//! defaults, and re-written on every genuine `configured_relays` change (the
+//! `app_ctor::new_app`-installed observer calls [`persist_configured_relays`]
+//! — see #3059: previously `save()` was only ever invoked once, at first
+//! start, so any relay added afterward via `add_relay`/`remove_relay`
+//! dispatch (or an inbound kind:10002 relay-list sync) was never written
+//! back. A cold relaunch then reloaded the stale first-run set, and
+//! downstream `nmp-nip17`'s `DmRuntimeController` faithfully republished
+//! kind:10050 from that stale, narrower set — silently dropping a relay
+//! (e.g. the user's DM-inbox relay) the account genuinely still had. Read on
+//! every subsequent start.
 //!
 //! This is the *app-template* (composition-root) home for the relay default
 //! set — `nmp-core` no longer carries any hardcoded relay fallback. The app
@@ -49,6 +57,23 @@ pub(crate) fn save(storage_dir: &Path, relays: &[(String, String)]) {
     if let Ok(json) = serde_json::to_string_pretty(&entries) {
         let path = storage_dir.join(RELAY_CONFIG_FILENAME);
         let _ = std::fs::write(&path, json);
+    }
+}
+
+/// Persist the current configured-relay rows to the on-disk sidecar so a
+/// cold relaunch reloads the FULL set that was actually active, not the
+/// stale first-run defaults (#3059 — see the module doc for the full
+/// root-cause story).
+///
+/// Called from the `configured_relays`-change observer `app_ctor::new_app`
+/// installs on every `NmpApp`; fires on every genuine change (add/remove
+/// relay dispatch, an inbound kind:10002 relay-list sync, ...), so the
+/// sidecar always mirrors the live in-memory set. A no-op when
+/// `storage_dir` is `None` — in-memory apps (no `.storage_path(...)`) carry
+/// no sidecar and must not gain one here.
+pub(crate) fn persist_configured_relays(storage_dir: Option<&Path>, relays: &[(String, String)]) {
+    if let Some(dir) = storage_dir {
+        save(dir, relays);
     }
 }
 
@@ -293,6 +318,131 @@ mod tests {
             configured_nostrconnect_relay_url(rows),
             Some("composite-relay".to_string())
         );
+    }
+
+    #[test]
+    fn persist_configured_relays_writes_sidecar_when_storage_dir_present() {
+        let dir = unique_temp_dir("persist-some");
+        let relays = vec![("wss://nos.lol".to_string(), "read".to_string())];
+        persist_configured_relays(Some(&dir), &relays);
+        assert_eq!(
+            load(&dir).expect("sidecar must exist after persist_configured_relays"),
+            relays
+        );
+    }
+
+    #[test]
+    fn persist_configured_relays_is_noop_without_storage_dir() {
+        // In-memory apps (`.in_memory()` / no `.storage_path(...)`) have no
+        // sidecar location; persist_configured_relays must not fabricate one.
+        persist_configured_relays(None, &[("wss://nos.lol".to_string(), "read".to_string())]);
+        // Nothing to assert against a real path — the contract under test is
+        // simply "does not panic and touches no filesystem state". A dir that
+        // was never created cannot be loaded from.
+    }
+
+    #[test]
+    fn persist_configured_relays_overwrites_stale_first_run_defaults() {
+        // Reproduces #3059: the sidecar initially holds only the builder's
+        // first-run defaults (no nos.lol). A later runtime relay addition
+        // (add_relay dispatch / kind:10002 sync) must overwrite the sidecar
+        // with the FULL set, so a subsequent cold-start `load()` sees
+        // nos.lol too instead of silently losing it.
+        let dir = unique_temp_dir("persist-overwrite");
+        let first_run_defaults = vec![("wss://relay.primal.net".to_string(), "both".to_string())];
+        save(&dir, &first_run_defaults);
+        assert_eq!(load(&dir).unwrap(), first_run_defaults);
+
+        let full_set_after_runtime_edit = vec![
+            ("wss://relay.primal.net".to_string(), "both".to_string()),
+            ("wss://nos.lol".to_string(), "read".to_string()),
+        ];
+        persist_configured_relays(Some(&dir), &full_set_after_runtime_edit);
+
+        let reloaded = load(&dir).expect("sidecar must reload after persist");
+        assert_eq!(
+            reloaded, full_set_after_runtime_edit,
+            "cold relaunch must see nos.lol, not just the stale first-run default"
+        );
+    }
+
+    #[test]
+    fn add_relay_dispatch_persists_to_sidecar_end_to_end() {
+        // End-to-end reproduction of #3059: a real `NmpApp`, started with a
+        // storage-backed sidecar and the builder's first-run defaults (no
+        // nos.lol yet), then `add_relay` dispatched mid-session — the same
+        // path a Settings-screen edit, or Marmot key-package discovery
+        // adding a relay, would take. Before the fix nothing ever re-wrote
+        // the sidecar after first start, so a subsequent cold relaunch would
+        // silently reload only the stale first-run default and drop
+        // nos.lol. This test proves the sidecar now mirrors the live set.
+        let dir = unique_temp_dir("e2e-add-relay");
+        let dir_str = dir.to_string_lossy().into_owned();
+
+        let app_ptr = crate::NmpAppBuilder::new()
+            .storage_path(dir_str.clone())
+            .declare_consumed_projections(["profile"])
+            .with_relays([("wss://relay.primal.net".to_string(), "both".to_string())])
+            .start(crate::RunConfig {
+                visible_limit: 16,
+                emit_hz: 2,
+            });
+        assert!(!app_ptr.is_null(), "builder returned a null app pointer");
+        // SAFETY: non-null pointer returned by `start`; this test owns it and
+        // frees it exactly once below.
+        let app = unsafe { &*app_ptr };
+
+        // `wait_barrier_for_test` blocks until the actor has dispatched every
+        // command enqueued before it — including `Start`'s own initial
+        // `configured_relays` application — so the dispatch below is the
+        // FIRST genuine change this test observes.
+        assert!(
+            app.wait_barrier_for_test(std::time::Duration::from_secs(5)),
+            "actor must finish applying Start's initial relays before this test proceeds"
+        );
+
+        app.add_relay("wss://nos.lol".to_string(), "read".to_string());
+        assert!(
+            app.wait_barrier_for_test(std::time::Duration::from_secs(5)),
+            "actor must dispatch add_relay before this test asserts on its effects"
+        );
+
+        // The actor-side barrier above only proves the KERNEL applied
+        // add_relay; the sidecar write happens on the separate
+        // update-listener thread once it drains the resulting update frame.
+        // Poll with a generous bound instead of a fixed sleep — the listener
+        // thread is normally sub-millisecond behind the actor, so this
+        // resolves almost immediately and only times out if the persistence
+        // wiring is genuinely broken.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let persisted = loop {
+            if let Some(rows) = load(&dir) {
+                if rows.iter().any(|(url, _)| url == "wss://nos.lol") {
+                    break rows;
+                }
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "sidecar never observed nos.lol after add_relay + barrier"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert!(
+            persisted.iter().any(|(url, _)| url == "wss://nos.lol"),
+            "add_relay must persist the FULL relay set to the sidecar so a \
+             cold relaunch does not drop it; got {persisted:?}"
+        );
+        assert!(
+            persisted
+                .iter()
+                .any(|(url, _)| url == "wss://relay.primal.net"),
+            "the original first-run relay must survive alongside the new one; \
+             got {persisted:?}"
+        );
+
+        app.stop_runtime();
+        // SAFETY: sole owner of `app_ptr`; dropped exactly once.
+        unsafe { drop(Box::from_raw(app_ptr)) };
     }
 
     #[test]
