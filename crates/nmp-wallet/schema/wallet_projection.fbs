@@ -59,6 +59,16 @@ namespace nmp.wallet;
 // `_reserved_was_discovered_mints` slot rather than reusing or reordering it.
 // NUT-06 `mint_info` fetching is explicitly out of scope here (PR2 of 2).
 //
+// v6 (#3030, PR2 of 2): `WalletProjection` gains `mint_info`, a bounded,
+// URL-keyed side table of each wallet-relevant mint's raw NUT-06/NUT-02
+// metadata (name, icon_url, units, per-unit input_fee_ppk) — a shell joins
+// `balances`/`accepted_mints` rows against this by `url` to render real mint
+// identity + fees instead of a bare URL. Populated from an actor-side cache
+// (`nmp-wallet::backend::cashu::mint_info`) a backend refreshes OFF the
+// projection-emit path; the producer closure only ever reads that cache, it
+// never performs the NUT-06/NUT-02 HTTP fetch itself (D8). Appended after
+// `accepted_mints`, per the same append-only convention.
+//
 // Regenerate the checked-in Rust bindings ONLY through `ci/regenerate-flatbuffers.sh`
 // (pinned flatc 25.12.19 + repo rustfmt), NEVER raw flatc — a raw-flatc run passes
 // the version-pin check but red-fails `ci/check-rust-flatc-drift.sh`. The schema has
@@ -225,8 +235,30 @@ table WalletDiscoveredMint {
   recommendation_count:uint32;
 }
 
+// `WalletMintFeeRow` — one (unit, input_fee_ppk) pair (v6, #3030 PR2 of 2).
+table WalletMintFeeRow {
+  unit:string;
+  input_fee_ppk:uint64;
+}
+
+// `WalletMintInfoRow` — one wallet-relevant mint's raw NUT-06/NUT-02 metadata
+// (v6, #3030 PR2 of 2). `name`/`icon_url` mirror `MintInfoResponse`'s own
+// optional fields (`nmp-nip60`); `units`/`input_fee_ppk_by_unit` come from
+// merging `/v1/keys` + `/v1/keysets` per unit.
+table WalletMintInfoRow {
+  url:string;
+  // name: Option<String>
+  has_name:bool;
+  name:string;
+  // icon_url: Option<String>
+  has_icon_url:bool;
+  icon_url:string;
+  units:[string];
+  input_fee_ppk_by_unit:[WalletMintFeeRow];
+}
+
 table WalletProjection {
-  schema_version:uint32 = 5;   // mirrors projection_wire::SCHEMA_VERSION
+  schema_version:uint32 = 6;   // mirrors projection_wire::SCHEMA_VERSION
   // active_backend_id: Option<WalletBackendId> (a String newtype)
   has_active_backend_id:bool;
   active_backend_id:string;
@@ -252,6 +284,10 @@ table WalletProjection {
   // wallet's mint policy. Appended here (not inserted earlier) to keep the
   // deprecated slot above untouched, per the v4 append-only convention.
   accepted_mints:[string];
+  // mint_info: bounded, URL-keyed raw NUT-06/NUT-02 metadata for every
+  // wallet-relevant mint (v6, #3030 PR2 of 2) — see the module doc note
+  // above.
+  mint_info:[WalletMintInfoRow];
 }
 
 root_type WalletProjection;

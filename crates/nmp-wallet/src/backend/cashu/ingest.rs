@@ -85,11 +85,15 @@ struct TokenEventPlaintext {
 }
 
 /// Load a decrypted kind:17375 plaintext into `state`. See module docs for
-/// the never-clobber-an-existing-wallet invariant.
+/// the never-clobber-an-existing-wallet invariant. Returns whether this call
+/// actually loaded a wallet (`Ok(true)`) as opposed to a no-op because one was
+/// already loaded (`Ok(false)`) — #3030 PR2 of 2's callers use this to trigger
+/// a mint-info refresh only on the FRESH load, not on every redundant replay/
+/// recover call.
 pub(super) fn ingest_wallet_config(
     state: &Mutex<CashuWalletState>,
     plaintext: &str,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let pairs: Vec<Vec<String>> =
         serde_json::from_str(plaintext).map_err(|e| format!("wallet config decode: {e}"))?;
 
@@ -120,13 +124,13 @@ pub(super) fn ingest_wallet_config(
         // Already loaded — by an earlier ingest, a live `CreateCashuWallet`
         // this session, or a race between the two. Never overwrite: see
         // module docs.
-        return Ok(());
+        return Ok(false);
     }
     s.mints = mints;
     s.cashu_pubkey_hex = Some(cashu_pubkey_hex);
     s.cashu_privkey = Some(CashuP2pkSecret(cashu_sk));
     s.created = true;
-    Ok(())
+    Ok(true)
 }
 
 /// Fold a decrypted kind:7375 plaintext for event `event_id` into `state`'s
@@ -243,7 +247,14 @@ pub(super) fn build_passive_ingest_command(
                 return;
             };
             if event_kind == nmp_nip60::kinds::KIND_NIP60_WALLET {
-                let _ = ingest_wallet_config(&state, &plaintext);
+                // #3030 PR2 of 2 — "once on launch": the FIRST time this
+                // account's own kind:17375 is replayed/tailed in (never on a
+                // redundant re-observation once already loaded), refresh
+                // cached NUT-06/NUT-02 info for its accepted mints.
+                if let Ok(true) = ingest_wallet_config(&state, &plaintext) {
+                    let mints = lock_state(&state).mints.clone();
+                    super::mint_info::spawn_mint_info_refresh(Arc::clone(&state), mints);
+                }
                 return;
             }
             let Ok(folded_fresh_proofs) =

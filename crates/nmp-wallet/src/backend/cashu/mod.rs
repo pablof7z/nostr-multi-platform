@@ -57,6 +57,7 @@ mod deposit;
 mod events;
 mod ingest;
 mod lifecycle;
+mod mint_info;
 mod nutzap_await;
 mod nutzap_dispatch;
 mod publish_info;
@@ -155,9 +156,23 @@ impl WalletBackend for CashuWalletBackend {
             .collect();
         projection = projection.with_balances(balances);
         let terminal = state.journal.terminal_operations();
+        let recent_history = snapshot::recent_history(&state, &terminal);
+        let receive_rows = snapshot::receive_rows(&terminal);
+        // #3030 PR2 of 2 — read-only: joins the wallet-relevant mint URL set
+        // (accepted + balance + recent send/receive URLs) against the cache
+        // `mint_info::run_mint_info_refresh` populates off this snapshot path
+        // (D8 — never fetched here). See `snapshot::mint_info_rows`'s doc
+        // comment.
+        let mint_info = snapshot::mint_info_rows(
+            &state,
+            &projection.balances,
+            &recent_history,
+            &receive_rows,
+        );
         projection = projection
-            .with_recent_history(snapshot::recent_history(&state, &terminal))
-            .with_receive_rows(snapshot::receive_rows(&terminal));
+            .with_recent_history(recent_history)
+            .with_receive_rows(receive_rows)
+            .with_mint_info(mint_info);
         WalletBackendSnapshot { projection }
     }
 

@@ -2729,6 +2729,462 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum WalletMintFeeRowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct WalletMintFeeRow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WalletMintFeeRow<'a> {
+            type Inner = WalletMintFeeRow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WalletMintFeeRow<'a> {
+            pub const VT_UNIT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_INPUT_FEE_PPK: ::flatbuffers::VOffsetT = 6;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WalletMintFeeRow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WalletMintFeeRowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WalletMintFeeRow<'bldr>> {
+                let mut builder = WalletMintFeeRowBuilder::new(_fbb);
+                builder.add_input_fee_ppk(args.input_fee_ppk);
+                if let Some(x) = args.unit {
+                    builder.add_unit(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn unit(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletMintFeeRow::VT_UNIT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn input_fee_ppk(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletMintFeeRow::VT_INPUT_FEE_PPK, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WalletMintFeeRow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "unit",
+                        Self::VT_UNIT,
+                        false,
+                    )?
+                    .visit_field::<u64>("input_fee_ppk", Self::VT_INPUT_FEE_PPK, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WalletMintFeeRowArgs<'a> {
+            pub unit: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub input_fee_ppk: u64,
+        }
+        impl<'a> Default for WalletMintFeeRowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WalletMintFeeRowArgs {
+                    unit: None,
+                    input_fee_ppk: 0,
+                }
+            }
+        }
+
+        pub struct WalletMintFeeRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletMintFeeRowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_unit(&mut self, unit: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintFeeRow::VT_UNIT,
+                    unit,
+                );
+            }
+            #[inline]
+            pub fn add_input_fee_ppk(&mut self, input_fee_ppk: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletMintFeeRow::VT_INPUT_FEE_PPK, input_fee_ppk, 0);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WalletMintFeeRowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WalletMintFeeRowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WalletMintFeeRow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WalletMintFeeRow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WalletMintFeeRow");
+                ds.field("unit", &self.unit());
+                ds.field("input_fee_ppk", &self.input_fee_ppk());
+                ds.finish()
+            }
+        }
+        pub enum WalletMintInfoRowOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct WalletMintInfoRow<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WalletMintInfoRow<'a> {
+            type Inner = WalletMintInfoRow<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WalletMintInfoRow<'a> {
+            pub const VT_URL: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_ICON_URL: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ICON_URL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_UNITS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_INPUT_FEE_PPK_BY_UNIT: ::flatbuffers::VOffsetT = 16;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WalletMintInfoRow { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WalletMintInfoRowArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WalletMintInfoRow<'bldr>> {
+                let mut builder = WalletMintInfoRowBuilder::new(_fbb);
+                if let Some(x) = args.input_fee_ppk_by_unit {
+                    builder.add_input_fee_ppk_by_unit(x);
+                }
+                if let Some(x) = args.units {
+                    builder.add_units(x);
+                }
+                if let Some(x) = args.icon_url {
+                    builder.add_icon_url(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.url {
+                    builder.add_url(x);
+                }
+                builder.add_has_icon_url(args.has_icon_url);
+                builder.add_has_name(args.has_name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletMintInfoRow::VT_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletMintInfoRow::VT_HAS_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletMintInfoRow::VT_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_icon_url(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletMintInfoRow::VT_HAS_ICON_URL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn icon_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletMintInfoRow::VT_ICON_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn units(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WalletMintInfoRow::VT_UNITS, None)
+                }
+            }
+            #[inline]
+            pub fn input_fee_ppk_by_unit(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletMintFeeRow<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletMintFeeRow>>,
+                    >>(
+                        WalletMintInfoRow::VT_INPUT_FEE_PPK_BY_UNIT, None
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WalletMintInfoRow<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "url",
+                        Self::VT_URL,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_icon_url", Self::VT_HAS_ICON_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "icon_url",
+                        Self::VT_ICON_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("units", Self::VT_UNITS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<WalletMintFeeRow>>,
+                    >>(
+                        "input_fee_ppk_by_unit",
+                        Self::VT_INPUT_FEE_PPK_BY_UNIT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WalletMintInfoRowArgs<'a> {
+            pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_name: bool,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_icon_url: bool,
+            pub icon_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub units: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub input_fee_ppk_by_unit: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletMintFeeRow<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for WalletMintInfoRowArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WalletMintInfoRowArgs {
+                    url: None,
+                    has_name: false,
+                    name: None,
+                    has_icon_url: false,
+                    icon_url: None,
+                    units: None,
+                    input_fee_ppk_by_unit: None,
+                }
+            }
+        }
+
+        pub struct WalletMintInfoRowBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletMintInfoRowBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintInfoRow::VT_URL,
+                    url,
+                );
+            }
+            #[inline]
+            pub fn add_has_name(&mut self, has_name: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletMintInfoRow::VT_HAS_NAME, has_name, false);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintInfoRow::VT_NAME,
+                    name,
+                );
+            }
+            #[inline]
+            pub fn add_has_icon_url(&mut self, has_icon_url: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletMintInfoRow::VT_HAS_ICON_URL,
+                    has_icon_url,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_icon_url(&mut self, icon_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintInfoRow::VT_ICON_URL,
+                    icon_url,
+                );
+            }
+            #[inline]
+            pub fn add_units(
+                &mut self,
+                units: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintInfoRow::VT_UNITS,
+                    units,
+                );
+            }
+            #[inline]
+            pub fn add_input_fee_ppk_by_unit(
+                &mut self,
+                input_fee_ppk_by_unit: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<WalletMintFeeRow<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletMintInfoRow::VT_INPUT_FEE_PPK_BY_UNIT,
+                    input_fee_ppk_by_unit,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WalletMintInfoRowBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WalletMintInfoRowBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WalletMintInfoRow<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WalletMintInfoRow<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WalletMintInfoRow");
+                ds.field("url", &self.url());
+                ds.field("has_name", &self.has_name());
+                ds.field("name", &self.name());
+                ds.field("has_icon_url", &self.has_icon_url());
+                ds.field("icon_url", &self.icon_url());
+                ds.field("units", &self.units());
+                ds.field("input_fee_ppk_by_unit", &self.input_fee_ppk_by_unit());
+                ds.finish()
+            }
+        }
         pub enum WalletProjectionOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2761,6 +3217,7 @@ pub mod nmp {
             pub const VT_RECENT_HISTORY: ::flatbuffers::VOffsetT = 26;
             pub const VT_RECEIVE_ROWS: ::flatbuffers::VOffsetT = 28;
             pub const VT_ACCEPTED_MINTS: ::flatbuffers::VOffsetT = 32;
+            pub const VT_MINT_INFO: ::flatbuffers::VOffsetT = 34;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2777,6 +3234,9 @@ pub mod nmp {
                 args: &'args WalletProjectionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletProjection<'bldr>> {
                 let mut builder = WalletProjectionBuilder::new(_fbb);
+                if let Some(x) = args.mint_info {
+                    builder.add_mint_info(x);
+                }
                 if let Some(x) = args.accepted_mints {
                     builder.add_accepted_mints(x);
                 }
@@ -2817,7 +3277,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(5))
+                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(6))
                         .unwrap()
                 }
             }
@@ -2990,6 +3450,24 @@ pub mod nmp {
                     >>(WalletProjection::VT_ACCEPTED_MINTS, None)
                 }
             }
+            #[inline]
+            pub fn mint_info(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletMintInfoRow<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<WalletMintInfoRow>,
+                        >,
+                    >>(WalletProjection::VT_MINT_INFO, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for WalletProjection<'_> {
@@ -3047,6 +3525,12 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("accepted_mints", Self::VT_ACCEPTED_MINTS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<WalletMintInfoRow>,
+                        >,
+                    >>("mint_info", Self::VT_MINT_INFO, false)?
                     .finish();
                 Ok(())
             }
@@ -3086,12 +3570,20 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
+            pub mint_info: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<WalletMintInfoRow<'a>>,
+                    >,
+                >,
+            >,
         }
         impl<'a> Default for WalletProjectionArgs<'a> {
             #[inline]
             fn default() -> Self {
                 WalletProjectionArgs {
-                    schema_version: 5,
+                    schema_version: 6,
                     has_active_backend_id: false,
                     active_backend_id: None,
                     readiness: WalletReadiness::NotConfigured,
@@ -3105,6 +3597,7 @@ pub mod nmp {
                     recent_history: None,
                     receive_rows: None,
                     accepted_mints: None,
+                    mint_info: None,
                 }
             }
         }
@@ -3117,7 +3610,7 @@ pub mod nmp {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
-                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 5);
+                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 6);
             }
             #[inline]
             pub fn add_has_active_backend_id(&mut self, has_active_backend_id: bool) {
@@ -3251,6 +3744,21 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_mint_info(
+                &mut self,
+                mint_info: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<WalletMintInfoRow<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletProjection::VT_MINT_INFO,
+                    mint_info,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletProjectionBuilder<'a, 'b, A> {
@@ -3284,6 +3792,7 @@ pub mod nmp {
                 ds.field("recent_history", &self.recent_history());
                 ds.field("receive_rows", &self.receive_rows());
                 ds.field("accepted_mints", &self.accepted_mints());
+                ds.field("mint_info", &self.mint_info());
                 ds.finish()
             }
         }

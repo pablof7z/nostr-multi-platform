@@ -15,7 +15,9 @@ use super::generated::nmp::wallet as fb;
 
 use crate::capability::WalletCapabilities;
 use crate::journal::{WalletConsumedInput, WalletOperation, WalletOperationId};
-use crate::projection::{WalletBalanceRow, WalletHistoryRow, WalletReceiveRow};
+use crate::projection::{
+    WalletBalanceRow, WalletHistoryRow, WalletMintFeeRow, WalletMintInfoRow, WalletReceiveRow,
+};
 
 // --- encode ---------------------------------------------------------------
 
@@ -191,6 +193,51 @@ pub(super) fn encode_accepted_mints<'a>(
     mints: &[String],
 ) -> WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>> {
     let offsets: Vec<_> = mints.iter().map(|mint| fbb.create_string(mint)).collect();
+    fbb.create_vector(&offsets)
+}
+
+/// Encode the `mint_info` vector-of-tables (#3030 PR2 of 2) — each row's
+/// nested `input_fee_ppk_by_unit` vector-of-tables is built first, mirroring
+/// `encode_operations`'s nested-`consumed_inputs`-first shape.
+pub(super) fn encode_mint_info<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    rows: &[WalletMintInfoRow],
+) -> WIPOffset<Vector<'a, ForwardsUOffset<fb::WalletMintInfoRow<'a>>>> {
+    let mut offsets = Vec::with_capacity(rows.len());
+    for row in rows {
+        let mut fee_offsets = Vec::with_capacity(row.input_fee_ppk_by_unit.len());
+        for fee in &row.input_fee_ppk_by_unit {
+            let unit = fbb.create_string(&fee.unit);
+            fee_offsets.push(fb::WalletMintFeeRow::create(
+                fbb,
+                &fb::WalletMintFeeRowArgs {
+                    unit: Some(unit),
+                    input_fee_ppk: fee.input_fee_ppk,
+                },
+            ));
+        }
+        let input_fee_ppk_by_unit = fbb.create_vector(&fee_offsets);
+
+        let unit_offsets: Vec<_> = row.units.iter().map(|u| fbb.create_string(u)).collect();
+        let units = fbb.create_vector(&unit_offsets);
+
+        let url = fbb.create_string(&row.url);
+        let name = row.name.as_ref().map(|value| fbb.create_string(value));
+        let icon_url = row.icon_url.as_ref().map(|value| fbb.create_string(value));
+
+        offsets.push(fb::WalletMintInfoRow::create(
+            fbb,
+            &fb::WalletMintInfoRowArgs {
+                url: Some(url),
+                has_name: row.name.is_some(),
+                name,
+                has_icon_url: row.icon_url.is_some(),
+                icon_url,
+                units: Some(units),
+                input_fee_ppk_by_unit: Some(input_fee_ppk_by_unit),
+            },
+        ));
+    }
     fbb.create_vector(&offsets)
 }
 
@@ -377,6 +424,58 @@ pub(super) fn decode_accepted_mints(
     mints
         .map(|v| v.iter().map(str::to_string).collect())
         .unwrap_or_default()
+}
+
+/// Decode the `mint_info` vector-of-tables; absent decodes as empty
+/// (#3030 PR2 of 2).
+pub(super) fn decode_mint_info(
+    rows: Option<Vector<'_, ForwardsUOffset<fb::WalletMintInfoRow<'_>>>>,
+) -> Result<Vec<WalletMintInfoRow>, String> {
+    let Some(rows) = rows else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name = if row.has_name() {
+            Some(str_field(row.name(), "WalletMintInfoRow.name")?)
+        } else {
+            None
+        };
+        let icon_url = if row.has_icon_url() {
+            Some(str_field(row.icon_url(), "WalletMintInfoRow.icon_url")?)
+        } else {
+            None
+        };
+        let units = row
+            .units()
+            .map(|v| v.iter().map(str::to_string).collect())
+            .unwrap_or_default();
+        let input_fee_ppk_by_unit = decode_mint_fees(row.input_fee_ppk_by_unit())?;
+        out.push(WalletMintInfoRow {
+            url: str_field(row.url(), "WalletMintInfoRow.url")?,
+            name,
+            icon_url,
+            units,
+            input_fee_ppk_by_unit,
+        });
+    }
+    Ok(out)
+}
+
+fn decode_mint_fees(
+    rows: Option<Vector<'_, ForwardsUOffset<fb::WalletMintFeeRow<'_>>>>,
+) -> Result<Vec<WalletMintFeeRow>, String> {
+    let Some(rows) = rows else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(WalletMintFeeRow {
+            unit: str_field(row.unit(), "WalletMintFeeRow.unit")?,
+            input_fee_ppk: row.input_fee_ppk(),
+        });
+    }
+    Ok(out)
 }
 
 /// Require a present, non-absent string field; an absent FlatBuffers string on

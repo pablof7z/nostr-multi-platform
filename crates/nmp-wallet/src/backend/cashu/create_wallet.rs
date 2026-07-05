@@ -95,15 +95,27 @@ impl ProtocolCommand for CreateCashuWalletCommand {
             created_at,
             correlation_id,
             move |_tx, _signed| {
-                let mut state = lock_state(&on_signed_state);
-                state.created = true;
-                state.mints = vec![mint];
-                state.cashu_pubkey_hex = Some(cashu_pubkey_hex);
-                state.cashu_privkey = Some(super::state::CashuP2pkSecret(cashu_sk));
-                // Best-effort: a journal-invariant violation here would mean
-                // this operation was already terminal, which can't happen on
-                // this single-shot path — but never panic on it (D6).
-                let _ = state.transition(&on_signed_op, WalletOperationState::PublishPending);
+                let mints_for_refresh = {
+                    let mut state = lock_state(&on_signed_state);
+                    state.created = true;
+                    state.mints = vec![mint];
+                    state.cashu_pubkey_hex = Some(cashu_pubkey_hex);
+                    state.cashu_privkey = Some(super::state::CashuP2pkSecret(cashu_sk));
+                    // Best-effort: a journal-invariant violation here would mean
+                    // this operation was already terminal, which can't happen on
+                    // this single-shot path — but never panic on it (D6).
+                    let _ = state.transition(&on_signed_op, WalletOperationState::PublishPending);
+                    state.mints.clone()
+                };
+                // #3030 PR2 of 2 — a brand-new wallet's mint is trivially
+                // "the accepted-mint set changed"; refresh its cached NUT-06/
+                // NUT-02 info off this (already off-actor-thread) continuation.
+                // The guard above drops the lock before this call, which
+                // itself locks `on_signed_state` again.
+                super::mint_info::spawn_mint_info_refresh(
+                    Arc::clone(&on_signed_state),
+                    mints_for_refresh,
+                );
             },
         );
 

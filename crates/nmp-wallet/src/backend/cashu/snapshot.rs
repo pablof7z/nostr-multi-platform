@@ -22,10 +22,14 @@
 //! design doc's "Observer counting: unverifiable nutzaps may be shown as
 //! rejected... not counted as value".
 
-use crate::journal::{WalletOperation, WalletOperationKind, WalletOperationState};
-use crate::projection::{WalletHistoryKind, WalletHistoryRow, WalletReceiveRow};
+use std::collections::BTreeSet;
 
-use super::state::CashuWalletState;
+use crate::journal::{WalletOperation, WalletOperationKind, WalletOperationState};
+use crate::projection::{
+    WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletMintInfoRow, WalletReceiveRow,
+};
+
+use super::state::{canonicalize_mint_url, CashuWalletState};
 
 /// `receive_rows`: every terminal `RedeemNutzap` operation, verified
 /// (`accepted: true`, reached `Settled`) or rejected (`accepted: false`,
@@ -152,6 +156,65 @@ fn history_kind(op_kind: WalletOperationKind) -> Option<WalletHistoryKind> {
         // is a fast-follow, not required for the money-safety saga itself.
         | WalletOperationKind::CrossMintTransfer => None,
     }
+}
+
+/// `mint_info`: raw NUT-06/NUT-02 metadata for every WALLET-RELEVANT mint
+/// (#3030, PR2 of 2) — accepted mints, mints this wallet holds a balance at,
+/// and mints named by a recent send/receive row — read ONLY from
+/// `state.mint_info`'s cache (never fetched here; see `mint_info.rs`'s module
+/// docs for the off-projection-path fetch that populates it). A relevant mint
+/// with no cache entry yet (never successfully fetched) simply contributes no
+/// row — never an error. Deterministic order: `BTreeSet` (below) sorts by
+/// canonical URL, so identical wallet state always encodes to identical bytes
+/// (the byte-equality emission compare in `projections-and-emission.md`).
+pub(super) fn mint_info_rows(
+    state: &CashuWalletState,
+    balances: &[WalletBalanceRow],
+    history: &[WalletHistoryRow],
+    receive_rows: &[WalletReceiveRow],
+) -> Vec<WalletMintInfoRow> {
+    wallet_relevant_mint_urls(state, balances, history, receive_rows)
+        .into_iter()
+        .filter_map(|url| {
+            state
+                .mint_info
+                .get(&url)
+                .map(|cached| cached.to_row(url))
+        })
+        .collect()
+}
+
+/// Every canonical mint URL this wallet currently cares about: the accepted
+/// list (`state.mints`), every balance row's mint, and every recent-history/
+/// receive-row mint field (source/target mint for a send, the mint for a
+/// deposit/redeem) — canonicalized so this set matches
+/// `state.mint_info`'s canonical-URL cache keys regardless of whichever raw
+/// spelling `state.mints` (or a caller-supplied mint string upstream) used.
+fn wallet_relevant_mint_urls(
+    state: &CashuWalletState,
+    balances: &[WalletBalanceRow],
+    history: &[WalletHistoryRow],
+    receive_rows: &[WalletReceiveRow],
+) -> BTreeSet<String> {
+    let mut urls = BTreeSet::new();
+    for mint in &state.mints {
+        urls.insert(canonicalize_mint_url(mint));
+    }
+    for balance in balances {
+        urls.insert(canonicalize_mint_url(&balance.mint));
+    }
+    for row in history {
+        if let Some(mint) = &row.source_mint {
+            urls.insert(canonicalize_mint_url(mint));
+        }
+        if let Some(mint) = &row.target_mint {
+            urls.insert(canonicalize_mint_url(mint));
+        }
+    }
+    for row in receive_rows {
+        urls.insert(canonicalize_mint_url(&row.mint));
+    }
+    urls
 }
 
 /// `DepositCashu`'s amount/mint, recovered from `PendingDeposit` (never

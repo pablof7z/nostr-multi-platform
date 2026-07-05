@@ -148,6 +148,59 @@ fn get_mint_quote_status_gives_up_after_max_retries_of_429() {
     ));
 }
 
+/// `MintClient::get_keysets_with_fees` merges `input_fee_ppk` across EVERY
+/// unit the mint advertises, not just `"sat"` — the generalization
+/// `get_sat_keyset` now delegates to.
+#[test]
+fn get_keysets_with_fees_merges_fees_across_every_unit() {
+    let url = spawn_sequenced_mock(vec![
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","keys":{"1":"02aa"}},
+                {"id":"00usd","unit":"usd","keys":{"1":"02bb"}}
+            ]}"#,
+        ),
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","input_fee_ppk":100},
+                {"id":"00usd","unit":"usd","input_fee_ppk":250}
+            ]}"#,
+        ),
+    ]);
+    let client = MintClient::new(&url);
+    let keysets = client
+        .get_keysets_with_fees()
+        .expect("keysets with fees round-trip");
+    assert_eq!(keysets.len(), 2);
+    let sat = keysets.iter().find(|ks| ks.unit == "sat").unwrap();
+    let usd = keysets.iter().find(|ks| ks.unit == "usd").unwrap();
+    assert_eq!(sat.input_fee_ppk, 100);
+    assert_eq!(usd.input_fee_ppk, 250);
+}
+
+/// `MintClient::get_mint_info` end-to-end against a local mock mint — proves
+/// the whole roundtrip (request build -> `ureq` call -> response parse),
+/// complementing `http::info`'s own builder-shape/decode-only unit tests.
+#[test]
+fn get_mint_info_parses_a_sample_v1_info_body() {
+    let url = spawn_sequenced_mock(vec![(
+        "HTTP/1.1 200 OK",
+        "",
+        r#"{"name":"Test Mint","pubkey":"02deadbeef","version":"Nutshell/0.15.0","icon_url":"https://mint.example/icon.png"}"#,
+    )]);
+    let client = MintClient::new(&url);
+    let info = client.get_mint_info().expect("mint info round-trip");
+    assert_eq!(info.name.as_deref(), Some("Test Mint"));
+    assert_eq!(
+        info.icon_url.as_deref(),
+        Some("https://mint.example/icon.png")
+    );
+}
+
 #[test]
 fn split_amount_reexport_still_reachable() {
     // `split_amount` moved to `http.rs` (always-compiled, no `ureq`) so

@@ -51,9 +51,10 @@ use generated::nmp::wallet as fb;
 
 use enums::{readiness_from_fb, readiness_to_fb};
 use rows::{
-    decode_accepted_mints, decode_balances, decode_capabilities, decode_history, decode_operations,
-    decode_receive_rows, encode_accepted_mints, encode_balances, encode_capabilities,
-    encode_history, encode_operations, encode_receive_rows, str_field,
+    decode_accepted_mints, decode_balances, decode_capabilities, decode_history,
+    decode_mint_info, decode_operations, decode_receive_rows, encode_accepted_mints,
+    encode_balances, encode_capabilities, encode_history, encode_mint_info, encode_operations,
+    encode_receive_rows, str_field,
 };
 
 use crate::backend::WalletBackendId;
@@ -82,7 +83,12 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NWMP";
 /// v5 (#3030, PR1 of 2): `WalletProjection` gains `accepted_mints` — the raw
 /// accepted-mint URL list `accepted_mint_count` already summarized. Appended
 /// as a new field after the deprecated v4 slot, not inserted into it.
-pub const SCHEMA_VERSION: u32 = 5;
+/// v6 (#3030, PR2 of 2): `WalletProjection` gains `mint_info` — a bounded,
+/// URL-keyed side table of each wallet-relevant mint's raw NUT-06/NUT-02
+/// metadata (name, icon_url, units, per-unit input_fee_ppk), read from an
+/// actor-side cache a backend refreshes off the projection-emit path (see
+/// `backend::cashu::mint_info`). Appended after `accepted_mints`.
+pub const SCHEMA_VERSION: u32 = 6;
 
 // --- encode ---------------------------------------------------------------
 
@@ -109,6 +115,7 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
     let recent_history = encode_history(&mut fbb, &projection.recent_history);
     let receive_rows = encode_receive_rows(&mut fbb, &projection.receive_rows);
     let accepted_mints = encode_accepted_mints(&mut fbb, &projection.accepted_mints);
+    let mint_info = encode_mint_info(&mut fbb, &projection.mint_info);
 
     let root = fb::WalletProjection::create(
         &mut fbb,
@@ -127,6 +134,7 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
             recent_history: Some(recent_history),
             receive_rows: Some(receive_rows),
             accepted_mints: Some(accepted_mints),
+            mint_info: Some(mint_info),
         },
     );
     fb::finish_wallet_projection_buffer(&mut fbb, root);
@@ -168,6 +176,7 @@ pub fn decode_wallet_projection(bytes: &[u8]) -> Result<WalletProjection, String
     let pending_operations = decode_operations(root.pending_operations())?;
     let recent_history = decode_history(root.recent_history())?;
     let receive_rows = decode_receive_rows(root.receive_rows())?;
+    let mint_info = decode_mint_info(root.mint_info())?;
 
     Ok(WalletProjection {
         active_backend_id,
@@ -181,6 +190,7 @@ pub fn decode_wallet_projection(bytes: &[u8]) -> Result<WalletProjection, String
         pending_operations,
         recent_history,
         receive_rows,
+        mint_info,
     })
 }
 

@@ -36,6 +36,12 @@ pub const WALLET_STATUS: ProjectionContract = ProjectionContract {
 // v5 (#3030, PR1 of 2): `WalletProjection` gains `accepted_mints` — the raw
 // accepted-mint URL list surfaced alongside `accepted_mint_count`. Appended
 // after the deprecated v4 slot, not inserted into it.
+//
+// v6 (#3030, PR2 of 2): `WalletProjection` gains `mint_info` — a bounded,
+// URL-keyed side table of each wallet-relevant mint's raw NUT-06/NUT-02
+// metadata (name, icon_url, units, per-unit input_fee_ppk), read from an
+// actor-side cache a backend refreshes off the projection-emit path.
+// Appended after `accepted_mints`.
 pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     key: "wallet.merged",
     tier: ProjectionTier::HostRegistered,
@@ -44,7 +50,7 @@ pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     schema_id: "nmp.wallet.merged",
     file_identifier: "NWMP",
     // nmp-wallet projection_wire::SCHEMA_VERSION
-    version: 5,
+    version: 6,
     declaration_policy: DeclarationPolicy::RegistrationGated,
     dependency_versions: &[],
     presence_policy: PresencePolicy::None,
