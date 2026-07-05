@@ -38,6 +38,7 @@
 mod dispatch_create_group;
 mod error_paths;
 mod fixtures;
+mod ingest_delivery;
 mod init_error_snapshot;
 mod key_package_cache;
 mod key_package_persistence;

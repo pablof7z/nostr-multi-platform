@@ -83,8 +83,26 @@ impl IngestParser for MarmotIngestParser {
             return; // Parse failure → silent no-op (D6).
         };
         let Some(projection) = self.runtime.projection() else {
+            // #3057 instrumentation: a delivered Marmot event (incl. a kind:1059
+            // Welcome) is DROPPED here whenever no projection is active — e.g.
+            // the encrypted MLS store failed to open, or the identity is not
+            // yet rebound. This is invisible on-device (no banner, no ingest),
+            // matching the S51 silence. The log names the dropped kind so an
+            // on-device retest can catch it.
+            tracing::warn!(
+                target: "nmp_marmot::ingest",
+                kind = event.kind.as_u16(),
+                event_id = %event.id.to_hex(),
+                "marmot ingest dropped: no active projection (Marmot store not open / identity not rebound)"
+            );
             return;
         };
+        tracing::debug!(
+            target: "nmp_marmot::ingest",
+            kind = event.kind.as_u16(),
+            event_id = %event.id.to_hex(),
+            "marmot ingest: dispatching to ingest_signed_event_core"
+        );
         // Lock the projection's inner state. Poisoned mutex → silent no-op.
         let _ = projection.with_inner(|h| {
             // Discard the Result: the parser has no caller to surface a

@@ -280,16 +280,39 @@ fn ingest_giftwrap(
     now_secs: u64,
 ) -> Result<Option<Value>, String> {
     // Case 1 — unwrap. Not addressed to us / undecryptable → not ours; skip.
-    let Ok(unwrapped) = h.service().unwrap_giftwrap(event) else {
-        return Ok(None);
+    let unwrapped = match h.service().unwrap_giftwrap(event) {
+        Ok(u) => u,
+        Err(e) => {
+            // #3057 instrumentation: a kind:1059 that fails to unwrap is not
+            // ours (wrong #p, or NIP-44 decrypt failed with our key). Logged so
+            // an on-device retest can distinguish "not ours" from a real drop.
+            tracing::debug!(
+                target: "nmp_marmot::ingest",
+                event_id = %event.id.to_hex(),
+                error = %e,
+                "marmot giftwrap ingest: unwrap failed (not ours / undecryptable) — skip"
+            );
+            return Ok(None);
+        }
     };
     // Case 2 — only kind:444 MLS Welcome rumors are Marmot's business. Any
     // other gift-wrapped rumor (NIP-17 DM, etc.) belongs to another parser.
     if unwrapped.rumor.kind != nostr::Kind::MlsWelcome {
+        tracing::debug!(
+            target: "nmp_marmot::ingest",
+            event_id = %event.id.to_hex(),
+            rumor_kind = unwrapped.rumor.kind.as_u16(),
+            "marmot giftwrap ingest: inner rumor is not a kind:444 Welcome — skip (another protocol's envelope)"
+        );
         return Ok(None);
     }
     // Case 3 — a real Welcome. Process it; a failure here is surface-worthy.
     let sender = unwrapped.sender;
+    tracing::info!(
+        target: "nmp_marmot::ingest",
+        event_id = %event.id.to_hex(),
+        "marmot giftwrap ingest: kind:444 Welcome unwrapped — calling process_welcome"
+    );
     match h.service().process_welcome(&event.id, &unwrapped.rumor) {
         Ok(welcome) => {
             let wid = event.id.to_hex();
@@ -302,6 +325,11 @@ fn ingest_giftwrap(
                 welcome.group_relays.iter().cloned().collect(),
             );
             h.cache_welcome(wid.clone(), event.clone(), group_name, sender.to_hex());
+            tracing::info!(
+                target: "nmp_marmot::ingest",
+                pending_welcome_id_hex = %wid,
+                "marmot giftwrap ingest: Welcome processed → cached as pending"
+            );
             Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
         }
         Err(e) => {
@@ -309,6 +337,12 @@ fn ingest_giftwrap(
             // gift-wrap id is the correlation handle a host can key the banner
             // + a retry off.
             let reason = e.to_string();
+            tracing::warn!(
+                target: "nmp_marmot::ingest",
+                event_id = %event.id.to_hex(),
+                error = %reason,
+                "marmot giftwrap ingest: process_welcome FAILED → surfacing welcome_ingest banner"
+            );
             h.record_last_op_failure(
                 "welcome_ingest".to_string(),
                 reason.clone(),
