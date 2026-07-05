@@ -140,7 +140,7 @@ pub async fn fetch_mint_info(mint_url: &str) -> Result<MintNut06Info, MintInfoEr
         .build()
         .map_err(|e| MintInfoError::Request(e.to_string()))?;
 
-    let response = client
+    let mut response = client
         .get(&info_url)
         .send()
         .await
@@ -154,18 +154,43 @@ pub async fn fetch_mint_info(mint_url: &str) -> Result<MintNut06Info, MintInfoEr
         });
     }
 
-    let bytes = response
-        .bytes()
+    // Stream the body chunk-by-chunk and abort as soon as it would exceed
+    // MAX_INFO_RESPONSE_BYTES — never `response.bytes().await`, which would
+    // buffer the ENTIRE body first and only bound it afterward (a hostile
+    // mint could stream GBs within the timeout and exhaust memory before any
+    // check fired). This mirrors `nmp-nip60`'s `read_bounded` posture: the
+    // buffer is capped regardless of what the mint sends.
+    let mut body = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
         .await
-        .map_err(|e| MintInfoError::Request(e.to_string()))?;
-    if bytes.len() > MAX_INFO_RESPONSE_BYTES {
-        return Err(MintInfoError::ResponseTooLarge {
-            url: info_url,
-            limit: MAX_INFO_RESPONSE_BYTES,
-        });
+        .map_err(|e| MintInfoError::Request(e.to_string()))?
+    {
+        push_bounded(&info_url, &mut body, &chunk, MAX_INFO_RESPONSE_BYTES)?;
     }
 
-    parse_mint_info(mint_url, &bytes)
+    parse_mint_info(mint_url, &body)
+}
+
+/// Append `chunk` to `body`, but fail with [`MintInfoError::ResponseTooLarge`]
+/// if doing so would push the buffer past `limit` — the bounded-read guard
+/// [`fetch_mint_info`] applies per streamed chunk. Pure (no I/O) so the
+/// oversized-body path is unit-testable without a network mint, mirroring
+/// `nmp-nip60`'s `read_bounded`.
+fn push_bounded(
+    url: &str,
+    body: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: usize,
+) -> Result<(), MintInfoError> {
+    if body.len() + chunk.len() > limit {
+        return Err(MintInfoError::ResponseTooLarge {
+            url: url.to_string(),
+            limit,
+        });
+    }
+    body.extend_from_slice(chunk);
+    Ok(())
 }
 
 /// Pure parse: raw `/v1/info` JSON bytes → [`MintNut06Info`]. Split out from
@@ -321,6 +346,31 @@ mod tests {
     fn non_object_json_yields_err_not_panic() {
         let err = parse_mint_info("https://mint.example", b"[1,2,3]").unwrap_err();
         assert!(matches!(err, MintInfoError::Parse { .. }));
+    }
+
+    #[test]
+    fn push_bounded_accepts_chunks_up_to_the_limit() {
+        let mut body = Vec::new();
+        push_bounded("https://mint.example", &mut body, b"1234", 8).expect("within limit");
+        push_bounded("https://mint.example", &mut body, b"5678", 8).expect("exactly at limit");
+        assert_eq!(body, b"12345678");
+    }
+
+    #[test]
+    fn push_bounded_rejects_a_chunk_that_would_exceed_the_limit() {
+        // Mirrors the streamed-body guard in `fetch_mint_info`: the buffer is
+        // capped regardless of what the mint sends, so a body over the cap
+        // yields `ResponseTooLarge` (and never over-buffers).
+        let mut body = Vec::new();
+        push_bounded("https://mint.example", &mut body, b"1234", 8).expect("first chunk fits");
+        let err = push_bounded("https://mint.example", &mut body, b"56789", 8)
+            .expect_err("second chunk overflows the cap");
+        assert!(matches!(
+            err,
+            MintInfoError::ResponseTooLarge { limit: 8, .. }
+        ));
+        // The overflowing chunk was NOT appended — the buffer stays bounded.
+        assert_eq!(body, b"1234");
     }
 
     #[test]
