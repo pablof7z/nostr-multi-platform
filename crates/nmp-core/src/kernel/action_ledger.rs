@@ -69,138 +69,36 @@
 
 pub(crate) mod result_records;
 
+// The `action_lifecycle` display-view data types (`LifecycleStage` /
+// `LifecycleEntry` / `LifecycleSnapshot` / the private `CodedReason` /
+// `LatestLifecycle`) live in this submodule — split out to keep this file
+// under the AGENTS.md LOC cap. Re-exported at this path so existing callers
+// (including the test suite) see no path change.
+mod lifecycle_view;
+use lifecycle_view::{CodedReason, LatestLifecycle, LifecycleStage};
+pub use lifecycle_view::{LifecycleEntry, LifecycleSnapshot};
+
 use result_records::ActionResultRecord;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[cfg(test)]
 use super::action_stages::StageEntry;
 use super::action_stages::{
-    ActionStage, StageHistory, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS,
-    TERMINAL_STAGE_RETENTION_MS,
+    ActionStage, StageHistory, MAX_TRACKED_CORRELATIONS, TERMINAL_STAGE_RETENTION_MS,
 };
 
-/// Retention window for terminal lifecycle entries. Mirrors the stage-history
-/// terminal TTL so the derived lifecycle view and the substrate history expire
-/// a settled row on the same edge. The ledger itself prunes via the inner
-/// stage tracker's TTL; this alias documents the lifecycle-view boundary and is
-/// consumed by the rung3 / projection_rev TTL-edge tests.
+/// Retention window for terminal lifecycle entries, counted from FIRST
+/// OBSERVATION (chirp#115) rather than from the transition instant — see
+/// [`lifecycle_view::LatestLifecycle::observed_terminal_at_ms`] and
+/// [`ActionLedger::prune_latest`]. Mirrors the stage-history terminal TTL
+/// value so the derived lifecycle view and the substrate history use the same
+/// numeric window (their eviction ANCHORS now differ by design: the history
+/// facet still anchors on the transition instant, since it is a diagnostic
+/// surface, not the load-bearing spinner path). This alias documents the
+/// lifecycle-view boundary and is consumed by the rung3 / projection_rev
+/// TTL-edge tests.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const RECENT_TERMINAL_TTL_MS: u64 = TERMINAL_STAGE_RETENTION_MS;
-
-/// Curated failure reason attached to a `correlation_id` (#1735). The
-/// substrate `action_stages` history keeps only the English prose `reason`;
-/// the machine-stable `code` (+ optional `subject`) rides the *derived*
-/// `action_lifecycle` projection only, so a host can localize it. Stored on the
-/// per-`correlation_id` latest-lifecycle slot rather than in the `ActionStage`
-/// itself (the substrate stage type stays prose-only — its structured code is
-/// S7's, #1754).
-#[derive(Clone, Debug, Default)]
-struct CodedReason {
-    code: Option<String>,
-    subject: Option<String>,
-}
-
-/// The latest lifecycle state of one `correlation_id` — the authoritative
-/// source the `action_lifecycle` view derives from.
-///
-/// This is a SINGLE slot per id, updated on EVERY recorded transition. It is
-/// deliberately INDEPENDENT of the bounded `action_stages` history's
-/// per-correlation cap: the history may silently drop a non-terminal diagnostic
-/// row once it is full (64 entries), but the latest lifecycle state must still
-/// advance — the host's spinner/toast UI keys on it. Co-owned with the history
-/// under the one ledger (same key set, same eviction order, reconciled on every
-/// mutation) — it is a facet of the single ledger entry, not a parallel store.
-#[derive(Clone, Debug)]
-struct LatestLifecycle {
-    /// Latest substrate stage observed for the id (collapsed from the history).
-    stage: ActionStage,
-    /// Wall-clock millis of that latest transition — the TTL retention anchor
-    /// for the derived lifecycle view (terminal vs pending window).
-    at_ms: u64,
-    /// Curated failure reason (#1735) attached to the latest transition.
-    coded: CodedReason,
-}
-
-impl LatestLifecycle {
-    /// TTL window for this latest stage: short terminal TTL vs longer pending
-    /// retention, mirroring the substrate history's per-stage retention.
-    fn retention_ttl_ms(&self) -> u64 {
-        if self.stage.is_terminal() {
-            TERMINAL_STAGE_RETENTION_MS
-        } else {
-            PENDING_STAGE_RETENTION_MS
-        }
-    }
-}
-
-/// The display-level lifecycle stage. Distinct from the substrate
-/// [`ActionStage`]: the substrate type may grow internal stages the host
-/// should not render verbatim, and the display type carries the curated
-/// `reason_code` / `reason_subject` (#1735) that never bleed into the
-/// substrate history.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(tag = "stage", rename_all = "snake_case")]
-pub enum LifecycleStage {
-    Requested,
-    AwaitingCapability,
-    Publishing,
-    Accepted,
-    /// `reason` is always the English prose fallback. `reason_code` is the
-    /// stable machine key the shell localizes, present ONLY when the kernel set
-    /// CURATED app copy (#1735). `reason_subject` is an optional contextual
-    /// value the shell interpolates.
-    Failed {
-        reason: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason_code: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason_subject: Option<String>,
-    },
-    /// User-initiated cancellation — a DISTINCT terminal from `Failed` (S7,
-    /// #1754). The host renders it differently (no error toast).
-    Cancelled,
-}
-
-impl LifecycleStage {
-    /// `Accepted` / `Failed` / `Cancelled` are terminal — they move from
-    /// `in_flight` to `recent_terminal`.
-    fn is_terminal(&self) -> bool {
-        matches!(self, Self::Accepted | Self::Failed { .. } | Self::Cancelled)
-    }
-
-    /// Derive a display stage from the latest substrate stage of a
-    /// `correlation_id`, attaching the curated reason code (`Failed` only).
-    fn derive(stage: &ActionStage, coded: &CodedReason) -> Self {
-        match stage {
-            ActionStage::Requested => Self::Requested,
-            ActionStage::AwaitingCapability => Self::AwaitingCapability,
-            ActionStage::Publishing => Self::Publishing,
-            ActionStage::Accepted => Self::Accepted,
-            ActionStage::Failed { reason } => Self::Failed {
-                reason: reason.clone(),
-                reason_code: coded.code.clone(),
-                reason_subject: coded.subject.clone(),
-            },
-            ActionStage::Cancelled => Self::Cancelled,
-        }
-    }
-}
-
-/// One row in either the `in_flight` or `recent_terminal` array.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct LifecycleEntry {
-    pub correlation_id: String,
-    #[serde(flatten)]
-    pub stage: LifecycleStage,
-}
-
-/// On-wire shape emitted under `projections["action_lifecycle"]`.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct LifecycleSnapshot {
-    pub in_flight: Vec<LifecycleEntry>,
-    pub recent_terminal: Vec<LifecycleEntry>,
-}
 
 /// The single per-`correlation_id` record of action state.
 ///
@@ -300,6 +198,11 @@ impl ActionLedger {
                     code: reason_code.map(str::to_string),
                     subject: reason_subject.map(str::to_string),
                 },
+                // Every record — including a re-record of a previously terminal
+                // id (e.g. a retry that starts a new lifecycle) — starts
+                // unobserved. `lifecycle_snapshot` marks this the moment it
+                // actually serves the entry as a `recent_terminal` row.
+                observed_terminal_at_ms: None,
             },
         );
         if is_new {
@@ -420,11 +323,12 @@ impl ActionLedger {
     /// [`serde_json::Value::Null`] when both arrays would be empty so the
     /// projection helper omits the key (steady state).
     ///
-    /// Output is byte-identical to the prior `ActionLifecycleTracker`: the
-    /// latest stage per id (latest-stage-wins, INCLUDING a record the history
-    /// dropped at its per-correlation cap), the same first-record ordering, the
-    /// same terminal vs pending TTL, and the same curated `reason_code` /
-    /// `reason_subject`.
+    /// Output is byte-identical to the prior `ActionLifecycleTracker` on the
+    /// happy path (same first-record ordering, same curated `reason_code` /
+    /// `reason_subject`), with one deliberate behaviour change (chirp#115): a
+    /// terminal row is now retained until THIS call has actually served it at
+    /// least once — see [`Self::prune_latest`] — rather than aging out on
+    /// wall-clock distance from the original transition alone.
     pub(crate) fn lifecycle_snapshot(&mut self, now_ms: u64) -> serde_json::Value {
         self.prune_latest(now_ms);
         if self.latest.is_empty() {
@@ -435,7 +339,7 @@ impl ActionLedger {
         // Walk the lifecycle facet's own first-record order so the arrays carry
         // the same stable ordering the prior standalone tracker produced.
         for cid in &self.latest_order {
-            let Some(latest) = self.latest.get(cid) else {
+            let Some(latest) = self.latest.get_mut(cid) else {
                 continue;
             };
             let display = LifecycleStage::derive(&latest.stage, &latest.coded);
@@ -444,6 +348,14 @@ impl ActionLedger {
                 stage: display.clone(),
             };
             if display.is_terminal() {
+                // First time this terminal is actually served in a snapshot:
+                // start the post-observation grace window from HERE. Until
+                // this line runs, `prune_latest` treats the entry as
+                // unconditionally retained (chirp#115) — a slow consumer can
+                // never race the terminal out of existence before seeing it.
+                if latest.observed_terminal_at_ms.is_none() {
+                    latest.observed_terminal_at_ms = Some(now_ms);
+                }
                 recent_terminal.push(entry);
             } else {
                 in_flight.push(entry);
@@ -459,14 +371,40 @@ impl ActionLedger {
         serde_json::to_value(&payload).unwrap_or(serde_json::Value::Null)
     }
 
-    /// Drop latest-lifecycle slots whose retention TTL has elapsed. Terminal
-    /// slots use the short toast TTL; non-terminal slots use the longer pending
-    /// TTL — mirroring the substrate history's per-stage retention, anchored at
-    /// the slot's own latest `at_ms`. Keeps `latest_order` in sync.
+    /// Drop latest-lifecycle slots whose retention has elapsed. Keeps
+    /// `latest_order` in sync.
+    ///
+    /// Non-terminal slots are unchanged: they age out
+    /// [`PENDING_STAGE_RETENTION_MS`] after their latest `at_ms`, mirroring the
+    /// substrate history's per-stage retention.
+    ///
+    /// Terminal slots (chirp#115 fix) are NOT time-boxed relative to the
+    /// transition instant. A terminal entry that has never been served by
+    /// [`ActionLedger::lifecycle_snapshot`] (`observed_terminal_at_ms.is_none()`)
+    /// is exempt from TTL pruning here — it is retained no matter how long the
+    /// relay round-trip or the emit cadence took, so a consumer can never
+    /// observe an empty `recent_terminal` for an action it is still waiting
+    /// on. Once observed at least once, [`TERMINAL_STAGE_RETENTION_MS`] bounds
+    /// how much longer it lingers, anchored to the observation instant rather
+    /// than the original transition — the terminal TTL is now a POST-DELIVERY
+    /// display grace window, not a delivery deadline. An id that is never
+    /// observed at all is still bounded: `record_coded`'s global
+    /// [`MAX_TRACKED_CORRELATIONS`] drop-oldest cap is the sole backstop, the
+    /// same one already relied on for a host that never acks.
     fn prune_latest(&mut self, now_ms: u64) {
         let mut drop_ids: Vec<String> = Vec::new();
         for (cid, l) in &self.latest {
-            if now_ms >= l.at_ms.saturating_add(l.retention_ttl_ms()) {
+            let expired = if l.stage.is_terminal() {
+                match l.observed_terminal_at_ms {
+                    None => false,
+                    Some(observed_at_ms) => {
+                        now_ms >= observed_at_ms.saturating_add(TERMINAL_STAGE_RETENTION_MS)
+                    }
+                }
+            } else {
+                l.pending_ttl_expired(now_ms)
+            };
+            if expired {
                 drop_ids.push(cid.clone());
             }
         }

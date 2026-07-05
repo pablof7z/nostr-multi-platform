@@ -1,11 +1,16 @@
 //! Unit tests for the `ActionLedger`'s DERIVED `action_lifecycle` view.
 //!
 //! These port the prior `ActionLifecycleTracker` unit tests onto the one
-//! ledger, proving the derived `lifecycle_snapshot` output is byte-identical to
-//! the deleted parallel tracker: same latest-stage collapse, same first-record
-//! ordering, same terminal vs pending TTL, same curated `reason_code` /
-//! `reason_subject` (#1735). Kernel-level contract tests (driving
-//! `Kernel::record_action_stage` etc.) live in `action_lifecycle_kernel_tests.rs`.
+//! ledger, proving the derived `lifecycle_snapshot` output matches the
+//! deleted parallel tracker on the happy path: same latest-stage collapse,
+//! same first-record ordering, same curated `reason_code` / `reason_subject`
+//! (#1735). Kernel-level contract tests (driving `Kernel::record_action_stage`
+//! etc.) live in `action_lifecycle_kernel_tests.rs`.
+//!
+//! One deliberate divergence (chirp#115): terminal retention is now
+//! observation-gated, not a flat TTL from the transition instant — see
+//! `terminal_survives_slow_first_observation_past_old_ttl` and
+//! `terminal_drops_on_ttl_expiry_after_observation`.
 
 use crate::kernel::action_ledger::{
     ActionLedger, LifecycleSnapshot, LifecycleStage, RECENT_TERMINAL_TTL_MS,
@@ -164,19 +169,76 @@ fn failed_uncoded_omits_reason_code_keys() {
     assert!(row.get("reason_subject").is_none());
 }
 
-/// Terminal rows drop on TTL expiry at the `>=` boundary.
+/// Terminal rows drop on TTL expiry at the `>=` boundary, counted from the
+/// FIRST OBSERVATION (chirp#115) rather than from the original transition.
+/// This first-observation happens immediately here (the fast/happy path), so
+/// `observed_at_ms == at_ms` and the old and new behaviour coincide.
+/// `terminal_survives_slow_first_observation_past_old_ttl` below covers the
+/// case the fix actually targets — a SLOW first observation.
 #[test]
-fn terminal_drops_on_ttl_expiry() {
+fn terminal_drops_on_ttl_expiry_after_observation() {
     let mut l = ActionLedger::new();
     rec(&mut l, "corr-1", ActionStage::Accepted, 1_000);
 
-    let inside = l.lifecycle_snapshot(1_000 + RECENT_TERMINAL_TTL_MS - 1);
+    let observed_at = 1_000;
+    let inside = l.lifecycle_snapshot(observed_at);
     let payload: LifecycleSnapshot = serde_json::from_value(inside).unwrap();
     assert_eq!(payload.recent_terminal.len(), 1);
 
-    let at = l.lifecycle_snapshot(1_000 + RECENT_TERMINAL_TTL_MS);
+    let still_inside = l.lifecycle_snapshot(observed_at + RECENT_TERMINAL_TTL_MS - 1);
+    let payload2: LifecycleSnapshot = serde_json::from_value(still_inside).unwrap();
+    assert_eq!(payload2.recent_terminal.len(), 1);
+
+    let at = l.lifecycle_snapshot(observed_at + RECENT_TERMINAL_TTL_MS);
     assert!(at.is_null(), "snapshot is Null once arrays empty post-TTL");
     assert_eq!(l.len(), 0, "entry was actually evicted");
+}
+
+/// THE CHIRP#115 REGRESSION TEST. A terminal verdict must survive until some
+/// consumer has actually observed it, no matter how much wall-clock time
+/// elapses before that first read — a slow relay round-trip, a backlogged
+/// host, or simply a consumer that doesn't get around to reading the
+/// snapshot for a while must never race the terminal out of existence.
+///
+/// Reproduces the bug precisely: on the pre-fix code (flat TTL measured from
+/// the transition instant `at_ms`), a first read at `10x` the terminal
+/// retention window already finds the entry pruned — `recent_terminal` empty
+/// / the snapshot `Null` — which is exactly the "Publishing…" spinner that
+/// never resolves because the host's first (and only) look at the lifecycle
+/// projection comes back with no terminal for a correlation_id it dispatched
+/// and is still watching.
+#[test]
+fn terminal_survives_slow_first_observation_past_old_ttl() {
+    let mut l = ActionLedger::new();
+    rec(&mut l, "corr-slow", ActionStage::Accepted, 1_000);
+
+    // First observation happens WELL past the old flat TTL window measured
+    // from the transition instant (10x the terminal retention) — modelling a
+    // relay round-trip / emit backlog that outlasts the terminal TTL.
+    let first_read_at = 1_000 + RECENT_TERMINAL_TTL_MS * 10;
+    let first = l.lifecycle_snapshot(first_read_at);
+    let payload: LifecycleSnapshot = serde_json::from_value(first).unwrap();
+    assert_eq!(
+        payload.recent_terminal.len(),
+        1,
+        "terminal verdict must still be delivered on first observation, \
+         regardless of how long that observation took to happen"
+    );
+    assert_eq!(payload.recent_terminal[0].correlation_id, "corr-slow");
+    assert_eq!(payload.recent_terminal[0].stage, LifecycleStage::Accepted);
+
+    // Once observed, the SAME grace window applies — anchored to the
+    // observation instant, not the original transition.
+    let still_inside = l.lifecycle_snapshot(first_read_at + RECENT_TERMINAL_TTL_MS - 1);
+    let payload2: LifecycleSnapshot = serde_json::from_value(still_inside).unwrap();
+    assert_eq!(payload2.recent_terminal.len(), 1);
+
+    let past_grace = l.lifecycle_snapshot(first_read_at + RECENT_TERMINAL_TTL_MS);
+    assert!(
+        past_grace.is_null(),
+        "post-observation grace window still bounds retention"
+    );
+    assert_eq!(l.len(), 0);
 }
 
 /// A non-terminal row survives the short terminal TTL.
@@ -384,6 +446,14 @@ fn lifecycle_advances_past_history_per_correlation_cap() {
 
 /// The curated sidecar is reconciled when its id leaves the history (cap or
 /// ack) so it can never outgrow the bounded log (D8).
+///
+/// Uses `ack` (not TTL expiry) to evict the first row: under the chirp#115
+/// fix a terminal is retained until observed, so a single un-primed
+/// `lifecycle_snapshot` call at `now = RECENT_TERMINAL_TTL_MS` is itself the
+/// first observation and would NOT evict the row (see
+/// `terminal_survives_slow_first_observation_past_old_ttl`). `ack` is the
+/// direct, TTL-independent way to exercise "id leaves the ledger" that this
+/// test actually cares about.
 #[test]
 fn coded_sidecar_pruned_when_id_evicted() {
     let mut l = ActionLedger::new();
@@ -397,8 +467,7 @@ fn coded_sidecar_pruned_when_id_evicted() {
         None,
         0,
     );
-    // TTL expiry drops the row; the next derive sees no curated code leak.
-    let _ = l.lifecycle_snapshot(RECENT_TERMINAL_TTL_MS);
+    assert!(l.ack("corr-coded"));
     assert_eq!(l.len(), 0);
 
     // A NEW record under the same id must NOT inherit the stale code.
