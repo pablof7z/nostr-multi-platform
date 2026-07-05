@@ -41,6 +41,7 @@ mod fixtures;
 mod ingest_delivery;
 mod init_error_snapshot;
 mod key_package_cache;
+mod key_package_selection;
 mod key_package_persistence;
 mod leave_and_decline;
 mod membership;

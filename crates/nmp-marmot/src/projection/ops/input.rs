@@ -91,6 +91,57 @@ pub(super) fn signed_key_package_events(arr: &[Value]) -> Result<Vec<nostr::Even
     Ok(out)
 }
 
+/// The `d` tag value of a kind:30443 key-package event, if present.
+pub(super) fn key_package_d_tag(event: &nostr::Event) -> Option<&str> {
+    event.tags.iter().find_map(|t| {
+        let slice = t.as_slice();
+        (slice.first().map(String::as_str) == Some("d"))
+            .then(|| slice.get(1).map(String::as_str))
+            .flatten()
+    })
+}
+
+/// #3057 round-7 — select the FRESHEST key package per invitee.
+///
+/// A peer's relay history commonly holds MULTIPLE kind:30443 events (stale ones
+/// from prior sessions under distinct `d` tags + the current one). Only the
+/// LATEST publish matches the private half in the peer's live MLS store, so the
+/// Welcome MUST be built against it — otherwise the invitee's `process_welcome`
+/// fails "No matching key package was found in the key store". This dedupes
+/// `kp_events` by author, keeping the max-`created_at` event (covers both the
+/// in-memory cache path and an explicit / LMDB-queried key package the host may
+/// pass), and logs the selected key package (id + `d` tag) — the nak-provable
+/// selection point that feeds `mdk_core::key_packages::decode`.
+pub(super) fn select_freshest_key_packages(kp_events: Vec<nostr::Event>) -> Vec<nostr::Event> {
+    use std::collections::hash_map::Entry;
+    use std::collections::HashMap;
+    let mut by_author: HashMap<String, nostr::Event> = HashMap::new();
+    for ev in kp_events {
+        match by_author.entry(ev.pubkey.to_hex()) {
+            Entry::Occupied(mut slot) => {
+                if ev.created_at > slot.get().created_at {
+                    slot.insert(ev);
+                }
+            }
+            Entry::Vacant(slot) => {
+                slot.insert(ev);
+            }
+        }
+    }
+    let selected: Vec<nostr::Event> = by_author.into_values().collect();
+    for ev in &selected {
+        tracing::info!(
+            target: "nmp_marmot::publish",
+            invitee = %ev.pubkey.to_hex(),
+            key_package_id = %ev.id.to_hex(),
+            d_tag = key_package_d_tag(ev).unwrap_or("<none>"),
+            created_at = ev.created_at.as_secs(),
+            "welcome publish: SELECTED invitee key package (newest by created_at) to build the Welcome against"
+        );
+    }
+    selected
+}
+
 pub(super) fn fill_key_packages_from_cache(
     h: &InnerHandle<'_>,
     invitee_npubs: &[String],

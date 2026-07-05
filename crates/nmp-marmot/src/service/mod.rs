@@ -57,6 +57,7 @@ mod pending_commit;
 
 pub use error::{MarmotError, Result};
 pub use key_package::KeyPackagePublication;
+pub(crate) use key_package::marmot_key_package_d_tag;
 pub use pending_commit::{CreateGroupPending, PendingGroupChange};
 
 use std::collections::HashMap;
@@ -117,27 +118,6 @@ pub struct MarmotService {
     pub(crate) orphaned_commit_count: Arc<AtomicU32>,
 }
 
-/// Stable NIP-33 `d`-tag slot id for an identity's advertised MLS last-resort
-/// key package (kind:30443).
-///
-/// Deterministically derived from the identity pubkey via a domain-separated
-/// SHA-256 so it is STABLE across store re-creations (a random `d`, MDK's
-/// default, is not — see [`MarmotService::publish_key_package`] for the #3057
-/// rationale: republishes must REPLACE, not accumulate, so relays never serve a
-/// key package whose private half is missing from the invitee's current store).
-///
-/// MDK requires the `d` tag to be exactly 64 hex chars (32 bytes); a SHA-256
-/// digest satisfies that exactly. The NIP-33 address is `(kind, pubkey, d)`, so
-/// one deterministic `d` per identity yields exactly one long-lived,
-/// self-replacing key-package slot.
-#[must_use]
-pub(crate) fn marmot_key_package_d_tag(pubkey: &PublicKey) -> String {
-    use nostr::hashes::{sha256, Hash};
-    let mut preimage = b"nmp-marmot:key-package-slot:v1:".to_vec();
-    preimage.extend_from_slice(pubkey.to_hex().as_bytes());
-    sha256::Hash::hash(&preimage).to_string()
-}
-
 impl MarmotService {
     /// Production constructor: encrypted SQLite via the platform keyring.
     /// `db_path` is `<app_support>/marmot-mls-state.sqlite` (owned by this
@@ -196,12 +176,27 @@ impl MarmotService {
 
     // ── KeyPackage cache (populated by Marmot's ingest parser) ─────────────
 
-    /// Cache a peer's full signed kind:30443 event by author pubkey. Called by
-    /// Marmot's ingest parser when the kernel delivers a peer's KeyPackage.
-    /// Overwrites silently — always keep the newest one received.
+    /// Cache a peer's full signed kind:30443 event by author, keeping the
+    /// NEWEST by `created_at` (#3057 round-7). A peer's relay history commonly
+    /// holds MULTIPLE kind:30443 (stale ones under distinct `d` tags + the
+    /// current one); only the latest matches the private half in the peer's live
+    /// MLS store. The kernel delivers them in arbitrary relay/LMDB order, so
+    /// keeping the last-INGESTED risked a STALE selection → the invitee's
+    /// `process_welcome` fails "No matching key package". The nak-provable
+    /// selection point is logged in `select_freshest_key_packages`.
     pub fn cache_key_package(&self, event: Event) {
         if let Ok(mut cache) = self.kp_cache.lock() {
-            cache.insert(event.pubkey.to_hex(), event);
+            use std::collections::hash_map::Entry;
+            match cache.entry(event.pubkey.to_hex()) {
+                Entry::Occupied(mut slot) => {
+                    if event.created_at > slot.get().created_at {
+                        slot.insert(event);
+                    }
+                }
+                Entry::Vacant(slot) => {
+                    slot.insert(event);
+                }
+            }
         }
     }
 
