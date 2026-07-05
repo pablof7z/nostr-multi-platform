@@ -33,7 +33,7 @@ use crate::relay::OutboundMessage;
 /// `run_actor_with_observers`; this only groups the borrows.
 pub(super) struct RouteCtx<'a> {
     pub running: bool,
-    pub queued_publish_outbound: &'a mut Vec<OutboundMessage>,
+    pub queued_actor_outbound: &'a mut Vec<OutboundMessage>,
     pub relay_runtime: &'a mut RelayRuntime,
     pub pool: &'a Pool,
 }
@@ -44,7 +44,7 @@ impl RouteCtx<'_> {
     fn route(&mut self, kernel: &mut Kernel, outbound: Vec<OutboundMessage>) {
         route_dispatch_outbound(
             self.running,
-            self.queued_publish_outbound,
+            self.queued_actor_outbound,
             self.relay_runtime,
             self.pool,
             kernel,

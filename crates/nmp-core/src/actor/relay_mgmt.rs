@@ -272,52 +272,71 @@ pub(super) fn send_all_outbound(
 }
 
 /// Route command-produced outbound frames through the relay pool.
-/// Non-publish frames remain running-gated; publish `EVENT` frames are retained
-/// in actor memory until the next running cycle, while `PublishEngine` remains
-/// the durable source of truth for process restart resume.
+///
+/// While the actor is not yet `running`, **every** outbound frame — REQ/CLOSE
+/// as well as publish `EVENT` — is retained in `queued_actor_outbound` and
+/// replayed verbatim on the next dispatch where `running == true` (see
+/// [`take_non_duplicate_queued`]).
+///
+/// chirp#130 / NMP: this used to only retain publish `EVENT` frames, silently
+/// dropping REQ/CLOSE frames produced by a command dispatched before `Start`
+/// (e.g. `InterestsCommand::OpenObservedInterest`/`OpenInterest`). That drop
+/// was a PERMANENT loss: `Kernel::drain_lifecycle_outbound` compiles a
+/// newly-registered interest into a wire REQ exactly once, synchronously,
+/// regardless of `running`, and records the compile in
+/// `last_compile_fingerprint` (`subs/recompile.rs`) — so no later idle-tick
+/// recompile ever resends a dropped REQ, because the compile inputs never
+/// change again. See the regression test
+/// `stopped_actor_queues_non_publish_frames_and_flushes_once_running` in
+/// `publish_relay_dispatch_tests.rs` for the full mechanism + proof.
+/// `PublishEngine` remains the durable source of truth for publish-retry
+/// across restarts; this in-memory queue only bridges pre-`Start` → running
+/// within one process lifetime.
 pub(super) fn route_dispatch_outbound(
     running: bool,
-    queued_publish_outbound: &mut Vec<OutboundMessage>,
+    queued_actor_outbound: &mut Vec<OutboundMessage>,
     rt: &mut RelayRuntime,
     pool: &Pool,
     kernel: &mut Kernel,
     outbound: Vec<OutboundMessage>,
 ) {
     if running {
-        let queued = take_non_duplicate_queued(queued_publish_outbound, &outbound);
+        let queued = take_non_duplicate_queued(queued_actor_outbound, &outbound);
         send_all_outbound(rt, pool, kernel, queued);
         send_all_outbound(rt, pool, kernel, outbound);
     } else {
-        queue_publish_outbound(queued_publish_outbound, outbound);
+        queue_actor_outbound(queued_actor_outbound, outbound);
     }
 }
 
-fn queue_publish_outbound(
-    queued_publish_outbound: &mut Vec<OutboundMessage>,
+/// Retain every outbound frame produced while the actor is not yet running.
+/// See the [`route_dispatch_outbound`] doc comment for why this must not be
+/// filtered down to publish-only frames.
+fn queue_actor_outbound(
+    queued_actor_outbound: &mut Vec<OutboundMessage>,
     outbound: Vec<OutboundMessage>,
 ) {
-    for message in outbound {
-        if publish_message_key(&message).is_some() {
-            queued_publish_outbound.push(message);
-        }
-    }
+    queued_actor_outbound.extend(outbound);
 }
 
 fn take_non_duplicate_queued(
-    queued_publish_outbound: &mut Vec<OutboundMessage>,
+    queued_actor_outbound: &mut Vec<OutboundMessage>,
     outbound: &[OutboundMessage],
 ) -> Vec<OutboundMessage> {
-    if queued_publish_outbound.is_empty() {
+    if queued_actor_outbound.is_empty() {
         return Vec::new();
     }
     let current_keys = outbound
         .iter()
         .filter_map(publish_message_key)
         .collect::<HashSet<_>>();
-    let queued = std::mem::take(queued_publish_outbound);
+    let queued = std::mem::take(queued_actor_outbound);
     queued
         .into_iter()
         .filter(|message| {
+            // Non-publish frames (REQ/CLOSE) have no `publish_message_key` and
+            // are always replayed; dedup only applies to publish EVENTs,
+            // which can legitimately be re-sent verbatim under the same key.
             publish_message_key(message).is_none_or(|key| !current_keys.contains(&key))
         })
         .collect()
