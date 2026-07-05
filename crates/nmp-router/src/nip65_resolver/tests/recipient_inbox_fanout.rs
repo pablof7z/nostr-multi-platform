@@ -70,6 +70,42 @@ fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
     );
 }
 
+/// chirp#119: a kind:1 reply's `p`-tagged parent author may have NO cached
+/// kind:10002 at all (never seen one, cache miss, cold start on the reader's
+/// side, etc). `lookup_kind10002` returns `None` for that recipient — the
+/// resolver must fail OPEN to the author's own already-resolved write relays,
+/// never fail-closed / return an empty set just because ONE recipient's
+/// inbox could not be resolved. Regression test locking the resolver's
+/// step-4 recipient-inbox fan-out as strictly additive: only `AUTHOR_HEX`'s
+/// kind:10002 is seeded here — `RECIPIENT_HEX` has no cache entry whatsoever.
+#[test]
+fn nip65_resolver_still_routes_to_author_write_when_recipient_has_no_kind10002() {
+    let cache = Arc::new(InMemoryMailboxCache::new());
+    seed_relay(&cache, AUTHOR_HEX, AUTHOR_WRITE_RELAY, "write");
+    // Deliberately no `seed_relay`/`seed_kind10002` call for `RECIPIENT_HEX` —
+    // the reply's parent author has no cached kind:10002 whatsoever.
+    let resolver = mk_resolver(&cache);
+    let out = resolver.resolve(
+        AUTHOR_HEX,
+        &[RECIPIENT_HEX.to_string()],
+        &PublishTarget::Auto,
+        1,
+        &no_block(),
+    );
+    let urls = urls_of(&out);
+    assert!(
+        urls.contains(AUTHOR_WRITE_RELAY),
+        "the author's own write relay must still be routed even when the \
+         p-tagged recipient's inbox cannot be resolved at all (chirp#119) — \
+         got {out:?}"
+    );
+    assert!(
+        !out.is_empty(),
+        "an unresolvable recipient inbox must never fail-close the whole \
+         publish to an empty relay set"
+    );
+}
+
 /// The raw hex pubkey rides on the variant verbatim and is emitted unchanged
 /// by the kernel projection — D6 forbids backend projections from calling
 /// `display::*` abbreviation helpers; the shell renders its own short form.

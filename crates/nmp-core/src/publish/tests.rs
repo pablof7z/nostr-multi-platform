@@ -472,3 +472,8 @@ fn relay_ack_struct_carries_optional_details_for_dispatcher_metadata() {
         "ok ack must not serialise None details (skip_serializing_if): {json}"
     );
 }
+
+// chirp#119: kind:1 reply / recipient-inbox fail-open regression — split out
+// to keep this file under the 500-LOC hard cap (AGENTS.md).
+#[path = "reply_recipient_inbox_tests.rs"]
+mod reply_recipient_inbox_tests;
