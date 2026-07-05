@@ -16,12 +16,43 @@ use crate::app_struct::NmpApp;
 
 impl NmpApp {
     pub fn start_runtime(&self, visible_limit: usize, emit_hz: u32) {
-        let initial_relays = self
+        let mut initial_relays = self
             .composition
             .initial_relays_for_start
             .lock()
             .map(|g| g.clone())
             .unwrap_or_default();
+
+        // chirp#168 (companion to #3059/#3061): `initial_relays_for_start` is
+        // populated ONLY by the legacy `NmpAppBuilder<RelaysDeclared>::start()`
+        // path, which loads the on-disk relay-config sidecar (or seeds it from
+        // the declared defaults on genuine first run) before staging this
+        // slot. Every UniFFI facade (Chirp's `ChirpApp`, the Android
+        // equivalent, ...) constructs via the raw `new_app()` + `start_runtime`
+        // path instead and never populates this slot at all — so a host that
+        // re-seeds its onboarding-default relays via pre-start `add_relay()`
+        // calls on EVERY launch (as Chirp's `seedDefaultRelays()` does) had
+        // those defaults silently become the ONLY relay set the kernel ever
+        // saw, discarding any persisted user edit (Settings → Relays) with no
+        // warning. Fall back to loading the sidecar directly here so every
+        // construction path honors a persisted custom relay set, not just the
+        // builder path: if a sidecar exists, its rows win and fully replace
+        // whatever pre-start `add_relay` calls already staged (`Start`'s
+        // handler unconditionally overwrites `configured_relays` whenever
+        // `initial_relays` is non-empty). A missing sidecar (genuine first
+        // run) leaves `initial_relays` empty — no forced overwrite — and the
+        // pre-existing `configured_relays`-change observer persists whatever
+        // the host pre-seeded as the sidecar's first-run baseline itself (see
+        // `relay_config` module doc).
+        if initial_relays.is_empty() {
+            if let Some(dir) = self.storage_path_for_start() {
+                if !dir.trim().is_empty() {
+                    if let Some(loaded) = crate::relay_config::load(std::path::Path::new(&dir)) {
+                        initial_relays = loaded;
+                    }
+                }
+            }
+        }
 
         if self.consumed_projections_are_undeclared() {
             tracing::warn!(
