@@ -72,15 +72,20 @@ impl Nip29GroupRosterSession {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29JoinedGroupsSession {
     pub(super) active_pubkey: String,
-    pub(super) host_relay_url: String,
+    pub(super) host_relay_urls: Vec<String>,
 }
 
 impl Nip29JoinedGroupsSession {
     #[must_use]
     pub fn new(active_pubkey: String, host_relay_url: String) -> Self {
+        Self::new_for_relays(active_pubkey, vec![host_relay_url])
+    }
+
+    #[must_use]
+    pub fn new_for_relays(active_pubkey: String, host_relay_urls: Vec<String>) -> Self {
         Self {
             active_pubkey,
-            host_relay_url,
+            host_relay_urls: normalize_relay_urls(host_relay_urls),
         }
     }
 
@@ -91,8 +96,23 @@ impl Nip29JoinedGroupsSession {
 
     #[must_use]
     pub fn host_relay_url(&self) -> &str {
-        &self.host_relay_url
+        self.host_relay_urls.first().map_or("", String::as_str)
     }
+
+    #[must_use]
+    pub fn host_relay_urls(&self) -> &[String] {
+        &self.host_relay_urls
+    }
+}
+
+fn normalize_relay_urls(host_relay_urls: Vec<String>) -> Vec<String> {
+    let mut relays = host_relay_urls
+        .into_iter()
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    relays.sort();
+    relays.dedup();
+    relays
 }
 
 /// Runtime handle for one NIP-29 group-events read session.

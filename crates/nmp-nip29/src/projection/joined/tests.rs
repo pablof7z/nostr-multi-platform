@@ -2,6 +2,22 @@ use super::*;
 use crate::kinds::{KIND_GROUP_METADATA, KIND_PUT_USER};
 
 fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
+    event_from(
+        id,
+        kind,
+        created_at,
+        tags,
+        vec!["wss://groups.example.com".to_string()],
+    )
+}
+
+fn event_from(
+    id: &str,
+    kind: u32,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+    relay_provenance: Vec<String>,
+) -> KernelEvent {
     KernelEvent {
         id: id.to_string(),
         author: "relay".to_string(),
@@ -9,7 +25,7 @@ fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> Kernel
         created_at,
         tags,
         content: String::new(),
-        relay_provenance: vec!["wss://groups.example.com".to_string()],
+        relay_provenance,
     }
 }
 
@@ -43,6 +59,59 @@ fn only_groups_containing_active_pubkey_are_projected() {
     assert_eq!(snapshot.groups[0].group_id, "mine");
     assert_eq!(snapshot.groups[0].member_count, 2);
     assert!(snapshot.groups[0].is_member);
+}
+
+#[test]
+fn tracked_relay_projection_keeps_same_local_id_distinct_per_relay() {
+    let active = "a".repeat(64);
+    let proj =
+        JoinedGroupsProjection::new_for_relays(&active, ["wss://h1.example", "wss://h2.example"]);
+    for (relay, event_id) in [("wss://h1.example", "h1"), ("wss://h2.example", "h2")] {
+        proj.on_kernel_event(&event_from(
+            event_id,
+            KIND_GROUP_MEMBERS,
+            100,
+            vec![d("room"), p(&active)],
+            vec![relay.to_string()],
+        ));
+    }
+
+    let snapshot = proj.snapshot();
+    assert_eq!(snapshot.groups.len(), 2);
+    assert!(snapshot
+        .groups
+        .iter()
+        .any(|g| g.group_id == "room" && g.host_relay_url == "wss://h1.example"));
+    assert!(snapshot
+        .groups
+        .iter()
+        .any(|g| g.group_id == "room" && g.host_relay_url == "wss://h2.example"));
+}
+
+#[test]
+fn removing_tracked_relay_purges_its_joined_rows() {
+    let active = "a".repeat(64);
+    let proj =
+        JoinedGroupsProjection::new_for_relays(&active, ["wss://h1.example", "wss://h2.example"]);
+    for (relay, room) in [
+        ("wss://h1.example", "room-h1"),
+        ("wss://h2.example", "room-h2"),
+    ] {
+        proj.on_kernel_event(&event_from(
+            room,
+            KIND_GROUP_MEMBERS,
+            100,
+            vec![d(room), p(&active)],
+            vec![relay.to_string()],
+        ));
+    }
+
+    proj.remove_relay("wss://h1.example");
+
+    let snapshot = proj.snapshot();
+    assert_eq!(snapshot.groups.len(), 1);
+    assert_eq!(snapshot.groups[0].group_id, "room-h2");
+    assert_eq!(snapshot.groups[0].host_relay_url, "wss://h2.example");
 }
 
 #[test]

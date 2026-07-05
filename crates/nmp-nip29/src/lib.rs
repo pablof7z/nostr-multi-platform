@@ -67,15 +67,16 @@ pub use projection::{
 pub use read_session::{
     close_nip29_group_discovery_read_by_key, close_nip29_group_discovery_session,
     close_nip29_group_events_read_by_key, close_nip29_group_events_session,
-    close_nip29_group_roster_session, close_nip29_joined_groups_session,
-    open_nip29_group_discovery_session, open_nip29_group_discovery_session_with_reader,
-    open_nip29_group_events_session, open_nip29_group_events_session_with_reader,
-    open_nip29_group_roster_session, open_nip29_group_roster_session_with_reader,
-    open_nip29_joined_groups_session, open_nip29_joined_groups_session_with_reader,
-    Nip29GroupDiscoveryHandle, Nip29GroupDiscoverySession, Nip29GroupEventsHandle,
-    Nip29GroupEventsSession, Nip29GroupRosterHandle, Nip29GroupRosterSession,
-    Nip29JoinedGroupsHandle, Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY,
-    GROUP_ROSTER_KEY, JOINED_GROUPS_KEY,
+    close_nip29_group_roster_session, close_nip29_joined_groups_read_by_key,
+    close_nip29_joined_groups_session, open_nip29_group_discovery_session,
+    open_nip29_group_discovery_session_with_reader, open_nip29_group_events_session,
+    open_nip29_group_events_session_with_reader, open_nip29_group_roster_session,
+    open_nip29_group_roster_session_with_reader, open_nip29_joined_groups_session,
+    open_nip29_joined_groups_session_with_reader, Nip29GroupDiscoveryHandle,
+    Nip29GroupDiscoverySession, Nip29GroupEventsHandle, Nip29GroupEventsSession,
+    Nip29GroupRosterHandle, Nip29GroupRosterSession, Nip29JoinedGroupsHandle,
+    Nip29JoinedGroupsSession, DISCOVERED_GROUPS_KEY, GROUP_EVENTS_KEY, GROUP_ROSTER_KEY,
+    JOINED_GROUPS_KEY,
 };
 pub use search::{GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
 pub use wire::discovered_groups_fb::{

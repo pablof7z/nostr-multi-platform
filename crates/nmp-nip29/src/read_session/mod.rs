@@ -278,22 +278,48 @@ pub fn open_nip29_joined_groups_session_with_reader(
 ) -> Option<(Nip29JoinedGroupsHandle, Arc<JoinedGroupsProjection>)> {
     let Nip29JoinedGroupsSession {
         active_pubkey,
-        host_relay_url,
+        host_relay_urls,
     } = descriptor;
     if active_pubkey.is_empty() {
         return None;
     }
-    let (projection, relay_pin) = if host_relay_url.is_empty() {
-        (Arc::new(JoinedGroupsProjection::new(active_pubkey)), None)
-    } else {
-        (
-            Arc::new(JoinedGroupsProjection::new_for_host(
-                active_pubkey,
-                host_relay_url.clone(),
-            )),
-            Some(host_relay_url),
-        )
-    };
+
+    if let Some(reducer) = host.read_demand_set_reducer(JOINED_GROUPS_KEY) {
+        if let Ok(projection) = reducer.downcast::<JoinedGroupsProjection>() {
+            if projection.active_pubkey() == active_pubkey.as_str() {
+                for relay in &host_relay_urls {
+                    projection.add_relay(relay.clone());
+                }
+                let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&projection) as _;
+                let desired: Vec<KeyedReadDemand> = host_relay_urls
+                    .iter()
+                    .map(|relay| joined_member_for_relay(relay))
+                    .collect();
+                if reconcile_read_demand_set(host, JOINED_GROUPS_KEY, &observer, desired) {
+                    for tracked in projection.host_relay_urls() {
+                        if !host_relay_urls.contains(&tracked) {
+                            projection.remove_relay(&tracked);
+                        }
+                    }
+                    let session_id = host
+                        .read_session_id_for_projection_key(JOINED_GROUPS_KEY)
+                        .unwrap_or(nmp_read_session::ReadSessionId(0));
+                    let handle = Nip29JoinedGroupsHandle(ReadHandle {
+                        projection_key: JOINED_GROUPS_KEY.to_string(),
+                        session_id,
+                    });
+                    return Some((handle, projection));
+                }
+            }
+        }
+    }
+
+    let _ = host.close_read_session_by_projection_key(JOINED_GROUPS_KEY);
+
+    let projection = Arc::new(JoinedGroupsProjection::new_for_relays(
+        active_pubkey,
+        host_relay_urls.clone(),
+    ));
     let projection_reader = Arc::clone(&projection);
 
     let projection_for_output = Arc::clone(&projection);
@@ -309,17 +335,41 @@ pub fn open_nip29_joined_groups_session_with_reader(
         })
     });
 
-    let read_handle = open_group_read(
+    let members: Vec<KeyedReadDemand> = host_relay_urls
+        .iter()
+        .map(|relay| joined_member_for_relay(relay))
+        .collect();
+
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&projection) as _;
+    let reducer: Arc<dyn std::any::Any + Send + Sync> = Arc::clone(&projection) as _;
+
+    let read_handle = open_read_demand_set(
         host,
-        JOINED_GROUPS_PROJECTION_TOKEN,
-        JOINED_GROUPS_CONSUMER,
-        SCOPE_ACTIVE_ACCOUNT,
-        relay_pin,
-        group_metadata_filter_json(),
-        projection as Arc<dyn ObservedProjectionSink>,
-        output_encoder,
+        ReadDemandSetSpec {
+            projection_key: JOINED_GROUPS_PROJECTION_TOKEN.into(),
+            members,
+            observer,
+            reducer,
+            output_encoder,
+        },
     );
     Some((Nip29JoinedGroupsHandle(read_handle), projection_reader))
+}
+
+fn joined_member_for_relay(host_relay_url: &str) -> KeyedReadDemand {
+    KeyedReadDemand {
+        key: host_relay_url.to_string(),
+        demand: ReadDemand {
+            filter_json: group_metadata_filter_json(),
+            consumer_id: format!("{JOINED_GROUPS_CONSUMER}::{host_relay_url}"),
+            scope: SCOPE_ACTIVE_ACCOUNT,
+            relay_pin: Some(host_relay_url.to_string()),
+            is_indexer_discovery: false,
+            lifecycle: InterestLifecycle::Tailing,
+            replay_limit: NIP29_GROUP_REPLAY_LIMIT,
+            replay: ReadReplayPolicy::Structural,
+        },
+    }
 }
 
 #[must_use]
@@ -328,6 +378,12 @@ pub fn close_nip29_joined_groups_session(
     handle: Nip29JoinedGroupsHandle,
 ) -> bool {
     close_read(host, &handle.0)
+}
+
+/// Close the singleton NIP-29 joined-groups read by its concept-owned output key.
+#[must_use]
+pub fn close_nip29_joined_groups_read_by_key(host: &dyn ReadHost) -> bool {
+    host.close_read_session_by_projection_key(JOINED_GROUPS_KEY)
 }
 
 #[must_use]
@@ -420,3 +476,7 @@ fn open_group_read(
         },
     )
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod tests;
