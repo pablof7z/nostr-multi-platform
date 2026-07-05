@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Issue 3030 Wallet Projection Mint Metadata</title>
+    <link rel="stylesheet" href="../../assets/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="topbar">
+        <a href="../../">Planning pages</a>
+        
+      </nav>
+      <section class="hero">
+        <div class="eyebrow">Architecture plan</div>
+        <h1>Issue 3030 Wallet Projection Mint Metadata</h1>
+        <p class="summary">Enrich the merged wallet projection with a bounded accepted-mints row list and Rust-owned NUT-06 metadata so shells can render first-class mint identity without hardcoded tables or native-side joins.</p>
+        <div class="meta">
+          <span class="pill ready">Ready to implement</span>
+          <span class="pill">86 percent certainty</span>
+        </div>
+      </section>
+      <div class="grid">
+        <div>
+
+          <section class="section">
+            <h2>Boundaries</h2>
+            <pre class="mermaid">flowchart LR
+  Config[Accepted mint URLs&lt;br/&gt;Cashu wallet state] --&gt; Refresh[Metadata refresh command&lt;br/&gt;GET /v1/info + /v1/keysets]
+  Refresh --&gt; Cache[Rust-owned metadata cache&lt;br/&gt;canonical mint URL key]
+  Cache --&gt; Projection[WalletProjection&lt;br/&gt;accepted_mints + balances]
+  Projection --&gt; Shells[Shells render only&lt;br/&gt;no hardcoded mint table]</pre>
+          </section>
+          <section class="section">
+            <h2>Very High Level</h2>
+            <p>Treat issue #3030 as a Rust-owned wallet projection follow-up, not a native-shell workaround. Add a bounded `accepted_mints` row list to `WalletProjection`, keeping `accepted_mint_count` for compatibility while making the actual accepted mint URLs available. Each row should carry the canonical URL plus optional, display-safe metadata: name, icon URL, advertised units/method settings from NUT-06, and keyset-derived input fee information where the protocol actually provides it. Do not invent an unsupported generic output-fee field; expose only source-backed settings. Add transport-neutral NUT-06 `/v1/info` request/response parsing in `nmp-nip60`, and route any shared NUT-06 capability extraction through one parser so `nmp-nip87` discovery and wallet metadata do not drift. `nmp-wallet` keeps a Rust-owned metadata cache keyed by canonical accepted mint URL. Create/recover/set-mints/restore paths update the accepted URL set, evict removed mints, and schedule bounded metadata refresh commands off the projection emit path. The snapshot closure only reads the cache. Native, browser, TUI, and external shells render the new rows and never fetch mint metadata or hardcode names themselves.</p>
+          </section>
+          <section class="section">
+            <h2>Existing Rules Or ADRs</h2>
+            <ul><li>AGENTS.md and docs/aim.md section 2: Rust owns wallet/domain facts; shells render only. The plan keeps mint identity, accepted-mint membership, and metadata refresh state in `nmp-wallet`/`nmp-nip60`.</li><li>ADR-0072: capability flow is Rust request, raw operation, Rust decision. Mint HTTP metadata fetches are Rust-owned worker/capability work; native shells do not decide retry, cache, or product meaning.</li><li>D4/D5/D8: one writer, bounded projection, no hot-path I/O. `accepted_mints` is capped by existing wallet projection bounds and snapshot emission only reads precomputed cache state.</li><li>`docs/architecture/nip60-nip61-wallet-design.md`: the wallet projection may expose balances by mint and accepted nutzap mints, but must never expose proofs, private keys, quote ids, raw mint responses, or unbounded history.</li><li>`docs/architecture/crate-boundaries.md`: `nmp-wallet` is the wallet composition owner; `nmp-mint-discovery` remains the independent discovered/recommended-mints owner and is not folded back into wallet.</li></ul>
+          </section>
+          <section class="section">
+            <h2>Rule Tension And Tightening</h2>
+            <h3>Possible loosening</h3>
+            <ul><li>No rule needs loosening.</li><li>The tempting shortcut, letting Swift/Kotlin/TUI fetch `/v1/info` or hardcode a mint registry, would violate ADR-0072 and D4, so the plan rejects it.</li></ul>
+            <h3>Possible tightening</h3>
+            <ul><li>Consider adding a durable projection-enrichment rule: any HTTP-backed projection metadata must define its owner, cache key, invalidation trigger, bounds, and non-hot-path refresh mechanism before implementation.</li><li>Consider adding a wallet projection invariant that count-only fields should have a row list when shells need to render the counted entities.</li></ul>
+          </section>
+          <section class="section">
+            <h2>Alternatives Considered</h2>
+            <ul><li>Expose only `accepted_mints: Vec&lt;String&gt;` and leave metadata to shells. Simpler, but it leaves the NUT-06 identity problem unsolved and encourages native-side joins.</li><li>Fold NIP-87 discovered mints back into `WalletProjection`. Rejected because #2880 deliberately unwound discovery into `nmp-mint-discovery`; discovered/recommended mints and accepted wallet mints are different product facts.</li><li>Use `nmp-mint-discovery` audit/discovery rows as the accepted-mint metadata source. Useful when composed, but not sufficient because a wallet can accept a mint that has no NIP-87 announcement or recommendation.</li><li>Fetch `/v1/info` synchronously during `WalletRuntime::snapshot`. Rejected as a D8 violation and a projection-emission performance risk.</li></ul>
+          </section>
+        </div>
+        <aside>
+          <section class="card">
+            <h2>TTS Version</h2>
+            <audio controls preload="metadata" src="https://blossom.primal.net/0f855b1b4f7fe4985a63594cc7eaf42252c074e30a590289217235ead697f834.mp3"></audio>
+            <p>Audio-friendly narration generated from the planning payload.</p>
+          </section>
+          <section class="card">
+            <h2>Certainty</h2>
+            <div class="certainty ">86%</div>
+            <p>Ready to implement.</p>
+          </section>
+          <section class="card links">
+            <h2>Links</h2>
+            
+            <a href="https://blossom.primal.net/0f855b1b4f7fe4985a63594cc7eaf42252c074e30a590289217235ead697f834.mp3">Open narration</a>
+            <a href="../../docs/plans/issue-3030-wallet-projection-mint-metadata/plan.md">Detailed plan file</a>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
