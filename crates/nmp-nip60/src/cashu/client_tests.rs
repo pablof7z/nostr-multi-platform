@@ -148,6 +148,93 @@ fn get_mint_quote_status_gives_up_after_max_retries_of_429() {
     ));
 }
 
+/// `MintClient::get_keysets_with_fees` merges `input_fee_ppk` across EVERY
+/// unit the mint advertises, not just `"sat"` — the generalization
+/// `get_sat_keyset` now delegates to.
+#[test]
+fn get_keysets_with_fees_merges_fees_across_every_unit() {
+    let url = spawn_sequenced_mock(vec![
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","keys":{"1":"02aa"}},
+                {"id":"00usd","unit":"usd","keys":{"1":"02bb"}}
+            ]}"#,
+        ),
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","input_fee_ppk":100},
+                {"id":"00usd","unit":"usd","input_fee_ppk":250}
+            ]}"#,
+        ),
+    ]);
+    let client = MintClient::new(&url);
+    let keysets = client
+        .get_keysets_with_fees()
+        .expect("keysets with fees round-trip");
+    assert_eq!(keysets.len(), 2);
+    let sat = keysets.iter().find(|ks| ks.unit == "sat").unwrap();
+    let usd = keysets.iter().find(|ks| ks.unit == "usd").unwrap();
+    assert_eq!(sat.input_fee_ppk, 100);
+    assert_eq!(usd.input_fee_ppk, 250);
+}
+
+/// `get_keysets_with_fees` merges the FIRST occurrence of a duplicate keyset
+/// id, byte-identical to the original `get_sat_keyset`'s `find(...)` — a
+/// malformed `/v1/keysets` that repeats an id must not let a later entry's
+/// fee win (LAST-wins would silently change a melt/swap fee). Here the first
+/// `00sat` advertises fee 100, a second (malformed) `00sat` advertises 999;
+/// the merged fee must be 100.
+#[test]
+fn get_keysets_with_fees_is_first_wins_on_a_duplicate_keyset_id() {
+    let url = spawn_sequenced_mock(vec![
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[{"id":"00sat","unit":"sat","keys":{"1":"02aa"}}]}"#,
+        ),
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","input_fee_ppk":100},
+                {"id":"00sat","unit":"sat","input_fee_ppk":999}
+            ]}"#,
+        ),
+    ]);
+    let client = MintClient::new(&url);
+    let keysets = client
+        .get_keysets_with_fees()
+        .expect("keysets with fees round-trip");
+    assert_eq!(keysets.len(), 1);
+    assert_eq!(
+        keysets[0].input_fee_ppk, 100,
+        "the FIRST duplicate-id entry's fee must win, never the last"
+    );
+}
+
+/// `MintClient::get_mint_info` end-to-end against a local mock mint — proves
+/// the whole roundtrip (request build -> `ureq` call -> response parse),
+/// complementing `http::info`'s own builder-shape/decode-only unit tests.
+#[test]
+fn get_mint_info_parses_a_sample_v1_info_body() {
+    let url = spawn_sequenced_mock(vec![(
+        "HTTP/1.1 200 OK",
+        "",
+        r#"{"name":"Test Mint","pubkey":"02deadbeef","version":"Nutshell/0.15.0","icon_url":"https://mint.example/icon.png"}"#,
+    )]);
+    let client = MintClient::new(&url);
+    let info = client.get_mint_info().expect("mint info round-trip");
+    assert_eq!(info.name.as_deref(), Some("Test Mint"));
+    assert_eq!(
+        info.icon_url.as_deref(),
+        Some("https://mint.example/icon.png")
+    );
+}
+
 #[test]
 fn split_amount_reexport_still_reachable() {
     // `split_amount` moved to `http.rs` (always-compiled, no `ureq`) so

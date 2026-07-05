@@ -26,7 +26,15 @@
 //! - [`ingest_tests`] — #2965: `ingest::ingest_wallet_config`/
 //!   `ingest_token_event`, the pure decode/fold functions wallet recovery
 //!   drives — never-clobber-if-already-created, and the `del`-field
-//!   confluence/dedup guarantee regardless of arrival order.
+//!   confluence/dedup guarantee regardless of arrival order. Also #3030 PR2
+//!   of 2: `ingest_wallet_config`'s `Ok(bool)` fresh-vs-no-op signal.
+//! - [`mint_info_snapshot_tests`] — #3030 PR2 of 2:
+//!   `snapshot::mint_info_rows`'s relevant-mint-URL join (accepted + balance +
+//!   recent history/receive rows) against `state.mint_info`'s cache, and the
+//!   full `CashuWalletBackend::snapshot()` wiring of the resulting rows.
+//!   `mint_info::run_mint_info_refresh`/`spawn_mint_info_refresh`/`fetch_one`
+//!   get their own tests colocated with that module
+//!   (`mint_info.rs`'s `#[path] mod tests`), mirroring `check_state.rs`.
 //! - [`recover_tests`] — #2965: `RecoverCashuWalletCommand` — the explicit
 //!   `nmp.wallet.cashu.recover` action, fail-closed when no cached kind:17375
 //!   exists, and the happy-path decrypt->load->`record_action_success` chain.
@@ -75,6 +83,7 @@ mod deposit_retry_tests;
 mod deposit_tests;
 mod fail_reentrancy_tests;
 mod ingest_tests;
+mod mint_info_snapshot_tests;
 mod mint_url_canonicalize_tests;
 mod publish_info_tests;
 mod recover_tests;

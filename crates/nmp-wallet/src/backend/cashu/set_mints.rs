@@ -104,15 +104,26 @@ impl ProtocolCommand for SetCashuMintsCommand {
             created_at,
             correlation_id,
             move |_tx, _signed| {
-                let mut state = lock_state(&on_signed_state);
-                // Only the accepted-mint list changes — `cashu_pubkey_hex`/
-                // `cashu_privkey` are deliberately left untouched (that is
-                // the whole point of this command: key-PRESERVING).
-                state.mints = mints;
-                // Best-effort: a journal-invariant violation here would mean
-                // this operation was already terminal, which can't happen on
-                // this single-shot path — but never panic on it (D6).
-                let _ = state.transition(&on_signed_op, WalletOperationState::PublishPending);
+                let mints_for_refresh = {
+                    let mut state = lock_state(&on_signed_state);
+                    // Only the accepted-mint list changes — `cashu_pubkey_hex`/
+                    // `cashu_privkey` are deliberately left untouched (that is
+                    // the whole point of this command: key-PRESERVING).
+                    state.mints = mints;
+                    // Best-effort: a journal-invariant violation here would mean
+                    // this operation was already terminal, which can't happen on
+                    // this single-shot path — but never panic on it (D6).
+                    let _ = state.transition(&on_signed_op, WalletOperationState::PublishPending);
+                    state.mints.clone()
+                };
+                // #3030 PR2 of 2 — the accepted-mint set just changed;
+                // refresh cached NUT-06/NUT-02 info for the new list (drops
+                // stale entries implicitly: `snapshot.rs`'s `mint_info_rows`
+                // only ever surfaces rows for CURRENTLY relevant mints).
+                super::mint_info::spawn_mint_info_refresh(
+                    Arc::clone(&on_signed_state),
+                    mints_for_refresh,
+                );
             },
         );
 

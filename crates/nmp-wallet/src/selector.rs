@@ -229,9 +229,13 @@ impl WalletBackendSelector {
     /// getting stuck at `NotConfigured` forever pending an explicit
     /// `select_backend` call nothing requires a user to ever make.
     /// `capabilities` is the union from `union_capabilities`. Balances/
-    /// pending operations/history/receive rows/accepted mints concatenate
-    /// across every backend, bounded by the existing
-    /// `MAX_WALLET_PROJECTION_ROWS` machinery in `projection.rs`.
+    /// pending operations/history/receive rows/accepted mints/mint info
+    /// concatenate across every backend, bounded by the existing
+    /// `MAX_WALLET_PROJECTION_ROWS` machinery in `projection.rs`. Only
+    /// `CashuWalletBackend` populates `mint_info` today (its cache is keyed
+    /// by canonical mint URL, so it never emits a duplicate URL itself); a
+    /// future second Cashu-shaped backend would need its own dedup pass here
+    /// if it ever names the same mint URL another backend already covers.
     /// `cashu_p2pk_pubkey`/`accepted_mint_count`/`accepted_relay_count` are
     /// Cashu-shaped fields with no NWC analogue — take the first non-default
     /// value/sum across backends respectively.
@@ -265,7 +269,8 @@ impl WalletBackendSelector {
                 snapshots
                     .iter()
                     .flat_map(|s| s.projection.accepted_mints.clone()),
-            );
+            )
+            .with_mint_info(snapshots.iter().flat_map(|s| s.projection.mint_info.clone()));
 
         projection.cashu_p2pk_pubkey = snapshots
             .iter()

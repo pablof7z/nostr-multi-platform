@@ -49,6 +49,8 @@
 //! operation family lives in its own submodule:
 //!
 //! - [`keyset`] — `/v1/keys` + `/v1/keysets` (NUT-01/NUT-02).
+//! - [`info`] — `/v1/info` (NUT-06), raw mint metadata (name, icon,
+//!   description, ...) — no fee data (see that module's doc comment).
 //! - [`quote`] — mint-quote request/status (NUT-04/NUT-23).
 //! - [`blinded`] — the shared blind/unblind + DLEQ-verify engine minting and
 //!   swapping both build on.
@@ -65,6 +67,7 @@
 
 mod blinded;
 mod checkstate;
+mod info;
 mod keyset;
 mod melt;
 mod mint;
@@ -76,6 +79,7 @@ pub(crate) mod mint_http_support;
 
 pub use blinded::split_amount;
 pub use checkstate::{build_check_state_request, parse_check_state_response};
+pub use info::{build_get_info_request, parse_info_response};
 pub use keyset::{build_get_keys_request, build_get_keysets_request, parse_keys_response};
 // Re-exported for `nutzap::verify_nutzap_dleq` (native-only); unused (and
 // hence warning-worthy) in a `--no-default-features` build.
@@ -117,6 +121,7 @@ pub enum MintHttpMethod {
 pub enum MintHttpOperation {
     GetKeys,
     GetKeysets,
+    GetInfo,
     CreateMintQuoteBolt11,
     GetMintQuoteBolt11,
     MintBolt11,

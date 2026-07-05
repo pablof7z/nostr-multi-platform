@@ -18,6 +18,7 @@
 //! validation this crate's tests exercise. `MintClient` itself owns nothing
 //! but the mint URL and a `secp256k1` context.
 
+use std::collections::HashMap;
 use std::io::Read as _;
 use std::time::Duration;
 
@@ -177,28 +178,63 @@ impl MintClient {
         http::parse_keys_response(&raw)
     }
 
-    /// Fetch the active sat-unit keyset (with fee info from `/v1/keysets` merged in).
-    pub fn get_sat_keyset(&self) -> Result<KeySet, Nip60Error> {
-        // /v1/keys has the denomination→pubkey map; /v1/keysets has input_fee_ppk.
+    /// Fetch every active keyset (every unit the mint advertises, not just
+    /// "sat") with `input_fee_ppk` merged in from `/v1/keysets` — generalizes
+    /// [`Self::get_sat_keyset`] (which narrows to the `"sat"` unit) across
+    /// units. #3030 PR2's wallet mint-info table needs a fee entry per unit a
+    /// mint actually advertises, not just sat.
+    ///
+    /// Same best-effort merge posture as `get_sat_keyset`: a `/v1/keysets`
+    /// failure leaves every keyset's `input_fee_ppk` at its `/v1/keys`
+    /// default (0) rather than failing the whole call — fee display degrades
+    /// gracefully, it never blocks showing the mint's keys.
+    pub fn get_keysets_with_fees(&self) -> Result<Vec<KeySet>, Nip60Error> {
+        // /v1/keys has the denomination→pubkey map (one entry per active
+        // keyset, across every unit); /v1/keysets has input_fee_ppk.
         let keys_resp = self.get_keys()?;
-        let mut keyset = keys_resp
-            .keysets
-            .into_iter()
-            .find(|ks| ks.unit == "sat")
-            .ok_or_else(|| Nip60Error::MintProtocol("no sat keyset found".into()))?;
+        let mut keysets = keys_resp.keysets;
 
-        // Merge in fee info from /v1/keysets (best-effort; ignore errors).
         let keysets_raw = self.roundtrip(&http::build_get_keysets_request());
         if let Ok(keysets_resp) = keysets_raw.and_then(|raw| http::parse_keys_response(&raw)) {
-            if let Some(ks_meta) = keysets_resp
-                .keysets
-                .into_iter()
-                .find(|ks| ks.id == keyset.id)
-            {
-                keyset.input_fee_ppk = ks_meta.input_fee_ppk;
+            // FIRST-wins on a duplicate keyset id — byte-identical to the
+            // original `get_sat_keyset`'s `find(...)` (which returned the
+            // FIRST matching entry). `HashMap::collect` would be LAST-wins;
+            // only reachable via a malformed `/v1/keysets` response with a
+            // repeated id, but this feeds the melt/swap fee path, so it must
+            // match the audited original exactly. `or_insert` keeps the
+            // first occurrence.
+            let mut fees: HashMap<String, u64> = HashMap::new();
+            for ks in keysets_resp.keysets {
+                fees.entry(ks.id).or_insert(ks.input_fee_ppk);
+            }
+            for ks in &mut keysets {
+                if let Some(fee) = fees.get(&ks.id) {
+                    ks.input_fee_ppk = *fee;
+                }
             }
         }
-        Ok(keyset)
+        Ok(keysets)
+    }
+
+    /// Fetch the active sat-unit keyset (with fee info from `/v1/keysets`
+    /// merged in) — a thin `"sat"`-unit narrowing of
+    /// [`Self::get_keysets_with_fees`], kept as its own method since sat is
+    /// this crate's primary unit and every existing caller names it directly.
+    pub fn get_sat_keyset(&self) -> Result<KeySet, Nip60Error> {
+        self.get_keysets_with_fees()?
+            .into_iter()
+            .find(|ks| ks.unit == "sat")
+            .ok_or_else(|| Nip60Error::MintProtocol("no sat keyset found".into()))
+    }
+
+    // ─── Mint info (NUT-06) ─────────────────────────────────────────────────
+
+    /// Fetch the mint's raw NUT-06 metadata (name, icon, description, ...).
+    /// No fee data here — see [`Self::get_keysets_with_fees`] for
+    /// `input_fee_ppk`.
+    pub fn get_mint_info(&self) -> Result<MintInfoResponse, Nip60Error> {
+        let raw = self.roundtrip(&http::build_get_info_request())?;
+        http::parse_info_response(&raw)
     }
 
     /// Compute the swap fee for `n` inputs given `input_fee_ppk` (parts per thousand).

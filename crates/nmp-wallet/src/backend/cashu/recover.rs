@@ -75,6 +75,13 @@ impl ProtocolCommand for RecoverCashuWalletCommand {
             // (#2977 — see module docs) rather than assuming the passive
             // path's own check-state pass already ran.
             let worker_tx = ctx.command_sender_clone();
+            // #3030 PR2 of 2 — "once on recover": an explicit recover call
+            // (even this idempotent, already-loaded branch) is exactly the
+            // "make sure my wallet's info is up to date" moment a shell
+            // dispatches this action for — refresh cached NUT-06/NUT-02 info
+            // for the currently-accepted mints too.
+            let mints = lock_state(&state).mints.clone();
+            super::mint_info::spawn_mint_info_refresh(Arc::clone(&state), mints);
             std::thread::spawn(move || {
                 run_check_state_pass(&state);
                 if let Some(id) = correlation_id {
@@ -125,7 +132,22 @@ impl ProtocolCommand for RecoverCashuWalletCommand {
                     }
                 };
                 match ingest_wallet_config(&state, &plaintext) {
-                    Ok(()) => {
+                    Ok(fresh) => {
+                        // #3030 PR2 of 2 — this is the "once on recover"
+                        // trigger for a wallet that had NOT been loaded yet
+                        // (the already-loaded idempotent branch above has its
+                        // own trigger). `fresh` is always `true` on this path
+                        // in practice (the caller already checked `!created`
+                        // before reaching here), but this reads the return
+                        // value rather than assuming it, matching
+                        // `ingest.rs`'s passive-path caller.
+                        if fresh {
+                            let mints = lock_state(&state).mints.clone();
+                            super::mint_info::spawn_mint_info_refresh(
+                                Arc::clone(&state),
+                                mints,
+                            );
+                        }
                         // #2977 — reconcile before reporting success (see
                         // module docs); off the actor thread, this
                         // continuation's own thread since mint HTTP is

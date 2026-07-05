@@ -13,8 +13,8 @@ use crate::journal::{
     WalletOperationState,
 };
 use crate::projection::{
-    WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletProjection, WalletReadiness,
-    WalletReceiveRow,
+    WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletMintFeeRow, WalletMintInfoRow,
+    WalletProjection, WalletReadiness, WalletReceiveRow,
 };
 
 fn fully_populated() -> WalletProjection {
@@ -95,6 +95,31 @@ fn fully_populated() -> WalletProjection {
             timestamp: Some(1_700_000_200),
             accepted: true,
         }],
+        mint_info: vec![
+            WalletMintInfoRow {
+                url: "https://mint.example".to_string(),
+                name: Some("Example Mint".to_string()),
+                icon_url: Some("https://mint.example/icon.png".to_string()),
+                units: vec!["sat".to_string(), "usd".to_string()],
+                input_fee_ppk_by_unit: vec![
+                    WalletMintFeeRow {
+                        unit: "sat".to_string(),
+                        input_fee_ppk: 100,
+                    },
+                    WalletMintFeeRow {
+                        unit: "usd".to_string(),
+                        input_fee_ppk: 0,
+                    },
+                ],
+            },
+            WalletMintInfoRow {
+                url: "https://mint.two".to_string(),
+                name: None,
+                icon_url: None,
+                units: Vec::new(),
+                input_fee_ppk_by_unit: Vec::new(),
+            },
+        ],
     }
 }
 
@@ -119,6 +144,56 @@ fn round_trips_empty_projection_with_all_options_none() {
     assert!(decoded.recent_history.is_empty());
     assert!(decoded.receive_rows.is_empty());
     assert!(decoded.accepted_mints.is_empty());
+    assert!(decoded.mint_info.is_empty());
+}
+
+/// #3030 PR2 of 2 — `mint_info` round-trips the empty case (no cached mint
+/// info yet), a row with every optional field present plus nested fee rows
+/// for multiple units, and a row with no name/icon/fees at all (a mint this
+/// wallet cares about but hasn't been successfully fetched yet still yields a
+/// well-formed row here, never an error — the "no info" case is modeled as an
+/// absent row upstream in `backend::cashu`, not as this all-`None` shape, but
+/// the wire codec itself must still round-trip it losslessly either way).
+#[test]
+fn mint_info_round_trips_empty_and_populated_rows_with_nested_fees() {
+    let empty = WalletProjection::empty();
+    let bytes = encode_wallet_projection(&empty);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert!(decoded.mint_info.is_empty());
+
+    let projection = fully_populated();
+    let bytes = encode_wallet_projection(&projection);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.mint_info, projection.mint_info);
+
+    let populated = &decoded.mint_info[0];
+    assert_eq!(populated.url, "https://mint.example");
+    assert_eq!(populated.name.as_deref(), Some("Example Mint"));
+    assert_eq!(
+        populated.icon_url.as_deref(),
+        Some("https://mint.example/icon.png")
+    );
+    assert_eq!(populated.units, vec!["sat".to_string(), "usd".to_string()]);
+    assert_eq!(
+        populated.input_fee_ppk_by_unit,
+        vec![
+            WalletMintFeeRow {
+                unit: "sat".to_string(),
+                input_fee_ppk: 100
+            },
+            WalletMintFeeRow {
+                unit: "usd".to_string(),
+                input_fee_ppk: 0
+            },
+        ]
+    );
+
+    let bare = &decoded.mint_info[1];
+    assert_eq!(bare.url, "https://mint.two");
+    assert!(bare.name.is_none());
+    assert!(bare.icon_url.is_none());
+    assert!(bare.units.is_empty());
+    assert!(bare.input_fee_ppk_by_unit.is_empty());
 }
 
 /// #3030 — `accepted_mints` round-trips both the empty case (a wallet with no
@@ -308,5 +383,5 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.wallet.merged");
     assert_eq!(PROJECTION_KEY, "wallet.merged");
-    assert_eq!(SCHEMA_VERSION, 5);
+    assert_eq!(SCHEMA_VERSION, 6);
 }

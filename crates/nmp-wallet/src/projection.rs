@@ -5,6 +5,16 @@ use crate::{WalletBackendId, WalletCapabilities, WalletOperation};
 pub const WALLET_PROJECTION_KEY: &str = "wallet";
 pub const MAX_WALLET_PROJECTION_ROWS: usize = 100;
 
+/// D5 per-row bound (#3030 PR2 of 2): the max number of `units` /
+/// `input_fee_ppk_by_unit` entries a single [`WalletMintInfoRow`] may carry
+/// across FFI. `MAX_WALLET_PROJECTION_ROWS` caps the ROW count; without this
+/// a single row's nested vectors would be unbounded, so a mint advertising a
+/// pathologically large keyset list could bloat one row. Real mints run 1–3
+/// units, so 16 is comfortably generous while still bounded. Clamp is
+/// deterministic — the first N by the already-sorted (canonical-unit) order
+/// `snapshot::mint_info_rows` / `CachedMintInfo::to_row` build the row in.
+pub const MAX_MINT_UNITS: usize = 16;
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WalletReadiness {
     #[default]
@@ -60,6 +70,34 @@ pub struct WalletHistoryRow {
     pub fee_paid_sats: Option<u64>,
 }
 
+/// One `(unit, input_fee_ppk)` pair for a [`WalletMintInfoRow`] — the raw
+/// NUT-02 per-unit swap-input fee a shell needs to render fee estimates,
+/// never formatted here (#3030, PR2 of 2).
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WalletMintFeeRow {
+    pub unit: String,
+    pub input_fee_ppk: u64,
+}
+
+/// One wallet-relevant mint's raw NUT-06/NUT-02 metadata (#3030, PR2 of 2) —
+/// a bounded, URL-keyed side table a shell joins `balances`/`accepted_mints`
+/// rows against by `url` to render real mint identity + fees, instead of
+/// showing only the bare URL `accepted_mints`/`balances` already carry.
+/// `nmp-nip60` only decodes/exposes this raw protocol data (`MintInfoResponse`,
+/// `KeySet::input_fee_ppk`); `nmp-wallet` assembles this row from that data —
+/// no display formatting (currency symbols, thousands separators, fee
+/// percentages) lives in either crate.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct WalletMintInfoRow {
+    pub url: String,
+    pub name: Option<String>,
+    pub icon_url: Option<String>,
+    /// Units this mint advertises active keysets for (e.g. `["sat"]`) — raw
+    /// NUT-02 unit tokens, never a currency-formatted label.
+    pub units: Vec<String>,
+    pub input_fee_ppk_by_unit: Vec<WalletMintFeeRow>,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WalletReceiveRow {
     pub event_id: String,
@@ -93,6 +131,13 @@ pub struct WalletProjection {
     pub pending_operations: Vec<WalletOperation>,
     pub recent_history: Vec<WalletHistoryRow>,
     pub receive_rows: Vec<WalletReceiveRow>,
+    /// Raw NUT-06/NUT-02 metadata for every wallet-relevant mint (accepted +
+    /// balance + recent send/receive URLs), keyed by URL (#3030, PR2 of 2).
+    /// Populated from an actor-side cache a backend refreshes off the
+    /// projection-emit path (see `backend::cashu::mint_info`); a mint this
+    /// wallet cares about but has no cached info for yet simply has no row
+    /// here — never an error.
+    pub mint_info: Vec<WalletMintInfoRow>,
 }
 
 impl WalletProjection {
@@ -148,6 +193,12 @@ impl WalletProjection {
     #[must_use]
     pub fn with_accepted_mints(mut self, mints: impl IntoIterator<Item = String>) -> Self {
         self.accepted_mints = bounded(mints);
+        self
+    }
+
+    #[must_use]
+    pub fn with_mint_info(mut self, rows: impl IntoIterator<Item = WalletMintInfoRow>) -> Self {
+        self.mint_info = bounded(rows);
         self
     }
 }

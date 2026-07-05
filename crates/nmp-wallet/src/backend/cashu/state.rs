@@ -73,6 +73,10 @@ const DELTA_RING_CAPACITY: usize = 256;
 mod state_pending_deposit;
 pub(super) use state_pending_deposit::PendingDeposit;
 
+#[path = "state_mint_info.rs"]
+mod state_mint_info;
+pub(super) use state_mint_info::CachedMintInfo;
+
 // #3010 — `PendingSendAwait` + the park/take/sweep methods that drive the
 // kind:10019-arrival continuation live in their own file (LOC discipline);
 // re-exported so `super::state::` importers see no difference from a struct
@@ -150,6 +154,21 @@ pub(super) struct CashuWalletState {
     /// so a redrive's fresh journal operation id can never collide with
     /// another parked await.
     pub(super) next_send_await_id: u64,
+    /// #3030 PR2 of 2 — cached raw NUT-06/NUT-02 metadata per mint, keyed by
+    /// [`canonicalize_mint_url`]. Populated ONLY by `mint_info::run_mint_info_refresh`
+    /// running on its own spawned worker thread (D8 — never inside the
+    /// projection producer closure); `snapshot.rs`'s `mint_info_rows` only
+    /// ever reads this map, never fetches. A mint with no entry here simply
+    /// yields no row — never an error (see `mint_info.rs`'s module docs).
+    pub(super) mint_info: BTreeMap<String, CachedMintInfo>,
+    /// Single-flight guard for `mint_info::spawn_mint_info_refresh`, mirroring
+    /// `check_state_in_flight`/`check_state_rerun_needed` exactly: `true`
+    /// while a refresh pass is running.
+    pub(super) mint_info_in_flight: bool,
+    /// Mint URLs a trigger asked to refresh while a pass was already running
+    /// — folded into the NEXT pass rather than spawning a second concurrent
+    /// one (same coalescing shape `check_state_rerun_needed` uses).
+    pub(super) mint_info_pending: Option<Vec<String>>,
 }
 
 impl CashuWalletState {
@@ -170,6 +189,9 @@ impl CashuWalletState {
             wal_account: None,
             pending_sends: BTreeMap::new(),
             next_send_await_id: 0,
+            mint_info: BTreeMap::new(),
+            mint_info_in_flight: false,
+            mint_info_pending: None,
         }
     }
 

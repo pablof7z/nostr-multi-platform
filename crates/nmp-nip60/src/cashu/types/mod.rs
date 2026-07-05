@@ -77,4 +77,36 @@ pub struct MintInfoResponse {
     pub description: Option<String>,
     #[serde(default)]
     pub contact: Vec<serde_json::Value>,
+    /// The mint's icon, when advertised (#3030 PR2 of 2 — the wallet-relevant
+    /// mint-info side table `nmp-wallet` assembles reads this raw field
+    /// unchanged; this crate never renders it). Missing on many real-world
+    /// mints today, hence `#[serde(default)]` rather than a required field.
+    #[serde(default)]
+    pub icon_url: Option<String>,
+}
+
+#[cfg(test)]
+mod mint_info_tests {
+    use super::MintInfoResponse;
+
+    #[test]
+    fn mint_info_response_decodes_icon_url() {
+        let json = r#"{
+            "name": "Test Mint",
+            "pubkey": "02deadbeef",
+            "icon_url": "https://mint.example/icon.png"
+        }"#;
+        let info: MintInfoResponse = serde_json::from_str(json).expect("decodes");
+        assert_eq!(
+            info.icon_url.as_deref(),
+            Some("https://mint.example/icon.png")
+        );
+    }
+
+    #[test]
+    fn mint_info_response_icon_url_defaults_to_none_when_absent() {
+        let json = r#"{"pubkey": "02deadbeef"}"#;
+        let info: MintInfoResponse = serde_json::from_str(json).expect("decodes");
+        assert_eq!(info.icon_url, None);
+    }
 }
