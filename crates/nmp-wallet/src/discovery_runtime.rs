@@ -17,12 +17,20 @@
 //!
 //! Both feed one [`MintDiscoveryStore`] behind a `Mutex`. The app queries the
 //! current view via [`MintDiscoveryRuntime::snapshot`] — the same
-//! runtime-holds-the-projection access `WalletRuntime::snapshot` uses. A typed
-//! FlatBuffers snapshot sidecar (so a shell can subscribe rather than poll) is
-//! a deliberate follow-up, identical to the deferral documented in
-//! `register.rs` for the merged `"wallet"` projection: it is schema-design
-//! work, not composition wiring, and the ranked view is already produced and
-//! unit-tested here.
+//! runtime-holds-the-projection access `WalletRuntime::snapshot` uses.
+//!
+//! Since #2880's follow-up (epic #2864), this view also crosses FFI:
+//! `register.rs::wallet_merged_typed_projection` — the same function that
+//! encodes [`crate::runtime::WalletRuntime::snapshot`] — additionally calls
+//! [`MintDiscoveryRuntime::snapshot`] and folds its ranked mints into the
+//! `discovered_mints` field of the one composed
+//! [`crate::projection::WalletProjection`] emitted as the typed `NWMP`
+//! `"wallet.merged"` sidecar (`crate::projection_wire`). This runtime stays
+//! independent of `WalletRuntime` (each registers its own read interests
+//! directly on `app`); the composition root is what combines their two
+//! snapshots. There is no separate `"mint_discovery"` typed projection key —
+//! the discovered-mints view rides the same merged wallet snapshot a shell
+//! already decodes.
 
 use std::sync::{Arc, Mutex};
 

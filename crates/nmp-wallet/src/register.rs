@@ -33,7 +33,11 @@
 //! This function registers a typed FlatBuffers snapshot projection for the
 //! MERGED multi-backend [`crate::projection::WalletProjection`] that
 //! [`WalletRuntime::snapshot`] builds (backend selection + capability union +
-//! concatenated bounded rows). It is registered under the DISTINCT key
+//! concatenated bounded rows), with the NIP-87 discovered-mints view — since
+//! #2880/epic #2864 — folded in from the sibling [`MintDiscoveryRuntime`] by
+//! [`wallet_merged_typed_projection`] itself (see that function's doc
+//! comment for why the fold lives there and not in either runtime). It is
+//! registered under the DISTINCT key
 //! `"wallet.merged"` — deliberately NOT `"wallet"`, which `nmp-nip47` still owns
 //! for its single-backend NWC `WalletStatus` (`NWST`) shape. Choosing a fresh
 //! key means nothing has to be moved out of / broken in `nmp-nip47`: the two
@@ -259,7 +263,7 @@ pub fn register(
         Arc::clone(&active_pubkey),
     ))?;
 
-    // 4/5/6. Actor/runtime wiring (W6/W7): identity-reactive read interests
+    // 6. Actor/runtime wiring (W6/W7): identity-reactive read interests
     //    (kind:9321 `#p`=self, kind:10019/17375/7375/7376/7374 `authors`=self)
     //    plus the observer that routes matching `KernelEvent`s into each
     //    registered backend's `on_wallet_event`.
@@ -270,26 +274,38 @@ pub fn register(
         app,
     ));
 
+    // 8. NIP-87 mint discovery (#2880, epic #2864): identity-reactive read
+    //    interests for kind:38172 announcements + kind:38000 recommendations
+    //    plus the account's follow/mute graph, aggregated (WoT-scoped,
+    //    fail-closed on mints missing the nutzap NUTs) into the
+    //    discovered-mints projection. Constructed BEFORE step 7 registers the
+    //    typed snapshot closure below, so that closure can fold this sibling
+    //    runtime's view into the one composed `WalletProjection` it encodes.
+    let mint_discovery = Arc::new(MintDiscoveryRuntime::new(active_pubkey, app));
+
     // 7. Typed `"wallet.merged"` snapshot projection (#2915) — the merged
-    //    multi-backend projection `WalletRuntime::snapshot` builds, emitted as a
-    //    typed FlatBuffers sidecar under a DISTINCT key from `nmp-nip47`'s
-    //    single-backend `"wallet"` (`NWST`) sidecar (see module docs). The
-    //    closure holds its own `Arc<WalletRuntime>` clone (no process-global) and
-    //    is a read-only, non-blocking snapshot producer (D8).
+    //    multi-backend projection `WalletRuntime::snapshot` builds, PLUS (since
+    //    #2880) the NIP-87 discovered-mints view folded in from
+    //    `mint_discovery.snapshot()` — emitted as a typed FlatBuffers sidecar
+    //    under a DISTINCT key from `nmp-nip47`'s single-backend `"wallet"`
+    //    (`NWST`) sidecar (see module docs). The closure holds its own
+    //    `Arc<WalletRuntime>` / `Arc<MintDiscoveryRuntime>` clones (no
+    //    process-global) and is a read-only, non-blocking snapshot producer
+    //    (D8).
     let projection_runtime = Arc::clone(&runtime);
+    let projection_mint_discovery = Arc::clone(&mint_discovery);
     app.register_typed_snapshot_projection(
         nmp_ownership::DeclaredProjectionKey::framework(
             crate::projection_wire::PROJECTION_KEY,
             "projection.wallet.merged",
         ),
-        move || Some(wallet_merged_typed_projection(&projection_runtime)),
+        move || {
+            Some(wallet_merged_typed_projection(
+                &projection_runtime,
+                &projection_mint_discovery,
+            ))
+        },
     );
-
-    // 8. NIP-87 mint discovery (#2880): identity-reactive read interests for
-    //    kind:38172 announcements + kind:38000 recommendations plus the
-    //    account's follow/mute graph, aggregated (WoT-scoped, fail-closed on
-    //    mints missing the nutzap NUTs) into the discovered-mints projection.
-    let mint_discovery = Arc::new(MintDiscoveryRuntime::new(active_pubkey, app));
 
     Ok(Handles {
         nwc_wallet: nip47_handles.wallet,
@@ -299,10 +315,17 @@ pub fn register(
 }
 
 /// Build the typed `"wallet.merged"` sidecar entry from the live runtime's
-/// merged snapshot (#2915). Extracted from the
-/// `register_typed_snapshot_projection` closure so the registration's schema
-/// identity (`key` / `schema_id` / `file_identifier` / version) and the encode
-/// are unit-testable without spinning the actor.
+/// merged snapshot (#2915), with the NIP-87 discovered-mints view (#2880,
+/// epic #2864) folded in from the sibling [`MintDiscoveryRuntime`]. Extracted
+/// from the `register_typed_snapshot_projection` closure so the
+/// registration's schema identity (`key` / `schema_id` / `file_identifier` /
+/// version) and the encode are unit-testable without spinning the actor.
+///
+/// `WalletRuntime` and `MintDiscoveryRuntime` are independent runtimes — each
+/// registers its own identity-reactive read interests directly on `app` (see
+/// `register` above) — so this function, not either runtime, is the single
+/// composition point that folds `mint_discovery`'s ranked, capability-filtered
+/// mints into the one `WalletProjection` this crate emits across FFI.
 ///
 /// Unlike `nmp-nip47`'s `wallet_typed_projection` (which returns `None` when no
 /// wallet is connected), this always emits a row: `WalletRuntime::snapshot`
@@ -310,8 +333,17 @@ pub fn register(
 /// configured, and emitting it keeps the host cache authoritative (an omitted
 /// key retains the last decoded value under incremental apply — see ADR-0070).
 #[must_use]
-pub fn wallet_merged_typed_projection(runtime: &WalletRuntime) -> nmp_core::TypedProjectionData {
-    let projection = runtime.snapshot();
+pub fn wallet_merged_typed_projection(
+    runtime: &WalletRuntime,
+    mint_discovery: &MintDiscoveryRuntime,
+) -> nmp_core::TypedProjectionData {
+    let projection = runtime.snapshot().with_discovered_mints(
+        mint_discovery
+            .snapshot()
+            .mints
+            .iter()
+            .map(crate::projection::WalletDiscoveredMint::from),
+    );
     nmp_core::TypedProjectionData {
         key: crate::projection_wire::PROJECTION_KEY.to_string(),
         schema_id: crate::projection_wire::SCHEMA_ID.to_string(),

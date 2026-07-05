@@ -209,7 +209,12 @@ impl WalletRuntime {
 
     /// Build the merged wallet projection (backend selection + capability
     /// union + concatenated bounded rows — see
-    /// `WalletBackendSelector::snapshot`).
+    /// `WalletBackendSelector::snapshot`). This runtime has no NIP-87
+    /// discovery data of its own — `discovered_mints` is folded in by the
+    /// composition root at the typed-projection encoding site
+    /// (`register.rs::wallet_merged_typed_projection`), which combines this
+    /// snapshot with `MintDiscoveryRuntime::snapshot` (a sibling runtime, not
+    /// a dependency of this one — see that function's doc comment).
     #[must_use]
     pub fn snapshot(&self) -> WalletProjection {
         self.selector.snapshot(WalletProjectionScope {
