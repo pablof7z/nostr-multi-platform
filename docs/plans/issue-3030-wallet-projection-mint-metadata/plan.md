@@ -99,6 +99,6 @@ ready
 
 ## Hosted Artifacts
 
-- Plan page: Generated after publishing.
+- Plan page: https://pablof7z.github.io/nostr-multi-platform/plans/issue-3030-wallet-projection-mint-metadata/
 
 - TTS audio: https://blossom.primal.net/0f855b1b4f7fe4985a63594cc7eaf42252c074e30a590289217235ead697f834.mp3
