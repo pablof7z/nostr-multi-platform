@@ -84,6 +84,7 @@ mod redeem_worker_tests;
 mod reset_tests;
 mod send_cold_restore_tests;
 mod send_cross_mint_fallback_tests;
+mod send_nutzap_await_tests;
 mod send_tests;
 mod send_worker_tests;
 mod set_mints_tests;

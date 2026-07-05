@@ -73,6 +73,14 @@ const DELTA_RING_CAPACITY: usize = 256;
 mod state_pending_deposit;
 pub(super) use state_pending_deposit::PendingDeposit;
 
+// #3010 — `PendingSendAwait` + the park/take/sweep methods that drive the
+// kind:10019-arrival continuation live in their own file (LOC discipline);
+// re-exported so `super::state::` importers see no difference from a struct
+// defined directly here.
+#[path = "state_nutzap_await.rs"]
+mod state_nutzap_await;
+pub(super) use state_nutzap_await::PendingSendAwait;
+
 pub(super) struct CashuWalletState {
     /// Whether `CreateCashuWallet` has completed (kind:17375 signed and
     /// handed to the publish pipeline). Drives `snapshot()`'s readiness.
@@ -132,6 +140,16 @@ pub(super) struct CashuWalletState {
     /// eager cold-start restore). `None` until an account is active, which is
     /// also why write-through no-ops before sign-in (no account to key on).
     pub(super) wal_account: Option<String>,
+    /// #3010 — every `SendNutzap` parked awaiting a recipient's kind:10019,
+    /// keyed by that recipient's pubkey. See `state_nutzap_await` module docs
+    /// and `backend::cashu::nutzap_await`'s module docs for the event-driven
+    /// continuation this drives (`send.rs`'s cache-miss branch parks here
+    /// instead of failing this attempt outright).
+    pub(super) pending_sends: BTreeMap<String, Vec<PendingSendAwait>>,
+    /// Monotonic id source for `PendingSendAwait::await_id` — never reused,
+    /// so a redrive's fresh journal operation id can never collide with
+    /// another parked await.
+    pub(super) next_send_await_id: u64,
 }
 
 impl CashuWalletState {
@@ -150,6 +168,8 @@ impl CashuWalletState {
             check_state_rerun_needed: false,
             wal_store: None,
             wal_account: None,
+            pending_sends: BTreeMap::new(),
+            next_send_await_id: 0,
         }
     }
 

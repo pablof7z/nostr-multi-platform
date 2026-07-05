@@ -1,7 +1,7 @@
 //! `SendNutzap` intent -> P2PK-lock proofs to a recipient's Cashu pubkey at a
 //! mutually-trusted mint, publish kind:9321 (#2917, epic #2864 W8).
 //!
-//! # Recipient resolution — cache-read, warm-on-miss, fail-closed (#2936)
+//! # Recipient resolution — cache-read, warm-on-miss, self-completing (#2936, #3010)
 //!
 //! This wallet has no read interest for an arbitrary recipient's kind:10019
 //! by default (unlike the active account's own self-authored events —
@@ -10,11 +10,19 @@
 //! observed a kind:10019 from misses here. On a miss, `run()` opens
 //! `interests::recipient_nutzap_info_interest` for that recipient (via the
 //! generic `ctx.ensure_interest`, mirroring `nmp-marmot`'s peer-KeyPackage
-//! lookup) so the event flows into the kernel event store — then still fails
-//! closed on THIS attempt. There is no in-command fetch-then-resume: the
-//! caller (action retry, or a future observe-then-retry UX) is responsible
-//! for trying again; once the recipient's kind:10019 has arrived through the
-//! newly-opened interest, that retry finds it cached and proceeds.
+//! lookup) so the event flows into the kernel event store — AND parks this
+//! attempt (`CashuWalletState::park_send_await`) rather than leaving the
+//! caller to retry blind. This attempt's own journal operation is
+//! transitioned `Failed` (superseded, silently — no `ShowErrorToken`/
+//! `RecordActionFailure` yet), and `backend::cashu::nutzap_await`'s
+//! `IngestParser` redrives a FRESH `SendNutzap` (same recipient/amount/
+//! correlation id) the instant the recipient's kind:10019 is actually
+//! ingested — no caller-side retry loop required. If the info never arrives,
+//! `nutzap_await`'s `NUTZAP_INFO_AWAIT_TIMEOUT_SECS`-bounded TTL sweep fails
+//! the parked attempt closed with `NO_RECIPIENT_NUTZAP_INFO`, so a genuinely
+//! absent recipient still terminates rather than waiting forever. See that
+//! module's doc comment for the full event-arrival seam + at-most-once
+//! guarantee.
 //!
 //! # Deferred: republishing kind:7375/kind:5 for spent/change proofs
 //!
@@ -100,23 +108,32 @@ impl ProtocolCommand for SendNutzapCommand {
 
         let Some(info_event) = ctx.latest_author_kind(&recipient_pubkey, KIND_NIP61_NUTZAP_INFO)
         else {
-            // Warm the cache for next time: nothing else subscribes to a
-            // third party's kind:10019 by default (#2936). This attempt
-            // still fails closed; the caller's existing retry loop is what
-            // picks up the recipient's info once this interest's REQ
-            // delivers it.
+            // #3010 — self-complete instead of failing this attempt outright:
+            // warm the cache (nothing else subscribes to a third party's
+            // kind:10019 by default, #2936) AND park a continuation that
+            // redrives this exact `SendNutzap` the instant the recipient's
+            // kind:10019 is ingested (see `nutzap_await`'s module docs for
+            // the event-arrival seam + bounded TTL fallback).
             ctx.ensure_interest(
                 crate::interests::recipient_nutzap_info_identity(&recipient_pubkey),
                 crate::interests::recipient_nutzap_info_interest(&recipient_pubkey),
             );
-            return fail(
-                ctx,
-                &state,
-                &operation_id,
+            // Supersede THIS attempt — journal-only, no `ShowErrorToken`/
+            // `RecordActionFailure` yet (those fire only if the parked await
+            // is later swept as expired). The caller's `correlation_id`
+            // travels in the parked entry and resolves on the redrive's
+            // FRESH operation instead of this one (at-most-once: this
+            // operation is now terminal and can never itself proceed).
+            let _ = lock_state(&state).transition(&operation_id, WalletOperationState::Failed);
+            lock_state(&state).park_send_await(
+                &recipient_pubkey,
+                account_pubkey,
+                amount_sats,
+                target_event_id,
                 correlation_id,
-                ui_codes::NO_RECIPIENT_NUTZAP_INFO,
-                "recipient has no cached kind:10019 nutzap info".to_string(),
+                ctx.now_secs(),
             );
+            return Ok(());
         };
         let recipient_info = decode_nutzap_info_fields(&info_event.tags);
         if recipient_info.relays.is_empty() {

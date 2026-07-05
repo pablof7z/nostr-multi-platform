@@ -57,6 +57,7 @@ mod deposit;
 mod events;
 mod ingest;
 mod lifecycle;
+mod nutzap_await;
 mod nutzap_dispatch;
 mod publish_info;
 mod recover;
