@@ -28,6 +28,14 @@
 //! reliability enrichment. See `audit` module docs for the hard D8 boundary:
 //! that helper performs real HTTP and must never run inside a registered
 //! projection-producer closure.
+//!
+//! # Optional `mint-info` feature
+//!
+//! Enables `fetch_mint_info`, this crate's own NUT-06 `/v1/info` pull fetch
+//! for a discovered mint's canonical identity (name/icon/description/units/
+//! nuts) — see `mint_info_fetch` module docs for why this crate rolls its
+//! own instead of depending on `nmp-nip60`/`nmp-wallet`, and the same D8
+//! hot-path boundary as `enrich_with_audit`.
 // `deny` (not `forbid`) so the generated FlatBuffers bindings module
 // `wire/generated/mint_discovery_generated.rs` (`#[path]`-included by
 // `projection_wire.rs`) may opt back in via `#[allow(unsafe_code)]` —
@@ -39,6 +47,8 @@
 pub mod audit;
 pub mod discovery;
 pub mod interests;
+#[cfg(feature = "mint-info")]
+pub mod mint_info_fetch;
 pub mod ownership;
 pub mod projection_wire;
 pub mod register;
@@ -60,3 +70,6 @@ pub use runtime::MintDiscoveryRuntime;
 
 #[cfg(feature = "audit")]
 pub use audit::enrich_with_audit;
+
+#[cfg(feature = "mint-info")]
+pub use mint_info_fetch::{fetch_mint_info, MintInfoError, MintNut06Info};

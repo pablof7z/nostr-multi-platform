@@ -4432,8 +4432,10 @@ dependencies = [
  "nmp-ownership",
  "nmp-planner",
  "nmp-wot",
+ "reqwest",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
