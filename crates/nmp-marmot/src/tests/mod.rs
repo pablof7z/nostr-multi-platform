@@ -40,6 +40,7 @@ mod error_paths;
 mod fixtures;
 mod init_error_snapshot;
 mod key_package_cache;
+mod key_package_persistence;
 mod leave_and_decline;
 mod membership;
 mod orphaned_commit_count;
