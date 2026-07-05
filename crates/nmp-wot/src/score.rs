@@ -163,134 +163,6 @@ impl WotGraph {
             .collect()
     }
 
-    /// True iff `viewer` has an ingested, non-empty follow set.
-    ///
-    /// Used to detect the WoT cold-start case: a viewer with no follows
-    /// (never ingested a kind:3, or ingested an empty one) scores every
-    /// candidate at 0, which sits at or below any sane minimum floor and
-    /// hides everything. [`score_rooted`](Self::score_rooted) and
-    /// [`score_rooted_with_minimum_score`](Self::score_rooted_with_minimum_score)
-    /// use this to decide whether to reroute scoring through a
-    /// `fallback_root` instead.
-    #[must_use]
-    pub fn has_follows(&self, viewer: &str) -> bool {
-        self.follows_by_author
-            .get(viewer)
-            .is_some_and(|follows| !follows.is_empty())
-    }
-
-    /// Resolve the pubkey to actually score from: `viewer` when it has its
-    /// own follow graph, otherwise `fallback_root` (falling back to `viewer`
-    /// itself when no fallback root is given, which reproduces today's
-    /// behavior exactly). Returns `(effective_root, rooted_at_fallback)`.
-    fn effective_root<'a>(
-        &self,
-        viewer: &'a str,
-        fallback_root: Option<&'a str>,
-    ) -> (&'a str, bool) {
-        if self.has_follows(viewer) {
-            (viewer, false)
-        } else {
-            match fallback_root {
-                Some(root) => (root, true),
-                None => (viewer, false),
-            }
-        }
-    }
-
-    /// Score `candidate` from `viewer`'s perspective, falling back to scoring
-    /// from `fallback_root` when `viewer`'s own follow graph is cold.
-    ///
-    /// This is a GENERAL WoT primitive: it exists in `nmp-wot` (not in any one
-    /// consumer) because the cold-start problem — a brand-new or
-    /// zero-follows viewer scoring every candidate at 0 and having everything
-    /// hidden — hits every WoT consumer identically (mint discovery, feeds,
-    /// spam filtering, nutzap-sender trust). `fallback_root` is a caller-owned
-    /// bootstrap trust seed (e.g. an app's curated pubkey, or a well-known
-    /// community root); this crate does not choose one.
-    ///
-    /// This is distinct from this crate's own "bootstrap" runtime
-    /// ([`crate::runtime::WotBootstrapRuntime`]), which means fetching the
-    /// *active account's own* follow/mute lists from relays. `fallback_root`
-    /// scoring instead substitutes a *different* pubkey's already-ingested
-    /// graph as the root when the viewer has none of their own yet.
-    ///
-    /// Reuses [`score`](Self::score) unchanged for the actual scoring math —
-    /// only the pubkey used as the root of the graph walk changes. Passing
-    /// `fallback_root: None` reproduces today's [`score`](Self::score)
-    /// behavior byte-for-byte, including for a cold viewer.
-    #[must_use]
-    pub fn score_rooted(
-        &self,
-        viewer: &str,
-        fallback_root: Option<&str>,
-        candidate: &str,
-    ) -> TrustDecision {
-        let (root, rooted_at_fallback) = self.effective_root(viewer, fallback_root);
-        let mut decision = self.score(root, candidate);
-        decision.rooted_at_fallback = rooted_at_fallback;
-        decision
-    }
-
-    /// [`score_rooted`](Self::score_rooted) with a caller-supplied minimum-score
-    /// floor, mirroring [`score_with_minimum_score`](Self::score_with_minimum_score).
-    #[must_use]
-    pub fn score_rooted_with_minimum_score(
-        &self,
-        viewer: &str,
-        fallback_root: Option<&str>,
-        candidate: &str,
-        minimum_score: i32,
-    ) -> TrustDecision {
-        let (root, rooted_at_fallback) = self.effective_root(viewer, fallback_root);
-        let mut decision = self.score_with_minimum_score(root, candidate, minimum_score);
-        decision.rooted_at_fallback = rooted_at_fallback;
-        decision
-    }
-
-    /// Batch variant of [`score_rooted`](Self::score_rooted).
-    #[must_use]
-    pub fn batch_score_rooted<'a, I>(
-        &self,
-        viewer: &str,
-        fallback_root: Option<&str>,
-        candidates: I,
-    ) -> Vec<TrustDecision>
-    where
-        I: IntoIterator<Item = &'a str>,
-    {
-        let (root, rooted_at_fallback) = self.effective_root(viewer, fallback_root);
-        self.batch_score(root, candidates)
-            .into_iter()
-            .map(|mut decision| {
-                decision.rooted_at_fallback = rooted_at_fallback;
-                decision
-            })
-            .collect()
-    }
-
-    /// Batch variant of [`score_rooted_with_minimum_score`](Self::score_rooted_with_minimum_score).
-    #[must_use]
-    pub fn batch_score_rooted_with_minimum_score<'a, I>(
-        &self,
-        viewer: &str,
-        fallback_root: Option<&str>,
-        candidates: I,
-        minimum_score: i32,
-    ) -> Vec<TrustDecision>
-    where
-        I: IntoIterator<Item = &'a str>,
-    {
-        let (root, rooted_at_fallback) = self.effective_root(viewer, fallback_root);
-        self.batch_score_with_minimum_score(root, candidates, minimum_score)
-            .into_iter()
-            .map(|mut decision| {
-                decision.rooted_at_fallback = rooted_at_fallback;
-                decision
-            })
-            .collect()
-    }
-
     /// Pubkeys followed by `viewer` who also follow `candidate`.
     ///
     /// Returned in deterministic pubkey order so callers can safely snapshot,
@@ -465,6 +337,11 @@ fn p_tags(tags: &[Vec<String>]) -> BTreeSet<String> {
         })
         .collect()
 }
+
+/// Fallback-root ("bootstrap trust seed") scoring for the WoT cold-start,
+/// split out to keep this file under the size ceiling. Extends `impl WotGraph`.
+#[path = "score_rooted.rs"]
+mod score_rooted;
 
 #[cfg(test)]
 #[path = "score_tests.rs"]

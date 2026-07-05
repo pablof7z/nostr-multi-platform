@@ -270,6 +270,98 @@ fn muted_candidates_still_hide_regardless_of_root() {
 }
 
 #[test]
+fn cold_viewers_own_self_mute_survives_the_reroute_to_fallback_root() {
+    // Regression: the real viewer's self-mute must NOT be dropped when a cold
+    // viewer reroutes to a fallback root. Viewer V muted spammer S (has a
+    // kind:10000 but no kind:3 yet), while fallback root F follows S. Rooting
+    // the positive walk at F would otherwise report S as a trusted
+    // direct-follow — showing a person V explicitly muted.
+    let viewer = author(1);
+    let fallback = author(2);
+    let spammer = author(9);
+
+    let mut graph = WotGraph::default();
+    // Viewer has a mute list but no follows → still cold by follows.
+    graph.ingest_mute_list(&viewer, &[p(&spammer)]);
+    // Fallback root follows the spammer.
+    graph.ingest_follow_list(&fallback, &[p(&spammer)]);
+
+    assert!(!graph.has_follows(&viewer), "viewer is cold by follows");
+
+    let decision = graph.score_rooted(&viewer, Some(fallback.as_str()), &spammer);
+    assert_eq!(
+        decision.reason, "muted-by-self",
+        "viewer's own mute must win over the fallback root's follow"
+    );
+    assert_eq!(decision.score, SELF_MUTE_SCORE);
+    assert!(decision.hide);
+    // The veto came from the viewer's own data, not a fabricated fallback
+    // opinion, so it is not labelled as fallback-rooted.
+    assert!(!decision.rooted_at_fallback);
+
+    // A permissive floor cannot resurrect the muted candidate either.
+    let floored = graph.score_rooted_with_minimum_score(
+        &viewer,
+        Some(fallback.as_str()),
+        &spammer,
+        i32::MIN,
+    );
+    assert_eq!(floored.reason, "muted-by-self");
+    assert!(floored.hide);
+
+    // Batch path honors the veto per-candidate too.
+    let batch = graph.batch_score_rooted(&viewer, Some(fallback.as_str()), [spammer.as_str()]);
+    assert_eq!(batch[0].reason, "muted-by-self");
+    assert!(batch[0].hide);
+}
+
+#[test]
+fn fallback_root_equal_to_viewer_is_a_no_op_not_flagged_as_fallback() {
+    // A `Some(viewer)` substitution resolves back to the viewer's own graph,
+    // so the effective root is really the viewer and the flag must be false.
+    let cold_viewer = author(1);
+    let candidate = author(2);
+
+    let graph = WotGraph::default();
+    assert!(!graph.has_follows(&cold_viewer));
+
+    let decision =
+        graph.score_rooted(&cold_viewer, Some(cold_viewer.as_str()), &candidate);
+    assert_eq!(decision.score, 0);
+    assert_eq!(decision.reason, "unknown");
+    assert!(
+        !decision.rooted_at_fallback,
+        "Some(viewer) is a no-op substitution, not a real fallback root"
+    );
+
+    // Identical output to passing no fallback root at all.
+    let none = graph.score_rooted(&cold_viewer, None, &candidate);
+    assert_eq!(decision, none);
+}
+
+#[test]
+fn fallback_root_that_is_itself_cold_fabricates_no_trust() {
+    // If the fallback root also has no follows, rerouting to it must not
+    // conjure trust from nowhere — the candidate stays "unknown" at score 0.
+    let cold_viewer = author(1);
+    let cold_seed = author(2);
+    let candidate = author(3);
+
+    let graph = WotGraph::default();
+    assert!(!graph.has_follows(&cold_viewer));
+    assert!(!graph.has_follows(&cold_seed));
+
+    let decision = graph.score_rooted(&cold_viewer, Some(cold_seed.as_str()), &candidate);
+    assert_eq!(decision.score, 0);
+    assert_eq!(decision.reason, "unknown");
+    assert!(!decision.hide, "0 is above the default auto-hide floor");
+    // The seed differs from the viewer, so the reroute did happen — the flag
+    // is true even though the seed contributed no trust (Minor 1: it would be
+    // false only for a Some(viewer) no-op).
+    assert!(decision.rooted_at_fallback);
+}
+
+#[test]
 fn has_follows_is_false_for_absent_and_empty_contact_lists() {
     let absent = author(1);
     let empty = author(2);
