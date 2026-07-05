@@ -79,6 +79,13 @@ impl RelayTransportMap {
         self.rows.is_empty()
     }
 
+    /// #114 test-support: whether a transport row exists for `relay_url`.
+    #[cfg(any(test, feature = "test-support"))]
+    fn contains(&self, relay_url: &str) -> bool {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.rows.contains_key(&key)
+    }
+
     fn entry(&mut self, role: RelayRole, relay_url: &str) -> &mut RelayTransportStatus {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.rows
@@ -165,6 +172,22 @@ impl RelayTransportMap {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.info.get(&key).map(|e| &e.doc)
     }
+
+    /// Evict the transport row (and any cached NIP-11 doc) for `relay_url`.
+    ///
+    /// #114 — unlike every other transition in this file (`mark_transport_*`),
+    /// which all `.entry()`-or-insert a row because the relay is still
+    /// *configured* and merely changing socket state, a user-initiated
+    /// `remove_relay` means the URL has no diagnostic value left at all. Every
+    /// prior transition (including `mark_transport_closed`) only ever mutated
+    /// the row in place — there was no removal path, so a removed relay's row
+    /// (and its `reconnect_count` / `connection` string) lived in `self.rows`
+    /// forever, which is exactly the "phantom relay" Diagnostics kept showing.
+    fn remove(&mut self, relay_url: &str) -> bool {
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.info.remove(&key);
+        self.rows.remove(&key).is_some()
+    }
 }
 
 impl Kernel {
@@ -200,6 +223,15 @@ impl Kernel {
     pub fn relay_socket_is_persistent_for_test(&self, relay_url: &str, role: RelayRole) -> bool {
         let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.relay_socket_is_persistent(&canonical, role)
+    }
+
+    /// #114 test-support: whether `relay_url` still has a transport-diagnostics
+    /// row — the Diagnostics-screen phantom-relay regression proof. Wraps the
+    /// private `RelayTransportMap::contains` behind the `test-support` gate so
+    /// out-of-module tests can assert a removed relay leaves NO trace.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn has_relay_diagnostics_row_for_test(&self, relay_url: &str) -> bool {
+        self.transport_relays.contains(relay_url)
     }
 
     pub(crate) fn relay_has_active_demand(&self, relay_url: &CanonicalRelayUrl) -> bool {
@@ -312,6 +344,22 @@ impl Kernel {
         let entry = self.transport_relays.entry(role, relay_url);
         entry.connection = "closed".to_string();
         entry.auth = "not_required".to_string();
+    }
+
+    /// #114 — evict every trace of `relay_url` from the Diagnostics
+    /// projection: the per-URL transport row AND any wire-subs still open on
+    /// it. Called synchronously from `commands::remove_relay` at the moment
+    /// the user removes a relay, rather than relying on the async
+    /// `PoolEvent::Closed` round-trip from the socket teardown — that path
+    /// (`relay_closed`) only ever marks a row `"closed"` (correct for a
+    /// still-configured relay that is momentarily down) and never removes it,
+    /// so a genuinely-removed relay would otherwise keep a permanent
+    /// "Backing_off"/"closed" row in Diagnostics with no way to ever clear it.
+    pub(crate) fn relay_removed(&mut self, relay_url: &str) {
+        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.transport_relays.remove(canonical.as_str());
+        self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
+        self.changed_since_emit = true;
     }
 
     pub(super) fn mark_transport_role_closed(&mut self, role: RelayRole) {
