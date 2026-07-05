@@ -44,6 +44,14 @@ pub struct TrustDecision {
     pub hide: bool,
     /// Human-readable reason bucket for diagnostics and tests.
     pub reason: &'static str,
+    /// True when this decision was computed from a caller-supplied
+    /// `fallback_root` instead of the actual viewer, because the viewer's own
+    /// graph was cold (see [`WotGraph::has_follows`] and
+    /// [`WotGraph::score_rooted`]). Always `false` for [`WotGraph::score`] and
+    /// [`WotGraph::score_with_minimum_score`], which never consult a fallback
+    /// root. Callers can use this to label a result "suggested via a trust
+    /// seed" versus "trusted by people you follow".
+    pub rooted_at_fallback: bool,
 }
 
 /// Small read-model diagnostic for callers that need to distinguish an empty
@@ -99,6 +107,7 @@ impl WotGraph {
             score: scored.score,
             hide,
             reason: scored.reason,
+            rooted_at_fallback: false,
         }
     }
 
@@ -121,6 +130,7 @@ impl WotGraph {
             score: scored.score,
             hide,
             reason: scored.reason,
+            rooted_at_fallback: false,
         }
     }
 
@@ -327,6 +337,11 @@ fn p_tags(tags: &[Vec<String>]) -> BTreeSet<String> {
         })
         .collect()
 }
+
+/// Fallback-root ("bootstrap trust seed") scoring for the WoT cold-start,
+/// split out to keep this file under the size ceiling. Extends `impl WotGraph`.
+#[path = "score_rooted.rs"]
+mod score_rooted;
 
 #[cfg(test)]
 #[path = "score_tests.rs"]
