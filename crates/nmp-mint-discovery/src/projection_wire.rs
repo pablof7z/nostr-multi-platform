@@ -230,7 +230,11 @@ fn decode_audit(table: Option<fb::MintAuditSummary<'_>>) -> Result<MintAuditSumm
         // on the wire (see the schema doc), not duplicated on the nested
         // audit table — `apply_audit`/`enrich_with_audit` populate both
         // Rust-side fields from the one auditor lookup, but only
-        // `icon_url` needs to cross the wire per mint.
+        // `icon_url` needs to cross the wire per mint. Correct for the sole
+        // producer (this crate's own `enrich_with_audit`, which always leaves
+        // the summary's `icon_url` `None` and carries it at row level); a
+        // `MintAuditSummary` built elsewhere with a summary-level `icon_url`
+        // set would lose that field across this round-trip.
         icon_url: None,
     })
 }

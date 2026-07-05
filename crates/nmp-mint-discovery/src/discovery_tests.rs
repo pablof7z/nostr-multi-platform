@@ -143,9 +143,18 @@ fn a_muted_recommender_is_dropped() {
         &wot,
         &DiscoveryPolicy::default(),
     );
+    // INTENDED per doctrine: a capability-valid mint whose only human touchpoint
+    // is a muted account still surfaces as an untrusted (score 0) discoverable —
+    // announcements are a global capability read; a mute only strips the
+    // recommendation's trust weight, it never hides an announced mint.
     assert_eq!(mints[0].trust_score, 0);
     assert_eq!(mints[0].recommendation_count, 0);
 }
+
+// The composition-level lock for the #3042 fallback-root self-mute guard —
+// "a recommender the cold viewer muted never counts even via the seed" —
+// lives with the other fallback-root tests in the `fallback` child module
+// (see the `#[path = "discovery_fallback_tests.rs"]` declaration below).
 
 #[test]
 fn mint_missing_nutzap_nuts_is_excluded() {
@@ -224,60 +233,14 @@ fn recommendation_via_a_tag_coordinate_resolves_to_url() {
     assert_eq!(mints[0].trust_score, 100);
 }
 
-/// A cold viewer (no ingested follows) with a configured `fallback_root`
-/// routes scoring through the seed's graph instead of scoring everything at
-/// 0, and every mint that counted a rerouted recommendation is labeled
-/// `via_fallback`.
-#[test]
-fn aggregate_with_fallback_root_routes_cold_viewers_to_the_seed_and_sets_via_fallback() {
-    let viewer = pk("aa"); // cold: no follows of its own
-    let seed = pk("55"); // the app's curated fallback root
-    let recommender = pk("bb");
-    let wot = wot_with(&seed, &[&recommender], &[], &[]);
-
-    let announcements = vec![announcement(&recommender, "https://seeded.mint", NUTZAP)];
-    let recs = vec![recommendation("r1", &recommender, "https://seeded.mint")];
-
-    let policy = DiscoveryPolicy {
-        fallback_root: Some(seed.clone()),
-        ..DiscoveryPolicy::default()
-    };
-    let mints = aggregate(&viewer, &announcements, &recs, &wot, &policy);
-
-    assert_eq!(mints.len(), 1);
-    assert_eq!(
-        mints[0].trust_score, 100,
-        "the seed's direct follow is scored, not the cold viewer's empty graph"
-    );
-    assert!(
-        mints[0].via_fallback,
-        "trust for a cold viewer was computed via the fallback root"
-    );
-}
-
-/// Without a configured `fallback_root`, a cold viewer sees no trusted
-/// mints at all — reproducing the pre-fallback behavior byte-for-byte
-/// (`DiscoveryPolicy::default().fallback_root == None`).
-#[test]
-fn aggregate_without_fallback_root_leaves_a_cold_viewer_with_no_trust() {
-    let viewer = pk("aa");
-    let recommender = pk("bb");
-    let wot = wot_with(&pk("55"), &[&recommender], &[], &[]);
-
-    let announcements = vec![announcement(&recommender, "https://seeded.mint", NUTZAP)];
-    let recs = vec![recommendation("r1", &recommender, "https://seeded.mint")];
-
-    let mints = aggregate(
-        &viewer,
-        &announcements,
-        &recs,
-        &wot,
-        &DiscoveryPolicy::default(),
-    );
-    assert_eq!(mints[0].trust_score, 0);
-    assert_eq!(mints[0].recommendation_count, 0);
-    assert!(!mints[0].via_fallback);
-}
+// Fallback-root (cold-start seed) aggregation tests — including the
+// composition-level lock for the #3042 self-mute guard — live in a child
+// module split into its own file to stay under the 500-LOC hard cap; it
+// reuses this module's `pk`/`announcement`/`recommendation`/`wot_with`
+// helpers via `use super::*` (the same glob-of-glob the memoization module
+// below relies on).
+#[path = "discovery_fallback_tests.rs"]
+mod fallback;
 
 /// `max_results` truncates the ranked, best-first result — replacing the
 /// hardcoded `MAX_DISCOVERED_MINTS` cap with a policy-configurable one.
