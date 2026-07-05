@@ -190,6 +190,9 @@ fn install_registers_marmot_owned_runtime_surfaces() {
             (KIND_MARMOT_GROUP_MESSAGE, MARMOT_INGEST_SLOT),
             (KIND_MARMOT_KEY_PACKAGE, MARMOT_INGEST_SLOT),
             (KIND_MARMOT_WELCOME, MARMOT_INGEST_SLOT),
+            // #3057 round-6: kind:10050 is registered as a retry trigger for
+            // invites parked on a cold invitee DM-inbox (not parsed here).
+            (KIND_DM_RELAY_LIST, MARMOT_INGEST_SLOT),
         ]
     );
     assert_eq!(
@@ -220,6 +223,7 @@ fn clearing_active_projection_withdraws_marmot_owned_interests() {
             MarmotLocalCredentialSlot::new(Arc::new(Mutex::new(None))),
         ),
         actor_sender: sender,
+        dm_inbox_lookup: nmp_core::substrate::empty_dm_inbox_relay_lookup(),
         active: Mutex::new(Some(ActiveMarmotProjection {
             pubkey_hex: "alice".to_string(),
             projection,

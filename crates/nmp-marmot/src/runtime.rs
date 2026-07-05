@@ -17,8 +17,8 @@ use nostr::nips::nip19::FromBech32;
 use nostr::{Keys, SecretKey};
 
 use crate::interest::{
-    giftwrap_inbox_identity, giftwrap_inbox_interest, KIND_GIFT_WRAP, KIND_MARMOT_GROUP_MESSAGE,
-    KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
+    giftwrap_inbox_identity, giftwrap_inbox_interest, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP,
+    KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
 };
 use crate::projection::action::MarmotActionModule;
 use crate::projection::payload::MarmotSnapshot;
@@ -30,11 +30,18 @@ use crate::wire::{messages_fb, snapshot_fb};
 /// Slot key used for every Marmot ingest parser registration.
 pub const MARMOT_INGEST_SLOT: &str = "nmp.marmot";
 
-const MARMOT_INGEST_KINDS: [u32; 4] = [
+// kind:10050 is included NOT to parse it (nip17's Kind10050Parser owns that and
+// upserts the shared DM-relay cache) but so Marmot's ingest fires
+// `retry_unblocked_ops` when an invitee's DM-inbox arrives — unblocking a
+// create_group/invite parked on a cold DM cache (#3057 round-6). Marmot's
+// parser is registered AFTER nip17's for this kind, so the cache is already
+// populated when the retry re-dispatches.
+const MARMOT_INGEST_KINDS: [u32; 5] = [
     KIND_GIFT_WRAP,
     KIND_MARMOT_GROUP_MESSAGE,
     KIND_MARMOT_KEY_PACKAGE,
     KIND_MARMOT_WELCOME,
+    KIND_DM_RELAY_LIST,
 ];
 const MARMOT_MESSAGE_PAGE: usize = 200;
 
@@ -124,6 +131,11 @@ impl From<RegistrationError> for MarmotInstallError {
 pub(crate) struct MarmotRuntime {
     config: MarmotConfig,
     actor_sender: nmp_core::CommandSender,
+    /// Live read view of the kernel's kind:10050 DM-inbox lookup (#3057
+    /// round-6). Lets the ingest-thread Welcome-publish retry resolve a
+    /// recipient's DM relays WITHOUT a `ProtocolCommandContext` port — the
+    /// same cache the nip17 kind:10050 parser writes.
+    dm_inbox_lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
     active: Mutex<Option<ActiveMarmotProjection>>,
 }
 
@@ -133,10 +145,15 @@ struct ActiveMarmotProjection {
 }
 
 impl MarmotRuntime {
-    fn new(config: MarmotConfig, actor_sender: nmp_core::CommandSender) -> Self {
+    fn new(
+        config: MarmotConfig,
+        actor_sender: nmp_core::CommandSender,
+        dm_inbox_lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
+    ) -> Self {
         Self {
             config,
             actor_sender,
+            dm_inbox_lookup,
             active: Mutex::new(None),
         }
     }
@@ -149,6 +166,7 @@ impl MarmotRuntime {
                 MarmotLocalCredentialSlot::new(Arc::new(Mutex::new(None))),
             ),
             actor_sender: nmp_core::CommandSender::bounded_channel().0,
+            dm_inbox_lookup: nmp_core::substrate::empty_dm_inbox_relay_lookup(),
             active: Mutex::new(Some(ActiveMarmotProjection {
                 pubkey_hex: "test".to_string(),
                 projection,
@@ -207,6 +225,11 @@ impl MarmotRuntime {
 
         let projection = Arc::new(MarmotProjection::new(service, None));
         projection.set_actor_sender(self.actor_sender.clone());
+        // #3057 round-6: the projection resolves invitee DM-inboxes off this
+        // lookup when running WITHOUT a port (ingest-thread Welcome-publish
+        // retry) so a parked invite can complete when the invitee's kind:10050
+        // arrives.
+        projection.set_dm_inbox_lookup(Arc::clone(&self.dm_inbox_lookup));
         let previous = self.replace_active(pubkey_hex.clone(), Arc::clone(&projection));
         if let Some(previous) = previous {
             self.drop_projection_interests(previous);
@@ -291,7 +314,16 @@ pub fn install(
               + SnapshotProjectionRegistrar),
     config: MarmotConfig,
 ) -> Result<(), MarmotInstallError> {
-    let runtime = Arc::new(MarmotRuntime::new(config, app.actor_sender()));
+    // #3057 round-6: grab a LIVE view of the kernel's kind:10050 DM-inbox
+    // lookup so the ingest-thread Welcome-publish retry can resolve invitee DM
+    // relays without a port. The nip17 installer wires the concrete lookup;
+    // this view reads it lazily, so install order between nip17 and Marmot is
+    // not load-bearing.
+    let runtime = Arc::new(MarmotRuntime::new(
+        config,
+        app.actor_sender(),
+        app.dm_inbox_relay_lookup(),
+    ));
 
     app.register_action(MarmotActionModule::new(Arc::clone(&runtime)))?;
 

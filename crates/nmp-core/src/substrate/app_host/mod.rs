@@ -393,6 +393,23 @@ pub trait HostCapabilities {
     /// list and app-supplied `SearchFallbackRelays`; `nmp-nip50` reads the
     /// provider through this seam.
     fn install_preferred_relay_source(&self, _source: std::sync::Arc<dyn PreferredRelaySource>) {}
+
+    /// Read handle to the kernel's NIP-17 kind:10050 DM-inbox relay lookup —
+    /// the SAME lookup installed via [`DmInboxRelayRegistrar::set_dm_inbox_relay_lookup`]
+    /// and read by the protocol-command context's `dm_inbox_relays`.
+    ///
+    /// Exposed so a protocol runtime that must resolve a recipient's DM-inbox
+    /// relays OUTSIDE a live `ProtocolCommandContext` — e.g. `nmp-marmot`'s
+    /// ingest-thread retry of a Welcome-publish parked on a cold DM cache
+    /// (#3057) — can read the same cache synchronously without a port.
+    ///
+    /// **Default is the empty lookup**, so scaffold / test hosts that never
+    /// wire NIP-17 compile and return `None` for every recipient. A real
+    /// composition host (`NmpApp`) overrides this to return the installed
+    /// lookup handle.
+    fn dm_inbox_relay_lookup(&self) -> Arc<dyn DmInboxRelayLookup> {
+        super::empty_dm_inbox_relay_lookup()
+    }
 }
 
 /// A host-installed provider of a `(primary, fallback)` relay-URL list pair,

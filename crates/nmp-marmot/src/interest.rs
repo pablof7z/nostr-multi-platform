@@ -29,7 +29,7 @@ use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest,
 // the legacy dual-publish was retired 2026-05-31; nmp-marmot now only
 // publishes/subscribes kind:30443.
 pub use nmp_core::kinds::{
-    KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
+    KIND_DM_RELAY_LIST, KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
 };
 pub use nmp_nip59::KIND_GIFT_WRAP;
 
@@ -45,6 +45,11 @@ fn giftwrap_interest_id(pubkey: &str) -> InterestId {
 /// Stable id for a peer KeyPackage lookup subscription.
 fn key_package_lookup_interest_id(pubkey: &str) -> InterestId {
     InterestId(stable_hash64(("marmot.key_package_lookup", pubkey)))
+}
+
+/// Stable id for a peer kind:10050 DM-relay-list lookup subscription.
+fn dm_relay_lookup_interest_id(pubkey: &str) -> InterestId {
+    InterestId(stable_hash64(("marmot.dm_relay_lookup", pubkey)))
 }
 
 /// Stable id for one relay-pinned group-message subscription.
@@ -137,6 +142,42 @@ pub fn key_package_lookup_identity(pubkey: &str) -> SubIdentity {
     SubIdentity::new(
         SubOwnerKey::new(("marmot.key_package_lookup", pubkey)),
         SubKey::new(("marmot.key_package_lookup", pubkey)),
+        SubScope::Global,
+    )
+}
+
+/// Tailing author-scoped kind:10050 DM-relay-list lookup for invite flows
+/// (#3057 round-6). To publish a Welcome, A must know the invitee's verified
+/// kind:10050 DM-inbox relays. Historically Marmot only READ that from the DM
+/// cache and hard-failed on a miss — so a cold/reset cache aborted the invite.
+/// This interest lets A FETCH the invitee's kind:10050 on-demand (symmetric
+/// with [`key_package_lookup_interest`]), so `resolve_invitee_inboxes` can
+/// resolve from a fresh fetch rather than a possibly-empty cache.
+///
+/// kind:10050 is an addressable/replaceable event on the author's outbox; the
+/// planner owns the NIP-65 routing. The nip17 kind:10050 ingest parser upserts
+/// the fetched event into the shared DM-relay cache this crate reads.
+#[must_use]
+pub fn dm_relay_lookup_interest(pubkey: &str) -> LogicalInterest {
+    nmp_core::substrate::ViewDependencies {
+        kinds: vec![KIND_DM_RELAY_LIST],
+        authors: vec![pubkey.to_string()],
+        limit: Some(1),
+        ..Default::default()
+    }
+    .into_logical_interest(
+        dm_relay_lookup_interest_id(pubkey),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    )
+}
+
+/// Scoped registry identity for a peer kind:10050 DM-relay-list lookup.
+#[must_use]
+pub fn dm_relay_lookup_identity(pubkey: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("marmot.dm_relay_lookup", pubkey)),
+        SubKey::new(("marmot.dm_relay_lookup", pubkey)),
         SubScope::Global,
     )
 }

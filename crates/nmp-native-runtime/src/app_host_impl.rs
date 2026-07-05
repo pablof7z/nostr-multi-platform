@@ -288,6 +288,34 @@ impl HostCapabilities for NmpApp {
     ) {
         NmpApp::install_preferred_relay_source(self, source);
     }
+
+    /// Expose a LIVE read view of the installed DM-inbox relay lookup so a
+    /// protocol runtime (nmp-marmot's ingest-thread Welcome-publish retry,
+    /// #3057) can resolve a recipient's kind:10050 relays without a
+    /// `ProtocolCommandContext`. The returned adapter reads the shared slot on
+    /// every call, so it reflects a `set_dm_inbox_relay_lookup` installed after
+    /// this handle was obtained (install-order-independent).
+    fn dm_inbox_relay_lookup(&self) -> std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup> {
+        std::sync::Arc::new(DmInboxRelayLookupSlotView {
+            slot: std::sync::Arc::clone(&self.composition.dm_inbox_relays_slot),
+        })
+    }
+}
+
+/// A live view of the composition's DM-inbox lookup slot — delegates every read
+/// to whatever `DmInboxRelayLookup` is currently installed. See
+/// [`HostCapabilities::dm_inbox_relay_lookup`].
+struct DmInboxRelayLookupSlotView {
+    slot: std::sync::Arc<
+        std::sync::Mutex<std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>,
+    >,
+}
+
+impl nmp_core::substrate::DmInboxRelayLookup for DmInboxRelayLookupSlotView {
+    fn dm_inbox_relays(&self, pubkey: &str) -> Option<Vec<String>> {
+        let lookup = self.slot.lock().ok()?.clone();
+        lookup.dm_inbox_relays(pubkey)
+    }
 }
 
 impl IdentityChangeRegistrar for NmpApp {

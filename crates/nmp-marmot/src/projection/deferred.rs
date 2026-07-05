@@ -111,6 +111,66 @@ impl InnerHandle<'_> {
         }
     }
 
+    /// #3057 round-6 — when a create_group/invite cannot resolve an invitee's
+    /// kind:10050 DM-inbox, FETCH it (symmetric with the KeyPackage fetch) and
+    /// PARK the op instead of hard-failing, so a cold/reset DM cache no longer
+    /// aborts the Welcome publish. The parked op re-dispatches when the
+    /// invitee's kind:10050 arrives (see the kind:10050 arm of
+    /// `ingest_signed_event_core`, which fires `retry_unblocked_ops`).
+    ///
+    /// Same single-flight + `correlation_id` semantics as
+    /// [`Self::park_or_report_kp_unavailable`]. Without a `correlation_id`
+    /// (REPL / tests) it soft-fails so callers still surface the honest
+    /// "no verified DM inbox" error — never publish blind.
+    pub(crate) fn park_or_report_inbox_unavailable(
+        &mut self,
+        action: &MarmotAction,
+        op_tag: &str,
+        fetch_pubkeys: &[PublicKey],
+        correlation_id: Option<&str>,
+        now_secs: u64,
+    ) -> Value {
+        let fetch_requested = self.request_dm_relay_fetch(fetch_pubkeys);
+        let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
+
+        let Some(cid) = correlation_id else {
+            return json!({
+                "ok": false,
+                "error": "dm_inbox_unavailable",
+                "needs_pubkeys_hex": needs_pubkeys_hex,
+                "fetch_requested": fetch_requested,
+                "hint": "invitee kind:10050 DM-inbox lookup was requested; results arrive via the kernel tap",
+            });
+        };
+
+        let action_json = serde_json::to_string(action)
+            .unwrap_or_else(|e| format!(r#"{{"op":"__invalid__","error":"{e}"}}"#));
+        let store_result = self.park_pending_op(
+            cid.to_string(),
+            action_json,
+            op_tag,
+            needs_pubkeys_hex.clone(),
+            now_secs,
+        );
+        match store_result {
+            StoreResult::Stored => json!({
+                "pending": true,
+                "correlation_id": cid,
+                "needs_pubkeys_hex": needs_pubkeys_hex,
+                "fetch_requested": fetch_requested,
+            }),
+            StoreResult::Duplicate {
+                existing_correlation_id,
+            } => json!({
+                "pending": true,
+                "duplicate": true,
+                "correlation_id": existing_correlation_id,
+                "needs_pubkeys_hex": needs_pubkeys_hex,
+                "fetch_requested": fetch_requested,
+            }),
+        }
+    }
+
     /// Park a KP-blocked op in the pending store. Returns the [`StoreResult`]
     /// so the caller can surface "pending" or "duplicate pending".
     /// `missing_pubkeys_hex` must NOT be empty.

@@ -19,6 +19,22 @@ use super::input::{
 };
 use super::welcome;
 
+/// Invitees whose kind:10050 DM-inbox is not (yet) resolved in A's DM-relay
+/// cache. These block the Welcome publish (a Welcome is only published to a
+/// verified private inbox — D10). #3057 round-6: instead of hard-failing on a
+/// cold/reset cache, A FETCHES these invitees' kind:10050 and parks the op.
+fn invitees_missing_dm_inbox(h: &InnerHandle<'_>, kp_events: &[nostr::Event]) -> Vec<nostr::PublicKey> {
+    kp_events
+        .iter()
+        .filter(|kp| {
+            h.dm_inbox_relays(&kp.pubkey.to_hex())
+                .filter(|relays| !relays.is_empty())
+                .is_none()
+        })
+        .map(|kp| kp.pubkey)
+        .collect()
+}
+
 pub(super) fn publish_key_package(
     h: &mut InnerHandle<'_>,
     relays: &[String],
@@ -89,6 +105,19 @@ pub(super) fn create_group(
                 now_secs,
             ));
         }
+    }
+    // #3057 round-6: FETCH any invitee's kind:10050 DM-inbox that is not yet
+    // resolved (a cold/reset cache must not silently abort the invite), and
+    // PARK until it arrives — symmetric with the KeyPackage fetch/park above.
+    let missing_inbox = invitees_missing_dm_inbox(h, &kp_events);
+    if !missing_inbox.is_empty() {
+        return Ok(h.park_or_report_inbox_unavailable(
+            action,
+            "create_group",
+            &missing_inbox,
+            correlation_id,
+            now_secs,
+        ));
     }
     // D10 / ordering discipline: resolve EVERY invitee's kind:10050
     // DM-inbox relay set BEFORE any MLS roster mutation. A Marmot Welcome
@@ -162,6 +191,19 @@ pub(super) fn invite(
         }
     }
     let group_id_hex = hex_encode(gid.as_slice());
+    // #3057 round-6: FETCH any invitee's unresolved kind:10050 DM-inbox and
+    // PARK until it arrives, so a cold/reset cache no longer aborts the invite
+    // (symmetric with the KeyPackage fetch/park above).
+    let missing_inbox = invitees_missing_dm_inbox(h, &kp_events);
+    if !missing_inbox.is_empty() {
+        return Ok(h.park_or_report_inbox_unavailable(
+            action,
+            "invite",
+            &missing_inbox,
+            correlation_id,
+            now_secs,
+        ));
+    }
     // Resolve the relay-pinned relays BEFORE creating the borrowed
     // `pending` (cache read is `&self`; a miss → explicit target fails closed).
     let group_relays = h.group_relays(&group_id_hex);
