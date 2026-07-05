@@ -422,10 +422,37 @@ fn ingest_giftwrap(
             Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
         }
         Err(e) => {
+            let reason = e.to_string();
+            // #3057 round-8: mdk-core's own "welcome previously failed to
+            // process" error (see mdk_core::Error::WelcomePreviouslyFailed)
+            // fires ONLY when `find_processed_welcome_by_event_id` already
+            // holds a terminally-FAILED record for this exact wrapper event
+            // id — i.e. this is a cold-start replay of a gift-wrap this
+            // projection already told the user about in an earlier session.
+            // `last_op_error` is in-memory only and starts `None` every
+            // session (same category as `pending_welcomes`), so
+            // unconditionally re-recording it would repopulate the generic
+            // "Couldn't complete the last action" toast on EVERY cold
+            // relaunch (chirp#167). A GENUINE first-time failure never
+            // carries this message (see
+            // `a_welcome_that_fails_to_process_surfaces_last_op_error_not_a_silent_swallow`),
+            // so this check does not mask a live drop.
+            if reason.contains("welcome previously failed to process") {
+                tracing::debug!(
+                    target: "nmp_marmot::ingest",
+                    event_id = %event.id.to_hex(),
+                    error = %reason,
+                    "marmot giftwrap ingest: replay of an already-terminally-failed \
+                     Welcome — skip re-recording last_op_error"
+                );
+                return Ok(Some(json!({
+                    "kind": 1059,
+                    "already_failed_giftwrap_id_hex": event.id.to_hex(),
+                })));
+            }
             // #3057: surface the dropped Welcome instead of swallowing it. The
             // gift-wrap id is the correlation handle a host can key the banner
             // + a retry off.
-            let reason = e.to_string();
             tracing::warn!(
                 target: "nmp_marmot::ingest",
                 event_id = %event.id.to_hex(),
