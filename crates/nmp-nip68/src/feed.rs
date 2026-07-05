@@ -195,7 +195,7 @@ fn picture_item_from_target(event: &KernelEvent) -> Option<FlatFeedItem<PictureF
             id: record.event_id.clone(),
             record: Some(record),
             reposted_by: None,
-            relay_provenance: event.relay_provenance.clone(),
+            relay_provenance: event.received_from_relays(),
         },
     })
 }
@@ -226,7 +226,7 @@ fn picture_item_from_repost(
                 repost_event_id: event.id.clone(),
                 repost_created_at: event.created_at,
             }),
-            relay_provenance: event.relay_provenance.clone(),
+            relay_provenance: event.received_from_relays(),
         },
     })
 }
