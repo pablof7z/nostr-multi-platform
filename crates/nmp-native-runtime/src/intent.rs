@@ -122,14 +122,15 @@ impl NmpApp {
 
     #[cfg(feature = "nip05")]
     fn act_on_nip05_intent(&self, identifier: &str) {
+        // `nmp_intent::classify` only ever emits `Nip05 { identifier }` when
+        // `parse_nip05(identifier)` already accepted it (enforced by
+        // `nmp-intent`'s own `every_classified_nip05_is_accepted_by_parse_nip05`
+        // test), so this `if let` is defensive, not a live branch. chirp#155:
+        // `dispatch_nip05_lookup` (crate::nip05) is what makes this dispatch
+        // observable — it records `Resolving` under `identifier` before the
+        // command is even sent, so a poller never sees a false `NotAttempted`.
         if let Some((name, domain)) = nmp_nip05::parse_nip05(identifier) {
-            self.send_cmd(ActorCommand::Protocol(Box::new(
-                nmp_nip05::ResolveNip05Command {
-                    name,
-                    domain,
-                    correlation_id: None,
-                },
-            )));
+            self.dispatch_nip05_lookup(identifier, name, domain);
         }
     }
 

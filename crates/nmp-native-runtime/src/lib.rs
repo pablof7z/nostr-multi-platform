@@ -40,6 +40,8 @@ mod intent;
 mod keyring_forget;
 #[cfg(feature = "marmot")]
 mod marmot;
+#[cfg(feature = "nip05")]
+mod nip05;
 mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;
@@ -78,6 +80,8 @@ pub use feed_params::{
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
 pub use intent::InputIntentDispatch;
+#[cfg(feature = "nip05")]
+pub use nip05::Nip05LookupState;
 pub use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 pub use nmp_feed_session::PrimaryKindError;
 #[cfg(feature = "op-feed")]

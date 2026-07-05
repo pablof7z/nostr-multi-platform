@@ -18,6 +18,8 @@
 //!   the `RefNamespace::Profile` resolve-ref seam). HTTP lives behind the
 //!   `native` feature.
 
+use std::sync::Arc;
+
 use nmp_core::actor::ActionLedgerCommand;
 use nmp_core::actor::ActorCommand;
 #[cfg(feature = "native")]
@@ -54,6 +56,29 @@ pub use parse::parse_nip05;
 #[cfg(feature = "native")]
 const NIP05_RESOLVE_CONSUMER_ID: &str = "nip05-reverse-resolve";
 
+/// Terminal-outcome sink a caller can attach to a [`ResolveNip05Command`] so it
+/// learns "did MY lookup finish, and how" keyed by the identifier it dispatched
+/// — not just via the generic side effects this command always emits
+/// ([`ActorCommand::ResolveRef`], keyed by the pubkey once known, and
+/// [`ActorCommand::ShowErrorToken`], a global diagnostic toast). A search-time
+/// UI that shows a "Looking up …" affordance for one specific identifier has
+/// no pubkey to poll `refs.profile` with yet and cannot pick its own toast out
+/// of the generic diagnostic stream — this is that missing poll seam (#155:
+/// without it the affordance never transitions out of "Looking up …", an
+/// eternal spinner even once the lookup has genuinely terminated).
+///
+/// `Send + Sync` — invoked from the command's spawned worker thread, never the
+/// actor thread. Bind one observer per dispatched identifier (the trait takes
+/// no identifier parameter) so the caller doesn't have to reconcile its own
+/// key against a re-lowercased/re-validated echo.
+pub trait Nip05LookupObserver: Send + Sync {
+    /// The lookup resolved to `pubkey` (64-hex).
+    fn on_resolved(&self, pubkey: &str);
+    /// The lookup terminally failed. `reason` is human-readable (never the raw
+    /// response body).
+    fn on_failed(&self, reason: &str);
+}
+
 /// Resolve a NIP-05 `name@domain` identifier to a pubkey via the domain's
 /// `.well-known/nostr.json` endpoint.
 ///
@@ -65,7 +90,6 @@ const NIP05_RESOLVE_CONSUMER_ID: &str = "nip05-reverse-resolve";
 /// `nmp_app_resolve_ref` call would. On any failure it emits a diagnostic
 /// [`ActorCommand::ShowErrorToken`] (and, when a `correlation_id` is present, a
 /// `RecordActionFailure`) — the failure is never swallowed.
-#[derive(Debug)]
 pub struct ResolveNip05Command {
     /// The NIP-05 local-part (`name` in `name@domain`), already shape-validated
     /// and matched verbatim against the `names` map by [`parse_nip05`].
@@ -76,6 +100,21 @@ pub struct ResolveNip05Command {
     /// host-visible action (so a spinner can clear on terminal stages). `None`
     /// for a direct caller with no spinner.
     pub correlation_id: Option<String>,
+    /// Optional terminal-outcome sink (see [`Nip05LookupObserver`]). `None` for
+    /// a caller that only needs the generic `ResolveRef`/`ShowErrorToken` side
+    /// effects.
+    pub observer: Option<Arc<dyn Nip05LookupObserver>>,
+}
+
+impl std::fmt::Debug for ResolveNip05Command {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolveNip05Command")
+            .field("name", &self.name)
+            .field("domain", &self.domain)
+            .field("correlation_id", &self.correlation_id)
+            .field("observer", &self.observer.is_some())
+            .finish()
+    }
 }
 
 impl ProtocolCommand for ResolveNip05Command {
@@ -89,6 +128,7 @@ impl ProtocolCommand for ResolveNip05Command {
                 name,
                 domain,
                 correlation_id,
+                observer,
             } = *self;
             // Re-validate the shape through the canonical `parse_nip05` before
             // doing anything else. The fields are public and may have been
@@ -107,6 +147,9 @@ impl ProtocolCommand for ResolveNip05Command {
                     )
                     .with_subject(format!("{name}@{domain}"));
                     let prose = token.fallback_prose().to_string();
+                    if let Some(observer) = &observer {
+                        observer.on_failed(&prose);
+                    }
                     ctx.send(ActorCommand::ShowErrorToken { token });
                     if let Some(cid) = correlation_id {
                         ctx.send(ActorCommand::ActionLedger(
@@ -131,6 +174,9 @@ impl ProtocolCommand for ResolveNip05Command {
                         // fetches the kind:0 (store-first, OneShot on miss) and
                         // surfaces it in `refs.profile` keyed by the pubkey —
                         // identical to a `nmp_app_resolve_ref` profile claim.
+                        if let Some(observer) = &observer {
+                            observer.on_resolved(&pubkey);
+                        }
                         let _ = worker_tx.send(ActorCommand::Refs(RefsCommand::Resolve {
                             namespace: nmp_core::RefNamespace::Profile,
                             key: pubkey,
@@ -154,6 +200,9 @@ impl ProtocolCommand for ResolveNip05Command {
                                 .with_subject(format!("{name}@{domain}"))
                                 .with_detail(reason);
                         let prose = token.fallback_prose().to_string();
+                        if let Some(observer) = &observer {
+                            observer.on_failed(&prose);
+                        }
                         let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
                         if let Some(cid) = correlation_id {
                             let _ = worker_tx.send(ActorCommand::ActionLedger(
@@ -177,6 +226,7 @@ impl ProtocolCommand for ResolveNip05Command {
                 name,
                 domain,
                 correlation_id,
+                observer,
             } = *self;
             let token = UiToken::error(
                 ui_codes::LOOKUP_NATIVE_UNAVAILABLE,
@@ -184,6 +234,9 @@ impl ProtocolCommand for ResolveNip05Command {
             )
             .with_subject(format!("{name}@{domain}"));
             let prose = token.fallback_prose().to_string();
+            if let Some(observer) = &observer {
+                observer.on_failed(&prose);
+            }
             ctx.send(ActorCommand::ShowErrorToken { token });
             if let Some(cid) = correlation_id {
                 ctx.send(ActorCommand::ActionLedger(

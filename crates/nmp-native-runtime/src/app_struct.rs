@@ -260,6 +260,12 @@ pub struct NmpApp {
     /// refcount). Shared with off-thread resolve workers.
     #[cfg(feature = "nip-ad")]
     pub(crate) ad_url_states: crate::ad::AdUrlStateMap,
+    /// chirp#155 — per-identifier NIP-05 reverse-lookup state (the read-door
+    /// query a search UI polls instead of showing an eternal "Looking up …"
+    /// spinner). Shared with the `ResolveNip05Command` worker via its
+    /// `Nip05LookupObserver` hook.
+    #[cfg(feature = "nip05")]
+    pub(crate) nip05_states: crate::nip05::Nip05StateMap,
     /// Observed-projection sessions keyed by `ObservedProjectionId`. Each
     /// entry maps an observer id returned by `open_observed_projection` to the
     /// close params `(filter_json, consumer_id, scope, relay_pin,

@@ -354,6 +354,8 @@ pub fn new_app() -> NmpApp {
         ad_resolution_policy: Arc::new(Mutex::new(None)),
         #[cfg(feature = "nip-ad")]
         ad_url_states: Arc::new(Mutex::new(std::collections::HashMap::new())),
+        #[cfg(feature = "nip05")]
+        nip05_states: Arc::new(Mutex::new(std::collections::HashMap::new())),
         observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
