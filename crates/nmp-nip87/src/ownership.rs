@@ -1,7 +1,7 @@
 nmp_ownership::declare_crate_ownership! {
     owner_id: "nmp.nip87",
     crate_name: "nmp-nip87",
-    summary: "NIP-87 ecash mint discoverability event codecs: kind:38172 Cashu mint announcement (with NUT capability parsing) and kind:38000 mint recommendation. Thin protocol mechanics only — the discovered-mints projection, read interests, and WoT-scoped aggregation live in nmp-wallet.",
+    summary: "NIP-87 ecash mint discoverability event codecs: kind:38172 Cashu mint announcement (with NUT capability parsing) and kind:38000 mint recommendation. Thin protocol mechanics only — the discovered-mints projection, read interests, and WoT-scoped aggregation live in nmp-mint-discovery.",
     claims: [
         {
             claim_type: "artifact",
@@ -33,7 +33,7 @@ nmp_ownership::declare_crate_ownership! {
     notes: [
         {
             claim: "nostr.kind.38172.mint_announce",
-            text: "kind:38173 (Fedimint) is explicitly out of scope. Web-of-trust-scoped aggregation of these codecs into a discovered/recommended-mints projection is owned by nmp-wallet (docs/architecture/nip60-nip61-wallet-design.md), not this crate.",
+            text: "kind:38173 (Fedimint) is explicitly out of scope. Web-of-trust-scoped aggregation of these codecs into a discovered/recommended-mints projection is owned by nmp-mint-discovery (docs/architecture/nip60-nip61-wallet-design.md), not this crate.",
         },
     ],
 }

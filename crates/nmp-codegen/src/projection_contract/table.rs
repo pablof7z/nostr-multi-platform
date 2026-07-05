@@ -4,6 +4,7 @@
 use super::{
     chat::CHAT_PRESENCE,
     marmot::{MARMOT_MESSAGES, MARMOT_SNAPSHOT},
+    mint_discovery::MINT_DISCOVERY,
     wallet::{WALLET_MERGED, WALLET_STATUS},
 };
 use super::{DeclarationPolicy, PresencePolicy, ProjectionContract, ProjectionTier};
@@ -245,6 +246,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     // no kernel-side revision dependencies, and are never kernel built-ins.
     WALLET_STATUS,
     WALLET_MERGED,
+    MINT_DISCOVERY,
     ProjectionContract {
         key: "bunker_handshake",
         tier: ProjectionTier::HostRegistered,

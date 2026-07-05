@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-87 ecash mint discoverability: kind:38172 Cashu mint-announcement and kind:38000 mint-recommendation event codecs plus NUT capability parsing. Thin protocol mechanics only — the discovered/recommended-mints projection, read interests, and WoT-scoped aggregation live in nmp-wallet."
+description = "NIP-87 ecash mint discoverability: kind:38172 Cashu mint-announcement and kind:38000 mint-recommendation event codecs plus NUT capability parsing. Thin protocol mechanics only — the discovered/recommended-mints projection, read interests, and WoT-scoped aggregation live in nmp-mint-discovery."
 
 [dependencies]
 # nmp-kinds: the zero-dependency Layer-0 registry of canonical Nostr kind

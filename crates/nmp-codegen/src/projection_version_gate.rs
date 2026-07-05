@@ -97,6 +97,11 @@ pub const PRODUCER_VERSION_SOURCES: &[ProducerVersionSource] = &[
         const_name: "SCHEMA_VERSION",
     },
     ProducerVersionSource {
+        key: "mint_discovery",
+        source_path: "crates/nmp-mint-discovery/src/projection_wire.rs",
+        const_name: "SCHEMA_VERSION",
+    },
+    ProducerVersionSource {
         key: "nmp.marmot.snapshot",
         source_path: "crates/nmp-marmot/src/wire/snapshot_fb.rs",
         const_name: "SCHEMA_VERSION",

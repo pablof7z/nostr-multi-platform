@@ -1,11 +1,11 @@
 //! Memoization tests for [`MintDiscoveryStore`] (hot-path safety, #2880 review
-//! follow-up). Split out of `mint_discovery_tests.rs` to keep each file under
-//! the 500-LOC hard cap; a child of that module so it reuses its `pk`/`kev`
+//! follow-up). Split out of `discovery_tests.rs` to keep each file under the
+//! 500-LOC hard cap; a child of that module so it reuses its `pk`/`kev`
 //! helpers and can read the store's private `cached`/`compute_count` fields.
 //!
-//! Proves the memoization contract `wallet_merged_typed_projection` relies on:
-//! a clean `snapshot()` serves the cache (no recompute), and EVERY input
-//! mutation re-dirties it while inert events do not.
+//! Proves the memoization contract `register::mint_discovery_typed_projection`
+//! relies on: a clean `snapshot()` serves the cache (no recompute), and EVERY
+//! input mutation re-dirties it while inert events do not.
 
 use super::*;
 
@@ -109,9 +109,10 @@ fn a_noop_set_viewer_does_not_dirty_the_cache() {
     assert!(store.cached.is_none(), "a real viewer change dirties the cache");
 }
 
-/// Every input `aggregate_discovered_mints` reads must dirty the cache when it
-/// actually changes: the scoring viewer, an announcement, a recommendation,
-/// and the follow/mute WoT graph. Non-mutating events must NOT dirty it.
+/// Every input [`crate::discovery::aggregate`] reads must dirty the cache
+/// when it actually changes: the scoring viewer, an announcement, a
+/// recommendation, and the follow/mute WoT graph. Non-mutating events must
+/// NOT dirty it.
 #[test]
 fn every_mutation_path_dirties_the_cache_and_inert_events_do_not() {
     let viewer = pk("aa");

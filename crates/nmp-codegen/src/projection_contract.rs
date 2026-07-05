@@ -143,6 +143,9 @@ mod chat;
 mod table;
 // Marmot host-registered projection entries split out for 500-LOC cap.
 mod marmot;
+// nmp-mint-discovery's host-registered projection entry split out for
+// 500-LOC cap.
+mod mint_discovery;
 // Wallet host-registered projection entries split out for 500-LOC cap.
 mod wallet;
 pub use table::PROJECTION_CONTRACT;

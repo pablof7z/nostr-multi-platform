@@ -74,43 +74,6 @@ pub struct WalletReceiveRow {
     pub accepted: bool,
 }
 
-/// One ranked NIP-87 discovered mint (#2880, epic #2864), mirroring the
-/// display-safe fields of [`crate::mint_discovery::DiscoveredMint`]. Carries
-/// no proofs, secrets, or keys — `DiscoveredMint` has none to begin with;
-/// this is pure discovery metadata a shell can render as a mint explorer /
-/// "discover mints" screen.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct WalletDiscoveredMint {
-    /// Mint URL (the value a consumer selects instead of a hardcoded entry).
-    pub url: String,
-    /// Human-readable name, if any announcement advertised one.
-    pub name: Option<String>,
-    /// Supported NUT numbers (union across announcements for this URL).
-    pub nuts: Vec<u16>,
-    /// Supported units, when advertised.
-    pub units: Vec<String>,
-    /// True when the mint advertises the nutzap-required NUTs.
-    pub supports_nutzap: bool,
-    /// Summed web-of-trust score of the distinct trusted recommenders.
-    pub trust_score: i32,
-    /// Count of distinct trusted recommenders.
-    pub recommendation_count: u32,
-}
-
-impl From<&crate::mint_discovery::DiscoveredMint> for WalletDiscoveredMint {
-    fn from(mint: &crate::mint_discovery::DiscoveredMint) -> Self {
-        Self {
-            url: mint.url.clone(),
-            name: mint.name.clone(),
-            nuts: mint.nuts.clone(),
-            units: mint.units.clone(),
-            supports_nutzap: mint.supports_nutzap,
-            trust_score: mint.trust_score,
-            recommendation_count: mint.recommendation_count,
-        }
-    }
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WalletProjection {
     pub active_backend_id: Option<WalletBackendId>,
@@ -123,9 +86,6 @@ pub struct WalletProjection {
     pub pending_operations: Vec<WalletOperation>,
     pub recent_history: Vec<WalletHistoryRow>,
     pub receive_rows: Vec<WalletReceiveRow>,
-    /// Ranked, capability-filtered, web-of-trust-scoped NIP-87 discovered
-    /// mints (#2880, epic #2864) — see [`WalletDiscoveredMint`].
-    pub discovered_mints: Vec<WalletDiscoveredMint>,
 }
 
 impl WalletProjection {
@@ -175,23 +135,6 @@ impl WalletProjection {
     #[must_use]
     pub fn with_receive_rows(mut self, rows: impl IntoIterator<Item = WalletReceiveRow>) -> Self {
         self.receive_rows = bounded(rows);
-        self
-    }
-
-    /// Set the discovered-mints view, bounded to
-    /// `mint_discovery::MAX_DISCOVERED_MINTS`. Unlike the recency-ordered rows
-    /// above (`bounded` keeps the newest tail), `mints` is already ranked
-    /// best-first by [`crate::mint_discovery::aggregate_discovered_mints`], so
-    /// an over-cap input is truncated from the tail (dropping the
-    /// lowest-ranked entries), keeping the highest-ranked prefix.
-    #[must_use]
-    pub fn with_discovered_mints(
-        mut self,
-        mints: impl IntoIterator<Item = WalletDiscoveredMint>,
-    ) -> Self {
-        let mut mints: Vec<WalletDiscoveredMint> = mints.into_iter().collect();
-        mints.truncate(crate::mint_discovery::MAX_DISCOVERED_MINTS);
-        self.discovered_mints = mints;
         self
     }
 }

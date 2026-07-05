@@ -1,5 +1,5 @@
-//! Tests for the NIP-87 web-of-trust-scoped, fail-closed mint discovery
-//! aggregation (issue #2880).
+//! Tests for the web-of-trust-scoped, fail-closed mint discovery aggregation
+//! (issue #2880).
 
 use super::*;
 use nmp_core::substrate::KernelEvent;
@@ -76,12 +76,12 @@ fn recommendation_from_a_stranger_is_ignored() {
     let announcements = vec![announcement(&stranger, "https://x.mint", NUTZAP)];
     let recs = vec![recommendation("r1", &stranger, "https://x.mint")];
 
-    let mints = aggregate_discovered_mints(
+    let mints = aggregate(
         &viewer,
         &announcements,
         &recs,
         &wot,
-        &MintDiscoveryPolicy::default(),
+        &DiscoveryPolicy::default(),
     );
     // The mint is still discoverable (announced + capable), but the stranger's
     // vouch carries no trust weight.
@@ -108,12 +108,12 @@ fn wot_scoped_recommendations_rank_by_trust() {
         recommendation("r2", &second, "https://second.mint"),
     ];
 
-    let mints = aggregate_discovered_mints(
+    let mints = aggregate(
         &viewer,
         &announcements,
         &recs,
         &wot,
-        &MintDiscoveryPolicy::default(),
+        &DiscoveryPolicy::default(),
     );
     assert_eq!(mints.len(), 2);
     // Direct-follow vouch (score 100) outranks the second-degree vouch (10).
@@ -121,6 +121,10 @@ fn wot_scoped_recommendations_rank_by_trust() {
     assert_eq!(mints[0].trust_score, 100);
     assert_eq!(mints[1].url, "https://second.mint");
     assert_eq!(mints[1].trust_score, 10);
+    assert!(
+        mints.iter().all(|m| !m.via_fallback),
+        "viewer has its own follow graph; no fallback root was consulted"
+    );
 }
 
 #[test]
@@ -132,16 +136,25 @@ fn a_muted_recommender_is_dropped() {
     let announcements = vec![announcement(&muted, "https://m.mint", NUTZAP)];
     let recs = vec![recommendation("r1", &muted, "https://m.mint")];
 
-    let mints = aggregate_discovered_mints(
+    let mints = aggregate(
         &viewer,
         &announcements,
         &recs,
         &wot,
-        &MintDiscoveryPolicy::default(),
+        &DiscoveryPolicy::default(),
     );
+    // INTENDED per doctrine: a capability-valid mint whose only human touchpoint
+    // is a muted account still surfaces as an untrusted (score 0) discoverable —
+    // announcements are a global capability read; a mute only strips the
+    // recommendation's trust weight, it never hides an announced mint.
     assert_eq!(mints[0].trust_score, 0);
     assert_eq!(mints[0].recommendation_count, 0);
 }
+
+// The composition-level lock for the #3042 fallback-root self-mute guard —
+// "a recommender the cold viewer muted never counts even via the seed" —
+// lives with the other fallback-root tests in the `fallback` child module
+// (see the `#[path = "discovery_fallback_tests.rs"]` declaration below).
 
 #[test]
 fn mint_missing_nutzap_nuts_is_excluded() {
@@ -153,12 +166,12 @@ fn mint_missing_nutzap_nuts_is_excluded() {
     let announcements = vec![announcement(&follow, "https://weak.mint", &[1, 2, 11])];
     let recs = vec![recommendation("r1", &follow, "https://weak.mint")];
 
-    let mints = aggregate_discovered_mints(
+    let mints = aggregate(
         &viewer,
         &announcements,
         &recs,
         &wot,
-        &MintDiscoveryPolicy::default(),
+        &DiscoveryPolicy::default(),
     );
     assert!(
         mints.is_empty(),
@@ -175,13 +188,7 @@ fn recommendation_for_unannounced_mint_is_dropped() {
     // No announcement for this URL -> capabilities unknown -> fail closed.
     let recs = vec![recommendation("r1", &follow, "https://ghost.mint")];
 
-    let mints = aggregate_discovered_mints(
-        &viewer,
-        &[],
-        &recs,
-        &wot,
-        &MintDiscoveryPolicy::default(),
-    );
+    let mints = aggregate(&viewer, &[], &recs, &wot, &DiscoveryPolicy::default());
     assert!(mints.is_empty());
 }
 
@@ -198,12 +205,12 @@ fn one_recommender_counts_once_per_mint() {
         recommendation("r2", &follow, "https://x.mint"),
     ];
 
-    let mints = aggregate_discovered_mints(
+    let mints = aggregate(
         &viewer,
         &announcements,
         &recs,
         &wot,
-        &MintDiscoveryPolicy::default(),
+        &DiscoveryPolicy::default(),
     );
     assert_eq!(mints[0].recommendation_count, 1);
     assert_eq!(mints[0].trust_score, 100);
@@ -221,15 +228,43 @@ fn recommendation_via_a_tag_coordinate_resolves_to_url() {
     rec.mint_urls.clear();
     rec.mint_coordinates = vec![coordinate];
 
-    let mints = aggregate_discovered_mints(
-        &viewer,
-        &[ann],
-        &[rec],
-        &wot,
-        &MintDiscoveryPolicy::default(),
-    );
+    let mints = aggregate(&viewer, &[ann], &[rec], &wot, &DiscoveryPolicy::default());
     assert_eq!(mints.len(), 1);
     assert_eq!(mints[0].trust_score, 100);
+}
+
+// Fallback-root (cold-start seed) aggregation tests — including the
+// composition-level lock for the #3042 self-mute guard — live in a child
+// module split into its own file to stay under the 500-LOC hard cap; it
+// reuses this module's `pk`/`announcement`/`recommendation`/`wot_with`
+// helpers via `use super::*` (the same glob-of-glob the memoization module
+// below relies on).
+#[path = "discovery_fallback_tests.rs"]
+mod fallback;
+
+/// `max_results` truncates the ranked, best-first result — replacing the
+/// hardcoded `MAX_DISCOVERED_MINTS` cap with a policy-configurable one.
+#[test]
+fn aggregate_truncates_to_the_policys_max_results() {
+    let viewer = pk("aa");
+    let follow = pk("bb");
+    let wot = wot_with(&viewer, &[&follow], &[], &[]);
+
+    let announcements = vec![
+        announcement(&follow, "https://a.mint", NUTZAP),
+        announcement(&follow, "https://b.mint", NUTZAP),
+    ];
+    let recs = vec![
+        recommendation("r1", &follow, "https://a.mint"),
+        recommendation("r2", &follow, "https://b.mint"),
+    ];
+
+    let policy = DiscoveryPolicy {
+        max_results: 1,
+        ..DiscoveryPolicy::default()
+    };
+    let mints = aggregate(&viewer, &announcements, &recs, &wot, &policy);
+    assert_eq!(mints.len(), 1);
 }
 
 // ---- MintDiscoveryStore (event ingestion) -------------------------------
@@ -346,7 +381,7 @@ fn store_projection_empty_without_viewer() {
 // Memoization (hot-path safety, #2880 review follow-up) lives in a child
 // module split into its own file to stay under the 500-LOC hard cap; it reuses
 // this module's `pk`/`kev` helpers and reads the store's private cache fields.
-#[path = "mint_discovery_memoization_tests.rs"]
+#[path = "discovery_memoization_tests.rs"]
 mod memoization;
 
 #[test]

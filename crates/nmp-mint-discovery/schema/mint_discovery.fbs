@@ -1,0 +1,91 @@
+namespace nmp.mint_discovery;
+
+// Typed FlatBuffers wire for `nmp_mint_discovery::MintDiscoveryProjection`
+// (issue #2880, extracted into this crate). Registered by
+// `nmp_mint_discovery::register` under the key `"mint_discovery"` — a fresh
+// framework projection key distinct from any wallet/host-owned sidecar; any
+// app that composes this crate gets the projection regardless of whether it
+// also composes a wallet.
+//
+// RAW-DATA DOCTRINE (aim.md §2 / ADR-0072): this buffer carries ONLY raw
+// semantic tokens — protocol enums, raw strings/urls, raw integer counts and
+// scores. Never pre-rendered English labels or display-formatted numbers.
+// Shells render the reliability rating / trust affordances themselves from
+// these raw values.
+//
+// Field-for-field mirror of the Rust structs in
+// `crates/nmp-mint-discovery/src/discovery.rs` (`DiscoveredMint`,
+// `MintDiscoveryProjection`) and `crates/nmp-mint-discovery/src/audit.rs`
+// (`MintAuditSummary`, `MintAuditRating`):
+//   * `Option<...>` fields carry a `has_*` presence flag plus the value, so
+//     absent (`None`) round-trips distinctly from a present default — the
+//     same optional-fields convention used across the workspace (e.g.
+//     `wallet_status.fbs`).
+//   * `mints` follows the vector-of-tables precedent of `NotificationsSnapshot`
+//     (notifications.fbs) and `ModularTimelineSnapshot` (timeline_snapshot.fbs).
+//
+// Regenerate the checked-in Rust bindings ONLY through
+// `ci/regenerate-flatbuffers.sh` (pinned flatc 25.12.19 + repo rustfmt), NEVER
+// raw flatc — a raw-flatc run passes the version-pin check but red-fails
+// `ci/check-rust-flatc-drift.sh`. The schema has no `include`, so the script
+// generates it plainly into
+// `crates/nmp-mint-discovery/src/wire/generated/mint_discovery_generated.rs`.
+
+// `MintAuditRating` — coarse Cashu-mint-auditor reliability verdict (`audit`
+// feature). `Unknown` (0) is both the "no auditor data" and the "small
+// sample" case; a shell distinguishes them, if it needs to, via
+// `MintAuditSummary.sampled_swaps`.
+enum MintAuditRating:ubyte {
+  Unknown = 0,
+  Healthy = 1,
+  Degraded = 2,
+  Unreliable = 3,
+}
+
+// `MintAuditSummary` — per-mint reliability summary from the Cashu mint
+// auditor (`nmp_mint_discovery::audit`), applied by `apply_audit`/
+// `enrich_with_audit`. Always present as a nested table when `has_audit` is
+// set on the owning `DiscoveredMintRow`.
+table MintAuditSummary {
+  rating:MintAuditRating;
+  success_rate:double;
+  sampled_swaps:uint32;
+  // last_ok_at: Option<String> (ISO-8601, as captured by the auditor)
+  has_last_ok_at:bool;
+  last_ok_at:string;
+}
+
+// `DiscoveredMintRow` — one ranked NIP-87 discovered mint. Carries no proofs,
+// secrets, or keys — `DiscoveredMint` has none to begin with; this row is
+// pure discovery metadata (URL, advertised capabilities, web-of-trust rank).
+table DiscoveredMintRow {
+  url:string;
+  // name: Option<String>
+  has_name:bool;
+  name:string;
+  // icon_url: Option<String> — populated only by the optional `audit`
+  // feature (NIP-87 announcements carry no icon field).
+  has_icon_url:bool;
+  icon_url:string;
+  // Supported NUT numbers (union across announcements for this URL).
+  nuts:[uint16];
+  // Supported units, when advertised.
+  units:[string];
+  supports_nutzap:bool;
+  trust_score:int32;
+  recommendation_count:uint32;
+  // True when this mint's trust score was computed via the policy's
+  // cold-start `fallback_root` rather than the viewer's own graph.
+  via_fallback:bool;
+  // audit: Option<MintAuditSummary>
+  has_audit:bool;
+  audit:MintAuditSummary;
+}
+
+table MintDiscoveryProjection {
+  schema_version:uint32 = 1;   // mirrors projection_wire::SCHEMA_VERSION
+  mints:[DiscoveredMintRow];
+}
+
+root_type MintDiscoveryProjection;
+file_identifier "NMDS";

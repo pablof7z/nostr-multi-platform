@@ -33,8 +33,6 @@ use nmp_nip60::kinds::{
     KIND_NIP60_HISTORY, KIND_NIP60_QUOTE, KIND_NIP60_TOKEN, KIND_NIP60_WALLET, KIND_NIP61_NUTZAP,
     KIND_NIP61_NUTZAP_INFO,
 };
-use nmp_nip87::{KIND_MINT_ANNOUNCE, KIND_MINT_RECOMMEND};
-use nmp_wot::{KIND_CONTACT_LIST, KIND_MUTE_LIST};
 
 /// Self-authored NIP-60 wallet/token/history/quote events plus the account's
 /// own published NIP-61 nutzap info (`kind:10019`) — all replaceable or
@@ -63,34 +61,6 @@ pub fn nutzap_receipts_shape(pubkey: &str) -> InterestShape {
         tags: [("p".to_string(), BTreeSet::from([pubkey.to_string()]))]
             .into_iter()
             .collect(),
-        ..Default::default()
-    }
-}
-
-/// NIP-87 mint discovery (#2880): all kind:38172 announcements + kind:38000
-/// recommendations, no author filter. Discovery is a whole-kind public read —
-/// the reading account narrows recommendations to its web of trust *in Rust* at
-/// aggregation time (see `mint_discovery.rs`), never at the relay filter, the
-/// same coarse-relay/precise-Rust split the nutzap-receipt interest documents.
-#[must_use]
-pub fn mint_discovery_shape() -> InterestShape {
-    InterestShape {
-        kinds: BTreeSet::from([KIND_MINT_ANNOUNCE, KIND_MINT_RECOMMEND]),
-        ..Default::default()
-    }
-}
-
-/// The active account's own follow list (kind:3) and mute list (kind:10000) —
-/// the raw material the discovery store folds into an `nmp-wot::WotGraph` to
-/// score mint recommenders. `authors`=self keeps this a narrow, self-scoped
-/// read; it feeds direct-follow and self-mute scoring. (Deeper
-/// follows-of-follows enrichment can grow later without changing this shape —
-/// the aggregation degrades gracefully on whatever graph is present.)
-#[must_use]
-pub fn mint_discovery_trust_graph_shape(pubkey: &str) -> InterestShape {
-    InterestShape {
-        authors: BTreeSet::from([pubkey.to_string()]),
-        kinds: BTreeSet::from([KIND_CONTACT_LIST, KIND_MUTE_LIST]),
         ..Default::default()
     }
 }
@@ -173,26 +143,6 @@ mod tests {
             assert!(shape.kinds.contains(&kind), "missing kind {kind}");
         }
         assert!(shape.tags.is_empty());
-    }
-
-    #[test]
-    fn mint_discovery_shape_is_whole_kind_no_author_or_tag_filter() {
-        let shape = mint_discovery_shape();
-        assert!(shape.kinds.contains(&KIND_MINT_ANNOUNCE));
-        assert!(shape.kinds.contains(&KIND_MINT_RECOMMEND));
-        assert!(
-            shape.authors.is_empty(),
-            "discovery is a global read; WoT scoping happens in Rust"
-        );
-        assert!(shape.tags.is_empty());
-    }
-
-    #[test]
-    fn mint_discovery_trust_graph_shape_is_self_scoped() {
-        let shape = mint_discovery_trust_graph_shape(PK);
-        assert_eq!(shape.authors, BTreeSet::from([PK.to_string()]));
-        assert!(shape.kinds.contains(&KIND_CONTACT_LIST));
-        assert!(shape.kinds.contains(&KIND_MUTE_LIST));
     }
 
     #[test]

@@ -17,9 +17,9 @@
 //! NUT-capability parsing. It performs zero relay I/O and holds no product
 //! policy. The app-facing "discovered / recommended mints" projection, the read
 //! interests that subscribe to these kinds, and the web-of-trust-scoped,
-//! fail-closed-on-missing-NUT aggregation all live in `nmp-wallet` (see
-//! `docs/architecture/nip60-nip61-wallet-design.md`), which consumes these
-//! codecs.
+//! fail-closed-on-missing-NUT aggregation live in `nmp-mint-discovery` (see
+//! `docs/architecture/nip60-nip61-wallet-design.md`), which composes this
+//! crate's codecs with `nmp-wot`'s trust scoring.
 //!
 //! [NIP-87]: https://github.com/nostr-protocol/nips/blob/master/87.md
 

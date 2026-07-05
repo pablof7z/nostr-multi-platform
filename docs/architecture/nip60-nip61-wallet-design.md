@@ -101,15 +101,22 @@ selection, or a private operation queue.
 `nmp-nip87` owns the NIP-87 ecash mint-discoverability codecs (kind:38172 Cashu
 mint announcement, with NUT capability parsing, and kind:38000 mint
 recommendation), one crate per NIP. kind:38173 (Fedimint) is out of scope. It is
-a thin codec crate — no relay I/O, no trust model, no product policy. The
-web-of-trust-scoped, capability-fail-closed aggregation of those codecs into the
-app-facing discovered/recommended-mints projection (plus its read interests and
-runtime wiring) is owned by `nmp-wallet` (`mint_discovery.rs` /
-`discovery_runtime.rs`), which reuses `nmp-wot`'s `WotGraph` scoring to weight
-recommendations by the reading account's follow graph and excludes any mint that
-does not advertise the nutzap-required NUTs (NUT-11 P2PK + NUT-12 DLEQ). The
-first consumer is the external `nutsack` PoC, which replaces its hardcoded mint
-list with this projection.
+a thin codec crate — no relay I/O, no trust model, no product policy.
+
+The web-of-trust-scoped, capability-fail-closed aggregation of those codecs
+into an app-facing discovered/recommended-mints projection (plus its read
+interests and runtime wiring) moved out of `nmp-wallet` into the standalone
+`crates/nmp-mint-discovery` crate (#2880 unwind, epic #2864). That crate
+composes `nmp-nip87` + `nmp-wot` (reusing `WotGraph::score_rooted` to weight
+recommendations by the reading account's follow graph, with an opt-in
+`fallback_root` cold-start seed) and excludes any mint that does not advertise
+the nutzap-required NUTs (NUT-11 P2PK + NUT-12 DLEQ). It owns its own
+`"mint_discovery"` typed projection and its own `nmp_mint_discovery::register`
+composition entry point — `nmp-wallet` no longer depends on `nmp-nip87` or
+`nmp-wot` at all. An app composes `nmp-mint-discovery` alongside `nmp-wallet`
+(or on its own — discovery does not require a wallet) at its own composition
+root. The first consumer is the external `nutsack` PoC, which replaces its
+hardcoded mint list with this projection.
 
 `nmp-nwc` owns the pure NWC protocol codec: connection-URI parsing, NIP-04/
 NIP-44 request/response encryption, and the `kind:23194`/`kind:23195` event

@@ -24,8 +24,8 @@ namespace nmp.wallet;
 //     absent (`None`) round-trips distinctly from a present default — the same
 //     optional-fields convention used by wallet_status.fbs / content_tree.fbs.
 //   * The nested `balances` / `pending_operations` / `recent_history` /
-//     `receive_rows` / `discovered_mints` vectors follow the vector-of-tables
-//     precedent of `NotificationsSnapshot` (notifications.fbs) and
+//     `receive_rows` vectors follow the vector-of-tables precedent of
+//     `NotificationsSnapshot` (notifications.fbs) and
 //     `ModularTimelineSnapshot` (timeline_snapshot.fbs).
 //
 // v3 (#2880, epic #2864): `WalletProjection` gains `discovered_mints`, the
@@ -34,6 +34,20 @@ namespace nmp.wallet;
 // Rust-side (`crate::mint_discovery::aggregate_discovered_mints`) — this
 // wave exposes that existing policy across FFI for the first time, it does
 // not change the policy itself.
+//
+// v4 (#2880 unwind): NIP-87 mint discovery moved out of `nmp-wallet` into the
+// standalone `nmp-mint-discovery` crate, which owns its own `"mint_discovery"`
+// typed projection (`crates/nmp-mint-discovery/schema/mint_discovery.fbs`).
+// FlatBuffers tables must only ever GROW or mark unused fields `(deprecated)`
+// in place — never delete/reorder a field, since that reflows every later
+// field's vtable slot (see `crates/nmp-core/schema/accounts.fbs` for the
+// established precedent this follows). `discovered_mints` is therefore
+// deprecated in place below, keeping its ORIGINAL position and type; nothing
+// encodes or decodes it anymore (`crate::projection_wire` no longer builds a
+// `WalletDiscoveredMint` Rust value, and `WalletProjection` no longer has a
+// `discovered_mints` field). The `WalletDiscoveredMint` table below is kept
+// solely because the deprecated field still needs a defined type — it is not
+// read, written, or referenced by any Rust code in this crate.
 //
 // Regenerate the checked-in Rust bindings ONLY through `ci/regenerate-flatbuffers.sh`
 // (pinned flatc 25.12.19 + repo rustfmt), NEVER raw flatc — a raw-flatc run passes
@@ -182,11 +196,11 @@ table WalletReceiveRow {
   accepted:bool;
 }
 
-// `WalletDiscoveredMint` — one ranked NIP-87 discovered mint (#2880, epic
-// #2864), mirroring the display-safe fields of
-// `nmp_wallet::mint_discovery::DiscoveredMint`. Carries no proofs, secrets,
-// or keys — `DiscoveredMint` has none to begin with; this row is pure
-// discovery metadata (URL, advertised capabilities, web-of-trust rank).
+// `WalletDiscoveredMint` — RETAINED ONLY as the deprecated field's type below
+// (see the v4 unwind note at the top of this file); no Rust code in this
+// crate builds or reads this table anymore. Do not add new fields here or
+// reference it from new code — the owning shape now lives in
+// `nmp-mint-discovery`'s `DiscoveredMintRow`.
 table WalletDiscoveredMint {
   url:string;
   // name: Option<String>
@@ -202,7 +216,7 @@ table WalletDiscoveredMint {
 }
 
 table WalletProjection {
-  schema_version:uint32 = 3;   // mirrors projection_wire::SCHEMA_VERSION
+  schema_version:uint32 = 4;   // mirrors projection_wire::SCHEMA_VERSION
   // active_backend_id: Option<WalletBackendId> (a String newtype)
   has_active_backend_id:bool;
   active_backend_id:string;
@@ -217,10 +231,11 @@ table WalletProjection {
   pending_operations:[WalletOperation];
   recent_history:[WalletHistoryRow];
   receive_rows:[WalletReceiveRow];
-  // Ranked, capability-filtered, web-of-trust-scoped NIP-87 discovered mints
-  // (#2880, epic #2864) — bounded to
-  // `nmp_wallet::mint_discovery::MAX_DISCOVERED_MINTS`.
-  discovered_mints:[WalletDiscoveredMint];
+  // REMOVED (v4, #2880 unwind): NIP-87 discovered mints moved to the
+  // standalone `nmp-mint-discovery` crate's own `"mint_discovery"` typed
+  // projection. Deprecated in place, not deleted/reordered — see the v4 note
+  // at the top of this file.
+  _reserved_was_discovered_mints:[WalletDiscoveredMint] (deprecated);
 }
 
 root_type WalletProjection;

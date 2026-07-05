@@ -269,12 +269,22 @@ path = "crates/nmp-nip60"
 
 # nmp-nip87 (NIP-87 ecash mint discoverability codecs — kind:38172 Cashu mint
 # announcement + kind:38000 recommendation) is protocol mechanics alongside its
-# NIP-adapter siblings (nmp-nip60/nmp-nip57), consumed by nmp-wallet for the
-# WoT-scoped discovered-mints projection (epic #2864, issue #2880). Classified
-# public so external wallet consumers pinning by git rev can resolve it.
+# NIP-adapter siblings (nmp-nip60/nmp-nip57), consumed by nmp-mint-discovery for
+# the WoT-scoped discovered-mints projection (epic #2864, issue #2880).
+# Classified public so external consumers pinning by git rev can resolve it.
 [[public_crates]]
 name = "nmp-nip87"
 path = "crates/nmp-nip87"
+
+# nmp-mint-discovery (#2880 unwind, epic #2864) is the WoT-scoped NIP-87 mint
+# discovery composition crate, extracted out of nmp-wallet so any Nostr app —
+# not only a wallet — can compose it. Classified public alongside its
+# nmp-nip87/nmp-wot siblings so external consumers pinning by git rev can
+# resolve it. Pre-1.0 / unstable like nmp-wallet: pin by git rev, not a
+# version-tag release train.
+[[public_crates]]
+name = "nmp-mint-discovery"
+path = "crates/nmp-mint-discovery"
 
 # nmp-wallet is release-classified public in #2882 to unblock the external
 # nutsack NIP-60/NIP-61 consumer's B1 blocker (SPEC.md §9): external consumers

@@ -1,0 +1,39 @@
+[package]
+name = "nmp-mint-discovery"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "WoT-scoped NIP-87 mint discovery: composes nmp-nip87 (kind:38172/38000 codecs) + nmp-wot (score_rooted trust scoring) into an installable, capability-fail-closed discovered-mints projection. Owns its own typed FlatBuffers snapshot projection; no app/wallet nouns."
+
+[dependencies]
+# NIP-87 kind:38172 announcement + kind:38000 recommendation codecs and NUT
+# capability parsing (thin protocol mechanics; no relay I/O, no WoT, no
+# product policy of its own — see that crate's module docs).
+nmp-nip87 = { path = "../nmp-nip87", version = "1.0.0-rc.1" }
+# Web-of-trust scoring engine (`WotGraph`, `score_rooted`/
+# `score_rooted_with_minimum_score`) reused — not reinvented — to weight and
+# filter mint recommendations by the reading account's follow graph, with a
+# caller-supplied `fallback_root` cold-start seed.
+nmp-wot = { path = "../nmp-wot", version = "1.0.0-rc.1" }
+# Kernel substrate: `KernelEvent`, the observed-projection/identity-change
+# registrar traits, `ActiveAccountSlot`, and `TypedProjectionData` — the same
+# substrate surface every reusable protocol crate composes against.
+nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
+nmp-ownership = { workspace = true }
+# `InterestShape` for this crate's own read-interest shapes (global
+# announcements/recommendations + the self-scoped follow/mute graph read).
+nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Typed FlatBuffers codec for this crate's own `mint_discovery` snapshot
+# projection (ADR-0072 typed-sidecar convention).
+flatbuffers = { workspace = true }
+# Optional Cashu-mint-auditor enrichment (issue #2880 follow-up): a pure
+# `apply_audit` fold plus an async `enrich_with_audit` helper the composition
+# root can call OFF the reactive emit path (see `audit` module docs — HTTP on
+# the projection producer's hot path is a doctrine violation).
+cashu-mint-audit = { version = "0.1", optional = true }
+
+[features]
+audit = ["dep:cashu-mint-audit"]
