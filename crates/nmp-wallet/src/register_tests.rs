@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
 use nmp_core::substrate::{
-    ActionModule, IncrementalApplyError, ObservedProjection, RelayTextInterceptor,
+    ActionModule, IncrementalApplyError, IngestParser, IngestParserRegistrar, ObservedProjection,
+    RelayTextInterceptor,
 };
 use nmp_core::ObservedProjectionId;
 use nmp_ownership::ProjectionRegistrationKey;
@@ -112,6 +113,38 @@ impl ActionRegistrar for FakeApp {
 
 impl RelayTextInterceptorRegistrar for FakeApp {
     fn add_relay_text_interceptor(&self, _interceptor: Arc<dyn RelayTextInterceptor>) {}
+}
+
+/// #3010 — `register()` now installs the kind:10019-arrival ingest parser
+/// (`backend::cashu::nutzap_await`), so this fake host needs a (no-op, like
+/// its `RelayTextInterceptorRegistrar` sibling above) implementation to
+/// satisfy `register`'s trait bound. Nothing here needs to observe what was
+/// registered — `send_nutzap_await_tests.rs` exercises the parser's real
+/// behavior directly against a `CashuWalletBackend`.
+impl IngestParserRegistrar for FakeApp {
+    fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {}
+
+    fn replace_ingest_parser(
+        &self,
+        _kind: u32,
+        _slot_key: &'static str,
+        _parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>> {
+        None
+    }
+
+    fn unregister_ingest_parser(&self, _kind: u32, _slot_key: &'static str) {}
+
+    fn replace_ingest_parser_range(
+        &self,
+        _range: std::ops::Range<u32>,
+        _slot_key: &'static str,
+        _parser: Arc<dyn IngestParser>,
+    ) -> Option<Arc<dyn IngestParser>> {
+        None
+    }
+
+    fn unregister_ingest_parser_range(&self, _slot_key: &'static str) {}
 }
 
 impl SnapshotProjectionRegistrar for FakeApp {

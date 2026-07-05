@@ -57,8 +57,9 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, ObservedProjectionRegistrar,
-    RegistrationError, RelayTextInterceptorRegistrar, SnapshotProjectionRegistrar,
+    ActionRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    ObservedProjectionRegistrar, RegistrationError, RelayTextInterceptorRegistrar,
+    SnapshotProjectionRegistrar,
 };
 
 use crate::journal::{FsWalletWalStore, WalletWalStore};
@@ -129,6 +130,7 @@ pub fn register(
               + SnapshotProjectionRegistrar
               + ObservedProjectionRegistrar
               + IdentityChangeRegistrar
+              + IngestParserRegistrar
               + HostCapabilities),
     config: Config,
 ) -> Result<Handles, RegistrationError> {
@@ -163,6 +165,13 @@ pub fn register(
         nip47_handles.status.clone(),
     ));
     let cashu_backend = Arc::new(CashuWalletBackend::with_wal_store(wal_store));
+    // #3010 — the kind:10019-arrival continuation that lets `nutzap.send`
+    // self-complete across a recipient-info cache miss instead of failing
+    // this attempt outright (see `backend::cashu::nutzap_await`'s module
+    // docs). Installed once, alongside this backend's other composition-root
+    // wiring, using the SAME actor command sender every other Cashu worker
+    // captures.
+    cashu_backend.install_nutzap_await(app.actor_sender(), app);
     let selector = Arc::new(WalletBackendSelector::new(vec![
         Arc::clone(&nwc_backend) as Arc<dyn WalletBackend>,
         Arc::clone(&cashu_backend) as Arc<dyn WalletBackend>,

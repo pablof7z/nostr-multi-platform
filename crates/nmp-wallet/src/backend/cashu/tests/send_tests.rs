@@ -65,11 +65,46 @@ fn expect_error_code(errors: &RecordingErrorSurface, code: &str) {
     );
 }
 
+/// #3010 — a cache miss on the recipient's kind:10019 no longer fails this
+/// attempt closed synchronously: it supersedes the operation (journal-only,
+/// no `ShowErrorToken`/`RecordActionFailure`) and parks a continuation that
+/// `nutzap_await` redrives once the info arrives (see
+/// `send_nutzap_await_tests.rs` for the end-to-end redrive/TTL acceptance
+/// tests). Only the bounded TTL sweep ever surfaces
+/// `NO_RECIPIENT_NUTZAP_INFO` to a caller now.
 #[test]
-fn no_recipient_info_fails_closed() {
+fn no_recipient_info_parks_instead_of_failing_closed() {
     let backend = backend_with_mint();
     let errors = run_send(&backend, &FixedCachedEvents::default(), "cid-no-info", 21);
-    expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+    assert_eq!(
+        errors.last_token_code.lock().unwrap().as_deref(),
+        None,
+        "a miss must not surface an error synchronously — it parks instead"
+    );
+    let state = state::lock_state(&backend.state);
+    let op = state
+        .journal
+        .get(&crate::journal::WalletOperationId::new("cid-no-info"))
+        .expect("the original operation must still be recorded");
+    assert_eq!(
+        op.state,
+        WalletOperationState::Failed,
+        "the original attempt is superseded (journal-only) at park time"
+    );
+}
+
+/// #3010 — exactly one `PendingSendAwait` is parked for the recipient on a
+/// miss, so `nutzap_await`'s ingest parser has something to redrive once the
+/// info arrives.
+#[test]
+fn no_recipient_info_parks_a_pending_send_await() {
+    let backend = backend_with_mint();
+    let _errors = run_send(&backend, &FixedCachedEvents::default(), "cid-parks", 21);
+    let parked = state::lock_state(&backend.state).take_send_awaits(RECIPIENT);
+    assert_eq!(parked.len(), 1, "exactly one await must be parked");
+    assert_eq!(parked[0].recipient_pubkey, RECIPIENT);
+    assert_eq!(parked[0].amount_sats, 21);
+    assert_eq!(parked[0].correlation_id.as_deref(), Some("cid-parks"));
 }
 
 /// #2966 — before this fix, `snapshot.rs`'s `history_row` read a
@@ -109,10 +144,11 @@ fn history_row_shows_the_intended_send_amount_even_when_the_send_fails_before_pr
 
 /// #2936 — a cache miss on the recipient's kind:10019 must not just fail
 /// closed silently: it opens a warm-the-cache read interest for that
-/// specific recipient (`interests::recipient_nutzap_info_interest`) so a
-/// later retry can actually succeed once the event arrives. Without this,
-/// `SendNutzap` to any recipient this account has never incidentally
-/// observed a kind:10019 from fails closed FOREVER, no retry ever helps.
+/// specific recipient (`interests::recipient_nutzap_info_interest`) so the
+/// event actually flows into the kernel's cache. #3010 additionally parks a
+/// continuation (see `no_recipient_info_parks_a_pending_send_await`) so
+/// arrival redrives automatically — a caller's own manual retry (this test's
+/// scenario) still works too, as an independent, still-supported path.
 #[test]
 fn no_recipient_info_opens_a_warm_cache_interest() {
     let backend = backend_with_mint();
@@ -146,7 +182,11 @@ fn no_recipient_info_opens_a_warm_cache_interest() {
         );
         cmd.run(&mut c).expect("run returns Ok");
     }
-    expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+    assert_eq!(
+        errors.last_token_code.lock().unwrap().as_deref(),
+        None,
+        "#3010 — a miss parks instead of failing closed synchronously"
+    );
 
     let sends = sink.sends.lock().unwrap();
     let (identity, interest) = sends
@@ -169,14 +209,21 @@ fn no_recipient_info_opens_a_warm_cache_interest() {
 
 /// #2936 — once the recipient's kind:10019 the interest above warmed has
 /// actually arrived (simulated here by seeding `FixedCachedEvents`, the same
-/// double a real kernel cache-serve would populate), the caller's retry
-/// finds it and proceeds PAST the recipient-info gate — it must not fail
-/// with `NO_RECIPIENT_NUTZAP_INFO` a second time.
+/// double a real kernel cache-serve would populate), a caller's own MANUAL
+/// retry (a fresh dispatch under a new correlation id — independent of
+/// #3010's auto-redrive continuation, which is exercised separately in
+/// `send_nutzap_await_tests.rs`) finds it and proceeds PAST the
+/// recipient-info gate — it must not fail with `NO_RECIPIENT_NUTZAP_INFO` a
+/// second time.
 #[test]
 fn retry_after_interest_delivers_recipient_info_proceeds_past_the_gate() {
     let backend = backend_with_mint();
     let errors = run_send(&backend, &FixedCachedEvents::default(), "cid-retry-1", 21);
-    expect_error_code(&errors, ui_codes::NO_RECIPIENT_NUTZAP_INFO);
+    assert_eq!(
+        errors.last_token_code.lock().unwrap().as_deref(),
+        None,
+        "#3010 — the first miss parks instead of failing closed synchronously"
+    );
 
     let info = nmp_nip60::nutzap::NutZapInfo {
         relays: vec!["wss://recipient-relay.example".to_string()],
