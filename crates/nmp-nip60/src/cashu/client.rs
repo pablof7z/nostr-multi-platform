@@ -196,11 +196,17 @@ impl MintClient {
 
         let keysets_raw = self.roundtrip(&http::build_get_keysets_request());
         if let Ok(keysets_resp) = keysets_raw.and_then(|raw| http::parse_keys_response(&raw)) {
-            let fees: HashMap<String, u64> = keysets_resp
-                .keysets
-                .into_iter()
-                .map(|ks| (ks.id, ks.input_fee_ppk))
-                .collect();
+            // FIRST-wins on a duplicate keyset id — byte-identical to the
+            // original `get_sat_keyset`'s `find(...)` (which returned the
+            // FIRST matching entry). `HashMap::collect` would be LAST-wins;
+            // only reachable via a malformed `/v1/keysets` response with a
+            // repeated id, but this feeds the melt/swap fee path, so it must
+            // match the audited original exactly. `or_insert` keeps the
+            // first occurrence.
+            let mut fees: HashMap<String, u64> = HashMap::new();
+            for ks in keysets_resp.keysets {
+                fees.entry(ks.id).or_insert(ks.input_fee_ppk);
+            }
             for ks in &mut keysets {
                 if let Some(fee) = fees.get(&ks.id) {
                     ks.input_fee_ppk = *fee;

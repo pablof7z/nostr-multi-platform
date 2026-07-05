@@ -182,6 +182,40 @@ fn get_keysets_with_fees_merges_fees_across_every_unit() {
     assert_eq!(usd.input_fee_ppk, 250);
 }
 
+/// `get_keysets_with_fees` merges the FIRST occurrence of a duplicate keyset
+/// id, byte-identical to the original `get_sat_keyset`'s `find(...)` — a
+/// malformed `/v1/keysets` that repeats an id must not let a later entry's
+/// fee win (LAST-wins would silently change a melt/swap fee). Here the first
+/// `00sat` advertises fee 100, a second (malformed) `00sat` advertises 999;
+/// the merged fee must be 100.
+#[test]
+fn get_keysets_with_fees_is_first_wins_on_a_duplicate_keyset_id() {
+    let url = spawn_sequenced_mock(vec![
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[{"id":"00sat","unit":"sat","keys":{"1":"02aa"}}]}"#,
+        ),
+        (
+            "HTTP/1.1 200 OK",
+            "",
+            r#"{"keysets":[
+                {"id":"00sat","unit":"sat","input_fee_ppk":100},
+                {"id":"00sat","unit":"sat","input_fee_ppk":999}
+            ]}"#,
+        ),
+    ]);
+    let client = MintClient::new(&url);
+    let keysets = client
+        .get_keysets_with_fees()
+        .expect("keysets with fees round-trip");
+    assert_eq!(keysets.len(), 1);
+    assert_eq!(
+        keysets[0].input_fee_ppk, 100,
+        "the FIRST duplicate-id entry's fee must win, never the last"
+    );
+}
+
 /// `MintClient::get_mint_info` end-to-end against a local mock mint — proves
 /// the whole roundtrip (request build -> `ureq` call -> response parse),
 /// complementing `http::info`'s own builder-shape/decode-only unit tests.

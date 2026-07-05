@@ -6,7 +6,7 @@
 //! mutated by the typed-projection producer closure itself (D8; see
 //! `mint_info.rs`'s module docs for the fetch/trigger seam).
 
-use crate::projection::{WalletMintFeeRow, WalletMintInfoRow};
+use crate::projection::{WalletMintFeeRow, WalletMintInfoRow, MAX_MINT_UNITS};
 
 /// One mint's cached raw NUT-06/NUT-02 metadata, keyed by canonical mint URL
 /// in [`super::CashuWalletState::mint_info`]. Field-for-field the same shape
@@ -29,15 +29,23 @@ pub(in crate::backend::cashu) struct CachedMintInfo {
 impl CachedMintInfo {
     /// Build the wire-facing [`WalletMintInfoRow`] for `url` (the cache's map
     /// key, not stored redundantly on this type itself).
+    ///
+    /// The per-row nested vectors are clamped to [`MAX_MINT_UNITS`] (D5 —
+    /// bounded snapshot across FFI): `units` and `fees_by_unit` are both in
+    /// the same canonical (sorted-by-unit) order `fetch_one` built them in,
+    /// so taking the first `MAX_MINT_UNITS` of each keeps them consistent and
+    /// deterministic — a mint advertising a pathologically large keyset list
+    /// can never bloat one row.
     pub(in crate::backend::cashu) fn to_row(&self, url: String) -> WalletMintInfoRow {
         WalletMintInfoRow {
             url,
             name: self.name.clone(),
             icon_url: self.icon_url.clone(),
-            units: self.units.clone(),
+            units: self.units.iter().take(MAX_MINT_UNITS).cloned().collect(),
             input_fee_ppk_by_unit: self
                 .fees_by_unit
                 .iter()
+                .take(MAX_MINT_UNITS)
                 .map(|(unit, input_fee_ppk)| WalletMintFeeRow {
                     unit: unit.clone(),
                     input_fee_ppk: *input_fee_ppk,

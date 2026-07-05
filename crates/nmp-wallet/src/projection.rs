@@ -5,6 +5,16 @@ use crate::{WalletBackendId, WalletCapabilities, WalletOperation};
 pub const WALLET_PROJECTION_KEY: &str = "wallet";
 pub const MAX_WALLET_PROJECTION_ROWS: usize = 100;
 
+/// D5 per-row bound (#3030 PR2 of 2): the max number of `units` /
+/// `input_fee_ppk_by_unit` entries a single [`WalletMintInfoRow`] may carry
+/// across FFI. `MAX_WALLET_PROJECTION_ROWS` caps the ROW count; without this
+/// a single row's nested vectors would be unbounded, so a mint advertising a
+/// pathologically large keyset list could bloat one row. Real mints run 1–3
+/// units, so 16 is comfortably generous while still bounded. Clamp is
+/// deterministic — the first N by the already-sorted (canonical-unit) order
+/// `snapshot::mint_info_rows` / `CachedMintInfo::to_row` build the row in.
+pub const MAX_MINT_UNITS: usize = 16;
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub enum WalletReadiness {
     #[default]

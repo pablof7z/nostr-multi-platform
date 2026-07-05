@@ -7,7 +7,7 @@
 //! logic in isolation from the fetch itself (which has its own tests
 //! colocated with `mint_info.rs`, mirroring `check_state.rs`).
 
-use crate::projection::{WalletMintFeeRow, WalletMintInfoRow};
+use crate::projection::{WalletMintFeeRow, WalletMintInfoRow, MAX_MINT_UNITS};
 
 use super::*;
 
@@ -155,6 +155,50 @@ fn fresh_backend_has_empty_mint_info() {
     let backend = CashuWalletBackend::new();
     let snapshot = backend.snapshot(WalletProjectionScope::default());
     assert!(snapshot.projection.mint_info.is_empty());
+}
+
+/// D5 per-row bound (#3030 PR2 of 2): a mint advertising more than
+/// `MAX_MINT_UNITS` units/keysets must have BOTH its `units` and
+/// `input_fee_ppk_by_unit` vectors clamped to the first `MAX_MINT_UNITS`
+/// (in the canonical sorted order the cache holds them), so one pathological
+/// mint can never bloat a single row across FFI.
+#[test]
+fn a_row_with_too_many_units_is_clamped_to_the_cap() {
+    // Build a cache entry with 2x the cap's worth of units, named so their
+    // sorted order is predictable: u000, u001, ... u031.
+    let over = MAX_MINT_UNITS * 2;
+    let unit_names: Vec<String> = (0..over).map(|i| format!("u{i:03}")).collect();
+    let cached_over = state::CachedMintInfo {
+        name: Some("Pathological Mint".to_string()),
+        icon_url: None,
+        units: unit_names.clone(),
+        fees_by_unit: unit_names
+            .iter()
+            .enumerate()
+            .map(|(i, unit)| (unit.clone(), i as u64))
+            .collect(),
+    };
+
+    let backend = CashuWalletBackend::new();
+    {
+        let mut state = state::lock_state(&backend.state);
+        state.mints = vec![MINT.to_string()];
+        state.mint_info.insert(MINT.to_string(), cached_over);
+    }
+
+    let snapshot = backend.snapshot(WalletProjectionScope::default());
+    let row = &snapshot.projection.mint_info[0];
+    assert_eq!(row.units.len(), MAX_MINT_UNITS, "units clamped to the cap");
+    assert_eq!(
+        row.input_fee_ppk_by_unit.len(),
+        MAX_MINT_UNITS,
+        "fee rows clamped to the cap"
+    );
+    // Deterministic: the FIRST cap-many in sorted order (u000..).
+    assert_eq!(row.units[0], "u000");
+    assert_eq!(row.units[MAX_MINT_UNITS - 1], format!("u{:03}", MAX_MINT_UNITS - 1));
+    assert_eq!(row.input_fee_ppk_by_unit[0].unit, "u000");
+    assert_eq!(row.input_fee_ppk_by_unit[0].input_fee_ppk, 0);
 }
 
 /// Direct unit test of `snapshot::mint_info_rows` (bypassing the whole
