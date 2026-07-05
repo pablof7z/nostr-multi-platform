@@ -78,6 +78,12 @@ pub(crate) fn remove_relay(kernel: &mut Kernel, url: &str) {
     if rows.len() != before {
         kernel.set_configured_relays(rows);
     }
+    // #114: a removed relay has zero diagnostic value — evict its transport
+    // row (and any wire-subs still open on it) synchronously, in the same
+    // dispatch as the `configured_relays` edit, rather than depend on the
+    // socket's own async teardown to ever clear it (it never fully did — see
+    // `relay_removed`'s doc comment).
+    kernel.relay_removed(&canonical);
 }
 
 #[cfg(test)]
@@ -232,6 +238,43 @@ mod tests {
         add_relay(&mut kernel, "wss://relay.example", "read");
         remove_relay(&mut kernel, "WSS://Relay.Example/");
         assert!(kernel.configured_relays_snapshot().is_empty());
+    }
+
+    /// chirp#114 — the load-bearing regression proof: a relay that failed to
+    /// connect repeatedly (mirroring the field repro's climbing reconnect
+    /// count / "Backing_off" row) must leave NO trace in Diagnostics once the
+    /// user removes it — not a frozen "closed" row, no row at all. Before this
+    /// fix `remove_relay` only ever touched `configured_relays`; the
+    /// transport-diagnostics row had no eviction path whatsoever, so it
+    /// outlived the relay it described.
+    #[test]
+    fn t_remove_relay_evicts_phantom_diagnostics_row() {
+        use nmp_network::role::RelayRole;
+
+        let mut kernel = fresh_kernel();
+        add_relay(&mut kernel, "ws://127.0.0.1:19999", "read");
+        // Simulate the repro: several failed connection attempts against a
+        // dead relay before the user gives up and removes it.
+        for _ in 0..14 {
+            kernel.relay_failed(
+                RelayRole::Content,
+                "ws://127.0.0.1:19999",
+                "tcp connect: Connection refused".to_string(),
+            );
+        }
+        assert!(
+            kernel.has_relay_diagnostics_row_for_test("ws://127.0.0.1:19999"),
+            "sanity: the failed dial must have left a transport row"
+        );
+
+        remove_relay(&mut kernel, "ws://127.0.0.1:19999");
+
+        assert!(kernel.configured_relays_snapshot().is_empty());
+        assert!(
+            !kernel.has_relay_diagnostics_row_for_test("ws://127.0.0.1:19999"),
+            "#114: a removed relay must vanish from Diagnostics, not linger as \
+             a phantom 'Backing_off' row"
+        );
     }
 
     #[test]
