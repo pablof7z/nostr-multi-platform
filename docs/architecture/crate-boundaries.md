@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-sqlite-wasm`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-mint-discovery`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features, including `nmp-substrate` |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned UniFFI facades and delivery crates |
 | Sidecars | Tooling, tests, diagnostics, conformance vehicles, and private proofs | `nmp-cli`, `nmp-codegen`, `nmp-component-registry`, `nmp-devtools`, `nmp-testing`, `nmp-browser-runtime-conformance`, `nmp-sqlite-wasm-conformance`, `nmp-example-login-timeline`, app shells |
@@ -96,6 +96,22 @@ the sibling L4 protocol crates it composes (`nmp-nip47`, `nmp-nip57`,
 `nmp-nip60`) through their explicit composition surfaces only. It must not
 depend on any protocol crate for anything outside that seam, and `nmp-core`
 must not learn Cashu, nutzap, NWC, NIP-60, or NIP-61 nouns.
+
+`nmp-mint-discovery` (Layer 4) is the WoT-scoped NIP-87 mint-discovery
+composition owner (#2880 unwind, epic #2864): the unified `DiscoveredMint`
+model, the pure fail-closed/WoT-scoped `aggregate` function, the memoized
+`MintDiscoveryStore`, the identity-reactive read interests, and its own
+`"mint_discovery"` typed FlatBuffers snapshot projection. Composing a
+discovery product out of protocol mechanics is its declared responsibility, so
+— mirroring `nmp-wallet`'s exception above — it may depend on the sibling L4
+crate `nmp-nip87` (kind:38172/38000 codecs) and on `nmp-wot`
+(`WotGraph::score_rooted` trust scoring) through their public APIs. It has no
+dependency on `nmp-wallet`, and `nmp-wallet` has no dependency on it or on
+`nmp-nip87`/`nmp-wot` — either crate may be composed independently by an app.
+An optional `audit` feature composes the external `cashu-mint-audit` crate for
+Cashu-mint-auditor reliability enrichment; the async fetch helper it adds must
+never run on the projection producer's emit path (D8) — only a pure fold runs
+there.
 
 ---
 

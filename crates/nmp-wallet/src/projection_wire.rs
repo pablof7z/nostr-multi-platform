@@ -51,9 +51,9 @@ use generated::nmp::wallet as fb;
 
 use enums::{readiness_from_fb, readiness_to_fb};
 use rows::{
-    decode_balances, decode_capabilities, decode_discovered_mints, decode_history,
-    decode_operations, decode_receive_rows, encode_balances, encode_capabilities,
-    encode_discovered_mints, encode_history, encode_operations, encode_receive_rows, str_field,
+    decode_balances, decode_capabilities, decode_history, decode_operations,
+    decode_receive_rows, encode_balances, encode_capabilities, encode_history, encode_operations,
+    encode_receive_rows, str_field,
 };
 
 use crate::backend::WalletBackendId;
@@ -74,7 +74,12 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NWMP";
 /// v3 (#2880 follow-up, epic #2864): `WalletProjection` gains
 /// `discovered_mints` — the NIP-87 web-of-trust-scoped, capability-fail-closed
 /// discovered-mints view.
-pub const SCHEMA_VERSION: u32 = 3;
+/// v4 (#2880 unwind): NIP-87 mint discovery moved to the standalone
+/// `nmp-mint-discovery` crate (its own `"mint_discovery"` typed projection).
+/// `discovered_mints` is REMOVED from `WalletProjection` — per the schema's
+/// field-removal convention the wire slot is deprecated in place, not reused
+/// or reordered (see `schema/wallet_projection.fbs`).
+pub const SCHEMA_VERSION: u32 = 4;
 
 // --- encode ---------------------------------------------------------------
 
@@ -100,7 +105,6 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
     let pending_operations = encode_operations(&mut fbb, &projection.pending_operations);
     let recent_history = encode_history(&mut fbb, &projection.recent_history);
     let receive_rows = encode_receive_rows(&mut fbb, &projection.receive_rows);
-    let discovered_mints = encode_discovered_mints(&mut fbb, &projection.discovered_mints);
 
     let root = fb::WalletProjection::create(
         &mut fbb,
@@ -118,7 +122,6 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
             pending_operations: Some(pending_operations),
             recent_history: Some(recent_history),
             receive_rows: Some(receive_rows),
-            discovered_mints: Some(discovered_mints),
         },
     );
     fb::finish_wallet_projection_buffer(&mut fbb, root);
@@ -160,7 +163,6 @@ pub fn decode_wallet_projection(bytes: &[u8]) -> Result<WalletProjection, String
     let pending_operations = decode_operations(root.pending_operations())?;
     let recent_history = decode_history(root.recent_history())?;
     let receive_rows = decode_receive_rows(root.receive_rows())?;
-    let discovered_mints = decode_discovered_mints(root.discovered_mints())?;
 
     Ok(WalletProjection {
         active_backend_id,
@@ -173,7 +175,6 @@ pub fn decode_wallet_projection(bytes: &[u8]) -> Result<WalletProjection, String
         pending_operations,
         recent_history,
         receive_rows,
-        discovered_mints,
     })
 }
 

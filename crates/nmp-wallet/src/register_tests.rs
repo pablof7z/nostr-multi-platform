@@ -22,9 +22,7 @@ use crate::backend::WalletBackendId;
 
 /// One opened observed-projection interest, recorded so a test can drive its
 /// sink directly — mirrors `runtime_tests.rs`'s `RecordingRegistrar` (that
-/// file exercises `WalletRuntime`'s own two interests directly; this one lets
-/// `discovered_mints_populates_from_the_registered_mint_discovery_runtime`
-/// below drive the sibling `MintDiscoveryRuntime`'s interests the same way).
+/// file exercises `WalletRuntime`'s own two interests directly).
 #[derive(Clone)]
 struct RecordedObservedProjection {
     consumer_id: String,
@@ -32,10 +30,9 @@ struct RecordedObservedProjection {
 }
 
 /// Records every opened observed-projection interest instead of discarding it
-/// — `register()` wires two runtimes' worth of identity-reactive interests
-/// (`WalletRuntime` + `MintDiscoveryRuntime`), and most tests here only care
-/// that registration didn't error, so recording is a strict superset of the
-/// old no-op behavior.
+/// — `register()` wires `WalletRuntime`'s identity-reactive interests, and
+/// most tests here only care that registration didn't error, so recording is
+/// a strict superset of the old no-op behavior.
 #[derive(Default)]
 struct RecordingObservedRegistrar {
     next_id: Mutex<u64>,
@@ -352,11 +349,8 @@ fn merged_typed_projection_encodes_a_decodable_nwmp_sidecar() {
 
     // The typed sidecar builder the registered `"wallet.merged"` closure calls:
     // its envelope identity is the `NWMP` schema, and its payload round-trips
-    // back to exactly the runtime's merged snapshot (no mints discovered in
-    // this test, so `discovered_mints` is empty on both sides — see
-    // `discovered_mints_populates_from_the_registered_mint_discovery_runtime`
-    // below for the populated case).
-    let entry = wallet_merged_typed_projection(&handles.runtime, &handles.mint_discovery);
+    // back to exactly the runtime's merged snapshot.
+    let entry = wallet_merged_typed_projection(&handles.runtime);
     assert_eq!(entry.key, crate::projection_wire::PROJECTION_KEY);
     assert_eq!(entry.schema_id, crate::projection_wire::SCHEMA_ID);
     assert_eq!(entry.schema_version, crate::projection_wire::SCHEMA_VERSION);
@@ -365,106 +359,4 @@ fn merged_typed_projection_encodes_a_decodable_nwmp_sidecar() {
     let decoded = crate::projection_wire::decode_wallet_projection(&entry.payload)
         .expect("registered sidecar payload must decode as NWMP");
     assert_eq!(decoded, handles.runtime.snapshot());
-}
-
-/// #2880 (epic #2864) — the whole point of this wave: once `MintDiscoveryRuntime`
-/// (registered by `register()` alongside `WalletRuntime`) has observed a
-/// capability-qualifying announcement and a web-of-trust-scoped recommendation,
-/// `wallet_merged_typed_projection`'s encoded `NWMP` sidecar must carry them in
-/// `discovered_mints` — proving the NIP-87 discovery policy
-/// (`crate::mint_discovery::aggregate_discovered_mints`, already unit-tested in
-/// isolation by `mint_discovery_tests.rs`) actually reaches the projection that
-/// crosses FFI, not just `Handles::mint_discovery.snapshot()` in Rust.
-///
-/// Mirrors `runtime_tests.rs`'s
-/// `on_kernel_event_forwards_backend_commands_onto_the_command_channel`: fetch
-/// the sink `register()` wired onto the shared `RecordingObservedRegistrar`
-/// and drive it directly with the exact `KernelEvent` shapes a relay delivery
-/// would produce (kind:3 follow, kind:38172 announcement, kind:38000
-/// recommendation) — both of `MintDiscoveryRuntime`'s reconcilers share the
-/// same underlying sink (see `discovery_runtime.rs`), so opening any one of
-/// its recorded interests is sufficient to reach the store.
-#[test]
-fn discovered_mints_populates_from_the_registered_mint_discovery_runtime() {
-    let viewer = "aa".repeat(32);
-    let recommender = "bb".repeat(32);
-    let mint_url = "https://mint.example".to_string();
-
-    let mut app = FakeApp::new();
-    // Eager cold-start: an account already active before `register()` runs
-    // (mirrors `MintDiscoveryRuntime::new`'s doc comment) sets the store's
-    // scoring viewer immediately, without needing to fire an identity-change
-    // observer first.
-    *app.active_pubkey.lock().unwrap() = Some(viewer.clone());
-
-    let handles = register(&mut app, Config::default()).expect("register must succeed");
-
-    let opened = app.observed.opened();
-    let sink = opened
-        .iter()
-        .find(|o| o.consumer_id == "nmp.wallet.mint_discovery")
-        .expect("register() must open the NIP-87 mint-discovery interest")
-        .observer
-        .clone();
-
-    // Viewer directly follows the recommender (kind:3 `p` tag) — a
-    // `DIRECT_FOLLOW_SCORE` (100) vouch, well above the default minimum (1).
-    sink.on_kernel_event(&nmp_core::substrate::KernelEvent {
-        id: "3".repeat(64),
-        author: viewer.clone(),
-        kind: nmp_wot::KIND_CONTACT_LIST,
-        created_at: 1_700_000_000,
-        tags: vec![vec!["p".to_string(), recommender.clone()]],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
-
-    // A kind:38172 announcement advertising the nutzap-required NUTs.
-    sink.on_kernel_event(&nmp_core::substrate::KernelEvent {
-        id: "1".repeat(64),
-        author: recommender.clone(),
-        kind: nmp_nip87::KIND_MINT_ANNOUNCE,
-        created_at: 1_700_000_001,
-        tags: vec![
-            vec!["d".to_string(), "mint-d".to_string()],
-            vec!["u".to_string(), mint_url.clone()],
-            vec!["nuts".to_string(), "1,2,4,7,11,12".to_string()],
-            vec!["name".to_string(), "Test Mint".to_string()],
-        ],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
-
-    // A kind:38000 Cashu recommendation for the same mint URL.
-    sink.on_kernel_event(&nmp_core::substrate::KernelEvent {
-        id: "2".repeat(64),
-        author: recommender.clone(),
-        kind: nmp_nip87::KIND_MINT_RECOMMEND,
-        created_at: 1_700_000_002,
-        tags: vec![
-            vec!["k".to_string(), "38172".to_string()],
-            vec!["u".to_string(), mint_url.clone()],
-        ],
-        content: String::new(),
-        relay_provenance: Vec::new(),
-    });
-
-    let entry = wallet_merged_typed_projection(&handles.runtime, &handles.mint_discovery);
-    let decoded = crate::projection_wire::decode_wallet_projection(&entry.payload)
-        .expect("registered sidecar payload must decode as NWMP");
-
-    assert_eq!(decoded.discovered_mints.len(), 1);
-    let mint = &decoded.discovered_mints[0];
-    assert_eq!(mint.url, mint_url);
-    assert_eq!(mint.name.as_deref(), Some("Test Mint"));
-    assert_eq!(mint.nuts, vec![1, 2, 4, 7, 11, 12]);
-    assert!(mint.supports_nutzap);
-    assert_eq!(mint.recommendation_count, 1);
-    assert_eq!(mint.trust_score, nmp_wot::score::DIRECT_FOLLOW_SCORE);
-
-    // `Handles::mint_discovery` (the Rust-side runtime-holds-projection
-    // access) must agree with the encoded FFI sidecar bit for bit.
-    let direct = handles.mint_discovery.snapshot();
-    assert_eq!(direct.mints.len(), 1);
-    assert_eq!(direct.mints[0].url, mint_url);
 }

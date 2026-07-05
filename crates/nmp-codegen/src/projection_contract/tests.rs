@@ -133,6 +133,10 @@ fn swift_presented_contract_keys_match_registry() {
         // (NWMP) registered by nmp-wallet with no iOS Swift `SnapshotProjections`
         // field yet. Hosts that want it decode the typed payload directly.
         "wallet.merged",
+        // The WoT-scoped NIP-87 mint-discovery projection (#2880 unwind): a
+        // Tier-1 sidecar (NMDS) registered by nmp-mint-discovery, extracted
+        // from nmp-wallet, with no iOS Swift `SnapshotProjections` field yet.
+        "mint_discovery",
     ];
 
     let registry_keys: std::collections::BTreeSet<&str> =

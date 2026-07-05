@@ -2760,7 +2760,6 @@ pub mod nmp {
             pub const VT_PENDING_OPERATIONS: ::flatbuffers::VOffsetT = 24;
             pub const VT_RECENT_HISTORY: ::flatbuffers::VOffsetT = 26;
             pub const VT_RECEIVE_ROWS: ::flatbuffers::VOffsetT = 28;
-            pub const VT_DISCOVERED_MINTS: ::flatbuffers::VOffsetT = 30;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2777,9 +2776,6 @@ pub mod nmp {
                 args: &'args WalletProjectionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletProjection<'bldr>> {
                 let mut builder = WalletProjectionBuilder::new(_fbb);
-                if let Some(x) = args.discovered_mints {
-                    builder.add_discovered_mints(x);
-                }
                 if let Some(x) = args.receive_rows {
                     builder.add_receive_rows(x);
                 }
@@ -2817,7 +2813,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(3))
+                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(4))
                         .unwrap()
                 }
             }
@@ -2976,24 +2972,6 @@ pub mod nmp {
                     >>(WalletProjection::VT_RECEIVE_ROWS, None)
                 }
             }
-            #[inline]
-            pub fn discovered_mints(
-                &self,
-            ) -> Option<
-                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'a>>>,
-            > {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<
-                            'a,
-                            ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint>,
-                        >,
-                    >>(WalletProjection::VT_DISCOVERED_MINTS, None)
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for WalletProjection<'_> {
@@ -3048,12 +3026,6 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<WalletReceiveRow>>,
                     >>("receive_rows", Self::VT_RECEIVE_ROWS, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<
-                            '_,
-                            ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint>,
-                        >,
-                    >>("discovered_mints", Self::VT_DISCOVERED_MINTS, false)?
                     .finish();
                 Ok(())
             }
@@ -3088,20 +3060,12 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletReceiveRow<'a>>>,
                 >,
             >,
-            pub discovered_mints: Option<
-                ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<
-                        'a,
-                        ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'a>>,
-                    >,
-                >,
-            >,
         }
         impl<'a> Default for WalletProjectionArgs<'a> {
             #[inline]
             fn default() -> Self {
                 WalletProjectionArgs {
-                    schema_version: 3,
+                    schema_version: 4,
                     has_active_backend_id: false,
                     active_backend_id: None,
                     readiness: WalletReadiness::NotConfigured,
@@ -3114,7 +3078,6 @@ pub mod nmp {
                     pending_operations: None,
                     recent_history: None,
                     receive_rows: None,
-                    discovered_mints: None,
                 }
             }
         }
@@ -3127,7 +3090,7 @@ pub mod nmp {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
-                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 3);
+                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 4);
             }
             #[inline]
             pub fn add_has_active_backend_id(&mut self, has_active_backend_id: bool) {
@@ -3249,21 +3212,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_discovered_mints(
-                &mut self,
-                discovered_mints: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<
-                        'b,
-                        ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'b>>,
-                    >,
-                >,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    WalletProjection::VT_DISCOVERED_MINTS,
-                    discovered_mints,
-                );
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletProjectionBuilder<'a, 'b, A> {
@@ -3296,7 +3244,6 @@ pub mod nmp {
                 ds.field("pending_operations", &self.pending_operations());
                 ds.field("recent_history", &self.recent_history());
                 ds.field("receive_rows", &self.receive_rows());
-                ds.field("discovered_mints", &self.discovered_mints());
                 ds.finish()
             }
         }

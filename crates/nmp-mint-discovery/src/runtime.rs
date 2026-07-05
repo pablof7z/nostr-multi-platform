@@ -1,36 +1,29 @@
 //! NIP-87 mint discovery runtime controller (issue #2880).
 //!
-//! [`MintDiscoveryRuntime`] wires the read side of mint discovery onto the app
-//! exactly the way [`crate::runtime::WalletRuntime`] wires the wallet's own
-//! reads: identity-change-reactive [`ObservedProjectionReconciler`]s driven by
-//! [`IdentityChangeRegistrar`], each feeding a shared sink. Nothing new is
+//! [`MintDiscoveryRuntime`] wires the read side of mint discovery onto the
+//! app: identity-change-reactive `ObservedProjectionReconciler`s driven by
+//! `IdentityChangeRegistrar`, each feeding a shared sink. Nothing new is
 //! invented — this is the same reconciler recipe `nmp-nip51::register_mute_runtime`
 //! established, composed with the reused `nmp-wot` scoring engine.
 //!
 //! Two observed projections:
 //!
 //! - a **global** read of every kind:38172 announcement + kind:38000
-//!   recommendation ([`mint_discovery_shape`]); and
+//!   recommendation ([`crate::interests::mint_discovery_shape`]); and
 //! - a **self-scoped** read of the active account's kind:3 / kind:10000
-//!   ([`mint_discovery_trust_graph_shape`]) that builds the web-of-trust graph
-//!   used to score recommenders.
+//!   ([`crate::interests::mint_discovery_trust_graph_shape`]) that builds the
+//!   web-of-trust graph used to score recommenders.
 //!
 //! Both feed one [`MintDiscoveryStore`] behind a `Mutex`. The app queries the
 //! current view via [`MintDiscoveryRuntime::snapshot`] — the same
-//! runtime-holds-the-projection access `WalletRuntime::snapshot` uses.
+//! runtime-holds-the-projection access other reusable NMP runtimes use.
 //!
-//! Since #2880's follow-up (epic #2864), this view also crosses FFI:
-//! `register.rs::wallet_merged_typed_projection` — the same function that
-//! encodes [`crate::runtime::WalletRuntime::snapshot`] — additionally calls
-//! [`MintDiscoveryRuntime::snapshot`] and folds its ranked mints into the
-//! `discovered_mints` field of the one composed
-//! [`crate::projection::WalletProjection`] emitted as the typed `NWMP`
-//! `"wallet.merged"` sidecar (`crate::projection_wire`). This runtime stays
-//! independent of `WalletRuntime` (each registers its own read interests
-//! directly on `app`); the composition root is what combines their two
-//! snapshots. There is no separate `"mint_discovery"` typed projection key —
-//! the discovered-mints view rides the same merged wallet snapshot a shell
-//! already decodes.
+//! `register.rs` registers [`MintDiscoveryRuntime::snapshot`] as this crate's
+//! OWN typed FlatBuffers snapshot projection (`"mint_discovery"`, see
+//! `projection_wire.rs`) — unlike the pre-extraction `nmp-wallet` version,
+//! which folded this view into the wallet's own merged sidecar. Any app that
+//! composes this crate gets that projection for free; it does not need to be
+//! a wallet.
 
 use std::sync::{Arc, Mutex};
 
@@ -41,8 +34,8 @@ use nmp_core::substrate::{
 };
 use nmp_core::ObservedProjectionSink;
 
+use crate::discovery::{DiscoveryPolicy, MintDiscoveryProjection, MintDiscoveryStore};
 use crate::interests::{mint_discovery_shape, mint_discovery_trust_graph_shape};
-use crate::mint_discovery::{MintDiscoveryProjection, MintDiscoveryStore};
 
 /// `ObservedProjection::scope` for `InterestScope::Global` (any nonzero value).
 /// Mint announcements/recommendations are author-unknown public content that
@@ -52,10 +45,10 @@ const SCOPE_GLOBAL: u32 = 1;
 
 /// `ObservedProjection::scope` for `InterestScope::ActiveAccount`. The trust
 /// graph read is an `authors`=self filter with no cold-start bootstrap
-/// dependency (mirrors `wallet_self_authored_shape`).
+/// dependency (mirrors a self-authored shape).
 const SCOPE_ACTIVE_ACCOUNT: u32 = 0;
 
-/// Bounded cache replay on (re)open — matches `WalletRuntime`'s replay limit.
+/// Bounded cache replay on (re)open.
 const REPLAY_LIMIT: usize = 512;
 
 /// Feeds every observed discovery/graph event into the shared store.
@@ -78,12 +71,25 @@ pub struct MintDiscoveryRuntime {
 
 impl MintDiscoveryRuntime {
     /// Construct the runtime and wire its two identity-reactive observed
-    /// projections onto `app`.
+    /// projections onto `app`, using [`DiscoveryPolicy::default`].
+    #[must_use]
     pub fn new(
         active_pubkey: ActiveAccountSlot,
         app: &(impl ObservedProjectionRegistrar + IdentityChangeRegistrar),
     ) -> Self {
-        let store = Arc::new(Mutex::new(MintDiscoveryStore::new()));
+        Self::with_policy(active_pubkey, app, DiscoveryPolicy::default())
+    }
+
+    /// Construct the runtime with a caller-supplied [`DiscoveryPolicy`] (e.g.
+    /// a non-default `fallback_root`) and wire its two identity-reactive
+    /// observed projections onto `app`.
+    #[must_use]
+    pub fn with_policy(
+        active_pubkey: ActiveAccountSlot,
+        app: &(impl ObservedProjectionRegistrar + IdentityChangeRegistrar),
+        policy: DiscoveryPolicy,
+    ) -> Self {
+        let store = Arc::new(Mutex::new(MintDiscoveryStore::with_policy(policy)));
         let sink: Arc<dyn ObservedProjectionSink> = Arc::new(MintDiscoverySink {
             store: Arc::clone(&store),
         });
@@ -92,7 +98,7 @@ impl MintDiscoveryRuntime {
         let discovery_reconciler = ObservedProjectionReconciler::new(
             app.observed_projection_registrar_handle(),
             Arc::clone(&sink),
-            "nmp.wallet.mint_discovery",
+            "nmp.mint_discovery.announcements",
             SCOPE_GLOBAL,
             REPLAY_LIMIT,
             Arc::new(|| Some(mint_discovery_shape())),
@@ -103,7 +109,7 @@ impl MintDiscoveryRuntime {
         let graph_reconciler = ObservedProjectionReconciler::new(
             app.observed_projection_registrar_handle(),
             sink,
-            "nmp.wallet.mint_discovery_trust_graph",
+            "nmp.mint_discovery.trust_graph",
             SCOPE_ACTIVE_ACCOUNT,
             REPLAY_LIMIT,
             Arc::new(move || {
@@ -139,10 +145,12 @@ impl MintDiscoveryRuntime {
     }
 
     /// The current discovered-mints projection (ranked, capability-filtered,
-    /// WoT-scoped). Empty until an account is active. Cheap on the steady-state
-    /// emit path: [`MintDiscoveryStore::snapshot`] is memoized, so this serves
-    /// a cached value unless an ingested event has dirtied it (the `mut` lock
-    /// is only to update that memo, not to re-aggregate every call).
+    /// WoT-scoped). Empty until an account is active (unless the configured
+    /// policy's `fallback_root` still scores against a seed). Cheap on the
+    /// steady-state emit path: [`MintDiscoveryStore::snapshot`] is memoized,
+    /// so this serves a cached value unless an ingested event has dirtied it
+    /// (the `mut` lock is only to update that memo, not to re-aggregate every
+    /// call).
     #[must_use]
     pub fn snapshot(&self) -> MintDiscoveryProjection {
         self.store
