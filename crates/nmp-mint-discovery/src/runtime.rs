@@ -6,15 +6,24 @@
 //! invented — this is the same reconciler recipe `nmp-nip51::register_mute_runtime`
 //! established, composed with the reused `nmp-wot` scoring engine.
 //!
-//! Two observed projections:
+//! Two or three observed projections:
 //!
 //! - a **global** read of every kind:38172 announcement + kind:38000
-//!   recommendation ([`crate::interests::mint_discovery_shape`]); and
+//!   recommendation ([`crate::interests::mint_discovery_shape`]);
 //! - a **self-scoped** read of the active account's kind:3 / kind:10000
 //!   ([`crate::interests::mint_discovery_trust_graph_shape`]) that builds the
-//!   web-of-trust graph used to score recommenders.
+//!   web-of-trust graph used to score recommenders; and
+//! - when [`DiscoveryPolicy::fallback_root`] is configured, a **fixed** read
+//!   of that seed's OWN kind:3 / kind:10000 (same shape function, called with
+//!   the seed's pubkey instead of the viewer's). Without this, a cold viewer
+//!   who reroutes scoring through the seed (`nmp_wot::WotGraph::score_rooted`)
+//!   would find no `seed -> follows` edges in the graph at all — the seed's
+//!   kind:3 was never fetched — so every recommender scores 0 and the
+//!   fallback is wired into scoring but starved of data. This interest is
+//!   keyed on the configured seed, not the active account, so it never
+//!   reopens on identity change.
 //!
-//! Both feed one [`MintDiscoveryStore`] behind a `Mutex`. The app queries the
+//! All feed one [`MintDiscoveryStore`] behind a `Mutex`. The app queries the
 //! current view via [`MintDiscoveryRuntime::snapshot`] — the same
 //! runtime-holds-the-projection access other reusable NMP runtimes use.
 //!
@@ -37,10 +46,12 @@ use nmp_core::ObservedProjectionSink;
 use crate::discovery::{DiscoveryPolicy, MintDiscoveryProjection, MintDiscoveryStore};
 use crate::interests::{mint_discovery_shape, mint_discovery_trust_graph_shape};
 
-/// `ObservedProjection::scope` for `InterestScope::Global` (any nonzero value).
-/// Mint announcements/recommendations are author-unknown public content that
+/// `ObservedProjection::scope` for `InterestScope::Global` (any nonzero
+/// value). Used for two shapes that must never re-route on account switch:
+/// mint announcements/recommendations (author-unknown public content that
 /// needs the planner's cold-start bootstrap-relay lane, exactly like
-/// `nmp-nip57`'s zap-receipt read — so the global read opens `Global`.
+/// `nmp-nip57`'s zap-receipt read), and the `fallback_root` seed's own
+/// follow/mute graph (a fixed pubkey unrelated to the active account).
 const SCOPE_GLOBAL: u32 = 1;
 
 /// `ObservedProjection::scope` for `InterestScope::ActiveAccount`. The trust
@@ -70,8 +81,9 @@ pub struct MintDiscoveryRuntime {
 }
 
 impl MintDiscoveryRuntime {
-    /// Construct the runtime and wire its two identity-reactive observed
-    /// projections onto `app`, using [`DiscoveryPolicy::default`].
+    /// Construct the runtime and wire its identity-reactive observed
+    /// projections onto `app`, using [`DiscoveryPolicy::default`] (no
+    /// `fallback_root`, so only the two identity-reactive projections open).
     #[must_use]
     pub fn new(
         active_pubkey: ActiveAccountSlot,
@@ -80,15 +92,21 @@ impl MintDiscoveryRuntime {
         Self::with_policy(active_pubkey, app, DiscoveryPolicy::default())
     }
 
-    /// Construct the runtime with a caller-supplied [`DiscoveryPolicy`] (e.g.
-    /// a non-default `fallback_root`) and wire its two identity-reactive
-    /// observed projections onto `app`.
+    /// Construct the runtime with a caller-supplied [`DiscoveryPolicy`] and
+    /// wire its observed projections onto `app`: the two identity-reactive
+    /// ones always, plus a third fixed one for `policy.fallback_root`'s own
+    /// follow/mute graph when that policy field is `Some` (see module docs).
     #[must_use]
     pub fn with_policy(
         active_pubkey: ActiveAccountSlot,
         app: &(impl ObservedProjectionRegistrar + IdentityChangeRegistrar),
         policy: DiscoveryPolicy,
     ) -> Self {
+        // Grabbed before `policy` is moved into the store: the fixed
+        // cold-start trust seed, if configured, also needs its own graph
+        // fetched (see the fallback reconciler below).
+        let fallback_root = policy.fallback_root.clone();
+
         let store = Arc::new(Mutex::new(MintDiscoveryStore::with_policy(policy)));
         let sink: Arc<dyn ObservedProjectionSink> = Arc::new(MintDiscoverySink {
             store: Arc::clone(&store),
@@ -108,7 +126,7 @@ impl MintDiscoveryRuntime {
         let graph_pubkey = Arc::clone(&active_pubkey);
         let graph_reconciler = ObservedProjectionReconciler::new(
             app.observed_projection_registrar_handle(),
-            sink,
+            Arc::clone(&sink),
             "nmp.mint_discovery.trust_graph",
             SCOPE_ACTIVE_ACCOUNT,
             REPLAY_LIMIT,
@@ -117,6 +135,39 @@ impl MintDiscoveryRuntime {
                 Some(mint_discovery_trust_graph_shape(&pubkey))
             }),
         );
+
+        // Fallback-root ("cold-start trust seed") follow/mute graph: only
+        // opened when the policy configures one. `score_rooted` reroutes a
+        // cold viewer's scoring through `fallback_root`'s perspective, but
+        // that is only useful if the seed's own kind:3/kind:10000 are
+        // actually in the WoT graph — otherwise every recommender scores 0
+        // and the fallback is wired into scoring but starved of data (the
+        // bug this fixes). Reuses the same self-scoped shape function, just
+        // called with the seed's pubkey instead of the viewer's, and feeds
+        // the SAME store sink so `MintDiscoveryStore::ingest_kernel_event`
+        // handles the seed's kind:3/kind:10000 exactly like any other
+        // follow/mute-list event.
+        //
+        // This shape is FIXED to the configured seed, not the active
+        // account, so — unlike `graph_reconciler` above — it is never
+        // re-synced from `register_identity_change_observer`: the seed does
+        // not change when the signed-in account changes.
+        //
+        // Depth-1 only, symmetric with the self-graph read above: this
+        // fetches the seed's own kind:3/kind:10000, not its followees'
+        // graphs. Fetching those too (depth-2 enrichment) is a future
+        // enhancement, not attempted here.
+        if let Some(seed) = fallback_root {
+            let fallback_reconciler = ObservedProjectionReconciler::new(
+                app.observed_projection_registrar_handle(),
+                sink,
+                "nmp.mint_discovery.fallback_trust_graph",
+                SCOPE_GLOBAL,
+                REPLAY_LIMIT,
+                Arc::new(move || Some(mint_discovery_trust_graph_shape(&seed))),
+            );
+            fallback_reconciler.sync();
+        }
 
         // Keep the store's scoring viewer aligned with the active account, and
         // re-sync the reconcilers, on every identity change.
