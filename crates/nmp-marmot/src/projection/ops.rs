@@ -172,7 +172,45 @@ pub fn dispatch(
             }
             ok
         }
-        Err(e) => err(&e),
+        Err(e) => {
+            // #3057 round-5: a failed mutating op (e.g. create_group/invite that
+            // cannot resolve an invitee's kind:10050 DM-inbox, so A's Welcome is
+            // never published) MUST surface the SPECIFIC reason in the Marmot
+            // snapshot — not vanish into the generic host action-failure toast.
+            // Previously this returned the error only to the action ledger, so
+            // the Marmot UI (invites view) showed nothing about why the invite
+            // silently produced no group + no Welcome on the wire.
+            let op = mutating_op_name(action);
+            tracing::warn!(
+                target: "nmp_marmot::publish",
+                op,
+                error = %e,
+                "marmot mutating op FAILED — surfacing to last_op_error banner"
+            );
+            h.record_last_op_failure(
+                op.to_string(),
+                e.clone(),
+                correlation_id.unwrap_or_default().to_string(),
+                now_secs,
+            );
+            err(&e)
+        }
+    }
+}
+
+/// Short op label for the snapshot `last_op_error` banner. Mirrors the wire
+/// `"op"` tag so a host can key UI copy off it.
+fn mutating_op_name(action: &MarmotAction) -> &'static str {
+    match action {
+        MarmotAction::PublishKeyPackage { .. } => "publish_key_package",
+        MarmotAction::CreateGroup { .. } => "create_group",
+        MarmotAction::Invite { .. } => "invite",
+        MarmotAction::Send { .. } => "send",
+        MarmotAction::Leave { .. } => "leave",
+        MarmotAction::Remove { .. } => "remove",
+        MarmotAction::AcceptWelcome { .. } => "accept_welcome",
+        MarmotAction::DeclineWelcome { .. } => "decline_welcome",
+        MarmotAction::ClearPending { .. } => "clear_pending",
     }
 }
 
