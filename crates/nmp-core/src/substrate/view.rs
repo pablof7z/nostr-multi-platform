@@ -20,6 +20,13 @@ use std::collections::{BTreeMap, BTreeSet};
 
 pub type EventId = String;
 
+/// The provenance string the local-publish ingest source stamps on a
+/// self-authored event (`kernel::ingest::IngestSource::LocalPublish`). Not a
+/// network relay — it marks the app's own optimistic self-echo of an outbound
+/// publish, so wire/display surfaces must exclude it (see
+/// [`KernelEvent::received_from_relays`]).
+pub const LOCAL_PUBLISH_PROVENANCE: &str = "local://publish";
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct KernelEvent {
     pub id: EventId,
@@ -30,6 +37,27 @@ pub struct KernelEvent {
     pub content: String,
     #[serde(default)]
     pub relay_provenance: Vec<String>,
+}
+
+impl KernelEvent {
+    /// `relay_provenance` filtered to genuine network-relay receipts, for
+    /// wire/display surfaces such as a "Received from N relays" badge.
+    ///
+    /// `relay_provenance` itself is the raw provenance ledger and legitimately
+    /// includes non-relay diagnostic sources (the local-publish self-echo)
+    /// because internal consumers — relay-pin matching, dedup — need to know
+    /// an event was locally authored. A client-facing surface must not
+    /// confuse that bookkeeping with an actual relay receipt: a note whose
+    /// only provenance is the local publish echo has never round-tripped
+    /// through a relay, so it must report zero relays received-from.
+    #[must_use]
+    pub fn received_from_relays(&self) -> Vec<String> {
+        self.relay_provenance
+            .iter()
+            .filter(|url| url.as_str() != LOCAL_PUBLISH_PROVENANCE)
+            .cloned()
+            .collect()
+    }
 }
 
 pub(crate) fn observed_shape_matches_event(shape: &InterestShape, event: &KernelEvent) -> bool {
@@ -67,7 +95,7 @@ pub(crate) fn observed_shape_matches_fields(
         || (shape.search.is_none()
             && relay_provenance
                 .iter()
-                .any(|relay| relay == "local://publish"))
+                .any(|relay| relay == LOCAL_PUBLISH_PROVENANCE))
 }
 
 fn relay_pin_matches_provenance(pin: &str, relay: &str) -> bool {
@@ -274,6 +302,28 @@ mod tests {
             InterestLifecycle::Tailing,
         );
         assert_eq!(interest.shape.limit, None);
+    }
+
+    #[test]
+    fn received_from_relays_excludes_local_publish_self_echo() {
+        // chirp#116: a note whose only provenance is the local-publish
+        // self-echo must never be reported as "received from" a relay — it
+        // has zero real-world delivery.
+        let event = event_from_relay(LOCAL_PUBLISH_PROVENANCE);
+        assert!(event.received_from_relays().is_empty());
+    }
+
+    #[test]
+    fn received_from_relays_keeps_genuine_relays_alongside_self_echo() {
+        let mut event = event_from_relay("wss://relay.example");
+        event
+            .relay_provenance
+            .push(LOCAL_PUBLISH_PROVENANCE.to_string());
+        assert_eq!(
+            event.received_from_relays(),
+            vec!["wss://relay.example".to_string()],
+            "the self-echo must be excluded even when mixed with a real relay"
+        );
     }
 
     #[test]

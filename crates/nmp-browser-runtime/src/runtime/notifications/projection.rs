@@ -176,7 +176,7 @@ impl NotificationsProjection {
             created_at: event.created_at,
             content: event.content.clone(),
             target_event_id,
-            source_relays: event.relay_provenance.clone(),
+            source_relays: event.received_from_relays(),
             read: false,
         })
     }

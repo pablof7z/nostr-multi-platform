@@ -20,6 +20,10 @@ pub struct NoteFeedItem {
     pub created_at: u64,
     pub content: String,
     pub content_tree: ContentTreeWire,
+    /// Genuine network relays this note was received from — never the
+    /// local-publish self-echo (`KernelEvent::received_from_relays` filters
+    /// it out). A shell's "Received from N relays" affordance must count only
+    /// this list; a note is not relay-received just because it was published.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub relay_provenance: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -130,9 +134,52 @@ impl NoteFeedItem {
             created_at: event.created_at,
             content: render_payload.content,
             content_tree,
-            relay_provenance: event.relay_provenance.clone(),
+            relay_provenance: event.received_from_relays(),
             reposted_by,
             hosted_group: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note_event(relay_provenance: Vec<String>) -> KernelEvent {
+        KernelEvent {
+            id: "1".repeat(64),
+            author: "2".repeat(64),
+            kind: 1,
+            created_at: 100,
+            tags: Vec::new(),
+            content: "hello".to_string(),
+            relay_provenance,
+        }
+    }
+
+    #[test]
+    fn note_feed_item_reports_zero_relays_for_local_publish_only_provenance() {
+        // chirp#116: while offline, a freshly published note's only provenance
+        // is the app's own `local://publish` echo. The feed row must not
+        // claim relay receipt for a note that never left the device.
+        let event = note_event(vec!["local://publish".to_string()]);
+        let item = NoteFeedItem::from_event_for_op_feed(&event, None);
+        assert!(
+            item.relay_provenance.is_empty(),
+            "local-publish self-echo must never count as a relay receipt"
+        );
+    }
+
+    #[test]
+    fn note_feed_item_keeps_real_relays_alongside_local_publish_echo() {
+        let event = note_event(vec![
+            "local://publish".to_string(),
+            "wss://relay.example".to_string(),
+        ]);
+        let item = NoteFeedItem::from_event_for_op_feed(&event, None);
+        assert_eq!(
+            item.relay_provenance,
+            vec!["wss://relay.example".to_string()]
+        );
     }
 }

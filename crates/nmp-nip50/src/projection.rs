@@ -236,7 +236,7 @@ impl SearchResultsProjection {
                 created_at: event.created_at,
                 content: event.content.clone(),
                 tags: event.tags.clone(),
-                relay_provenance: event.relay_provenance.clone(),
+                relay_provenance: event.received_from_relays(),
                 source,
             },
         );

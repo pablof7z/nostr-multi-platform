@@ -272,7 +272,7 @@ fn article_item_from_target(
             id,
             article: Some(article),
             reposted_by: None,
-            relay_provenance: event.relay_provenance.clone(),
+            relay_provenance: event.received_from_relays(),
         },
     })
 }
@@ -309,7 +309,7 @@ fn article_item_from_repost(
             id: coordinate,
             article,
             reposted_by: Some(repost_attribution(event)),
-            relay_provenance: event.relay_provenance.clone(),
+            relay_provenance: event.received_from_relays(),
         },
     })
 }
