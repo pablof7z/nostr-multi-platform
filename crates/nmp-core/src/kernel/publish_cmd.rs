@@ -360,10 +360,12 @@ impl Kernel {
     /// `{in_flight, recent_terminal}` payload or
     /// [`serde_json::Value::Null`] when nothing is tracked.
     ///
-    /// TTL pruning runs inside the tracker's `snapshot` so a quiet
-    /// kernel still drops expired terminals on the next emit. `now_ms`
-    /// routes through the kernel clock so a `FixedClock` keeps tests
-    /// deterministic.
+    /// TTL pruning runs inside the tracker's `snapshot`, but (chirp#115) a
+    /// terminal row is exempt from that pruning until THIS call has served it
+    /// at least once — a quiet kernel only drops a terminal once some caller
+    /// has actually observed it, never purely because wall-clock time passed
+    /// since the transition. `now_ms` routes through the kernel clock so a
+    /// `FixedClock` keeps tests deterministic.
     ///
     /// ADR-0070 Rung 3 S1b (§10.4): also drives the `note_copy_emit` Cleared-
     /// edge machine for `action_lifecycle` so that the non-empty → empty
