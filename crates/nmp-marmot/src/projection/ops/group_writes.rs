@@ -15,7 +15,7 @@ use crate::projection::state::{hex_encode, InnerHandle};
 
 use super::input::{
     fill_key_packages_from_cache, group_id_from_hex, parse_pubkeys, parse_relays, resolve_invitees,
-    resolve_write_relays, signed_key_package_events,
+    resolve_write_relays, select_freshest_key_packages, signed_key_package_events,
 };
 use super::welcome;
 
@@ -106,6 +106,12 @@ pub(super) fn create_group(
             ));
         }
     }
+    // #3057 round-7: build the Welcome against each invitee's CURRENT key
+    // package. A peer's relay history may hold stale kind:30443 events; only
+    // the latest matches the private half in their live MLS store, so pick the
+    // newest-by-created_at per invitee (else process_welcome fails "No matching
+    // key package").
+    let kp_events = select_freshest_key_packages(kp_events);
     // #3057 round-6: FETCH any invitee's kind:10050 DM-inbox that is not yet
     // resolved (a cold/reset cache must not silently abort the invite), and
     // PARK until it arrives — symmetric with the KeyPackage fetch/park above.
@@ -191,6 +197,9 @@ pub(super) fn invite(
         }
     }
     let group_id_hex = hex_encode(gid.as_slice());
+    // #3057 round-7: build each invitee's Welcome against their CURRENT key
+    // package (newest by created_at) — see the matching comment in create_group.
+    let kp_events = select_freshest_key_packages(kp_events);
     // #3057 round-6: FETCH any invitee's unresolved kind:10050 DM-inbox and
     // PARK until it arrives, so a cold/reset cache no longer aborts the invite
     // (symmetric with the KeyPackage fetch/park above).
