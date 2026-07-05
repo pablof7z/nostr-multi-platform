@@ -4,7 +4,7 @@
 //! kind:39002 snapshots. User-signed moderation actions such as kind:9000 are
 //! audit/request events and deliberately do not mutate this read model.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
@@ -31,10 +31,9 @@ pub struct JoinedGroup {
     pub is_admin: bool,
     /// NIP-29 subgroups (#2319): the `["parent", <id>]` tag value on the
     /// latest 39000. `None` (absent/empty) = root group. NOTE:
-    /// `joined_groups_for_host` subscribes to 39001/39002 only, so this
-    /// populates only when a 39000 also arrives via relay provenance. A
-    /// host wanting the full tree on joined groups layers a discovery
-    /// interest on the same relay (out of scope for this field).
+    /// Populated when a 39000 arrives for the group. Consumers that source
+    /// joined groups from membership-only data may still see `None` until they
+    /// layer a metadata read for the same relay/group.
     pub parent: Option<String>,
     /// NIP-29 subgroups: ordered `["child", <id>]` tag values on the latest
     /// 39000. Empty until a 39000 carrying `child` tags arrives (same
@@ -83,6 +82,7 @@ impl LatestEvent {
 pub struct JoinedGroupsProjection {
     active_pubkey: String,
     host_relay_url: Option<RelayUrl>,
+    tracked_relays: Mutex<Option<BTreeSet<RelayUrl>>>,
     latest: Mutex<BoundedMessageMap<(RelayUrl, u32, String), LatestEvent>>,
 }
 
@@ -92,6 +92,7 @@ impl JoinedGroupsProjection {
         Self {
             active_pubkey: active_pubkey.into(),
             host_relay_url: None,
+            tracked_relays: Mutex::new(None),
             latest: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
@@ -104,7 +105,72 @@ impl JoinedGroupsProjection {
         Self {
             active_pubkey: active_pubkey.into(),
             host_relay_url: Some(host_relay_url.into()),
+            tracked_relays: Mutex::new(None),
             latest: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
+        }
+    }
+
+    #[must_use]
+    pub fn new_for_relays(
+        active_pubkey: impl Into<String>,
+        host_relay_urls: impl IntoIterator<Item = impl Into<RelayUrl>>,
+    ) -> Self {
+        Self {
+            active_pubkey: active_pubkey.into(),
+            host_relay_url: None,
+            tracked_relays: Mutex::new(Some(host_relay_urls.into_iter().map(Into::into).collect())),
+            latest: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
+        }
+    }
+
+    #[must_use]
+    pub fn active_pubkey(&self) -> &str {
+        &self.active_pubkey
+    }
+
+    #[must_use]
+    pub fn host_relay_urls(&self) -> Vec<String> {
+        if let Some(host) = &self.host_relay_url {
+            return vec![host.clone()];
+        }
+        self.tracked_relays
+            .lock()
+            .ok()
+            .and_then(|relays| {
+                relays
+                    .as_ref()
+                    .map(|relays| relays.iter().cloned().collect())
+            })
+            .unwrap_or_default()
+    }
+
+    pub fn add_relay(&self, relay: impl Into<RelayUrl>) {
+        if self.host_relay_url.is_some() {
+            return;
+        }
+        if let Ok(mut tracked_relays) = self.tracked_relays.lock() {
+            tracked_relays
+                .get_or_insert_with(BTreeSet::new)
+                .insert(relay.into());
+        }
+    }
+
+    pub fn remove_relay(&self, relay: &str) {
+        if let Ok(mut tracked_relays) = self.tracked_relays.lock() {
+            if let Some(relays) = tracked_relays.as_mut() {
+                relays.remove(relay);
+            }
+        }
+        let Ok(mut latest) = self.latest.lock() else {
+            return;
+        };
+        let stale: Vec<(RelayUrl, u32, String)> = latest
+            .iter()
+            .filter(|((host, _, _), _)| host == relay)
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in stale {
+            latest.remove(&key);
         }
     }
 
@@ -115,10 +181,27 @@ impl JoinedGroupsProjection {
         ) && d_tag_value(&event.tags).is_some()
     }
 
-    fn event_host(&self, event: &KernelEvent) -> Option<RelayUrl> {
-        self.host_relay_url
-            .clone()
-            .or_else(|| event.relay_provenance.first().cloned())
+    fn event_hosts(&self, event: &KernelEvent) -> Vec<RelayUrl> {
+        if let Some(host) = &self.host_relay_url {
+            return vec![host.clone()];
+        }
+        let Ok(tracked_relays) = self.tracked_relays.lock() else {
+            return Vec::new();
+        };
+        if let Some(relays) = tracked_relays.as_ref() {
+            return event
+                .relay_provenance
+                .iter()
+                .filter(|relay| relays.contains(relay.as_str()))
+                .cloned()
+                .collect();
+        }
+        event
+            .relay_provenance
+            .first()
+            .cloned()
+            .into_iter()
+            .collect()
     }
 
     #[must_use]
@@ -213,25 +296,28 @@ impl ObservedProjectionSink for JoinedGroupsProjection {
         if !Self::accepts(event) {
             return;
         }
-        let Some(host) = self.event_host(event) else {
+        let hosts = self.event_hosts(event);
+        if hosts.is_empty() {
             return;
-        };
+        }
         let Some(d) = d_tag_value(&event.tags).map(str::to_string) else {
             return;
         };
         let Ok(mut latest) = self.latest.lock() else {
             return;
         };
-        let key = (host, event.kind, d);
         let incoming = LatestEvent {
             created_at: event.created_at,
             id: event.id.clone(),
             tags: event.tags.clone(),
         };
-        match latest.get(&key) {
-            Some(existing) if !existing.supersedes(&incoming) => {}
-            _ => {
-                latest.insert(key, incoming);
+        for host in hosts {
+            let key = (host, event.kind, d.clone());
+            match latest.get(&key) {
+                Some(existing) if !existing.supersedes(&incoming) => {}
+                _ => {
+                    latest.insert(key, incoming.clone());
+                }
             }
         }
     }
