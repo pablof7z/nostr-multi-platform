@@ -15,7 +15,9 @@ use super::generated::nmp::wallet as fb;
 
 use crate::capability::WalletCapabilities;
 use crate::journal::{WalletConsumedInput, WalletOperation, WalletOperationId};
-use crate::projection::{WalletBalanceRow, WalletHistoryRow, WalletReceiveRow};
+use crate::projection::{
+    WalletBalanceRow, WalletDiscoveredMint, WalletHistoryRow, WalletReceiveRow,
+};
 
 // --- encode ---------------------------------------------------------------
 
@@ -178,6 +180,34 @@ pub(super) fn encode_receive_rows<'a>(
                 has_timestamp: row.timestamp.is_some(),
                 timestamp: row.timestamp.unwrap_or(0),
                 accepted: row.accepted,
+            },
+        ));
+    }
+    fbb.create_vector(&offsets)
+}
+
+pub(super) fn encode_discovered_mints<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    rows: &[WalletDiscoveredMint],
+) -> WIPOffset<Vector<'a, ForwardsUOffset<fb::WalletDiscoveredMint<'a>>>> {
+    let mut offsets = Vec::with_capacity(rows.len());
+    for row in rows {
+        let url = fbb.create_string(&row.url);
+        let name = row.name.as_ref().map(|value| fbb.create_string(value));
+        let nuts = fbb.create_vector(&row.nuts);
+        let unit_offsets: Vec<_> = row.units.iter().map(|unit| fbb.create_string(unit)).collect();
+        let units = fbb.create_vector(&unit_offsets);
+        offsets.push(fb::WalletDiscoveredMint::create(
+            fbb,
+            &fb::WalletDiscoveredMintArgs {
+                url: Some(url),
+                has_name: row.name.is_some(),
+                name,
+                nuts: Some(nuts),
+                units: Some(units),
+                supports_nutzap: row.supports_nutzap,
+                trust_score: row.trust_score,
+                recommendation_count: row.recommendation_count,
             },
         ));
     }
@@ -358,6 +388,44 @@ pub(super) fn decode_receive_rows(
         });
     }
     Ok(out)
+}
+
+pub(super) fn decode_discovered_mints(
+    rows: Option<Vector<'_, ForwardsUOffset<fb::WalletDiscoveredMint<'_>>>>,
+) -> Result<Vec<WalletDiscoveredMint>, String> {
+    let Some(rows) = rows else {
+        return Ok(Vec::new());
+    };
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name = if row.has_name() {
+            Some(str_field(row.name(), "WalletDiscoveredMint.name")?)
+        } else {
+            None
+        };
+        let units = row
+            .units()
+            .map(|values| values.iter().map(str::to_string).collect())
+            .unwrap_or_default();
+        out.push(WalletDiscoveredMint {
+            url: str_field(row.url(), "WalletDiscoveredMint.url")?,
+            name,
+            nuts: u16_vec(row.nuts()),
+            units,
+            supports_nutzap: row.supports_nutzap(),
+            trust_score: row.trust_score(),
+            recommendation_count: row.recommendation_count(),
+        });
+    }
+    Ok(out)
+}
+
+/// Collect an optional `[uint16]` vector into a `Vec<u16>`; absent == empty.
+fn u16_vec(value: Option<Vector<'_, u16>>) -> Vec<u16> {
+    match value {
+        Some(v) => v.iter().collect(),
+        None => Vec::new(),
+    }
 }
 
 /// Require a present, non-absent string field; an absent FlatBuffers string on

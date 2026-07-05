@@ -2406,6 +2406,329 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum WalletDiscoveredMintOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct WalletDiscoveredMint<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for WalletDiscoveredMint<'a> {
+            type Inner = WalletDiscoveredMint<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> WalletDiscoveredMint<'a> {
+            pub const VT_URL: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_NUTS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_UNITS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SUPPORTS_NUTZAP: ::flatbuffers::VOffsetT = 14;
+            pub const VT_TRUST_SCORE: ::flatbuffers::VOffsetT = 16;
+            pub const VT_RECOMMENDATION_COUNT: ::flatbuffers::VOffsetT = 18;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WalletDiscoveredMint { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WalletDiscoveredMintArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WalletDiscoveredMint<'bldr>> {
+                let mut builder = WalletDiscoveredMintBuilder::new(_fbb);
+                builder.add_recommendation_count(args.recommendation_count);
+                builder.add_trust_score(args.trust_score);
+                if let Some(x) = args.units {
+                    builder.add_units(x);
+                }
+                if let Some(x) = args.nuts {
+                    builder.add_nuts(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.url {
+                    builder.add_url(x);
+                }
+                builder.add_supports_nutzap(args.supports_nutzap);
+                builder.add_has_name(args.has_name);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletDiscoveredMint::VT_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletDiscoveredMint::VT_HAS_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletDiscoveredMint::VT_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn nuts(&self) -> Option<::flatbuffers::Vector<'a, u16>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u16>>>(
+                            WalletDiscoveredMint::VT_NUTS,
+                            None,
+                        )
+                }
+            }
+            #[inline]
+            pub fn units(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(WalletDiscoveredMint::VT_UNITS, None)
+                }
+            }
+            #[inline]
+            pub fn supports_nutzap(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletDiscoveredMint::VT_SUPPORTS_NUTZAP, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn trust_score(&self) -> i32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<i32>(WalletDiscoveredMint::VT_TRUST_SCORE, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recommendation_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(WalletDiscoveredMint::VT_RECOMMENDATION_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for WalletDiscoveredMint<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "url",
+                        Self::VT_URL,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u16>>>(
+                        "nuts",
+                        Self::VT_NUTS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("units", Self::VT_UNITS, false)?
+                    .visit_field::<bool>("supports_nutzap", Self::VT_SUPPORTS_NUTZAP, false)?
+                    .visit_field::<i32>("trust_score", Self::VT_TRUST_SCORE, false)?
+                    .visit_field::<u32>(
+                        "recommendation_count",
+                        Self::VT_RECOMMENDATION_COUNT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WalletDiscoveredMintArgs<'a> {
+            pub url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_name: bool,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub nuts: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u16>>>,
+            pub units: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub supports_nutzap: bool,
+            pub trust_score: i32,
+            pub recommendation_count: u32,
+        }
+        impl<'a> Default for WalletDiscoveredMintArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WalletDiscoveredMintArgs {
+                    url: None,
+                    has_name: false,
+                    name: None,
+                    nuts: None,
+                    units: None,
+                    supports_nutzap: false,
+                    trust_score: 0,
+                    recommendation_count: 0,
+                }
+            }
+        }
+
+        pub struct WalletDiscoveredMintBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletDiscoveredMintBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_url(&mut self, url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletDiscoveredMint::VT_URL,
+                    url,
+                );
+            }
+            #[inline]
+            pub fn add_has_name(&mut self, has_name: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletDiscoveredMint::VT_HAS_NAME, has_name, false);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletDiscoveredMint::VT_NAME,
+                    name,
+                );
+            }
+            #[inline]
+            pub fn add_nuts(
+                &mut self,
+                nuts: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b, u16>>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletDiscoveredMint::VT_NUTS,
+                    nuts,
+                );
+            }
+            #[inline]
+            pub fn add_units(
+                &mut self,
+                units: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletDiscoveredMint::VT_UNITS,
+                    units,
+                );
+            }
+            #[inline]
+            pub fn add_supports_nutzap(&mut self, supports_nutzap: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletDiscoveredMint::VT_SUPPORTS_NUTZAP,
+                    supports_nutzap,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_trust_score(&mut self, trust_score: i32) {
+                self.fbb_
+                    .push_slot::<i32>(WalletDiscoveredMint::VT_TRUST_SCORE, trust_score, 0);
+            }
+            #[inline]
+            pub fn add_recommendation_count(&mut self, recommendation_count: u32) {
+                self.fbb_.push_slot::<u32>(
+                    WalletDiscoveredMint::VT_RECOMMENDATION_COUNT,
+                    recommendation_count,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WalletDiscoveredMintBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WalletDiscoveredMintBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WalletDiscoveredMint<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for WalletDiscoveredMint<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WalletDiscoveredMint");
+                ds.field("url", &self.url());
+                ds.field("has_name", &self.has_name());
+                ds.field("name", &self.name());
+                ds.field("nuts", &self.nuts());
+                ds.field("units", &self.units());
+                ds.field("supports_nutzap", &self.supports_nutzap());
+                ds.field("trust_score", &self.trust_score());
+                ds.field("recommendation_count", &self.recommendation_count());
+                ds.finish()
+            }
+        }
         pub enum WalletProjectionOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -2437,6 +2760,7 @@ pub mod nmp {
             pub const VT_PENDING_OPERATIONS: ::flatbuffers::VOffsetT = 24;
             pub const VT_RECENT_HISTORY: ::flatbuffers::VOffsetT = 26;
             pub const VT_RECEIVE_ROWS: ::flatbuffers::VOffsetT = 28;
+            pub const VT_DISCOVERED_MINTS: ::flatbuffers::VOffsetT = 30;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2453,6 +2777,9 @@ pub mod nmp {
                 args: &'args WalletProjectionArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<WalletProjection<'bldr>> {
                 let mut builder = WalletProjectionBuilder::new(_fbb);
+                if let Some(x) = args.discovered_mints {
+                    builder.add_discovered_mints(x);
+                }
                 if let Some(x) = args.receive_rows {
                     builder.add_receive_rows(x);
                 }
@@ -2490,7 +2817,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(2))
+                        .get::<u32>(WalletProjection::VT_SCHEMA_VERSION, Some(3))
                         .unwrap()
                 }
             }
@@ -2649,6 +2976,24 @@ pub mod nmp {
                     >>(WalletProjection::VT_RECEIVE_ROWS, None)
                 }
             }
+            #[inline]
+            pub fn discovered_mints(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint>,
+                        >,
+                    >>(WalletProjection::VT_DISCOVERED_MINTS, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for WalletProjection<'_> {
@@ -2703,6 +3048,12 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<WalletReceiveRow>>,
                     >>("receive_rows", Self::VT_RECEIVE_ROWS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint>,
+                        >,
+                    >>("discovered_mints", Self::VT_DISCOVERED_MINTS, false)?
                     .finish();
                 Ok(())
             }
@@ -2737,12 +3088,20 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<WalletReceiveRow<'a>>>,
                 >,
             >,
+            pub discovered_mints: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'a>>,
+                    >,
+                >,
+            >,
         }
         impl<'a> Default for WalletProjectionArgs<'a> {
             #[inline]
             fn default() -> Self {
                 WalletProjectionArgs {
-                    schema_version: 2,
+                    schema_version: 3,
                     has_active_backend_id: false,
                     active_backend_id: None,
                     readiness: WalletReadiness::NotConfigured,
@@ -2755,6 +3114,7 @@ pub mod nmp {
                     pending_operations: None,
                     recent_history: None,
                     receive_rows: None,
+                    discovered_mints: None,
                 }
             }
         }
@@ -2767,7 +3127,7 @@ pub mod nmp {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_
-                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 2);
+                    .push_slot::<u32>(WalletProjection::VT_SCHEMA_VERSION, schema_version, 3);
             }
             #[inline]
             pub fn add_has_active_backend_id(&mut self, has_active_backend_id: bool) {
@@ -2889,6 +3249,21 @@ pub mod nmp {
                 );
             }
             #[inline]
+            pub fn add_discovered_mints(
+                &mut self,
+                discovered_mints: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<WalletDiscoveredMint<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletProjection::VT_DISCOVERED_MINTS,
+                    discovered_mints,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> WalletProjectionBuilder<'a, 'b, A> {
@@ -2921,6 +3296,7 @@ pub mod nmp {
                 ds.field("pending_operations", &self.pending_operations());
                 ds.field("recent_history", &self.recent_history());
                 ds.field("receive_rows", &self.receive_rows());
+                ds.field("discovered_mints", &self.discovered_mints());
                 ds.finish()
             }
         }

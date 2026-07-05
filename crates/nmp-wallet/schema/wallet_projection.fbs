@@ -24,9 +24,16 @@ namespace nmp.wallet;
 //     absent (`None`) round-trips distinctly from a present default — the same
 //     optional-fields convention used by wallet_status.fbs / content_tree.fbs.
 //   * The nested `balances` / `pending_operations` / `recent_history` /
-//     `receive_rows` vectors follow the vector-of-tables precedent of
-//     `NotificationsSnapshot` (notifications.fbs) and `ModularTimelineSnapshot`
-//     (timeline_snapshot.fbs).
+//     `receive_rows` / `discovered_mints` vectors follow the vector-of-tables
+//     precedent of `NotificationsSnapshot` (notifications.fbs) and
+//     `ModularTimelineSnapshot` (timeline_snapshot.fbs).
+//
+// v3 (#2880, epic #2864): `WalletProjection` gains `discovered_mints`, the
+// NIP-87 web-of-trust-scoped, capability-fail-closed discovered-mints view
+// `nmp_wallet::discovery_runtime::MintDiscoveryRuntime` already produces
+// Rust-side (`crate::mint_discovery::aggregate_discovered_mints`) — this
+// wave exposes that existing policy across FFI for the first time, it does
+// not change the policy itself.
 //
 // Regenerate the checked-in Rust bindings ONLY through `ci/regenerate-flatbuffers.sh`
 // (pinned flatc 25.12.19 + repo rustfmt), NEVER raw flatc — a raw-flatc run passes
@@ -175,8 +182,27 @@ table WalletReceiveRow {
   accepted:bool;
 }
 
+// `WalletDiscoveredMint` — one ranked NIP-87 discovered mint (#2880, epic
+// #2864), mirroring the display-safe fields of
+// `nmp_wallet::mint_discovery::DiscoveredMint`. Carries no proofs, secrets,
+// or keys — `DiscoveredMint` has none to begin with; this row is pure
+// discovery metadata (URL, advertised capabilities, web-of-trust rank).
+table WalletDiscoveredMint {
+  url:string;
+  // name: Option<String>
+  has_name:bool;
+  name:string;
+  // Supported NUT numbers (union across announcements for this URL).
+  nuts:[uint16];
+  // Supported units, when advertised.
+  units:[string];
+  supports_nutzap:bool;
+  trust_score:int32;
+  recommendation_count:uint32;
+}
+
 table WalletProjection {
-  schema_version:uint32 = 2;   // mirrors projection_wire::SCHEMA_VERSION
+  schema_version:uint32 = 3;   // mirrors projection_wire::SCHEMA_VERSION
   // active_backend_id: Option<WalletBackendId> (a String newtype)
   has_active_backend_id:bool;
   active_backend_id:string;
@@ -191,6 +217,10 @@ table WalletProjection {
   pending_operations:[WalletOperation];
   recent_history:[WalletHistoryRow];
   receive_rows:[WalletReceiveRow];
+  // Ranked, capability-filtered, web-of-trust-scoped NIP-87 discovered mints
+  // (#2880, epic #2864) — bounded to
+  // `nmp_wallet::mint_discovery::MAX_DISCOVERED_MINTS`.
+  discovered_mints:[WalletDiscoveredMint];
 }
 
 root_type WalletProjection;

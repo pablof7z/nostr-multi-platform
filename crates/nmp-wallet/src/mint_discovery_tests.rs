@@ -343,6 +343,12 @@ fn store_projection_empty_without_viewer() {
     assert!(store.snapshot().mints.is_empty());
 }
 
+// Memoization (hot-path safety, #2880 review follow-up) lives in a child
+// module split into its own file to stay under the 500-LOC hard cap; it reuses
+// this module's `pk`/`kev` helpers and reads the store's private cache fields.
+#[path = "mint_discovery_memoization_tests.rs"]
+mod memoization;
+
 #[test]
 fn store_addressable_replace_keeps_newest_announcement() {
     let viewer = pk("aa");

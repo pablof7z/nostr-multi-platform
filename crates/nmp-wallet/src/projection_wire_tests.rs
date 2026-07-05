@@ -13,8 +13,8 @@ use crate::journal::{
     WalletOperationState,
 };
 use crate::projection::{
-    WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletProjection, WalletReadiness,
-    WalletReceiveRow,
+    WalletBalanceRow, WalletDiscoveredMint, WalletHistoryKind, WalletHistoryRow, WalletProjection,
+    WalletReadiness, WalletReceiveRow,
 };
 
 fn fully_populated() -> WalletProjection {
@@ -91,6 +91,26 @@ fn fully_populated() -> WalletProjection {
             timestamp: Some(1_700_000_200),
             accepted: true,
         }],
+        discovered_mints: vec![
+            WalletDiscoveredMint {
+                url: "https://mint.example".to_string(),
+                name: Some("Example Mint".to_string()),
+                nuts: vec![1, 2, 4, 7, 11, 12],
+                units: vec!["sat".to_string()],
+                supports_nutzap: true,
+                trust_score: 5,
+                recommendation_count: 2,
+            },
+            WalletDiscoveredMint {
+                url: "https://mint.two".to_string(),
+                name: None,
+                nuts: vec![],
+                units: vec![],
+                supports_nutzap: false,
+                trust_score: 0,
+                recommendation_count: 0,
+            },
+        ],
     }
 }
 
@@ -114,6 +134,33 @@ fn round_trips_empty_projection_with_all_options_none() {
     assert!(decoded.pending_operations.is_empty());
     assert!(decoded.recent_history.is_empty());
     assert!(decoded.receive_rows.is_empty());
+    assert!(decoded.discovered_mints.is_empty());
+}
+
+/// #2880 (epic #2864) — `WalletDiscoveredMint` round-trips both a fully
+/// populated row (`name` present, NUTs/units carried) and a bare row (`name`
+/// absent, empty NUTs/units) — the same "populated vs. bare" precedent
+/// `round_trips_operation_with_no_correlation_id_or_inputs` establishes for
+/// `WalletOperation`.
+#[test]
+fn discovered_mint_rows_round_trip_with_and_without_a_name() {
+    let projection = fully_populated();
+    let bytes = encode_wallet_projection(&projection);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.discovered_mints, projection.discovered_mints);
+
+    let with_name = &decoded.discovered_mints[0];
+    assert_eq!(with_name.name.as_deref(), Some("Example Mint"));
+    assert_eq!(with_name.nuts, vec![1, 2, 4, 7, 11, 12]);
+    assert_eq!(with_name.units, vec!["sat".to_string()]);
+    assert!(with_name.supports_nutzap);
+    assert_eq!(with_name.trust_score, 5);
+    assert_eq!(with_name.recommendation_count, 2);
+
+    let without_name = &decoded.discovered_mints[1];
+    assert!(without_name.name.is_none());
+    assert!(without_name.nuts.is_empty());
+    assert!(without_name.units.is_empty());
 }
 
 #[test]
@@ -273,5 +320,5 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.wallet.merged");
     assert_eq!(PROJECTION_KEY, "wallet.merged");
-    assert_eq!(SCHEMA_VERSION, 2);
+    assert_eq!(SCHEMA_VERSION, 3);
 }

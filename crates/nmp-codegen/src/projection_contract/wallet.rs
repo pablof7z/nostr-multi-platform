@@ -22,6 +22,11 @@ pub const WALLET_STATUS: ProjectionContract = ProjectionContract {
 // `nmp_wallet::register` under a DISTINCT key from the `"wallet"` NWST
 // sidecar above (which nmp-nip47 still owns) so the two coexist. No iOS
 // Swift consumer yet — see NOT_SWIFT_PRESENTED in the contract tests.
+//
+// v3 (#2880, epic #2864): gains `discovered_mints`, the NIP-87
+// web-of-trust-scoped, capability-fail-closed discovered-mints view folded in
+// from the sibling `MintDiscoveryRuntime` at
+// `register::wallet_merged_typed_projection`.
 pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     key: "wallet.merged",
     tier: ProjectionTier::HostRegistered,
@@ -30,7 +35,7 @@ pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     schema_id: "nmp.wallet.merged",
     file_identifier: "NWMP",
     // nmp-wallet projection_wire::SCHEMA_VERSION
-    version: 2,
+    version: 3,
     declaration_policy: DeclarationPolicy::RegistrationGated,
     dependency_versions: &[],
     presence_policy: PresencePolicy::None,
