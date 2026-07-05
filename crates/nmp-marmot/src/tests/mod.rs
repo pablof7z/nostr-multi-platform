@@ -45,4 +45,5 @@ mod membership;
 mod orphaned_commit_count;
 mod read_projections;
 mod round_trip;
+mod welcome_ingest;
 mod welcome_route_class;
