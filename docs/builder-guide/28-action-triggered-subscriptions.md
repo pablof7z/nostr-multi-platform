@@ -191,6 +191,58 @@ target hydration all have this shape: source interest/state changes, the reducer
 replaces the derived set, and those children enter the same registry/planner
 path as the static materialized interests owned by the concept helper.
 
+## Group sources: joined groups and bookmarked groups
+
+NIP-29 group sources use the same active-read pattern. The protocol crates own
+their facts; an app Rust concept composes them into product rows.
+
+To show the NIP-29 groups the active user belongs to across a relay set, ask
+the NIP-29 owner for a joined-groups read. The relay-set variant of that helper
+materializes one host-pinned demand per relay through `open_read_demand_set` /
+`reconcile_read_demand_set`, folds relay-signed metadata/admin/member facts
+into `JoinedGroupsProjection`, and emits the joined-groups typed output. The
+app supplies the active pubkey and the relay set that defines its search space;
+`nmp-nip29` owns the per-relay `39000`/`39001`/`39002` acquisition,
+replay-before-live, teardown, and active-account-scoped output. Because this is
+a relay catalog read, the initial filter is kind-scoped and not `#d`-scoped;
+the projection reads each event's `d` tag to build group identities. An empty
+relay set fails closed; it never becomes a wildcard group scan.
+
+To get every group event of kinds `X` for the active user's bookmarked NIP-51
+groups, compose a source reducer over `SimpleGroupListProjection`:
+
+1. Open/observe the active account's kind:10009 simple-groups list with
+   `nmp_nip51::SimpleGroupListProjection`.
+2. On `SimpleGroupListSourceEffect::PerspectiveChanged`, map each routable
+   `SimpleGroupRef { local_id, host_relay_url }` to a NIP-29 `GroupId`.
+3. Reconcile a dynamic demand set whose member key is the group identity and
+   whose demand is host-pinned to `host_relay_url`.
+4. For each member, use a group-event filter shaped like
+   `{"kinds": X, "#h": [local_id]}`. The host relay pin lives on
+   `ReadDemand::relay_pin`, not inside the wire filter.
+5. Feed every member into one app-owned reducer/output, or into a feed-session
+   source when the desired output is a timeline. The existing
+   `ActiveUserHostedGroups` feed-source path is the precedent: the NIP-51 list
+   is the reactive source, and the derived NIP-29 `#h` interests are replaced
+   without tearing down still-desired groups.
+
+Do not collapse known-group metadata and group messages into one pretend
+demand. NIP-29 relay metadata/admin/member snapshots are
+parameterized-replaceable events whose group identity is the `d` tag; once the
+concept knows the group, known-group roster/metadata demand is `#d`-scoped.
+User group events are selected by `#h` and caller-declared content kinds. If a
+concept needs both metadata and messages for the same group, it owns two lanes
+under the same close handle and reconciles both from the same source set.
+
+NMP deliberately does not ship a universal "joined/bookmarked group chat list"
+projection. A chat-list row is product composition: bookmark source, joined or
+admin state, metadata display fields, latest-message preview, unread/read
+marker policy, archive/mute/pin policy, and sorting. `nmp-nip29` must not import
+`nmp-nip51` or `nmp-chat` to build that row. Put the row projection in the app
+Rust crate, use the protocol read helpers as ingredients, and expose only the
+app-shaped typed output to native/web shells. Native shells render the rows;
+they do not merge NIP-51 lists, NIP-29 membership, and chat unread state.
+
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
 current app admission policy. Those rows advance the cursor but do not satisfy
