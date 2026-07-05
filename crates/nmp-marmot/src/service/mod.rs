@@ -117,6 +117,27 @@ pub struct MarmotService {
     pub(crate) orphaned_commit_count: Arc<AtomicU32>,
 }
 
+/// Stable NIP-33 `d`-tag slot id for an identity's advertised MLS last-resort
+/// key package (kind:30443).
+///
+/// Deterministically derived from the identity pubkey via a domain-separated
+/// SHA-256 so it is STABLE across store re-creations (a random `d`, MDK's
+/// default, is not — see [`MarmotService::publish_key_package`] for the #3057
+/// rationale: republishes must REPLACE, not accumulate, so relays never serve a
+/// key package whose private half is missing from the invitee's current store).
+///
+/// MDK requires the `d` tag to be exactly 64 hex chars (32 bytes); a SHA-256
+/// digest satisfies that exactly. The NIP-33 address is `(kind, pubkey, d)`, so
+/// one deterministic `d` per identity yields exactly one long-lived,
+/// self-replacing key-package slot.
+#[must_use]
+pub(crate) fn marmot_key_package_d_tag(pubkey: &PublicKey) -> String {
+    use nostr::hashes::{sha256, Hash};
+    let mut preimage = b"nmp-marmot:key-package-slot:v1:".to_vec();
+    preimage.extend_from_slice(pubkey.to_hex().as_bytes());
+    sha256::Hash::hash(&preimage).to_string()
+}
+
 impl MarmotService {
     /// Production constructor: encrypted SQLite via the platform keyring.
     /// `db_path` is `<app_support>/marmot-mls-state.sqlite` (owned by this
@@ -212,11 +233,24 @@ impl MarmotService {
 
     /// Generate a fresh MLS KeyPackage and produce a signed kind:30443 Nostr
     /// event. Caller publishes via standard author-write outbox routing (NOT
-    /// relay-pinned).
+    /// relay-pinned). `relays` are advertised in the KeyPackage.
     ///
-    /// `relays` are advertised in the KeyPackage (the owner's write relays).
-    /// On rotation, the returned `d_tag` SHOULD be reused so relays replace
-    /// the prior kind:30443 event (mdk-api.md §7.4).
+    /// ## Stable `d` tag — one long-lived last-resort slot per identity (#3057)
+    ///
+    /// MDK mints a RANDOM `d` per call but documents that callers SHOULD reuse
+    /// it on rotation so relays REPLACE the prior kind:30443 (NIP-33 by
+    /// `(kind, pubkey, d)`). We honour that: [`marmot_key_package_d_tag`] pins a
+    /// STABLE per-identity slot, so republishes replace instead of accumulate.
+    /// Without it, a republish after a re-created MLS store (new device, cleared
+    /// keyring db-key, reinstall) leaves the prior key package alive on the
+    /// relay under its old random `d`; its private half lives only in the gone
+    /// store, so an inviter fetching it builds a Welcome the invitee cannot
+    /// process ("No matching key package") and the invite is silently dropped.
+    /// Key packages are last-resort (reusable), so one slot is the intended
+    /// model; old key material stays in the store, so in-flight invites against
+    /// a prior key package still process. The `d` is only the NIP-33 address
+    /// coordinate — not part of the key package `content`/`hash_ref` — so
+    /// overwriting it changes the slot, never the cryptographic key package.
     ///
     /// Only kind:30443 is published (legacy kind:443 was retired 2026-05-31).
     pub fn publish_key_package(
@@ -227,13 +261,26 @@ impl MarmotService {
             content,
             tags_30443,
             hash_ref,
-            d_tag,
-            // tags_443 is provided by mdk_core but no longer used — legacy
-            // kind:443 dual-publish was retired 2026-05-31.
+            // MDK's random `d_tag` is discarded — we pin a stable per-identity
+            // slot id below. tags_443 (legacy kind:443) is likewise unused.
             ..
         } = self
             .mdk
             .create_key_package_for_event(&self.keys.public_key(), relays)?;
+
+        // Overwrite MDK's random `d` with the stable per-identity slot id so
+        // republishes REPLACE (NIP-33) rather than accumulate stale key
+        // packages on the relay (#3057). See the doc comment above.
+        let d_tag = marmot_key_package_d_tag(&self.keys.public_key());
+        let tags_30443 = tags_30443
+            .into_iter()
+            .filter(|t| {
+                t.single_letter_tag()
+                    .map(|s| s.character != nostr::Alphabet::D)
+                    .unwrap_or(true)
+            })
+            .chain(std::iter::once(nostr::Tag::identifier(d_tag.clone())))
+            .collect::<Vec<_>>();
 
         let event_30443 = EventBuilder::new(Kind::Custom(KIND_MARMOT_KEY_PACKAGE as u16), content)
             .tags(tags_30443)
