@@ -34,6 +34,21 @@ flatbuffers = { workspace = true }
 # root can call OFF the reactive emit path (see `audit` module docs — HTTP on
 # the projection producer's hot path is a doctrine violation).
 cashu-mint-audit = { version = "0.1", optional = true }
+# Optional NUT-06 `/v1/info` pull fetch (issues #3030/#2880): this crate's OWN
+# thin HTTP GET + JSON parse for a discovered (not-yet-held) mint's canonical
+# identity (name/icon/description/units/nuts). Deliberately NOT a dependency
+# on `nmp-nip60`/`nmp-wallet` — discovery must not depend on the wallet crate
+# (see `mint_info_fetch` module docs). rustls-tls keeps this off native-tls;
+# json enables `reqwest`'s JSON support alongside our own bounded parse.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"], optional = true }
+
+[dev-dependencies]
+# Drives the `#[ignore]`d live `/v1/info` example under the `mint-info`
+# feature (see `mint_info_fetch` tests). Not part of the default or
+# `mint-info`-feature build graph — dev-dependencies never affect `cargo
+# build`/`cargo tree` for the crate.
+tokio = { version = ">=1.37", default-features = false, features = ["rt", "macros"] }
 
 [features]
 audit = ["dep:cashu-mint-audit"]
+mint-info = ["dep:reqwest"]
