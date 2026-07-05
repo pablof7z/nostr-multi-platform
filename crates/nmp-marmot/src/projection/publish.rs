@@ -66,8 +66,25 @@ pub(crate) fn publish_to(
     // caller's informational return still carries the signed envelope JSON
     // so callers retain ground-truth audit of what was built.
     if event.kind.as_u16() as u32 == crate::interest::KIND_GIFT_WRAP && relays.is_empty() {
+        // #3057 round-5 instrumentation: a kind:1059 with NO relay pin is
+        // dropped here (D10 fail-closed). This is a silent drop on the wire —
+        // the caller's informational return still carries the envelope, but
+        // nothing goes out. Logged so an on-device retest catches an
+        // empty-pin Welcome that never reaches any relay.
+        tracing::warn!(
+            target: "nmp_marmot::publish",
+            giftwrap_id = %event.id.to_hex(),
+            "welcome publish DROPPED: kind:1059 with empty relay pin (D10 fail-closed) — \
+             nothing dispatched to the wire"
+        );
         return;
     }
+    tracing::debug!(
+        target: "nmp_marmot::publish",
+        kind = event.kind.as_u16(),
+        relay_count = relays.len(),
+        "marmot publish: handing signed event to the actor publish port"
+    );
     h.publish_signed_explicit(event, relays, route_class);
 }
 

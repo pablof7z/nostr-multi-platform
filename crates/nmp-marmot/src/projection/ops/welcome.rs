@@ -30,11 +30,28 @@ pub(super) fn resolve_invitee_inboxes(
                 .dm_inbox_relays(&pubkey_hex)
                 .filter(|relays| !relays.is_empty())
                 .ok_or_else(|| {
+                    // #3057 round-5 instrumentation: this is the FIRST place A's
+                    // Welcome publish can silently stop — an unresolved/empty
+                    // kind:10050 for the invitee aborts create_group/invite
+                    // BEFORE MDK ever encodes a welcome, surfacing only as a
+                    // generic action failure (the on-device lastDispatchError).
+                    tracing::warn!(
+                        target: "nmp_marmot::publish",
+                        invitee = %pubkey_hex,
+                        "welcome publish blocked: invitee has no resolved kind:10050 DM-inbox \
+                         relays — create_group/invite aborts before publishing"
+                    );
                     format!(
                         "invitee {pubkey_hex} has no kind:10050 DM-inbox relay list yet; \
                          refusing to publish a Welcome without a verified private inbox (D10)"
                     )
                 })?;
+            tracing::debug!(
+                target: "nmp_marmot::publish",
+                invitee = %pubkey_hex,
+                inbox_relay_count = relays.len(),
+                "welcome publish: resolved invitee kind:10050 DM-inbox relays"
+            );
             relays
                 .iter()
                 .map(|r| {
@@ -64,6 +81,12 @@ pub(super) fn wrap_and_publish_welcomes(
     rumors: &[nostr::UnsignedEvent],
     invitee_inboxes: &[Vec<RelayUrl>],
 ) -> Result<Vec<String>, String> {
+    tracing::debug!(
+        target: "nmp_marmot::publish",
+        rumor_count = rumors.len(),
+        inbox_count = invitee_inboxes.len(),
+        "welcome publish: wrapping + dispatching kind:1059 gift-wraps"
+    );
     let mut out = Vec::with_capacity(rumors.len());
     for (i, rumor) in rumors.iter().enumerate() {
         let Some(kp) = kp_events.get(i) else {
@@ -77,6 +100,13 @@ pub(super) fn wrap_and_publish_welcomes(
             .service()
             .wrap_welcome(&receiver, rumor.clone())
             .map_err(|e| e.to_string())?;
+        tracing::info!(
+            target: "nmp_marmot::publish",
+            invitee = %receiver.to_hex(),
+            giftwrap_id = %wrapped.id.to_hex(),
+            relay_count = inbox_relays.len(),
+            "welcome publish: dispatching kind:1059 to invitee DM-inbox relays (VerifiedPrivateInbox)"
+        );
         h.publish_explicit(
             &wrapped,
             inbox_relays,

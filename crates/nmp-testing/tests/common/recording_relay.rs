@@ -20,6 +20,8 @@ pub(crate) struct ObservedReq {
 pub(crate) enum ObservedFrame {
     Req(ObservedReq),
     Close { sub_id: String },
+    /// A client-published `["EVENT", …]` frame (a publish landing on the relay).
+    Event(Box<Event>),
 }
 
 enum RelayCommand {
@@ -81,8 +83,34 @@ impl RecordingRelay {
             |frame| matches!(frame, ObservedFrame::Req(req) if pred(&req.filter)),
         ) {
             ObservedFrame::Req(req) => req,
-            ObservedFrame::Close { .. } => unreachable!(),
+            _ => unreachable!(),
         }
+    }
+
+    /// Wait for a client-published `EVENT` frame matching `pred` (e.g. a
+    /// kind:1059 gift-wrap Welcome). Returns the published event.
+    pub(crate) fn wait_event(&mut self, label: &str, pred: impl Fn(&Event) -> bool) -> Event {
+        match self.wait_frame(
+            label,
+            |frame| matches!(frame, ObservedFrame::Event(ev) if pred(ev)),
+        ) {
+            ObservedFrame::Event(ev) => *ev,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Every client-published EVENT observed so far (non-blocking drain).
+    pub(crate) fn drain_published(&mut self) -> Vec<Event> {
+        while let Ok(frame) = self.observed_rx.try_recv() {
+            self.observed.push(frame);
+        }
+        self.observed
+            .iter()
+            .filter_map(|f| match f {
+                ObservedFrame::Event(ev) => Some((**ev).clone()),
+                _ => None,
+            })
+            .collect()
     }
 
     pub(crate) fn wait_close(&mut self, label: &str, sub_id: &str) {
@@ -234,6 +262,17 @@ fn handle_client_text(
                 let _ = observed.send(ObservedFrame::Close {
                     sub_id: sub_id.to_string(),
                 });
+            }
+        }
+        Some("EVENT") => {
+            // A client publish. Record it and ACK so the publish engine sees
+            // the OK (fire-and-forget still records the frame either way).
+            if let Some(ev) = arr.get(1).and_then(|v| serde_json::from_value::<Event>(v.clone()).ok())
+            {
+                let id = ev.id.to_hex();
+                let _ = observed.send(ObservedFrame::Event(Box::new(ev)));
+                let _ = ws.send(Message::Text(json!(["OK", id, true, ""]).to_string()));
+                let _ = ws.flush();
             }
         }
         _ => {}
