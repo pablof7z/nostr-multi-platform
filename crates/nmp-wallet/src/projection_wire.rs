@@ -51,9 +51,9 @@ use generated::nmp::wallet as fb;
 
 use enums::{readiness_from_fb, readiness_to_fb};
 use rows::{
-    decode_balances, decode_capabilities, decode_history, decode_operations,
-    decode_receive_rows, encode_balances, encode_capabilities, encode_history, encode_operations,
-    encode_receive_rows, str_field,
+    decode_accepted_mints, decode_balances, decode_capabilities, decode_history, decode_operations,
+    decode_receive_rows, encode_accepted_mints, encode_balances, encode_capabilities,
+    encode_history, encode_operations, encode_receive_rows, str_field,
 };
 
 use crate::backend::WalletBackendId;
@@ -79,7 +79,10 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NWMP";
 /// `discovered_mints` is REMOVED from `WalletProjection` — per the schema's
 /// field-removal convention the wire slot is deprecated in place, not reused
 /// or reordered (see `schema/wallet_projection.fbs`).
-pub const SCHEMA_VERSION: u32 = 4;
+/// v5 (#3030, PR1 of 2): `WalletProjection` gains `accepted_mints` — the raw
+/// accepted-mint URL list `accepted_mint_count` already summarized. Appended
+/// as a new field after the deprecated v4 slot, not inserted into it.
+pub const SCHEMA_VERSION: u32 = 5;
 
 // --- encode ---------------------------------------------------------------
 
@@ -105,6 +108,7 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
     let pending_operations = encode_operations(&mut fbb, &projection.pending_operations);
     let recent_history = encode_history(&mut fbb, &projection.recent_history);
     let receive_rows = encode_receive_rows(&mut fbb, &projection.receive_rows);
+    let accepted_mints = encode_accepted_mints(&mut fbb, &projection.accepted_mints);
 
     let root = fb::WalletProjection::create(
         &mut fbb,
@@ -122,6 +126,7 @@ pub fn encode_wallet_projection(projection: &WalletProjection) -> Vec<u8> {
             pending_operations: Some(pending_operations),
             recent_history: Some(recent_history),
             receive_rows: Some(receive_rows),
+            accepted_mints: Some(accepted_mints),
         },
     );
     fb::finish_wallet_projection_buffer(&mut fbb, root);
@@ -171,6 +176,7 @@ pub fn decode_wallet_projection(bytes: &[u8]) -> Result<WalletProjection, String
         balances,
         cashu_p2pk_pubkey,
         accepted_mint_count: root.accepted_mint_count(),
+        accepted_mints: decode_accepted_mints(root.accepted_mints()),
         accepted_relay_count: root.accepted_relay_count(),
         pending_operations,
         recent_history,

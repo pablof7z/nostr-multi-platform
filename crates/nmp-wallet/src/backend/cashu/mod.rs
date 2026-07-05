@@ -135,8 +135,12 @@ impl WalletBackend for CashuWalletBackend {
             WalletReadiness::NotConfigured
         };
         let mut projection = WalletProjection::new(Some(self.id()), readiness, self.capabilities())
-            .with_pending_operations(state.journal.pending_operations());
+            .with_pending_operations(state.journal.pending_operations())
+            .with_accepted_mints(state.mints.iter().cloned());
         projection.cashu_p2pk_pubkey = state.cashu_pubkey_hex.clone();
+        // `accepted_mint_count` mirrors `accepted_mints.len()` exactly — same
+        // source (`state.mints`), same order — kept as a separate field for
+        // compact UIs / backward compat rather than derived on every read.
         projection.accepted_mint_count = state.mints.len() as u32;
         let balances: Vec<WalletBalanceRow> = state
             .ledger

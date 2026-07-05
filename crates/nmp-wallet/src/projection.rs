@@ -82,6 +82,13 @@ pub struct WalletProjection {
     pub balances: Vec<WalletBalanceRow>,
     pub cashu_p2pk_pubkey: Option<String>,
     pub accepted_mint_count: u32,
+    /// The wallet's configured accepted-mint URL list (#3030, PR1 of 2) —
+    /// un-reduces `accepted_mint_count` back to the raw list a shell needs to
+    /// render/edit the wallet's mint policy. Mirrors `accepted_mint_count`'s
+    /// derivation 1:1 (same `CashuWalletState.mints` source, same merge
+    /// policy): `accepted_mint_count` is kept alongside for compact UIs /
+    /// backward compat, not replaced.
+    pub accepted_mints: Vec<String>,
     pub accepted_relay_count: u32,
     pub pending_operations: Vec<WalletOperation>,
     pub recent_history: Vec<WalletHistoryRow>,
@@ -135,6 +142,12 @@ impl WalletProjection {
     #[must_use]
     pub fn with_receive_rows(mut self, rows: impl IntoIterator<Item = WalletReceiveRow>) -> Self {
         self.receive_rows = bounded(rows);
+        self
+    }
+
+    #[must_use]
+    pub fn with_accepted_mints(mut self, mints: impl IntoIterator<Item = String>) -> Self {
+        self.accepted_mints = bounded(mints);
         self
     }
 }

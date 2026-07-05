@@ -229,12 +229,12 @@ impl WalletBackendSelector {
     /// getting stuck at `NotConfigured` forever pending an explicit
     /// `select_backend` call nothing requires a user to ever make.
     /// `capabilities` is the union from `union_capabilities`. Balances/
-    /// pending operations/history/receive rows concatenate across every
-    /// backend, bounded by the existing `MAX_WALLET_PROJECTION_ROWS`
-    /// machinery in `projection.rs`. `cashu_p2pk_pubkey`/
-    /// `accepted_mint_count`/`accepted_relay_count` are Cashu-shaped fields
-    /// with no NWC analogue — take the first non-default value/sum across
-    /// backends respectively.
+    /// pending operations/history/receive rows/accepted mints concatenate
+    /// across every backend, bounded by the existing
+    /// `MAX_WALLET_PROJECTION_ROWS` machinery in `projection.rs`.
+    /// `cashu_p2pk_pubkey`/`accepted_mint_count`/`accepted_relay_count` are
+    /// Cashu-shaped fields with no NWC analogue — take the first non-default
+    /// value/sum across backends respectively.
     #[must_use]
     pub fn snapshot(&self, scope: WalletProjectionScope) -> WalletProjection {
         let snapshots: Vec<WalletBackendSnapshot> =
@@ -260,6 +260,11 @@ impl WalletBackendSelector {
                 snapshots
                     .iter()
                     .flat_map(|s| s.projection.receive_rows.clone()),
+            )
+            .with_accepted_mints(
+                snapshots
+                    .iter()
+                    .flat_map(|s| s.projection.accepted_mints.clone()),
             );
 
         projection.cashu_p2pk_pubkey = snapshots

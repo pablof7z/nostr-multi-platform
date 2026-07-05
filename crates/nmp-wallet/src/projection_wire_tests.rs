@@ -68,6 +68,10 @@ fn fully_populated() -> WalletProjection {
         ],
         cashu_p2pk_pubkey: Some("ab".repeat(32)),
         accepted_mint_count: 2,
+        accepted_mints: vec![
+            "https://mint.example".to_string(),
+            "https://mint.two".to_string(),
+        ],
         accepted_relay_count: 3,
         pending_operations: vec![op],
         recent_history: vec![WalletHistoryRow {
@@ -114,6 +118,37 @@ fn round_trips_empty_projection_with_all_options_none() {
     assert!(decoded.pending_operations.is_empty());
     assert!(decoded.recent_history.is_empty());
     assert!(decoded.receive_rows.is_empty());
+    assert!(decoded.accepted_mints.is_empty());
+}
+
+/// #3030 — `accepted_mints` round-trips both the empty case (a wallet with no
+/// configured mints yet) and a multi-URL case, preserving order (the shell
+/// renders this as an ordered list, and identical state must produce
+/// identical bytes for the byte-equality emission compare in
+/// `projections-and-emission.md`).
+#[test]
+fn accepted_mints_round_trips_empty_and_multiple_urls() {
+    let empty = WalletProjection::empty();
+    let bytes = encode_wallet_projection(&empty);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert!(decoded.accepted_mints.is_empty());
+
+    let with_mints = WalletProjection::empty().with_accepted_mints([
+        "https://mint.one.example".to_string(),
+        "https://mint.two.example".to_string(),
+        "https://mint.three.example".to_string(),
+    ]);
+    let bytes = encode_wallet_projection(&with_mints);
+    let decoded = decode_wallet_projection(&bytes).expect("decode must succeed");
+    assert_eq!(decoded.accepted_mints, with_mints.accepted_mints);
+    assert_eq!(
+        decoded.accepted_mints,
+        vec![
+            "https://mint.one.example".to_string(),
+            "https://mint.two.example".to_string(),
+            "https://mint.three.example".to_string(),
+        ]
+    );
 }
 
 #[test]
@@ -273,5 +308,5 @@ fn decode_rejects_buffer_without_identifier() {
 fn schema_constants_are_stable() {
     assert_eq!(SCHEMA_ID, "nmp.wallet.merged");
     assert_eq!(PROJECTION_KEY, "wallet.merged");
-    assert_eq!(SCHEMA_VERSION, 4);
+    assert_eq!(SCHEMA_VERSION, 5);
 }

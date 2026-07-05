@@ -25,6 +25,31 @@ fn capabilities_and_default_snapshot_are_not_configured() {
     assert!(!snapshot.projection.capabilities.pay_bolt11);
     assert!(snapshot.projection.balances.is_empty());
     assert_eq!(snapshot.projection.accepted_mint_count, 0);
+    assert!(snapshot.projection.accepted_mints.is_empty());
+}
+
+/// #3030 — `accepted_mints` un-reduces `accepted_mint_count` back to the raw
+/// URL list `CashuWalletState.mints` owns: the projection must carry the
+/// SAME list, in the SAME order, that the wallet is actually configured
+/// with — not just a matching count.
+#[test]
+fn snapshot_accepted_mints_matches_configured_mints() {
+    let backend = CashuWalletBackend::new();
+    let configured = vec![
+        "https://mint.one.example".to_string(),
+        "https://mint.two.example".to_string(),
+    ];
+    {
+        let mut state = state::lock_state(&backend.state);
+        state.mints = configured.clone();
+    }
+
+    let snapshot = backend.snapshot(WalletProjectionScope::default());
+    assert_eq!(snapshot.projection.accepted_mints, configured);
+    assert_eq!(
+        snapshot.projection.accepted_mint_count,
+        configured.len() as u32
+    );
 }
 
 #[test]
