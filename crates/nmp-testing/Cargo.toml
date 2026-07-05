@@ -27,7 +27,7 @@ nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
-nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker"], version = "1.0.0-rc.1" }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker", "marmot"], version = "1.0.0-rc.1" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
 serde = { workspace = true, features = ["derive"] }
@@ -112,6 +112,9 @@ tungstenite = { workspace = true, default-features = false, features = ["handsha
 nmp-marmot = { path = "../nmp-marmot" }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
+# Host-level Marmot ingest test installs the real encrypted MLS store, which
+# needs a platform keyring; the mock store stands in under `cargo test`.
+keyring-core = "1.0.0"
 tempfile = "3"
 # Relay-search-radius acceptance tests (A1-A6) capture stderr using FD-level
 # pipe/dup2 to intercept the NMP_CLAIM_LOG structured output from actor threads.

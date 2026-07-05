@@ -185,10 +185,24 @@ impl MarmotRuntime {
 
         let db_path = self.config.db_path_for(&pubkey_hex);
         let db_key_id = self.config.db_key_id_for(&pubkey_hex);
-        let Ok(service) = MarmotService::new(db_path, &self.config.service_id, &db_key_id, keys)
-        else {
-            self.clear_active();
-            return;
+        let service = match MarmotService::new(db_path, &self.config.service_id, &db_key_id, keys) {
+            Ok(service) => service,
+            Err(e) => {
+                // #3057 instrumentation: the encrypted MLS store failed to open
+                // (keyring db-key missing/rotated, path error, …). We clear the
+                // active projection, which then SILENTLY DROPS every delivered
+                // Marmot event (incl. kind:1059 Welcomes) — the S51 silence.
+                // Logged so an on-device retest sees WHY Marmot went inactive.
+                tracing::error!(
+                    target: "nmp_marmot::ingest",
+                    pubkey = %pubkey_hex,
+                    error = %e,
+                    "marmot rebind: MarmotService::new FAILED — projection cleared; \
+                     all delivered Marmot events (incl. Welcomes) will be dropped"
+                );
+                self.clear_active();
+                return;
+            }
         };
 
         let projection = Arc::new(MarmotProjection::new(service, None));

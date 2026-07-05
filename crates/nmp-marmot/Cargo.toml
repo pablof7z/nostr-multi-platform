@@ -32,6 +32,10 @@ nostr = { workspace = true, features = ["std"] }
 flatbuffers = { workspace = true }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = "0.8.0"
+# Structured ingest-path tracing (#3057) — inert unless a subscriber is
+# installed (Chirp installs one on device), so on-device retests can pinpoint
+# where a delivered kind:1059 Welcome dies in the ingest chokepoint.
+tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

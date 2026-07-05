@@ -4417,6 +4417,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tracing",
  "zeroize",
 ]
 
@@ -5145,6 +5146,7 @@ name = "nmp-testing"
 version = "1.0.0-rc.1"
 dependencies = [
  "dhat",
+ "keyring-core",
  "libc",
  "mdk-core",
  "mdk-sqlite-storage",
