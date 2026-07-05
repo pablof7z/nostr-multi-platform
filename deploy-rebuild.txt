@@ -1,4 +1,0 @@
-GitHub Pages rebuild marker for plan publication.
-
-Triggered: 2026-07-05T11:09:30Z
-Reason: prior deploy-pages attempts for db1cf2fd760cb8641f765b2dab6a034211bfcbb9 failed after artifact upload.
