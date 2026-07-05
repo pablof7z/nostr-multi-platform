@@ -14,6 +14,7 @@
 //! [`crate::ReadSessionRegistry`]. Concepts touch none of these directly; they
 //! only describe demand, reducer, and output.
 
+use std::any::Any;
 use std::sync::Arc;
 
 use nmp_core::substrate::ObservedProjection;
@@ -21,7 +22,7 @@ use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_planner::{InterestLifecycle, InterestShape};
 
-use crate::registry::{ReadSessionBuild, ReadSessionId, TeardownAction};
+use crate::registry::{DemandSetMembers, ReadSessionBuild, ReadSessionId, TeardownAction};
 
 /// The typed-output encoder a concept supplies: a non-blocking closure the host
 /// calls on every snapshot tick, returning `Some` when it has a changed row to
@@ -147,6 +148,50 @@ pub struct ReadSpec {
     pub keep_open_without_live_demand: bool,
 }
 
+/// One member of a [`ReadDemandSetSpec`] — a [`ReadDemand`] plus the
+/// concept-chosen identity that names it (e.g. a relay URL for NIP-29
+/// multi-relay group discovery, #93). The identity is how a later
+/// `reconcile_read_demand_set` call diffs "what's desired now" against
+/// "what's already live" without either side re-deriving a filter.
+pub struct KeyedReadDemand {
+    /// Stable identity for this member within the demand set (unique per
+    /// concurrently-live member; e.g. a relay URL).
+    pub key: String,
+    /// The demand itself — same shape a fixed [`ReadSpec`] would carry.
+    pub demand: ReadDemand,
+}
+
+/// Everything a concept declares to open one **dynamic** read: like
+/// [`ReadSpec`], but its member set (each a [`KeyedReadDemand`]) can grow and
+/// shrink over the session's lifetime via
+/// [`crate::demand_set::reconcile_read_demand_set`] instead of being fixed at
+/// open time. One reducer, one typed output, shared by every member —
+/// exactly as with [`ReadSpec`] — but the concept may open with N members and
+/// later add/remove members without tearing the session down (#93).
+pub struct ReadDemandSetSpec {
+    /// The framework/app projection key this read's typed output surfaces under.
+    pub projection_key: ProjectionRegistrationKey,
+    /// The initial member set. May be empty (a demand set may legitimately
+    /// start with zero members and grow via reconcile).
+    pub members: Vec<KeyedReadDemand>,
+    /// The admission-applying event reducer + typed read model, shared by
+    /// every member.
+    pub observer: Arc<dyn ObservedProjectionSink>,
+    /// The SAME reducer as `observer`, type-erased. Stored in the registry
+    /// (see [`crate::registry::DemandSetState::reducer`]) so a later call —
+    /// addressed only by projection key — can downcast it back to its
+    /// concrete type and keep accumulating into the SAME instance instead of
+    /// constructing a fresh one and losing state. Build both fields from one
+    /// concrete `Arc<T>` (`T: ObservedProjectionSink + Send + Sync +
+    /// 'static`) via `Arc::clone` and two different unsized coercions —
+    /// `Arc<dyn ObservedProjectionSink>` and `Arc<dyn Any + Send + Sync>`
+    /// cannot be derived from one another once erased, so the concept must
+    /// supply both views itself.
+    pub reducer: Arc<dyn Any + Send + Sync>,
+    /// The typed-output encoder registered under `projection_key`.
+    pub output_encoder: ReadOutputEncoder,
+}
+
 /// The typed close handle a concept read returns. Pairs the opaque projection
 /// key the read emits under with the engine-minted session id; the id is the
 /// only thing [`crate::close_read`] needs (a concept never re-derives a filter
@@ -213,6 +258,33 @@ pub trait ReadHost {
     /// engine can reconcile from read-model event callbacks after `open_read`
     /// returns. Concepts never call these hooks directly.
     fn read_interest_controller(&self) -> Option<ReadInterestController> {
+        None
+    }
+
+    /// The live session id currently registered under `projection_key`, for
+    /// [`crate::demand_set::open_read_demand_set`]'s "reconcile the existing
+    /// session, don't mint a new one" path (#93). Hosts that route
+    /// [`Self::store_read_session`] through a [`crate::ReadSessionRegistry`]
+    /// get this generically via [`crate::ReadSessionRegistry::session_id_for_projection_key`];
+    /// the default `None` is only reachable by a host that cannot introspect
+    /// its own registry, which degrades a demand-set open to "always fresh"
+    /// (never a leak — [`crate::demand_set::open_read_demand_set`] still
+    /// closes any stale entry under the key first).
+    fn read_session_id_for_projection_key(&self, _projection_key: &str) -> Option<ReadSessionId> {
+        None
+    }
+
+    /// The live member map of the demand-set session registered under
+    /// `projection_key`. See [`Self::read_session_id_for_projection_key`] for
+    /// the degrade-gracefully contract when a host returns `None`.
+    fn read_demand_set_members(&self, _projection_key: &str) -> Option<DemandSetMembers> {
+        None
+    }
+
+    /// The type-erased reducer of the demand-set session registered under
+    /// `projection_key`. See [`Self::read_session_id_for_projection_key`] for
+    /// the degrade-gracefully contract when a host returns `None`.
+    fn read_demand_set_reducer(&self, _projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         None
     }
 }

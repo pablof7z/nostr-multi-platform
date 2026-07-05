@@ -16,6 +16,18 @@ use crate::kinds::{KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA};
 const HOST: &str = "wss://groups.example.com";
 
 fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
+    event_from(HOST, id, kind, created_at, tags)
+}
+
+/// Same as [`event`] but with an explicit relay-of-origin, for the multi-relay
+/// aggregation tests (#93).
+fn event_from(
+    relay: &str,
+    id: &str,
+    kind: u32,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+) -> KernelEvent {
     KernelEvent {
         id: id.into(),
         author: format!("relay-of-{id}"),
@@ -23,7 +35,7 @@ fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> Kernel
         created_at,
         tags,
         content: String::new(),
-        relay_provenance: Vec::new(),
+        relay_provenance: vec![relay.to_string()],
     }
 }
 
@@ -37,15 +49,15 @@ fn p_tag(pubkey: &str) -> Vec<String> {
 
 #[test]
 fn fresh_projection_yields_empty_snapshot() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     let snap = proj.snapshot();
-    assert_eq!(snap.host_relay_url, HOST);
+    assert_eq!(snap.host_relay_urls, vec![HOST.to_string()]);
     assert!(snap.groups.is_empty());
 
     let json = proj.snapshot_json();
     assert_eq!(
-        json.get("host_relay_url").and_then(|v| v.as_str()),
-        Some(HOST)
+        json.get("host_relay_urls").and_then(|v| v.as_array()),
+        Some(&vec![serde_json::Value::String(HOST.to_string())])
     );
     assert_eq!(
         json.get("groups")
@@ -57,7 +69,7 @@ fn fresh_projection_yields_empty_snapshot() {
 
 #[test]
 fn kind39000_populates_name_picture_about() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta1",
         KIND_GROUP_METADATA,
@@ -88,7 +100,7 @@ fn kind39000_populates_name_picture_about() {
 
 #[test]
 fn private_marker_flips_public_flag() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -108,7 +120,7 @@ fn private_marker_flips_public_flag() {
 
 #[test]
 fn kind39002_member_count_is_p_tag_cardinality() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "members",
         KIND_GROUP_MEMBERS,
@@ -122,7 +134,7 @@ fn kind39002_member_count_is_p_tag_cardinality() {
 
 #[test]
 fn kind39001_admin_count_is_p_tag_cardinality() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "admins",
         KIND_GROUP_ADMINS,
@@ -136,7 +148,7 @@ fn kind39001_admin_count_is_p_tag_cardinality() {
 
 #[test]
 fn three_kinds_for_same_d_roll_into_one_row() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -166,7 +178,7 @@ fn three_kinds_for_same_d_roll_into_one_row() {
 
 #[test]
 fn replaceable_semantics_newer_metadata_wins() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "older",
         KIND_GROUP_METADATA,
@@ -186,7 +198,7 @@ fn replaceable_semantics_newer_metadata_wins() {
 
 #[test]
 fn replaceable_semantics_older_event_does_not_overwrite() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "newer",
         KIND_GROUP_METADATA,
@@ -211,7 +223,7 @@ fn replaceable_semantics_older_event_does_not_overwrite() {
 
 #[test]
 fn off_kind_with_d_tag_is_excluded() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     // Wrong kind (a long-form 30023), even with a `d` tag, isn't metadata.
     proj.on_kernel_event(&event(
         "long",
@@ -224,7 +236,7 @@ fn off_kind_with_d_tag_is_excluded() {
 
 #[test]
 fn metadata_event_without_d_tag_is_excluded() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     // 39000 without a `d` tag is malformed — drop it.
     proj.on_kernel_event(&event(
         "noisy",
@@ -237,7 +249,7 @@ fn metadata_event_without_d_tag_is_excluded() {
 
 #[test]
 fn groups_are_ordered_alphabetically_by_id() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     for d in ["charlie", "alpha", "bravo"] {
         proj.on_kernel_event(&event(
             d,
@@ -253,7 +265,7 @@ fn groups_are_ordered_alphabetically_by_id() {
 
 #[test]
 fn snapshot_json_round_trips_through_serde() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -270,7 +282,7 @@ fn snapshot_json_round_trips_through_serde() {
 #[test]
 fn drives_through_observer_trait_object() {
     // Same trait-object usage the host passes into an observed projection.
-    let proj = Arc::new(DiscoveredGroupsProjection::new(HOST));
+    let proj = Arc::new(DiscoveredGroupsProjection::new([HOST]));
     let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&proj) as _;
     observer.on_kernel_event(&event(
         "meta",
@@ -282,10 +294,13 @@ fn drives_through_observer_trait_object() {
 }
 
 #[test]
-fn host_relay_url_accessor_returns_construction_value() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
-    assert_eq!(proj.host_relay_url(), HOST);
+fn host_relay_urls_accessor_returns_construction_value() {
+    let proj = DiscoveredGroupsProjection::new([HOST]);
+    assert_eq!(proj.host_relay_urls(), vec![HOST.to_string()]);
 }
+
+#[path = "multi_relay_tests.rs"]
+mod multi_relay_tests;
 
 #[test]
 fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
@@ -296,7 +311,7 @@ fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
     // only the most-recent rows. Pushing well beyond the cap and asserting
     // the snapshot len does not exceed it is the structural invariant.
     use nmp_core::substrate::MAX_PROJECTION_MESSAGES;
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     // Push 2× the cap distinct `d` values via kind:39000 — each creates a
     // new `(kind, d)` slot in the outer map.
     let overflow = MAX_PROJECTION_MESSAGES * 2;
@@ -322,7 +337,7 @@ fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
 
 #[test]
 fn kind39000_parent_tag_populates_parent() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -340,7 +355,7 @@ fn kind39000_parent_tag_populates_parent() {
 
 #[test]
 fn absent_parent_means_root() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -354,7 +369,7 @@ fn absent_parent_means_root() {
 #[test]
 fn empty_parent_value_normalises_to_root() {
     // The spec: `["parent", ""]` or `["parent"]` is equivalent to absent.
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -371,7 +386,7 @@ fn empty_parent_value_normalises_to_root() {
 
 #[test]
 fn child_tags_preserve_order() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -393,7 +408,7 @@ fn child_tags_preserve_order() {
 fn parent_and_children_both_present() {
     // A sub-subgroup pattern: "nostr" is both a child of "tech" and a parent
     // of "nip29" — mirrors the spec's example tree.
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,
@@ -412,7 +427,7 @@ fn parent_and_children_both_present() {
 
 #[test]
 fn newer_39000_updates_parent_and_children() {
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "old",
         KIND_GROUP_METADATA,
@@ -444,7 +459,7 @@ fn newer_39000_updates_parent_and_children() {
 fn detaching_to_root_clears_parent() {
     // The lifecycle example: an admin promotes "nostr" to root by sending a
     // 9002 with no parent; the relay emits a 39000 without a parent tag.
-    let proj = DiscoveredGroupsProjection::new(HOST);
+    let proj = DiscoveredGroupsProjection::new([HOST]);
     proj.on_kernel_event(&event(
         "with-parent",
         KIND_GROUP_METADATA,

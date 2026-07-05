@@ -122,4 +122,28 @@ impl ReadHost for NmpReadHost {
             move |id| closer.close(id),
         ))
     }
+
+    fn read_session_id_for_projection_key(&self, projection_key: &str) -> Option<ReadSessionId> {
+        self.read_sessions
+            .as_read_sessions()
+            .session_id_for_projection_key(projection_key)
+    }
+
+    fn read_demand_set_members(
+        &self,
+        projection_key: &str,
+    ) -> Option<nmp_read_session::DemandSetMembers> {
+        self.read_sessions
+            .as_read_sessions()
+            .demand_set_members(projection_key)
+    }
+
+    fn read_demand_set_reducer(
+        &self,
+        projection_key: &str,
+    ) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+        self.read_sessions
+            .as_read_sessions()
+            .demand_set_reducer(projection_key)
+    }
 }

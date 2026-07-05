@@ -92,7 +92,7 @@ fn discovery_session_dispatch_receives_group_metadata_from_relay() {
 
     let (handle, reader) = open_nip29_group_discovery_session_with_reader(
         app_ref,
-        Nip29GroupDiscoverySession::new(relay.url().to_string()),
+        Nip29GroupDiscoverySession::new(vec![relay.url().to_string()]),
     );
     let payload = DiscoverGroupsInput {
         relay_url: relay.url().to_string(),

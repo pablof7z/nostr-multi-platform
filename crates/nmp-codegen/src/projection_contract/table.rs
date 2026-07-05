@@ -337,7 +337,11 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
         // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
-        version: 2,
+        // v3 (chirp#93): multi-relay group discovery — the top-level
+        // `host_relay_url:string` singular field became `host_relay_urls:[string]`
+        // (the live session's currently-tracked relay set); row-level
+        // `DiscoveredGroup.host_relay_url` is unchanged.
+        version: 3,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

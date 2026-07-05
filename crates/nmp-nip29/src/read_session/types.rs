@@ -27,20 +27,26 @@ impl Nip29GroupEventsSession {
 }
 
 /// Descriptor for a NIP-29 group-discovery typed read session.
+///
+/// `host_relay_urls` is the FULL desired relay set (#93 multi-relay group
+/// discovery) — not a delta. Re-opening with an updated set reconciles the
+/// live session's membership (adds newly-named relays, withdraws relays no
+/// longer named) rather than tearing the whole session down; see
+/// [`super::open_nip29_group_discovery_session`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Nip29GroupDiscoverySession {
-    pub(super) host_relay_url: String,
+    pub(super) host_relay_urls: Vec<String>,
 }
 
 impl Nip29GroupDiscoverySession {
     #[must_use]
-    pub fn new(host_relay_url: String) -> Self {
-        Self { host_relay_url }
+    pub fn new(host_relay_urls: Vec<String>) -> Self {
+        Self { host_relay_urls }
     }
 
     #[must_use]
-    pub fn host_relay_url(&self) -> &str {
-        &self.host_relay_url
+    pub fn host_relay_urls(&self) -> &[String] {
+        &self.host_relay_urls
     }
 }
 

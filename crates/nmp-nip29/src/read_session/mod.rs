@@ -11,9 +11,9 @@ use std::sync::Arc;
 use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::DeclaredProjectionKey;
 use nmp_read_session::{
-    close_read, open_read, InterestLifecycle, ReadDemand, ReadHandle, ReadHost, ReadOutputEncoder,
-    ReadReplayPolicy,
-    ReadSpec,
+    close_read, open_read, open_read_demand_set, reconcile_read_demand_set, InterestLifecycle,
+    KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHandle, ReadHost, ReadOutputEncoder,
+    ReadReplayPolicy, ReadSpec,
 };
 
 use crate::group_id::{group_metadata_filter_json, group_roster_filter_json};
@@ -119,6 +119,19 @@ pub fn close_nip29_group_events_read_by_key(host: &dyn ReadHost) -> bool {
     host.close_read_session_by_projection_key(GROUP_EVENTS_KEY)
 }
 
+/// Open (or reconcile) the ONE NIP-29 group-discovery read session, aggregating
+/// every relay in `descriptor.host_relay_urls()` into the single
+/// `nmp.nip29.discovered_groups` projection (#93 — chirp#93 cross-relay group
+/// browse).
+///
+/// The projection key is a fixed static singleton (framework doctrine: one
+/// session, one key — required by the static codegen registry-coverage
+/// model), but the DEMAND is a set: this reconciles the live relay membership
+/// against `descriptor`'s full desired set rather than replacing the session
+/// wholesale, so calling this again with a superset of relays (e.g. the
+/// user adds a relay to a live browse) grows the aggregation without
+/// dropping any relay already being tracked, and no already-live relay's
+/// subscription is torn down and reopened.
 #[must_use]
 pub fn open_nip29_group_discovery_session(
     host: &dyn ReadHost,
@@ -128,15 +141,63 @@ pub fn open_nip29_group_discovery_session(
     handle
 }
 
+/// Same as [`open_nip29_group_discovery_session`], also returning the
+/// concept-typed [`DiscoveredGroupsProjection`] reader — the SAME instance
+/// across repeated calls that reconcile an already-live session, so a caller
+/// that opened once and holds the reader sees relays added by a later call
+/// with no re-subscription of its own.
 #[must_use]
 pub fn open_nip29_group_discovery_session_with_reader(
     host: &dyn ReadHost,
     descriptor: Nip29GroupDiscoverySession,
 ) -> (Nip29GroupDiscoveryHandle, Arc<DiscoveredGroupsProjection>) {
-    let Nip29GroupDiscoverySession { host_relay_url } = descriptor;
-    let relay_pin = Some(host_relay_url.clone());
-    let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_url));
+    let Nip29GroupDiscoverySession { host_relay_urls } = descriptor;
+
+    if let Some(reducer) = host.read_demand_set_reducer(DISCOVERED_GROUPS_KEY) {
+        if let Ok(projection) = reducer.downcast::<DiscoveredGroupsProjection>() {
+            // Track every newly-desired relay BEFORE reconciling the demand
+            // set: replay-before-live runs synchronously inside
+            // `reconcile_read_demand_set`, so a relay must already be in the
+            // projection's tracked set or its replayed rows would be
+            // attributed to nothing and silently dropped (see
+            // `DiscoveredGroupsProjection::on_kernel_event`).
+            for relay in &host_relay_urls {
+                projection.add_relay(relay.clone());
+            }
+            let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&projection) as _;
+            let desired: Vec<KeyedReadDemand> = host_relay_urls
+                .iter()
+                .map(|relay| discovery_member_for_relay(relay))
+                .collect();
+            if reconcile_read_demand_set(host, DISCOVERED_GROUPS_KEY, &observer, desired) {
+                // Untrack (and purge rows for) every relay no longer desired,
+                // now that its demand has been withdrawn.
+                for tracked in projection.host_relay_urls() {
+                    if !host_relay_urls.contains(&tracked) {
+                        projection.remove_relay(&tracked);
+                    }
+                }
+                let session_id = host
+                    .read_session_id_for_projection_key(DISCOVERED_GROUPS_KEY)
+                    .unwrap_or(nmp_read_session::ReadSessionId(0));
+                let handle = Nip29GroupDiscoveryHandle(ReadHandle {
+                    projection_key: DISCOVERED_GROUPS_KEY.to_string(),
+                    session_id,
+                });
+                return (handle, projection);
+            }
+        }
+    }
+
+    // No live demand-set session under the key (first open, or the host
+    // doesn't support demand-set introspection) — defensively close any
+    // stale entry under the singleton key, then open fresh.
+    let _ = host.close_read_session_by_projection_key(DISCOVERED_GROUPS_KEY);
+
+    let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_urls.clone()));
     let projection_reader = Arc::clone(&projection);
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&projection) as _;
+    let reducer: Arc<dyn std::any::Any + Send + Sync> = Arc::clone(&projection) as _;
 
     let projection_for_output = Arc::clone(&projection);
     let output_encoder: ReadOutputEncoder = Box::new(move || {
@@ -152,17 +213,40 @@ pub fn open_nip29_group_discovery_session_with_reader(
         })
     });
 
-    let read_handle = open_group_read(
+    let members: Vec<KeyedReadDemand> = host_relay_urls
+        .iter()
+        .map(|relay| discovery_member_for_relay(relay))
+        .collect();
+
+    let read_handle = open_read_demand_set(
         host,
-        DISCOVERED_GROUPS_PROJECTION_TOKEN,
-        DISCOVERED_GROUPS_CONSUMER,
-        SCOPE_GLOBAL,
-        relay_pin,
-        group_metadata_filter_json(),
-        projection as Arc<dyn ObservedProjectionSink>,
-        output_encoder,
+        ReadDemandSetSpec {
+            projection_key: DISCOVERED_GROUPS_PROJECTION_TOKEN.into(),
+            members,
+            observer,
+            reducer,
+            output_encoder,
+        },
     );
     (Nip29GroupDiscoveryHandle(read_handle), projection_reader)
+}
+
+/// The `ReadDemand` (+ its relay-URL member identity) for one relay in a
+/// group-discovery session's desired set.
+fn discovery_member_for_relay(host_relay_url: &str) -> KeyedReadDemand {
+    KeyedReadDemand {
+        key: host_relay_url.to_string(),
+        demand: ReadDemand {
+            filter_json: group_metadata_filter_json(),
+            consumer_id: format!("{DISCOVERED_GROUPS_CONSUMER}::{host_relay_url}"),
+            scope: SCOPE_GLOBAL,
+            relay_pin: Some(host_relay_url.to_string()),
+            is_indexer_discovery: false,
+            lifecycle: InterestLifecycle::Tailing,
+            replay_limit: NIP29_GROUP_REPLAY_LIMIT,
+            replay: ReadReplayPolicy::Structural,
+        },
+    }
 }
 
 #[must_use]

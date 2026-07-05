@@ -7,37 +7,30 @@ use nmp_nip29::{
 const RELAY: &str = "wss://groups.example";
 
 #[test]
-fn browser_group_discovery_replaces_same_session_and_close_is_idempotent() {
+fn browser_group_discovery_reconciles_relay_set_into_one_session() {
+    // #93 — re-opening discovery with a different desired relay set
+    // reconciles the ONE singleton read-lifecycle session rather than
+    // minting a second one; `live_count` never exceeds 1 either way.
     let handle = started_handle();
     let first = open_nip29_group_discovery_session(
         &handle,
-        Nip29GroupDiscoverySession::new(RELAY.to_string()),
+        Nip29GroupDiscoverySession::new(vec![RELAY.to_string()]),
     );
     assert_eq!(first.key(), DISCOVERED_GROUPS_KEY);
     assert_eq!(handle.feed_sessions.live_count(), 1);
 
-    let replacement = open_nip29_group_discovery_session(
+    let second = open_nip29_group_discovery_session(
         &handle,
-        Nip29GroupDiscoverySession::new("wss://other-groups.example".to_string()),
+        Nip29GroupDiscoverySession::new(vec!["wss://other-groups.example".to_string()]),
     );
     assert_eq!(
         handle.feed_sessions.live_count(),
         1,
-        "discovery singleton replacement must remove stale read lifecycle"
+        "reconciling to a disjoint relay set stays ONE session"
     );
 
-    assert!(!close_nip29_group_discovery_session(&handle, first));
-    assert_eq!(
-        handle.feed_sessions.live_count(),
-        1,
-        "closing a replaced handle is idempotent and must not tear down the replacement"
-    );
-
-    assert!(close_nip29_group_discovery_session(
-        &handle,
-        replacement.clone()
-    ));
+    assert!(close_nip29_group_discovery_session(&handle, second));
     assert_eq!(handle.feed_sessions.live_count(), 0);
-    assert!(!close_nip29_group_discovery_session(&handle, replacement));
+    assert!(!close_nip29_group_discovery_session(&handle, first));
     assert_eq!(handle.feed_sessions.live_count(), 0);
 }

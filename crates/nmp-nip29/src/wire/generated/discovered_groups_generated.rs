@@ -430,7 +430,7 @@ pub mod nmp {
 
         impl<'a> DiscoveredGroupsSnapshot<'a> {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HOST_RELAY_URLS: ::flatbuffers::VOffsetT = 6;
             pub const VT_GROUPS: ::flatbuffers::VOffsetT = 8;
 
             #[inline]
@@ -451,8 +451,8 @@ pub mod nmp {
                 if let Some(x) = args.groups {
                     builder.add_groups(x);
                 }
-                if let Some(x) = args.host_relay_url {
-                    builder.add_host_relay_url(x);
+                if let Some(x) = args.host_relay_urls {
+                    builder.add_host_relay_urls(x);
                 }
                 builder.add_schema_version(args.schema_version);
                 builder.finish()
@@ -465,19 +465,23 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(2))
+                        .get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(3))
                         .unwrap()
                 }
             }
             #[inline]
-            pub fn host_relay_url(&self) -> Option<&'a str> {
+            pub fn host_relay_urls(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL,
-                        None,
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(
+                        DiscoveredGroupsSnapshot::VT_HOST_RELAY_URLS, None
                     )
                 }
             }
@@ -506,11 +510,9 @@ pub mod nmp {
             ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
                 v.visit_table(pos)?
                     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "host_relay_url",
-                        Self::VT_HOST_RELAY_URL,
-                        false,
-                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("host_relay_urls", Self::VT_HOST_RELAY_URLS, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DiscoveredGroup>>,
                     >>("groups", Self::VT_GROUPS, false)?
@@ -520,7 +522,11 @@ pub mod nmp {
         }
         pub struct DiscoveredGroupsSnapshotArgs<'a> {
             pub schema_version: u32,
-            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub host_relay_urls: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
             pub groups: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'a>>>,
@@ -531,8 +537,8 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 DiscoveredGroupsSnapshotArgs {
-                    schema_version: 2,
-                    host_relay_url: None,
+                    schema_version: 3,
+                    host_relay_urls: None,
                     groups: None,
                 }
             }
@@ -548,17 +554,19 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    2,
+                    3,
                 );
             }
             #[inline]
-            pub fn add_host_relay_url(
+            pub fn add_host_relay_urls(
                 &mut self,
-                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
+                host_relay_urls: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
             ) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL,
-                    host_relay_url,
+                    DiscoveredGroupsSnapshot::VT_HOST_RELAY_URLS,
+                    host_relay_urls,
                 );
             }
             #[inline]
@@ -594,7 +602,7 @@ pub mod nmp {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("DiscoveredGroupsSnapshot");
                 ds.field("schema_version", &self.schema_version());
-                ds.field("host_relay_url", &self.host_relay_url());
+                ds.field("host_relay_urls", &self.host_relay_urls());
                 ds.field("groups", &self.groups());
                 ds.finish()
             }

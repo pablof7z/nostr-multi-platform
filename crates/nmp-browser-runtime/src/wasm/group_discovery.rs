@@ -27,7 +27,7 @@ impl NmpRuntimeCore {
 
         let _ = nmp_nip29::open_nip29_group_discovery_session(
             &*handle,
-            nmp_nip29::Nip29GroupDiscoverySession::new(relay),
+            nmp_nip29::Nip29GroupDiscoverySession::new(vec![relay]),
         );
         vec![WorkerEvent::ActionAccepted {
             action_type: "nmp.nip29.group_discovery.open".to_string(),
