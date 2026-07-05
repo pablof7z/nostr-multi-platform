@@ -184,6 +184,16 @@ pub(super) fn encode_receive_rows<'a>(
     fbb.create_vector(&offsets)
 }
 
+/// Encode a plain `[string]` vector — no nested table, unlike the
+/// vector-of-tables rows above. Used for `accepted_mints` (#3030).
+pub(super) fn encode_accepted_mints<'a>(
+    fbb: &mut FlatBufferBuilder<'a>,
+    mints: &[String],
+) -> WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>> {
+    let offsets: Vec<_> = mints.iter().map(|mint| fbb.create_string(mint)).collect();
+    fbb.create_vector(&offsets)
+}
+
 // --- decode ---------------------------------------------------------------
 
 pub(super) fn decode_capabilities(
@@ -358,6 +368,15 @@ pub(super) fn decode_receive_rows(
         });
     }
     Ok(out)
+}
+
+/// Decode a plain `[string]` vector; absent decodes as empty (#3030).
+pub(super) fn decode_accepted_mints(
+    mints: Option<Vector<'_, ForwardsUOffset<&'_ str>>>,
+) -> Vec<String> {
+    mints
+        .map(|v| v.iter().map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// Require a present, non-absent string field; an absent FlatBuffers string on

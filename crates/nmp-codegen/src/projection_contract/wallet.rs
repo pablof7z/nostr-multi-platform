@@ -32,6 +32,10 @@ pub const WALLET_STATUS: ProjectionContract = ProjectionContract {
 // to the standalone `nmp-mint-discovery` crate's own `"mint_discovery"`
 // projection (see `MINT_DISCOVERY` below). The wire slot is deprecated in
 // place, not reused (`crates/nmp-wallet/schema/wallet_projection.fbs`).
+//
+// v5 (#3030, PR1 of 2): `WalletProjection` gains `accepted_mints` — the raw
+// accepted-mint URL list surfaced alongside `accepted_mint_count`. Appended
+// after the deprecated v4 slot, not inserted into it.
 pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     key: "wallet.merged",
     tier: ProjectionTier::HostRegistered,
@@ -40,7 +44,7 @@ pub const WALLET_MERGED: ProjectionContract = ProjectionContract {
     schema_id: "nmp.wallet.merged",
     file_identifier: "NWMP",
     // nmp-wallet projection_wire::SCHEMA_VERSION
-    version: 4,
+    version: 5,
     declaration_policy: DeclarationPolicy::RegistrationGated,
     dependency_versions: &[],
     presence_policy: PresencePolicy::None,

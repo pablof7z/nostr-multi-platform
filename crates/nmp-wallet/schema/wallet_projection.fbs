@@ -49,6 +49,16 @@ namespace nmp.wallet;
 // solely because the deprecated field still needs a defined type — it is not
 // read, written, or referenced by any Rust code in this crate.
 //
+// v5 (#3030, PR1 of 2): `WalletProjection` gains `accepted_mints`, the raw
+// accepted-mint URL list a shell needs to render/edit the wallet's mint
+// policy. This UN-REDUCES existing state — `CashuWalletState.mints` already
+// owns the list, `accepted_mint_count` already summarized its length; this
+// wave surfaces the list itself alongside the count (kept for compact UIs /
+// backward compat), it does not add new state. Following the v4 unwind's
+// append-only convention, the new field is appended AFTER the deprecated
+// `_reserved_was_discovered_mints` slot rather than reusing or reordering it.
+// NUT-06 `mint_info` fetching is explicitly out of scope here (PR2 of 2).
+//
 // Regenerate the checked-in Rust bindings ONLY through `ci/regenerate-flatbuffers.sh`
 // (pinned flatc 25.12.19 + repo rustfmt), NEVER raw flatc — a raw-flatc run passes
 // the version-pin check but red-fails `ci/check-rust-flatc-drift.sh`. The schema has
@@ -216,7 +226,7 @@ table WalletDiscoveredMint {
 }
 
 table WalletProjection {
-  schema_version:uint32 = 4;   // mirrors projection_wire::SCHEMA_VERSION
+  schema_version:uint32 = 5;   // mirrors projection_wire::SCHEMA_VERSION
   // active_backend_id: Option<WalletBackendId> (a String newtype)
   has_active_backend_id:bool;
   active_backend_id:string;
@@ -236,6 +246,12 @@ table WalletProjection {
   // projection. Deprecated in place, not deleted/reordered — see the v4 note
   // at the top of this file.
   _reserved_was_discovered_mints:[WalletDiscoveredMint] (deprecated);
+  // accepted_mints: the wallet's configured accepted-mint URL list (v5,
+  // #3030 PR1 of 2) — un-reduces `accepted_mint_count` back to the raw list
+  // `CashuWalletState.mints` already owns, so a shell can render/edit the
+  // wallet's mint policy. Appended here (not inserted earlier) to keep the
+  // deprecated slot above untouched, per the v4 append-only convention.
+  accepted_mints:[string];
 }
 
 root_type WalletProjection;
