@@ -139,12 +139,15 @@ impl MintDiscoveryRuntime {
     }
 
     /// The current discovered-mints projection (ranked, capability-filtered,
-    /// WoT-scoped). Empty until an account is active.
+    /// WoT-scoped). Empty until an account is active. Cheap on the steady-state
+    /// emit path: [`MintDiscoveryStore::snapshot`] is memoized, so this serves
+    /// a cached value unless an ingested event has dirtied it (the `mut` lock
+    /// is only to update that memo, not to re-aggregate every call).
     #[must_use]
     pub fn snapshot(&self) -> MintDiscoveryProjection {
         self.store
             .lock()
-            .map(|store| store.snapshot())
+            .map(|mut store| store.snapshot())
             .unwrap_or_default()
     }
 }

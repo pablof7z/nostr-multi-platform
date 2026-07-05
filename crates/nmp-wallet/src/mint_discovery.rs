@@ -206,6 +206,22 @@ impl MintAccumulator {
 /// produces the [`MintDiscoveryProjection`] on demand. Owns its own
 /// [`WotGraph`] built from the same kind:3/kind:10000 events every other WoT
 /// consumer reads — reusing `nmp-wot`'s scoring, not a second trust model.
+///
+/// # Memoized snapshot (hot-path safety, #2880 review follow-up)
+///
+/// [`Self::snapshot`] runs on the `wallet.merged` typed-projection emit path
+/// (up to `DEFAULT_EMIT_HZ` = 4 Hz under relay churn), and a full
+/// [`aggregate_discovered_mints`] there is unbounded work (clone every
+/// announcement + recommendation, rebuild a `BTreeMap`, run `nmp-wot` scoring,
+/// sort). That violates the projections-and-emission doctrine ("closures MUST
+/// read pre-computed engine state; MUST NOT allocate in steady state"). So the
+/// store memoizes: [`Self::snapshot`] serves a cached
+/// [`MintDiscoveryProjection`] in O(result) (a bounded ≤`MAX_DISCOVERED_MINTS`
+/// clone) and only re-aggregates when [`Self::cached`] is `None`. EVERY
+/// mutating path (`set_viewer` when the viewer actually changes,
+/// `ingest_kernel_event` when it actually stores an announcement, a
+/// recommendation, or a follow/mute-list update) invalidates the cache so a
+/// stale projection is never served — see each path's `invalidate()` call.
 #[derive(Default)]
 pub struct MintDiscoveryStore {
     viewer: Option<String>,
@@ -213,6 +229,17 @@ pub struct MintDiscoveryStore {
     recommendations: BTreeMap<String, MintRecommendation>,
     wot: WotGraph,
     policy: MintDiscoveryPolicy,
+    /// Memoized projection. `None` == dirty (inputs changed since the last
+    /// compute, or nothing computed yet); `Some` == the current value, safe to
+    /// clone out in O(result). Cleared by [`Self::invalidate`] on every actual
+    /// mutation. Not part of the store's logical identity, so it is excluded
+    /// from any equality reasoning.
+    cached: Option<MintDiscoveryProjection>,
+    /// Test-only count of full [`Self::compute`] runs, so memoization tests can
+    /// prove a clean `snapshot` serves the cache (no recompute) and a mutation
+    /// forces exactly one recompute. Never present in a release build.
+    #[cfg(test)]
+    compute_count: usize,
 }
 
 impl MintDiscoveryStore {
@@ -221,15 +248,27 @@ impl MintDiscoveryStore {
         Self::default()
     }
 
+    /// Mark the memoized snapshot dirty. Called by every path that mutates an
+    /// input `aggregate_discovered_mints` reads (announcements, recommendations,
+    /// the WoT graph, or the scoring viewer).
+    fn invalidate(&mut self) {
+        self.cached = None;
+    }
+
     /// Set the reading account whose web of trust scopes recommendations. A
     /// change clears nothing else — announcements/recommendations are
-    /// account-independent public data; only the scoring viewer changes.
+    /// account-independent public data; only the scoring viewer changes. A
+    /// no-op set (same viewer) leaves the memoized snapshot intact.
     pub fn set_viewer(&mut self, viewer: Option<String>) {
-        self.viewer = viewer;
+        if self.viewer != viewer {
+            self.viewer = viewer;
+            self.invalidate();
+        }
     }
 
     /// Ingest one observed kernel event. Non-discovery, non-graph kinds are
-    /// ignored, so the same sink can be pointed at a coarse relay filter.
+    /// ignored, so the same sink can be pointed at a coarse relay filter. Any
+    /// branch that actually stores state invalidates the memoized snapshot.
     pub fn ingest_kernel_event(&mut self, event: &KernelEvent) {
         match event.kind {
             KIND_MINT_ANNOUNCE => {
@@ -248,6 +287,7 @@ impl MintDiscoveryStore {
                     if replace {
                         self.announcements
                             .insert(coordinate, (event.created_at, announcement));
+                        self.invalidate();
                     }
                 }
             }
@@ -260,19 +300,40 @@ impl MintDiscoveryStore {
                 ) {
                     self.recommendations
                         .insert(recommendation.event_id.clone(), recommendation);
+                    self.invalidate();
                 }
             }
             KIND_CONTACT_LIST | KIND_MUTE_LIST => {
                 self.wot.ingest_event(&event.author, event.kind, &event.tags);
+                self.invalidate();
             }
             _ => {}
         }
     }
 
-    /// Compute the current discovered-mints projection. Empty until a viewer is
-    /// set (recommendations cannot be trust-scored without one).
+    /// The current discovered-mints projection, memoized (see the type-level
+    /// docs). Serves the cached value in O(result) when clean; re-runs
+    /// [`aggregate_discovered_mints`] and re-caches only when dirty. Empty until
+    /// a viewer is set (recommendations cannot be trust-scored without one).
     #[must_use]
-    pub fn snapshot(&self) -> MintDiscoveryProjection {
+    pub fn snapshot(&mut self) -> MintDiscoveryProjection {
+        if self.cached.is_none() {
+            let projection = self.compute();
+            #[cfg(test)]
+            {
+                self.compute_count += 1;
+            }
+            self.cached = Some(projection);
+        }
+        // The `is_none` guard above guarantees `Some`.
+        self.cached.clone().unwrap_or_default()
+    }
+
+    /// Re-aggregate the discovered-mints projection from current inputs. The
+    /// unbounded work `snapshot`'s memoization keeps off the steady-state emit
+    /// path.
+    #[must_use]
+    fn compute(&self) -> MintDiscoveryProjection {
         let Some(viewer) = self.viewer.as_deref() else {
             return MintDiscoveryProjection::default();
         };
