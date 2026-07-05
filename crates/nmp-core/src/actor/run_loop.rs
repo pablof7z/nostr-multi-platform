@@ -247,7 +247,7 @@ pub fn run_actor_with_observers(
     // the wasm `KernelReducer` (#1753) so there is one drain, not a parallel copy.
     // Lives outside the loop so parked ops survive across ticks.
     let mut parked_ops = ParkedSignerOps::new();
-    let mut queued_publish_outbound = Vec::new();
+    let mut queued_actor_outbound = Vec::new();
     let mut first_command = None;
 
     // ADR-0072 §3 — spawn the serialized capability-worker thread (V-90 Site 2).
@@ -304,7 +304,7 @@ pub fn run_actor_with_observers(
                 active_local_keys: &active_local_keys,
                 capability_callback: &capability_callback,
                 parked_ops: &mut parked_ops,
-                queued_publish_outbound: &mut queued_publish_outbound,
+                queued_actor_outbound: &mut queued_actor_outbound,
                 command_tx_self: &command_tx_self,
                 capability_work_tx: &capability_work_tx,
                 config: &config,
@@ -447,7 +447,7 @@ pub fn run_actor_with_observers(
                 active_local_keys: &active_local_keys,
                 capability_callback: &capability_callback,
                 parked_ops: &mut parked_ops,
-                queued_publish_outbound: &mut queued_publish_outbound,
+                queued_actor_outbound: &mut queued_actor_outbound,
                 command_tx_self: &command_tx_self,
                 capability_work_tx: &capability_work_tx,
                 config: &config,

@@ -76,7 +76,7 @@ pub(super) struct LoopContext<'a> {
 
     // ── Parked-op queue & pending outbound ───────────────────────────────
     pub(super) parked_ops: &'a mut ParkedSignerOps,
-    pub(super) queued_publish_outbound: &'a mut Vec<crate::relay::OutboundMessage>,
+    pub(super) queued_actor_outbound: &'a mut Vec<crate::relay::OutboundMessage>,
 
     // ── Cross-loop senders ───────────────────────────────────────────────
     pub(super) command_tx_self: &'a CommandSender,
@@ -190,7 +190,7 @@ pub(super) fn drain_commands(
         };
         route_dispatch_outbound(
             *lc.running,
-            lc.queued_publish_outbound,
+            lc.queued_actor_outbound,
             lc.relay_runtime,
             lc.pool,
             lc.kernel,
@@ -328,7 +328,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
         lc.parked_ops,
         &mut crate::actor::auth_sign::RouteCtx {
             running: *lc.running,
-            queued_publish_outbound: lc.queued_publish_outbound,
+            queued_actor_outbound: lc.queued_actor_outbound,
             relay_runtime: lc.relay_runtime,
             pool: lc.pool,
         },
@@ -350,7 +350,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
             auth_obligations,
             &mut crate::actor::auth_sign::RouteCtx {
                 running: *lc.running,
-                queued_publish_outbound: lc.queued_publish_outbound,
+                queued_actor_outbound: lc.queued_actor_outbound,
                 relay_runtime: lc.relay_runtime,
                 pool: lc.pool,
             },
@@ -373,7 +373,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
                     );
                     route_dispatch_outbound(
                         *lc.running,
-                        lc.queued_publish_outbound,
+                        lc.queued_actor_outbound,
                         lc.relay_runtime,
                         lc.pool,
                         lc.kernel,
