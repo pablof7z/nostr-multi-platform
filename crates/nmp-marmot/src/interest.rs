@@ -14,7 +14,7 @@
 
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_planner::stable_hash::stable_hash64;
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 // Kind integers from the canonical Layer-0 registry (`nmp-kinds`, reached via
 // nmp-nip59 / nmp-core). KIND_GIFT_WRAP = 1059; the Marmot key-package,
 // group-message, and welcome kinds were previously re-declared as literals in
@@ -67,6 +67,22 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// registration and the subscription must stay pinned to it. The kernel's
 /// Marmot's ingest parser then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
+///
+/// `p_tag_routing` is forced to [`PTagRouting::Nip17DmRelays`] (#3057). A
+/// Marmot Welcome is gift-wrapped and PUBLISHED to the invitee's verified
+/// kind:10050 DM-inbox relays — the exact same `VerifiedPrivateInbox` route
+/// class a NIP-17 DM uses (see `projection/ops/welcome.rs::wrap_and_publish_welcomes`
+/// / `resolve_invitee_inboxes`). Without this override,
+/// `ViewDependencies::into_logical_interest`'s default
+/// (`PTagRouting::Nip65ReadRelays`) routed the RECEIVE side through the
+/// account's public kind:10002 read relays instead — a relay set that need
+/// not overlap the kind:10050 DM-inbox relays the Welcome was actually
+/// delivered to. The publish and subscribe sides must agree on the SAME
+/// relay-selection policy for a "verified private inbox" or the invitee's
+/// client can go connected-but-deaf: it holds live sockets to other relays
+/// while the delivering relay carries no matching REQ (nmp-nip17's own
+/// `active_giftwrap_inbox_interest` sets this override for the identical
+/// reason — see `nmp_nip17::inbox::active_giftwrap_inbox_interest`).
 #[must_use]
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = nmp_core::substrate::ViewDependencies {
@@ -74,11 +90,13 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
         tag_refs: vec![("p".to_string(), pubkey.to_string())],
         ..Default::default()
     };
-    deps.into_logical_interest(
+    let mut interest = deps.into_logical_interest(
         giftwrap_interest_id(pubkey),
         nmp_planner::InterestScope::Account(pubkey.to_string()),
         InterestLifecycle::Tailing,
-    )
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
+    interest
 }
 
 /// Scoped registry identity for a Marmot gift-wrap inbox subscription.
@@ -213,6 +231,80 @@ mod tests {
             InterestScope::Account(ref pk) if pk == "selfpubkey"
         ));
         assert_eq!(i.id, giftwrap_interest_id("selfpubkey"));
+    }
+
+    /// #3057 regression: the Welcome gift-wrap inbox interest MUST route via
+    /// kind:10050 DM-inbox relays, not the generic kind:10002 NIP-65 read
+    /// relays. A Marmot Welcome is published to the invitee's verified
+    /// kind:10050 DM-inbox relays (`wrap_and_publish_welcomes`); if the
+    /// receive-side interest used the `PTagRouting` default
+    /// (`Nip65ReadRelays`) instead, the subscription would land on a
+    /// different relay set than the one the Welcome was actually delivered
+    /// to, and the invitee's client would never see it — connected to other
+    /// relays, but deaf on the one that matters. See
+    /// `giftwrap_inbox_interest_compiles_onto_dm_relay_not_nip65_relay` below
+    /// for the full planner-compile proof.
+    #[test]
+    fn giftwrap_inbox_interest_uses_nip17_dm_relay_routing() {
+        let i = giftwrap_inbox_interest("selfpubkey");
+        assert_eq!(
+            i.shape.p_tag_routing,
+            PTagRouting::Nip17DmRelays,
+            "Marmot Welcome gift-wraps are delivered like NIP-17 DMs: the \
+             receive-side interest must route through kind:10050 DM-inbox \
+             relays, matching the publish-side's verified-private-inbox \
+             relay selection — NOT the generic kind:10002 NIP-65 read relays"
+        );
+    }
+
+    /// #3057 — end-to-end planner-compile proof of the routing bug/fix.
+    ///
+    /// Reproduces the production shape exactly: invitee `bob` has a kind:10002
+    /// NIP-65 read-relay list that does NOT include `nos.lol`, but DOES have
+    /// `nos.lol` in his kind:10050 DM-inbox list (the relay
+    /// `resolve_invitee_inboxes` / `wrap_and_publish_welcomes` actually
+    /// publishes Welcomes to). Compiling `giftwrap_inbox_interest("bob")`
+    /// through the real `SubscriptionCompiler` must produce a subscription on
+    /// `nos.lol` (where the Welcome lands) and must NOT depend on the NIP-65
+    /// read relay. Before the #3057 fix (no `p_tag_routing` override) this
+    /// compiled onto `wss://bob-nip65-read.example` instead — a relay that
+    /// never sees the Welcome — reproducing the observed bug: the client
+    /// stays connected (to its NIP-65 read relays) while never opening the
+    /// REQ that would actually surface the pending Welcome.
+    #[test]
+    fn giftwrap_inbox_interest_compiles_onto_dm_relay_not_nip65_relay() {
+        use nmp_planner::{InMemoryMailboxCache, MailboxSnapshot, SubscriptionCompiler};
+
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(
+            "bob".to_string(),
+            MailboxSnapshot {
+                read_relays: vec!["wss://bob-nip65-read.example".to_string()],
+                ..Default::default()
+            },
+        );
+        cache.put_dm_relays("bob".to_string(), vec!["wss://nos.lol".to_string()]);
+
+        let compiler = SubscriptionCompiler::new(&cache, &[]);
+        let interest = giftwrap_inbox_interest("bob");
+        let plan = compiler
+            .compile(&[interest])
+            .expect("compiling a single #p gift-wrap interest must not fail");
+
+        assert!(
+            plan.per_relay.contains_key("wss://nos.lol"),
+            "the gift-wrap inbox subscription must land on bob's kind:10050 \
+             DM-inbox relay (nos.lol) — the same relay the Welcome is \
+             published to; got relays: {:?}",
+            plan.per_relay.keys().collect::<Vec<_>>()
+        );
+        assert!(
+            !plan.per_relay.contains_key("wss://bob-nip65-read.example"),
+            "the gift-wrap inbox subscription must NOT route through the \
+             generic kind:10002 NIP-65 read relay — that relay never \
+             receives the Welcome; got relays: {:?}",
+            plan.per_relay.keys().collect::<Vec<_>>()
+        );
     }
 
     #[test]
