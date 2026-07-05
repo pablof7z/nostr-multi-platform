@@ -13,11 +13,13 @@
 //! `CreateGroup`, proving it reaches a terminal `Ok`/`Err` — not an eternal
 //! hang — once the invitee's key package is available.
 
+use std::collections::HashMap;
+
 use serde_json::json;
 
 use crate::projection::action::MarmotAction;
 use crate::projection::ops;
-use crate::projection::state::MarmotProjection;
+use crate::projection::state::{MarmotProjection, MarmotRuntimePort};
 use crate::service::MarmotService;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::nips::nip19::ToBech32;
@@ -27,6 +29,47 @@ fn in_memory_projection(keys: Keys) -> MarmotProjection {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
     let service = MarmotService::from_storage(storage, keys, Default::default());
     MarmotProjection::new(service, None)
+}
+
+/// Minimal `MarmotRuntimePort` stub for driving `ops::dispatch` end-to-end
+/// without a live actor/kernel. Publishing + interest registration are
+/// no-ops (this file asserts dispatch *terminates*, not relay traffic);
+/// `dm_inbox_relays` is the one method with real behavior — it stands in
+/// for the kernel's resolved kind:10050 cache so a `create_group` inviting
+/// a peer can earn D10's `VerifiedPrivateInbox` route class for the
+/// Welcome exactly as production does.
+#[derive(Default)]
+struct FakePort {
+    dm_inboxes: HashMap<String, Vec<String>>,
+}
+
+impl MarmotRuntimePort for FakePort {
+    fn publish_signed_explicit(
+        &self,
+        _event: &nostr::Event,
+        _relays: &[nostr::RelayUrl],
+        _route_class: nmp_core::publish::PublishRouteClass,
+    ) {
+    }
+
+    fn ensure_interest(
+        &self,
+        _identity: nmp_core::subs::SubIdentity,
+        _interest: nmp_planner::LogicalInterest,
+    ) {
+    }
+
+    fn write_relay_urls(&self, _author_hex: &str, _kind: u32) -> Vec<String> {
+        // Empty → `resolve_write_relays` falls back to the envelope's own
+        // `relays` field, same as the previous no-port (`with_inner`) path.
+        Vec::new()
+    }
+
+    fn send_actor_command(&self, _cmd: nmp_core::actor::ActorCommand) {}
+
+    fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>> {
+        self.dm_inboxes.get(pubkey_hex).cloned()
+    }
 }
 
 /// End-to-end: bob publishes a key package; alice's projection ingests
@@ -53,11 +96,23 @@ fn create_group_dispatch_completes_once_invitee_kp_is_cached() {
         .publish_key_package(vec![nostr::RelayUrl::parse("wss://test.relay").unwrap()])
         .expect("bob publishes key package");
 
+    // D10: the Welcome can only earn `VerifiedPrivateInbox` once bob's
+    // kind:10050 DM-inbox relays are resolved — mirror that here exactly as
+    // the kernel would after resolving bob's inbox.
+    let port = FakePort {
+        dm_inboxes: HashMap::from([(
+            bob_keys.public_key().to_hex(),
+            vec!["wss://bob-inbox.example".to_string()],
+        )]),
+    };
+
     // Simulate the kernel delivering bob's kind:30443 to alice's ingest
     // parser — the exact call `MarmotIngestParser::parse_at_source` makes
     // (crate::projection::tap), landing in `ops::ingest_signed_event_core`.
     let ingest_result = alice_proj
-        .with_inner(|h| ops::ingest_signed_event_core(h, &bob_kp.event_30443, 1_000))
+        .with_inner_port(&port, |h| {
+            ops::ingest_signed_event_core(h, &bob_kp.event_30443, 1_000)
+        })
         .expect("projection lock available");
     assert!(
         ingest_result.is_ok(),
@@ -76,7 +131,9 @@ fn create_group_dispatch_completes_once_invitee_kp_is_cached() {
     .expect("valid CreateGroup action json");
 
     let result = alice_proj
-        .with_inner(|h| ops::dispatch(h, &action, 1_001, Some("corr-129")))
+        .with_inner_port(&port, |h| {
+            ops::dispatch(h, &action, 1_001, Some("corr-129"))
+        })
         .expect("projection lock available");
 
     assert_eq!(

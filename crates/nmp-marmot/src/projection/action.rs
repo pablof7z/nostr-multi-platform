@@ -239,16 +239,25 @@ struct MarmotCommandPort<'a, 'ctx> {
 }
 
 impl MarmotRuntimePort for MarmotCommandPort<'_, '_> {
-    fn publish_signed_explicit(&self, event: &nostr::Event, relays: &[nostr::RelayUrl]) {
+    fn publish_signed_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: &[nostr::RelayUrl],
+        route_class: nmp_core::publish::PublishRouteClass,
+    ) {
         self.ctx.publish_signed_to_relays(
             event.clone(),
             relays
                 .iter()
                 .map(std::string::ToString::to_string)
                 .collect(),
-            nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
+            route_class,
             None,
         );
+    }
+
+    fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>> {
+        self.ctx.dm_inbox_relays(pubkey_hex)
     }
 
     fn ensure_interest(
