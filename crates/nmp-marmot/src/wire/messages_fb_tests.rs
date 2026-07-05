@@ -7,12 +7,14 @@
 //! populated case driven through the real `MarmotProjection` against an in-memory
 //! `MarmotService` (no MLS cross-client setup).
 
+use std::collections::HashMap;
+
 use super::{
     decode_marmot_messages, encode_marmot_messages, typed_projection, FILE_IDENTIFIER, SCHEMA_ID,
     SCHEMA_VERSION,
 };
 use crate::projection::payload::MarmotMessageRow;
-use crate::projection::state::MarmotProjection;
+use crate::projection::state::{MarmotProjection, MarmotRuntimePort};
 use crate::service::MarmotService;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::Keys;
@@ -21,6 +23,43 @@ use serde_json::json;
 fn in_memory(keys: Keys) -> MarmotService {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
     MarmotService::from_storage(storage, keys, Default::default())
+}
+
+/// Minimal `MarmotRuntimePort` stub so `create_group` inviting a peer can
+/// resolve a (fake) kind:10050 DM-inbox relay list and earn D10's
+/// `VerifiedPrivateInbox` route class for the Welcome, exactly as
+/// production does. Publish/interest calls are no-ops — this file only
+/// asserts the typed-projection wire shape, not relay traffic.
+#[derive(Default)]
+struct FakePort {
+    dm_inboxes: HashMap<String, Vec<String>>,
+}
+
+impl MarmotRuntimePort for FakePort {
+    fn publish_signed_explicit(
+        &self,
+        _event: &nostr::Event,
+        _relays: &[nostr::RelayUrl],
+        _route_class: nmp_core::publish::PublishRouteClass,
+    ) {
+    }
+
+    fn ensure_interest(
+        &self,
+        _identity: nmp_core::subs::SubIdentity,
+        _interest: nmp_planner::LogicalInterest,
+    ) {
+    }
+
+    fn write_relay_urls(&self, _author_hex: &str, _kind: u32) -> Vec<String> {
+        Vec::new()
+    }
+
+    fn send_actor_command(&self, _cmd: nmp_core::actor::ActorCommand) {}
+
+    fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>> {
+        self.dm_inboxes.get(pubkey_hex).cloned()
+    }
 }
 
 fn row(id: &str, ts: u64, epoch: Option<u64>) -> MarmotMessageRow {
@@ -112,8 +151,16 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
     })
     .unwrap();
 
+    // D10: the Welcome can only earn `VerifiedPrivateInbox` once bob's
+    // kind:10050 DM-inbox relays are resolved.
+    let port = FakePort {
+        dm_inboxes: HashMap::from([(
+            bob_keys.public_key().to_hex(),
+            vec!["wss://bob-inbox.example".to_string()],
+        )]),
+    };
     let group_id_hex = proj
-        .with_inner(|h| {
+        .with_inner_port(&port, |h| {
             crate::projection::ops::dispatch_json_for_tests(
                 h,
                 json!({

@@ -91,7 +91,19 @@ pub use handle::InnerHandle;
 /// command context is on the stack. No raw `NmpApp` handle crosses into the
 /// projection.
 pub(crate) trait MarmotRuntimePort {
-    fn publish_signed_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]);
+    /// Publish an already-signed event to an explicit relay set under the
+    /// caller-supplied `route_class` — an HONEST provenance claim (see
+    /// `nmp_core::publish::PublishRouteClass`). D10 rejects any private
+    /// kind (kind:1059 gift-wrap) whose target is not classified
+    /// `VerifiedPrivateInbox`; callers must earn that classification (e.g.
+    /// via [`Self::dm_inbox_relays`]) before claiming it — never pass it as
+    /// a bypass.
+    fn publish_signed_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: &[RelayUrl],
+        route_class: nmp_core::publish::PublishRouteClass,
+    );
     fn ensure_interest(
         &self,
         identity: nmp_core::subs::SubIdentity,
@@ -99,6 +111,11 @@ pub(crate) trait MarmotRuntimePort {
     );
     fn write_relay_urls(&self, author_hex: &str, kind: u32) -> Vec<String>;
     fn send_actor_command(&self, cmd: ActorCommand);
+    /// Resolve a peer's kind:10050 DM-inbox relay list (the same lookup
+    /// `nmp-nip17`'s DM-send path uses to earn `VerifiedPrivateInbox`
+    /// provenance). `None`/empty means "not yet resolved" — callers must
+    /// fail closed rather than approximate with an unrelated relay set.
+    fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>>;
 }
 
 /// 7-day key-package rotation threshold (snapshot `stale`).

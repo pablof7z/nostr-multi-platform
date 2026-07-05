@@ -51,9 +51,19 @@ impl<'a> InnerHandle<'a> {
         let _ = sender.send(cmd);
     }
 
-    pub(crate) fn publish_signed_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
+    /// `route_class` is the caller's HONEST provenance claim for this
+    /// publish (see `nmp_core::publish::PublishRouteClass`) — never
+    /// hardcoded here, since different callers (relay-pinned kind:445,
+    /// verified-private-inbox kind:1059 Welcome, presigned kind:30443
+    /// KeyPackage) earn different classes.
+    pub(crate) fn publish_signed_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: &[RelayUrl],
+        route_class: nmp_core::publish::PublishRouteClass,
+    ) {
         if let Some(port) = self.port {
-            port.publish_signed_explicit(event, relays);
+            port.publish_signed_explicit(event, relays, route_class);
             return;
         }
         let Some(sender) = self.inner.actor_sender.clone() else {
@@ -66,10 +76,7 @@ impl<'a> InnerHandle<'a> {
             .collect::<Vec<_>>();
         let _ = sender.send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
-            target: PublishTarget::explicit(
-                relays,
-                nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
-            ),
+            target: PublishTarget::explicit(relays, route_class),
             correlation_id: None,
         }));
     }
@@ -113,19 +120,40 @@ impl<'a> InnerHandle<'a> {
 
     /// Publish a signed event to the group's relay-pinned relays
     /// (`Explicit`); a cache miss now fails closed instead of falling
-    /// through to the author outbox.
-    /// Used for kind:445 (group message / commit) and the kind:1059
-    /// gift-wrap inbox-routing approximation.
+    /// through to the author outbox. Used for kind:445 (group
+    /// message / commit) — an honest `GroupHostPin` claim (protocol-owned
+    /// routing to the group's configured relays, not a verified DM inbox).
     pub(crate) fn publish_group_pinned(&self, group_id_hex: &str, event: &nostr::Event) {
         let relays = self.group_relays(group_id_hex);
-        crate::projection::publish::publish_to(self, event, &relays);
+        crate::projection::publish::publish_to(
+            self,
+            event,
+            &relays,
+            nmp_core::publish::PublishRouteClass::GroupHostPin,
+        );
     }
 
     /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
-    /// -> fail closed). Used by `create_group` / `invite` while a borrowed
-    /// `PendingGroupChange` is still live.
-    pub(crate) fn publish_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
-        crate::projection::publish::publish_to(self, event, relays);
+    /// -> fail closed) under the caller's honest `route_class`. Used by
+    /// `create_group` / `invite` while a borrowed `PendingGroupChange` is
+    /// still live.
+    pub(crate) fn publish_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: &[RelayUrl],
+        route_class: nmp_core::publish::PublishRouteClass,
+    ) {
+        crate::projection::publish::publish_to(self, event, relays, route_class);
+    }
+
+    /// Resolve a peer's kind:10050 DM-inbox relay list through the live
+    /// runtime port. `None` when no port is attached (test/no-runtime path)
+    /// or the port has not resolved this pubkey's inbox yet — callers MUST
+    /// treat that as "not yet verified" and fail closed rather than
+    /// approximate with an unrelated relay set (D10).
+    #[must_use]
+    pub(crate) fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>> {
+        self.port.and_then(|port| port.dm_inbox_relays(pubkey_hex))
     }
 
     /// Read the user's current write-relay URLs from the shared kernel

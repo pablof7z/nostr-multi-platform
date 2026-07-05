@@ -372,7 +372,18 @@ impl NmpApp {
 
     /// Workspace-internal kernel publish API — verbatim publish of an
     /// already-signed `nostr::Event` to an EXPLICIT relay set.
-    pub fn publish_signed_explicit(&self, event: nostr::Event, relays: &[nostr::RelayUrl]) {
+    ///
+    /// `route_class` is the caller's HONEST provenance claim (see
+    /// `nmp_core::publish::PublishRouteClass`) — never hardcoded here. D10
+    /// rejects any private kind (e.g. kind:1059 gift-wrap) whose target is
+    /// not classified `VerifiedPrivateInbox`; a caller publishing a private
+    /// envelope must have actually verified `relays` before claiming it.
+    pub fn publish_signed_explicit(
+        &self,
+        event: nostr::Event,
+        relays: &[nostr::RelayUrl],
+        route_class: nmp_core::publish::PublishRouteClass,
+    ) {
         let raw = nmp_store::RawEvent {
             id: event.id.to_hex(),
             pubkey: event.pubkey.to_hex(),
@@ -390,7 +401,7 @@ impl NmpApp {
             raw,
             target: nmp_core::publish::PublishTarget::Explicit {
                 relays,
-                route_class: nmp_core::publish::PublishRouteClass::ImportedOrPresigned,
+                route_class,
             },
             correlation_id: None,
         }));

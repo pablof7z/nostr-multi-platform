@@ -30,6 +30,10 @@
 //!   counted so a host can observe the divergence.
 //! - [`init_error_snapshot`] — V-62 / #1651: `MarmotInitError` surfaces in
 //!   every `MarmotProjection` snapshot.
+//! - [`welcome_route_class`] — #3053: a Marmot Welcome (kind:1059) must
+//!   publish under D10's `VerifiedPrivateInbox` route class to the
+//!   invitee's own resolved kind:10050 inbox, and a `create_group`/`invite`
+//!   that cannot earn that class fails before mutating the MLS roster.
 
 mod dispatch_create_group;
 mod error_paths;
@@ -41,3 +45,4 @@ mod membership;
 mod orphaned_commit_count;
 mod read_projections;
 mod round_trip;
+mod welcome_route_class;

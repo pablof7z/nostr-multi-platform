@@ -22,10 +22,12 @@ use nostr::{Event, RelayUrl};
 
 use crate::projection::state::InnerHandle;
 
-/// Publish a signed event to an explicit relay set (Explicit routing).
-///
-/// Used for relay-pinned kind:445 (group message / commit) and the
-/// inbox-routing approximation for kind:1059 gift-wraps.
+/// Publish a signed event to an explicit relay set (Explicit routing) under
+/// the caller-supplied `route_class` — an HONEST provenance claim, never
+/// defaulted here. Used for relay-pinned kind:445 (`GroupHostPin`), the
+/// kind:1059 gift-wrap Welcome routed to the invitee's own verified
+/// kind:10050 DM-inbox relays (`VerifiedPrivateInbox`), and the kind:30443
+/// KeyPackage (`ImportedOrPresigned`).
 ///
 /// # D10 provenance guard — kind:1059 NEVER Auto-routes
 ///
@@ -33,22 +35,31 @@ use crate::projection::state::InnerHandle;
 /// author's public NIP-65 outbox: doing so leaks the *existence* of an
 /// encrypted DM / Marmot Welcome to every relay the author advertises for
 /// public traffic — defeating the unlinkability gift-wrap exists to provide.
+/// The kernel's `validate_publish_routing` gate independently enforces this:
+/// a `PrivateFailClosed` kind (kind:1059 included) is rejected unless the
+/// target's `route_class` is `VerifiedPrivateInbox`, so a caller that passes
+/// the wrong class here does not silently leak — the publish is refused.
 ///
-/// The kernel API now treats an empty explicit relay slice as invalid for all
-/// kinds. This guard remains as a local provenance tripwire for kind:1059 so a
-/// private envelope never even reaches the actor publish door without a pin.
+/// The kernel API also treats an empty explicit relay slice as invalid for
+/// all kinds. This guard remains as a local provenance tripwire for kind:1059
+/// so a private envelope never even reaches the actor publish door without a
+/// pin.
 ///
 /// This guard refuses the publish when `event.kind == 1059` and `relays`
 /// is empty. The kind:1059 envelope stays in the local store (callers like
 /// `wrap_and_publish_welcomes` still return it as INFORMATIONAL) but is
-/// **not** dispatched to any relay. Callers must supply a non-empty pin
-/// (the recipient's kind:10050 DM-inbox relays, or the group's relays as
-/// the existing inbox-routing approximation) for a kind:1059 publish to
-/// actually go out.
+/// **not** dispatched to any relay. Callers must supply a non-empty pin (the
+/// recipient's resolved kind:10050 DM-inbox relays) for a kind:1059 publish
+/// to actually go out.
 ///
 /// Fire-and-forget (D6): an unavailable actor/protocol port is a silent drop,
 /// mirroring the contract of other runtime command paths.
-pub(crate) fn publish_to(h: &InnerHandle<'_>, event: &Event, relays: &[RelayUrl]) {
+pub(crate) fn publish_to(
+    h: &InnerHandle<'_>,
+    event: &Event,
+    relays: &[RelayUrl],
+    route_class: nmp_core::publish::PublishRouteClass,
+) {
     // D10 provenance guard: a kind:1059 gift-wrap with NO explicit relay
     // pin MUST NOT reach any fallback path that could leak the presence of
     // an encrypted DM / Welcome to public relays. Refuse the publish; the
@@ -57,7 +68,7 @@ pub(crate) fn publish_to(h: &InnerHandle<'_>, event: &Event, relays: &[RelayUrl]
     if event.kind.as_u16() as u32 == crate::interest::KIND_GIFT_WRAP && relays.is_empty() {
         return;
     }
-    h.publish_signed_explicit(event, relays);
+    h.publish_signed_explicit(event, relays, route_class);
 }
 
 #[cfg(test)]
