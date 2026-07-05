@@ -123,9 +123,14 @@ impl DeclaredProjections {
     ///
     /// `Undeclared` and `All` both permit everything (release
     /// behaviour-preserving — `Undeclared` is the loud-but-non-fatal footgun);
-    /// `Narrow` permits `key` iff it is a declared member.
+    /// `Narrow` permits `key` iff it is a declared member — EXCEPT the two
+    /// dispatched-action-promise keys ([`is_dispatched_action_promise_key`]),
+    /// which `Narrow` can never exclude (chirp#115, see that function's doc).
     #[must_use]
     pub fn permits(&self, key: &str) -> bool {
+        if is_dispatched_action_promise_key(key) {
+            return true;
+        }
         match self {
             DeclaredProjections::Undeclared | DeclaredProjections::All => true,
             DeclaredProjections::Narrow(set) => set.contains(key),
@@ -203,6 +208,48 @@ impl DeclaredProjections {
             );
         }
     }
+}
+
+/// chirp#115 root cause — the ADR-0070 drift gate (`stray_keys` /
+/// `enforce_no_drift`) only checks declared ⊆ decodable: it fires when a host
+/// declares an EXTRA key the kernel doesn't emit (a typo, a stale rename), but
+/// has no counterpart for the opposite direction. A host that narrows to a
+/// perfectly valid, non-stray subset which simply OMITS `"action_lifecycle"`
+/// gets ZERO signal in ANY build configuration — `nmp_app_start`'s
+/// `debug_assert!` + `tracing::warn!` only fire for the fully-`Undeclared`
+/// state ([`DeclaredProjections::is_undeclared`]), never for an incomplete
+/// `Narrow` set, because an incomplete `Narrow` set is not itself invalid (a
+/// host is allowed to not care about most built-ins).
+///
+/// But `action_lifecycle` (and its un-collapsed sibling `action_stages`, the
+/// full per-`correlation_id` stage history) are not "a built-in some screen
+/// renders" like `relay_diagnostics` or `settings_hub` — they are the
+/// framework's OWN promise that a *dispatched action* (any `ActionModule`
+/// invoked with a `correlation_id`) is always observable to completion. The
+/// kernel-side machinery that keeps that promise is unconditional and
+/// documented as load-bearing (`Kernel::record_action_failure` /
+/// `record_action_success`: "without this call the host's spinner would hang
+/// forever") — but before this fix, a host that narrowed its declared set
+/// without also naming these two keys defeated that promise anyway, just one
+/// layer up the stack: the ledger recorded `Requested` then a correct
+/// terminal, and NEITHER ever rode the wire. That is exactly the symptom
+/// chirp#115 reported (`RelaySettingsView`'s "Publish as DM inboxes" button
+/// stuck on "Publishing…" forever) and the os_log evidence that pinned it
+/// (`action_lifecycle`'s `in_flight` / `recent_terminal` empty for an entire
+/// 5-minute / ~1100-tick run — not evicted, never populated at all).
+///
+/// So these two keys are UNCONDITIONALLY delivered once non-null — exactly
+/// like `relay_diagnostics` is unconditionally captured once bound — narrowing
+/// can still opt a host out of every other built-in, but never out of "can I
+/// tell when my own dispatched action finished". `action_results` (the raw
+/// per-tick settlement drain) is deliberately NOT included here: unlike the
+/// two lifecycle-view keys, a host can legitimately never consume the raw
+/// drain feed at all (see `declared_drain_on_emit_key_surfaces_when_settled`),
+/// and every existing dispatched-action consumer in this codebase keys off
+/// `action_lifecycle` / `action_stages`, not `action_results`, to resolve a
+/// UI spinner.
+fn is_dispatched_action_promise_key(key: &str) -> bool {
+    matches!(key, "action_lifecycle" | "action_stages")
 }
 
 impl super::SnapshotRegistry {

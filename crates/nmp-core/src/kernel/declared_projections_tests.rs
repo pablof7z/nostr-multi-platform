@@ -299,3 +299,84 @@ fn declaring_a_non_builtin_trips_the_drift_gate_in_debug() {
     // narrowing mode and drops the real key from every frame.
     registry.declare_consumed_projections(["profile", "relay_diagnstics"]);
 }
+
+// ── chirp#115 — a narrow declared set must never silently starve a
+// dispatched action's terminal-observability surface ────────────────────────
+//
+// The drift gate above (`enforce_no_drift` / `stray_keys`) only checks
+// declared ⊆ decodable — an EXTRA/typo'd key trips it. It has no
+// counterpart for the opposite direction: a host that narrows to a
+// perfectly valid, non-stray subset that simply OMITS `action_lifecycle`
+// gets ZERO signal, in ANY build configuration (the loud
+// `debug_assert!`/`tracing::warn!` in `nmp_app_start` fires only for the
+// fully-`Undeclared` state, never for an incomplete `Narrow` set — see
+// `declared.rs`'s `is_undeclared()` doc). Every dispatched action still
+// correctly records `Requested` then a terminal stage into the ledger
+// (proved by `nmp-nip17`'s full-pipeline test and by
+// `rung3_cleared_signal_tests.rs`), but with a narrow set missing this key
+// the wire NEVER carries it — exactly the chirp#115 symptom (os_log
+// evidence: `action_lifecycle`'s `in_flight`/`recent_terminal` stay `[]`
+// for an entire 5-minute / ~1100-tick run, never once, not even
+// `Requested`).
+
+/// **Fails before the fix.** A host that narrows its declared-projection set
+/// to a plausible real-world subset (profile / accounts / relay settings —
+/// mirrors `declared_set_narrows_to_members_and_omits_relay_diagnostics`)
+/// but never names `"action_lifecycle"` must still observe a dispatched
+/// action's lifecycle: recording `Requested` then a terminal stage for a
+/// `correlation_id` must surface on the wire regardless of the narrow set,
+/// because `action_lifecycle` is the framework's own "a dispatched action's
+/// fate is always observable" promise (`Kernel::record_action_failure` /
+/// `record_action_success`'s doc comments: "without this call the host's
+/// spinner would hang forever") — not an opinion a host's projection
+/// narrowing can silently defeat.
+#[test]
+fn narrow_declared_set_missing_action_lifecycle_still_surfaces_dispatched_action_terminal() {
+    use crate::kernel::action_stages::ActionStage;
+
+    let (mut kernel, slot) = kernel_with_slot();
+    // A realistic narrow declaration that never mentions `action_lifecycle`
+    // (or its sibling `action_stages`) — exactly the shape a host's
+    // composition root would write if it enumerated "the projections my
+    // screens render" without realizing a dispatched action's spinner also
+    // needs the lifecycle surface.
+    slot.lock()
+        .unwrap()
+        .declare_consumed_projections(["profile", "accounts", "configured_relays"]);
+
+    let cid = "chirp-115-cid".to_string();
+    kernel.record_action_stage(&cid, ActionStage::Requested, None);
+    let after_requested = projections_json(&mut kernel);
+    assert!(
+        after_requested.contains_key("action_lifecycle"),
+        "a narrow declared set missing `action_lifecycle` must not suppress the \
+         Requested stage of a dispatched action (chirp#115); got keys {:?}",
+        after_requested.keys().collect::<Vec<_>>()
+    );
+
+    kernel.record_action_success(cid.clone(), None);
+    let after_terminal = projections_json(&mut kernel);
+    let lifecycle = after_terminal
+        .get("action_lifecycle")
+        .expect("action_lifecycle must surface the terminal verdict regardless of the narrow declared set (chirp#115)");
+    let recent_terminal = lifecycle
+        .get("recent_terminal")
+        .and_then(|v| v.as_array())
+        .expect("action_lifecycle must carry a recent_terminal array");
+    assert!(
+        recent_terminal
+            .iter()
+            .any(|row| row.get("correlation_id").and_then(|v| v.as_str()) == Some(cid.as_str())),
+        "the terminal verdict for {cid:?} must reach the wire even though the host \
+         never declared \"action_lifecycle\" — its absence is exactly what leaves a \
+         host's spinner (e.g. Chirp's RelaySettingsView DM-inbox button) stuck on \
+         \"Publishing…\" forever: {recent_terminal:#?}"
+    );
+
+    // The rest of the narrow set is untouched by this fix: an undeclared,
+    // unrelated built-in stays gated out.
+    assert!(
+        !after_terminal.contains_key("relay_diagnostics"),
+        "the fix must not widen the narrow gate for unrelated built-ins"
+    );
+}
