@@ -153,7 +153,20 @@ impl<'a> InnerHandle<'a> {
     /// approximate with an unrelated relay set (D10).
     #[must_use]
     pub(crate) fn dm_inbox_relays(&self, pubkey_hex: &str) -> Option<Vec<String>> {
-        self.port.and_then(|port| port.dm_inbox_relays(pubkey_hex))
+        // Action-dispatch path: read through the live `ProtocolCommandContext`
+        // port. Ingest-thread path (no port): fall back to the runtime-held
+        // live DM-inbox lookup so a Welcome-publish retry parked on a cold DM
+        // cache can resolve once the invitee's kind:10050 arrives (#3057
+        // round-6). Both read the SAME kernel cache.
+        if let Some(port) = self.port {
+            if let Some(relays) = port.dm_inbox_relays(pubkey_hex) {
+                return Some(relays);
+            }
+        }
+        self.inner
+            .dm_inbox_lookup
+            .as_ref()
+            .and_then(|lookup| lookup.dm_inbox_relays(pubkey_hex))
     }
 
     /// Read the user's current write-relay URLs from the shared kernel
@@ -175,6 +188,23 @@ impl<'a> InnerHandle<'a> {
             self.ensure_interest(
                 crate::interest::key_package_lookup_identity(&pk_hex),
                 crate::interest::key_package_lookup_interest(&pk_hex),
+            );
+            sent += 1;
+        }
+        sent
+    }
+
+    /// Ask the kernel to fetch peer kind:10050 DM-relay-list events for the
+    /// given pubkeys (#3057 round-6). Symmetric with
+    /// [`Self::request_key_package_fetch`]: an invite needs BOTH the invitee's
+    /// KeyPackage AND their DM-inbox relays before a Welcome can be published.
+    pub(crate) fn request_dm_relay_fetch(&self, pubkeys: &[PublicKey]) -> usize {
+        let mut sent = 0;
+        for pk in pubkeys {
+            let pk_hex = pk.to_hex();
+            self.ensure_interest(
+                crate::interest::dm_relay_lookup_identity(&pk_hex),
+                crate::interest::dm_relay_lookup_interest(&pk_hex),
             );
             sent += 1;
         }

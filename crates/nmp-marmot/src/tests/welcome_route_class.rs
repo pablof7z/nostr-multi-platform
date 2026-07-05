@@ -176,23 +176,31 @@ fn failed_welcome_publish_leaves_no_phantom_member_and_retry_recovers() {
     let first = proj
         .with_inner_port(&port, |h| ops::dispatch(h, &action, 1_000, Some("corr-1")))
         .expect("projection lock available");
+    // #3057 round-6: an unresolved invitee DM-inbox no longer hard-fails — A
+    // FETCHES the invitee's kind:10050 and PARKS the op (pending), never
+    // publishing blind. The fail-closed invariants still hold during the park:
+    // no publish, no phantom roster mutation.
     assert_eq!(
-        first.get("ok").and_then(serde_json::Value::as_bool),
-        Some(false),
-        "create_group must fail closed when the invitee's DM inbox is \
-         unresolved, not silently proceed: {first}"
+        first.get("pending").and_then(serde_json::Value::as_bool),
+        Some(true),
+        "create_group must PARK (fetch the invitee's kind:10050) when the DM \
+         inbox is unresolved, not silently proceed nor hard-fail: {first}"
+    );
+    assert_eq!(
+        first.get("fetch_requested").and_then(serde_json::Value::as_u64),
+        Some(1),
+        "the park must request a kind:10050 DM-inbox fetch for the invitee: {first}"
     );
     assert!(
         port.publishes.borrow().is_empty(),
-        "no kind:1059 Welcome (or any event) may be published when the \
-         invitee's inbox cannot be resolved"
+        "no kind:1059 Welcome (or any event) may be published while the \
+         invitee's inbox is unresolved / being fetched"
     );
     // No group was created — the MLS roster was never touched.
     assert!(
         proj.snapshot(1_000).groups.is_empty(),
-        "a failed create_group must leave zero groups (no phantom roster \
-         mutation), proving the ordering fix resolves the invitee's inbox \
-         BEFORE `service.create_group` runs"
+        "a parked create_group must leave zero groups (no phantom roster \
+         mutation), proving the inbox is resolved BEFORE `service.create_group`"
     );
 
     // Bob's inbox resolves; retry the SAME action.

@@ -280,6 +280,21 @@ pub(crate) fn ingest_signed_event_core(
         Ok(Some(
             json!({ "kind": kind, "cached": true, "author": pubkey_hex }),
         ))
+    } else if kind == 10050 {
+        // kind:10050 DM-relay list. Marmot does NOT parse it (nip17's
+        // Kind10050Parser owns that and has already upserted the shared
+        // DM-relay cache by the time this arm runs — Marmot's parser is
+        // registered after nip17's for this kind). We use the arrival purely
+        // as a retry trigger: a create_group/invite parked on this invitee's
+        // cold DM-inbox (#3057 round-6) can now resolve + publish its Welcome.
+        let pubkey_hex = event.pubkey.to_hex();
+        tracing::debug!(
+            target: "nmp_marmot::publish",
+            invitee = %pubkey_hex,
+            "kind:10050 arrived — retrying any invite parked on this invitee's DM-inbox"
+        );
+        h.retry_unblocked_ops(&pubkey_hex, now_secs);
+        Ok(Some(json!({ "kind": kind, "dm_inbox_retry_author": pubkey_hex })))
     } else {
         // Defensive: the tap filter also admits kind:444 (and a bad
         // filter could admit anything). Not an error for the automatic

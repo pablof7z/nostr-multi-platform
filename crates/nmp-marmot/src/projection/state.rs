@@ -146,6 +146,10 @@ pub(super) struct Inner {
     /// Actor command sender for ingest/deferred follow-up work that happens
     /// after the original `ProtocolCommandContext` has returned.
     actor_sender: Option<CommandSender>,
+    /// #3057 round-6: live view of the kernel's kind:10050 DM-inbox lookup,
+    /// used to resolve invitee DM relays when running WITHOUT a port (the
+    /// ingest-thread Welcome-publish retry). `None` in bare test projections.
+    dm_inbox_lookup: Option<std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>,
     /// #1651: the service-init failure surfaced in every snapshot, or `None`
     /// on a healthy registration. `Some(KeyringUnavailable)` when the projection
     /// was built over the in-memory mock credential store (formerly the V-62
@@ -206,6 +210,7 @@ impl MarmotProjection {
                 key_package_d_tag: None,
                 group_relays: HashMap::new(),
                 actor_sender: None,
+                dm_inbox_lookup: None,
                 init_error,
                 pending_ops: PendingOpsStore::new(),
                 last_op_error: None,
@@ -220,6 +225,18 @@ impl MarmotProjection {
     pub fn set_actor_sender(&self, actor_sender: CommandSender) {
         if let Ok(mut inner) = self.inner.lock() {
             inner.actor_sender = Some(actor_sender);
+        }
+    }
+
+    /// Record the live DM-inbox lookup so port-less (ingest-thread) op retries
+    /// can resolve invitee DM relays (#3057 round-6). D6 — poisoned mutex
+    /// silently no-ops.
+    pub fn set_dm_inbox_lookup(
+        &self,
+        lookup: std::sync::Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
+    ) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.dm_inbox_lookup = Some(lookup);
         }
     }
 

@@ -71,7 +71,7 @@ fn bob_key_package_and_dm_list(bob_keys: &Keys, relay_url: &str) -> (nostr::Even
 }
 
 #[test]
-fn create_group_that_cannot_resolve_invitee_inbox_surfaces_a_specific_error_not_a_silent_drop() {
+fn create_group_with_unresolved_invitee_inbox_parks_and_fetches_not_silent_drop() {
     static KEYRING: OnceLock<()> = OnceLock::new();
     KEYRING.get_or_init(|| {
         keyring_core::set_default_store(keyring_core::mock::Store::new().expect("mock keyring"));
@@ -180,33 +180,28 @@ fn create_group_that_cannot_resolve_invitee_inbox_surfaces_a_specific_error_not_
         .and_then(|p| nmp_marmot::wire::snapshot_fb::decode_marmot_snapshot(&p.payload).ok())
         .expect("marmot snapshot present");
 
-    // A produced NO group and put NOTHING on the wire — the round-5 publish-side
-    // S51 blocker reproduced on a real host.
+    // #3057 round-6 supersedes the round-5 immediate-surface behavior: an
+    // unresolved invitee DM-inbox no longer aborts. A PARKS the op and FETCHES
+    // the invitee's kind:10050 (here nothing serves B's kind:10050, so the op
+    // stays parked — never publishing blind, never silently dropping). The
+    // fail-closed invariants still hold: no group, no kind:1059 on the wire.
     assert!(
         snap.groups.is_empty(),
-        "create_group produced no active group (the Welcome path aborted)"
+        "create_group produced no active group while the invitee inbox is unresolved"
     );
     let published = relay.drain_published();
     assert!(
         !published.iter().any(|ev| ev.kind == Kind::from_u16(1059)),
-        "no kind:1059 Welcome should reach the wire when the invite aborts"
+        "no kind:1059 Welcome may reach the wire while the invitee inbox is unresolved"
     );
-
-    // THE DOCTRINE FIX (#3057 round-5): the abort is NOT silent — the Marmot
-    // snapshot surfaces the SPECIFIC reason (here: the invitee's kind:10050
-    // DM-inbox could not be resolved, so A refuses to publish the Welcome).
-    // Before the fix this vanished into the generic host action-failure toast
-    // (`lastDispatchError`), leaving the Marmot UI with no explanation.
-    let banner = snap.last_op_error.as_ref().expect(
-        "a create_group that cannot publish the Welcome MUST surface a specific \
-         last_op_error banner, not drop silently (the on-device S51 symptom)",
-    );
-    assert_eq!(banner.op, "create_group", "banner attributes the failing op");
-    assert!(
-        banner.reason.contains("kind:10050") || banner.reason.contains("DM-inbox"),
-        "the surfaced reason must name the real blocker (unresolved invitee \
-         DM-inbox), not a generic message; got: {}",
-        banner.reason
+    // The op is PARKED (visible, non-silent) — A is actively fetching the
+    // invitee's DM-inbox rather than dropping the invite.
+    assert_eq!(
+        snap.pending_ops.len(),
+        1,
+        "create_group must PARK (fetch the invitee's kind:10050) when the DM \
+         inbox is unresolved — not silently drop nor publish blind: pending_ops={:?}",
+        snap.pending_ops
     );
 
     app.set_update_listener(None);
