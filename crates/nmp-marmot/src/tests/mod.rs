@@ -31,6 +31,7 @@
 //! - [`init_error_snapshot`] — V-62 / #1651: `MarmotInitError` surfaces in
 //!   every `MarmotProjection` snapshot.
 
+mod dispatch_create_group;
 mod error_paths;
 mod fixtures;
 mod init_error_snapshot;

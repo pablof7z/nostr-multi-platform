@@ -104,6 +104,44 @@ fn execute_emits_one_typed_protocol_command_with_correlation_id() {
     }
 }
 
+/// chirp#129 regression: a panic inside the `ops::dispatch` call MUST be
+/// converted to a normal `{"ok":false,"error":...}` result, not propagate.
+/// Without this, `MarmotProtocolCommand::run` never reaches its
+/// `ctx.record_action_failure` call and the correlation_id's action stage
+/// is stuck at `Requested` forever — the "Creating…" eternal hang.
+#[test]
+fn dispatch_with_panic_guard_converts_panic_to_ok_false() {
+    // Silence the default panic hook for this one deliberate, expected panic
+    // so the test output doesn't print a scary (but harmless) backtrace.
+    let prev_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let result = super::dispatch_with_panic_guard(|| {
+        panic!("simulated mdk-core/openmls invariant violation");
+    });
+    std::panic::set_hook(prev_hook);
+
+    assert_eq!(
+        result.get("ok").and_then(serde_json::Value::as_bool),
+        Some(false),
+        "a panic must surface as ok:false, not propagate: {result}"
+    );
+    let error = result
+        .get("error")
+        .and_then(serde_json::Value::as_str)
+        .expect("error string present");
+    assert!(
+        error.contains("simulated mdk-core/openmls invariant violation"),
+        "panic message must be preserved for diagnostics: {error}"
+    );
+}
+
+/// The happy path: no panic means the guard is a transparent passthrough.
+#[test]
+fn dispatch_with_panic_guard_passes_through_normal_result() {
+    let result = super::dispatch_with_panic_guard(|| serde_json::json!({"ok": true}));
+    assert_eq!(result, serde_json::json!({"ok": true}));
+}
+
 /// Unknown `op` values fail at the registry's JSON-shape parse step.
 #[test]
 fn unknown_op_is_rejected_at_serde_layer() {
