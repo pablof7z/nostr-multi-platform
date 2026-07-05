@@ -308,7 +308,7 @@ pub(crate) fn ingest_signed_event_core(
 /// kind:1059 is a SHARED envelope: NIP-59 gift-wraps carry Marmot Welcomes
 /// (inner kind:444) AND NIP-17 DMs (inner kind:14/15) AND any other protocol's
 /// sealed rumor. The Marmot ingest parser is handed EVERY delivered kind:1059
-/// addressed to us, so it must distinguish three cases and treat only ONE as a
+/// addressed to us, so it must distinguish four cases and treat only ONE as a
 /// surface-worthy failure:
 ///
 /// 1. **Not ours / not decryptable** — `unwrap_giftwrap` errors (the `#p` tag
@@ -319,7 +319,14 @@ pub(crate) fn ingest_signed_event_core(
 ///    sibling `nip17.dm_inbox` parser owns that envelope; a Marmot "not a
 ///    welcome" is NOT a Marmot error (surfacing it would spam the banner on
 ///    every DM — this conflation is exactly the #3057 pre-fix defect).
-/// 3. **A Welcome we could not process** — the inner rumor IS a kind:444
+/// 3. **A Welcome already accepted** — `process_welcome` succeeds (it is
+///    keyed by wrapper event id and idempotently replays its stored result),
+///    but the resulting group is already `Active` in MDK's persisted store —
+///    i.e. this exact Welcome was accepted in a prior session and the local
+///    event store just redelivered its gift-wrap on cold start. Silent skip:
+///    re-caching it as pending would resurrect an already-handled invite
+///    (chirp#167 — the invite chip / stale-invite cold-relaunch bug).
+/// 4. **A Welcome we could not process** — the inner rumor IS a kind:444
 ///    Welcome, but `process_welcome` fails (e.g. `"No matching key package was
 ///    found in the key store"`). This is a GENUINE, user-visible failure: a
 ///    real group invite was delivered and dropped. Pre-#3057-round-2 this
@@ -368,6 +375,35 @@ fn ingest_giftwrap(
     );
     match h.service().process_welcome(&event.id, &unwrapped.rumor) {
         Ok(welcome) => {
+            // #3057 round-8: `process_welcome` is keyed by wrapper event id
+            // and returns the STORED welcome on a repeat call (see mdk-core's
+            // `find_processed_welcome_by_event_id`), so a cold-start replay of
+            // a persisted gift-wrap — one already accepted last session —
+            // succeeds here again. The in-memory `pending_welcomes` cache
+            // starts empty every session and has no memory of "already
+            // accepted", so re-caching unconditionally would resurrect a
+            // handled invite as pending. Persisted MDK group state DOES know:
+            // `accept_welcome` is the only path that flips a group `Active`,
+            // so an Active group for this exact `mls_group_id` proves the
+            // Welcome was already accepted — skip re-caching, same as the
+            // "not ours" / "another protocol's envelope" skips above.
+            let already_joined = matches!(
+                h.service().get_group(&welcome.mls_group_id),
+                Ok(Some(g)) if g.state == mdk_core::prelude::group_types::GroupState::Active
+            );
+            if already_joined {
+                let group_id_hex = hex_encode(welcome.mls_group_id.as_slice());
+                tracing::debug!(
+                    target: "nmp_marmot::ingest",
+                    event_id = %event.id.to_hex(),
+                    group_id_hex = %group_id_hex,
+                    "marmot giftwrap ingest: Welcome's group is already Active locally \
+                     (already accepted in a prior session) — skip re-caching as pending"
+                );
+                return Ok(Some(
+                    json!({ "kind": 1059, "already_joined_group_id_hex": group_id_hex }),
+                ));
+            }
             let wid = event.id.to_hex();
             let group_name = welcome.group_name.clone();
             // Seed the relay-pinned cache from the Welcome's ground-truth

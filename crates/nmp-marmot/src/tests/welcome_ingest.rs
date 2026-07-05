@@ -21,6 +21,7 @@
 use mdk_core::prelude::NostrGroupConfigData;
 use nostr::{EventBuilder, Keys, Kind};
 
+use crate::projection::action::MarmotAction;
 use crate::projection::ops;
 use crate::projection::state::MarmotProjection;
 use crate::service::MarmotService;
@@ -191,6 +192,99 @@ fn a_welcome_that_fails_to_process_surfaces_last_op_error_not_a_silent_swallow()
         banner.correlation_id,
         gift.id.to_hex(),
         "banner correlation id must be the gift-wrap event id (retry handle)"
+    );
+}
+
+/// chirp#167 / #3057 round-8: a cold-relaunch replay of an ALREADY-ACCEPTED
+/// Welcome's gift-wrap must NOT resurrect it as pending.
+///
+/// Reproduces the on-device bug exactly: Bob ingests Alice's Welcome
+/// (populating `pendingWelcomes`), accepts it (the group becomes `Active` in
+/// his persisted MDK store) — then, modeling a cold relaunch replaying the
+/// SAME kind:1059 from the local event cache, the identical gift-wrap is
+/// ingested a second time. `process_welcome` is idempotent and succeeds
+/// again (it's keyed by wrapper event id), so pre-fix this re-inserted the
+/// welcome into the transient `pending_welcomes` map — resurfacing an
+/// already-handled invite as a fresh "1 invite" chip. The fix checks
+/// persisted group state (`Active` ⇒ already accepted) before re-caching.
+#[test]
+fn reingesting_an_already_accepted_welcome_giftwrap_does_not_resurface_as_pending() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+
+    let alice = in_memory_service(alice_keys);
+    let bob = in_memory_service(bob_keys);
+    let gift = alice_welcome_giftwrap_for_bob(&alice, &bob);
+
+    let bob_proj = MarmotProjection::new(bob, None);
+
+    // First ingest: populates pendingWelcomes, exactly like S51.
+    bob_proj
+        .with_inner(|h| ops::ingest_signed_event_core(h, &gift, 1_000))
+        .expect("projection lock available")
+        .expect("first ingest must not error")
+        .expect("first ingest must produce a pending-welcome payload");
+    assert_eq!(bob_proj.snapshot(1_000).pending_welcomes.len(), 1);
+
+    // Accept it: the group transitions to Active in Bob's persisted store —
+    // exactly what happens when the user taps Accept in S51.
+    let accept = bob_proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &MarmotAction::AcceptWelcome {
+                    welcome_id_hex: gift.id.to_hex(),
+                },
+                1_001,
+                Some("accept-corr"),
+            )
+        })
+        .expect("projection lock available");
+    assert_eq!(
+        accept.get("ok").and_then(serde_json::Value::as_bool),
+        Some(true),
+        "accept_welcome must succeed: {accept}"
+    );
+    assert!(
+        bob_proj.snapshot(1_001).pending_welcomes.is_empty(),
+        "accepting a welcome must clear it from pendingWelcomes"
+    );
+    assert_eq!(
+        bob_proj.snapshot(1_001).groups.len(),
+        1,
+        "accepting must produce exactly one joined group"
+    );
+
+    // Cold-relaunch replay: the SAME gift-wrap is redelivered (the local
+    // event store re-delivers everything it has on resubscribe). This is
+    // THE LOAD-BEARING assertion: on master this re-populates
+    // pendingWelcomes with the already-accepted invite (chirp#167); with the
+    // fix it must be a silent skip, same as an already-handled envelope.
+    let replay = bob_proj
+        .with_inner(|h| ops::ingest_signed_event_core(h, &gift, 2_000))
+        .expect("projection lock available")
+        .expect("replaying an already-accepted Welcome must not error");
+    assert!(
+        replay
+            .as_ref()
+            .and_then(|v| v.get("already_joined_group_id_hex"))
+            .is_some(),
+        "a replayed, already-accepted Welcome must report already-joined, \
+         not a fresh pending_welcome_id_hex: {replay:?}"
+    );
+
+    let snap = bob_proj.snapshot(2_001);
+    assert!(
+        snap.pending_welcomes.is_empty(),
+        "a cold-start replay of an already-accepted Welcome must NOT \
+         resurrect it as pending (chirp#167): {:?}",
+        snap.pending_welcomes
+    );
+    assert_eq!(
+        snap.groups.len(),
+        1,
+        "the joined group must still be exactly one — no duplicate/phantom \
+         group from the replayed ingest"
     );
 }
 
