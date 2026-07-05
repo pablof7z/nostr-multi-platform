@@ -73,7 +73,10 @@ impl Kind10050Parser {
             return false;
         }
         let relays = parse_dm_relay_list(&raw.tags);
-        self.cache.upsert(raw.pubkey.clone(), relays);
+        // #3071: pass the event's `created_at` so the cache keeps the NEWEST
+        // kind:10050 per author — a stale one (accumulated across sessions or
+        // replayed last on cold relaunch) must not overwrite the current list.
+        self.cache.upsert(raw.pubkey.clone(), raw.created_at, relays);
         true
     }
 }
