@@ -216,6 +216,119 @@ fn add_relay_dispatch_persists_to_sidecar_end_to_end() {
 }
 
 #[test]
+fn raw_new_app_start_runtime_honors_persisted_relays_over_prestart_reseed() {
+    // Reproduces chirp#168: `ChirpApp` (every UniFFI facade) constructs via
+    // the raw `new_app()` + `start_runtime` path, NOT the legacy
+    // `NmpAppBuilder<RelaysDeclared>::start()` path that loads the on-disk
+    // sidecar. Chirp's `seedChirpRelays` unconditionally re-`add_relay`s its
+    // two onboarding defaults before every `start()` call (mirrored below).
+    // Before the fix, `start_runtime` never consulted the sidecar at all, so
+    // a relay set the user configured last session (persisted to the
+    // sidecar by the #3059/#3061 change-observer) was silently discarded —
+    // the re-seeded defaults became the ONLY relays the kernel ever saw.
+    let dir = unique_temp_dir("chirp-168-raw-path");
+    let dir_str = dir.to_string_lossy().into_owned();
+
+    // Simulate a previous session's Settings -> Relays edit: the user
+    // removed both onboarding defaults and kept only a custom relay. The
+    // #3059/#3061 observer would have written exactly this to the sidecar.
+    let persisted_custom_set = vec![("wss://custom.example".to_string(), "both".to_string())];
+    save(&dir, &persisted_custom_set);
+
+    let app = crate::new_app();
+    assert_eq!(
+        app.set_storage_path(Some(dir_str.clone())),
+        NmpConfigStatus::Ok
+    );
+    app.consume_all_builtin_projections();
+
+    // Mirrors `ChirpApp::seed_default_relays()` / Chirp's `RelaySeeding.swift`
+    // — called unconditionally, pre-start, on every launch.
+    app.add_relay(
+        "wss://relay.primal.net".to_string(),
+        "both,indexer".to_string(),
+    );
+    app.add_relay("wss://purplepag.es".to_string(), "indexer".to_string());
+
+    app.start_runtime(16, 2);
+    assert!(
+        app.wait_barrier_for_test(std::time::Duration::from_secs(5)),
+        "actor must finish applying Start before this test asserts on its effects"
+    );
+
+    let urls: Vec<String> = app
+        .configured_relays_handle()
+        .lock()
+        .map(|rows| {
+            rows.as_slice()
+                .iter()
+                .map(|row| row.url().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    assert_eq!(
+        urls,
+        vec!["wss://custom.example".to_string()],
+        "the persisted custom relay set must win over the pre-start reseed \
+         of Chirp's onboarding defaults; got {urls:?}"
+    );
+
+    app.stop_runtime();
+}
+
+#[test]
+fn raw_new_app_start_runtime_keeps_prestart_reseed_on_genuine_first_run() {
+    // Companion to the test above: with NO sidecar on disk (a genuine first
+    // run), `start_runtime`'s sidecar-fallback lookup must be a no-op —
+    // whatever the host pre-seeded via `add_relay` before start stands, and
+    // the change-observer persists it as the sidecar's first-run baseline.
+    let dir = unique_temp_dir("chirp-168-first-run");
+    let dir_str = dir.to_string_lossy().into_owned();
+    // No save() call — the sidecar does not exist yet.
+
+    let app = crate::new_app();
+    assert_eq!(
+        app.set_storage_path(Some(dir_str.clone())),
+        NmpConfigStatus::Ok
+    );
+    app.consume_all_builtin_projections();
+    app.add_relay(
+        "wss://relay.primal.net".to_string(),
+        "both,indexer".to_string(),
+    );
+    app.add_relay("wss://purplepag.es".to_string(), "indexer".to_string());
+
+    app.start_runtime(16, 2);
+    assert!(
+        app.wait_barrier_for_test(std::time::Duration::from_secs(5)),
+        "actor must finish applying Start before this test asserts on its effects"
+    );
+
+    let urls: Vec<String> = app
+        .configured_relays_handle()
+        .lock()
+        .map(|rows| {
+            rows.as_slice()
+                .iter()
+                .map(|row| row.url().to_string())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    assert_eq!(
+        urls,
+        vec![
+            "wss://relay.primal.net".to_string(),
+            "wss://purplepag.es".to_string(),
+        ],
+        "with no sidecar yet, the pre-start reseed must stand unmodified; got {urls:?}"
+    );
+
+    app.stop_runtime();
+}
+
+#[test]
 fn nostrconnect_relay_url_falls_back_to_registered_bootstrap() {
     let app = crate::new_app();
     assert_eq!(
