@@ -199,6 +199,41 @@ impl MarmotProtocolCommand {
     }
 }
 
+/// Run `f` (the `ops::dispatch` call) with panic isolation, converting an
+/// unwind into the same `{"ok":false,"error":...}` shape a normal `Err`
+/// produces.
+///
+/// `ops::dispatch` is the only call here that reaches into `mdk-core`/
+/// `openmls` (unaudited third-party MLS crypto). Without this guard, a panic
+/// there unwinds straight past the `ctx.record_action_success` /
+/// `ctx.record_action_failure` call below in [`MarmotProtocolCommand::run`].
+/// The GENERIC whole-body `catch_unwind` the actor's `ActorCommand::Protocol`
+/// dispatch arm installs (`nmp-core/src/actor/dispatch/cmd_protocol.rs`) only
+/// stops the panic from crashing the actor thread — it cannot see which
+/// `correlation_id` was in flight for a `Box<dyn ProtocolCommand>`, so it
+/// cannot record a terminal verdict either. Net effect without this guard:
+/// the `action_stages` entry for that `correlation_id` is stuck at
+/// `Requested` forever — chirp#129's "Creating…" spinner that never
+/// resolves and never surfaces an error. Scoping the guard to this one call
+/// leaves the surrounding success/failure bookkeeping untouched — it always
+/// executes, so a panic here now behaves like any other op failure.
+fn dispatch_with_panic_guard(f: impl FnOnce() -> serde_json::Value) -> serde_json::Value {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(v) => v,
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .map(|s| (*s).to_string())
+                .or_else(|| payload.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".to_string());
+            serde_json::json!({
+                "ok": false,
+                "error": format!("internal Marmot error (dispatch panicked): {msg}"),
+            })
+        }
+    }
+}
+
 struct MarmotCommandPort<'a, 'ctx> {
     ctx: &'a ProtocolCommandContext<'ctx>,
 }
@@ -264,12 +299,14 @@ impl ProtocolCommand for MarmotProtocolCommand {
             let port = MarmotCommandPort { ctx };
             projection
                 .with_inner_port(&port, |h| {
-                    crate::projection::ops::dispatch(
-                        h,
-                        &action,
-                        now_secs,
-                        correlation_id.as_deref(),
-                    )
+                    dispatch_with_panic_guard(|| {
+                        crate::projection::ops::dispatch(
+                            h,
+                            &action,
+                            now_secs,
+                            correlation_id.as_deref(),
+                        )
+                    })
                 })
                 .unwrap_or_else(|| {
                     serde_json::json!({
