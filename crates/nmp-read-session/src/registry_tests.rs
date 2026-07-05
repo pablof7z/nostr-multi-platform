@@ -16,6 +16,7 @@ fn build_with<F: FnOnce() + Send + 'static>(key: &str, teardown: F) -> ReadSessi
     ReadSessionBuild {
         projection_key: key.to_string(),
         teardown: vec![Box::new(teardown)],
+        demand_set: None,
     }
 }
 
@@ -94,6 +95,7 @@ fn teardown_runs_in_reverse_registration_order() {
             Box::new(move || o2.lock().unwrap().push(2)),
             Box::new(move || o3.lock().unwrap().push(3)),
         ],
+        demand_set: None,
     };
     let id = reg.open(build);
     reg.close(&id);
@@ -116,6 +118,7 @@ fn dropping_the_registry_drops_unclosed_session_closures() {
             teardown: vec![Box::new(move || {
                 let _ = &guard;
             })],
+            demand_set: None,
         });
         assert_eq!(
             Arc::strong_count(&live),

@@ -47,18 +47,24 @@
 //! and browser parity is structural — a new host implements one seam, not one
 //! method per concept.
 
+mod demand_set;
 mod dependent;
 mod engine;
 mod host;
 pub mod ownership;
 mod registry;
 
+pub use demand_set::{open_read_demand_set, reconcile_read_demand_set};
 pub use engine::{close_read, open_read, replay_shapes_for};
 pub use host::{
-    ReadDemand, ReadDependentDemand, ReadDependentDemandProvider, ReadHandle, ReadHost,
-    ReadInterestController, ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
+    KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadDependentDemand,
+    ReadDependentDemandProvider, ReadHandle, ReadHost, ReadInterestController, ReadOutputEncoder,
+    ReadReplayPolicy, ReadSpec,
 };
 // #2948 — `ReadDemand.lifecycle` is public API; re-export the type so concept
 // crates naming a demand's close semantics don't take a direct nmp-planner dep.
 pub use nmp_planner::InterestLifecycle;
-pub use registry::{ReadSessionBuild, ReadSessionId, ReadSessionRegistry, TeardownAction};
+pub use registry::{
+    DemandSetMembers, DemandSetState, ReadSessionBuild, ReadSessionId, ReadSessionRegistry,
+    TeardownAction,
+};

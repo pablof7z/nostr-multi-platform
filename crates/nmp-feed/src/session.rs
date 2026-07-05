@@ -58,6 +58,7 @@ impl FeedSessionBuild {
         ReadSessionBuild {
             projection_key: self.projection_key.into_string(),
             teardown: self.teardown,
+            demand_set: None,
         }
     }
 }

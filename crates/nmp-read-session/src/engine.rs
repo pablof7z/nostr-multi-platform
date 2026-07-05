@@ -129,6 +129,7 @@ pub fn open_read(host: &dyn ReadHost, spec: ReadSpec) -> ReadHandle {
     let session_id = host.store_read_session(ReadSessionBuild {
         projection_key: key_str.clone(),
         teardown,
+        demand_set: None,
     });
     ReadHandle {
         projection_key: key_str,

@@ -10,4 +10,4 @@ pub const DISCOVERED_GROUPS_SCHEMA_ID: &str = "nmp.nip29.discovered_groups";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const DISCOVERED_GROUPS_FILE_IDENTIFIER: &[u8; 4] = b"NDGS";
 /// Wire schema version. Bump on any breaking change to this projection's `.fbs`.
-pub const DISCOVERED_GROUPS_SCHEMA_VERSION: u32 = 2;
+pub const DISCOVERED_GROUPS_SCHEMA_VERSION: u32 = 3;

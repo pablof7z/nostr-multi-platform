@@ -18,8 +18,9 @@ namespace nmp.nip29;
 // (display-name fallback, avatar initials, subtitle) is the shell's
 // responsibility and is NOT pre-computed here.
 //
-// Identity encoding: strings, not raw bytes — `group_id` / `host_relay_url` are
-// `String` in the source serde types, so `string` is byte-for-byte parity.
+// Identity encoding: strings, not raw bytes — `group_id` / `host_relay_url` /
+// `host_relay_urls` are `String` (or `Vec<String>`) in the source serde types,
+// so `string` (or `[string]`) is byte-for-byte parity.
 //
 // Optional fields: `name` / `picture` / `about` are `Option<String>` in
 // `DiscoveredGroup`. They are tag-derived (absent when no kind:39000 carried the
@@ -55,12 +56,15 @@ table DiscoveredGroup {
   children:[string];
 }
 
-// The serialised discovery read model. `groups` is ordered alphabetically by
-// `group_id`. `host_relay_url` is surfaced at the top (every row's
-// `host_relay_url` equals it — single-relay scoped).
+// The serialised discovery read model. `groups` is ordered by
+// `(host_relay_url, group_id)` — a live session tracks a SET of relays
+// (#93 multi-relay group discovery), and two relays may share a `group_id`
+// for two different groups. `host_relay_urls` is the currently-tracked relay
+// set (every row's `host_relay_url` names a member of it, but a tracked
+// relay with zero groups so far is still listed).
 table DiscoveredGroupsSnapshot {
-  schema_version:uint32 = 2;   // mirrors DISCOVERED_GROUPS_SCHEMA_VERSION
-  host_relay_url:string;
+  schema_version:uint32 = 3;   // mirrors DISCOVERED_GROUPS_SCHEMA_VERSION
+  host_relay_urls:[string];
   groups:[DiscoveredGroup];
 }
 

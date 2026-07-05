@@ -3,26 +3,31 @@
 //!
 //! Like [`super::group_events::GroupEventsProjection`], this is **pure
 //! consumption**: a [`ObservedProjectionSink`] that accumulates the relay-signed
-//! metadata events for a single host relay and serialises them as a flat list
-//! of `DiscoveredGroup` rows. It registers no actions, mints no FFI symbols,
-//! and never touches the actor loop.
+//! metadata events for a SET of host relays and serialises them as a flat list
+//! of `DiscoveredGroup` rows, one row per `(host_relay_url, local_id)` pair. It
+//! registers no actions, mints no FFI symbols, and never touches the actor
+//! loop.
 //!
-//! ## Per-relay scope
+//! ## Multi-relay aggregation (#93)
 //!
 //! NIP-29 group identity is the **pair** `(host_relay_url, local_id)`
 //! (`group_id.rs`). Two relays publishing kind:39000 with `d=room` are TWO
-//! different groups. This projection is therefore scoped to one host relay
-//! at construction time; an event is retained iff:
+//! different groups. A live discovery session tracks a SET of relays
+//! (`add_relay` / `remove_relay`, reconciled by
+//! `read_session::open_nip29_group_discovery_session` as the caller's desired
+//! relay set changes) and dedups/merges by that pair — never by `local_id`
+//! alone.
 //!
-//! - its kind is one of 39000 / 39001 / 39002, AND
-//! - it carries a `["d", local_id]` tag (the parameterized-replaceable key).
-//!
-//! Restricting to the host relay's own events is an *upstream* routing
-//! concern: the companion `interest::relay_discovery_interest` pins the
-//! subscription to the relay, so a correctly-pinned interest only ever
-//! delivers events from that host. This projection trusts the pin and does
-//! NOT re-check provenance from event tags (a `KernelEvent` has no
-//! relay-of-origin field).
+//! Attribution is per-EVENT, not per-projection: `KernelEvent::relay_provenance`
+//! (populated by the kernel from the local store for every delivered event,
+//! regardless of which demand's `relay_pin` admitted it) names the relay(s)
+//! that actually delivered this event. An event is folded into a row for every
+//! relay in `relay_provenance` that is ALSO currently tracked by this
+//! projection; an event whose provenance names no tracked relay is dropped
+//! (fail-closed, D6 — never guessed). This is what lets one shared reducer
+//! safely aggregate N relay-pinned demands: the routing pin gets the event to
+//! the reducer, but the reducer itself re-derives which relay(s) it came from
+//! rather than trusting a single construction-time value.
 //!
 //! ## How metadata is extracted (per docs/design/nip29/kinds.md §2.4)
 //!
@@ -44,7 +49,7 @@
 //! keeps only the most recent event per `(kind, d)` — comparing `created_at`,
 //! ties broken by `id` descending so the choice is total and deterministic.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
@@ -107,15 +112,17 @@ pub struct DiscoveredGroup {
 
 /// The serialised read-model a discovery screen consumes.
 ///
-/// `groups` is ordered alphabetically by `group_id` so the list is total,
-/// stable, and human-friendly across snapshot ticks. The relay URL is
-/// surfaced at the top so Swift can render a screen header without holding
-/// onto the original input separately.
+/// `groups` is ordered by `(host_relay_url, group_id)` so the list is total,
+/// stable, and human-friendly across snapshot ticks even when several
+/// relays share a `local_id` (a different group per relay, #93). The
+/// currently-tracked relay set is surfaced at the top so a shell can render
+/// a screen header (e.g. "browsing 3 relays") without holding onto the
+/// original input separately; it is NOT the set of relays that produced
+/// `groups` — a relay with zero groups so far is still tracked.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct DiscoveredGroupsSnapshot {
-    /// The host relay this snapshot describes — every row's `host_relay_url`
-    /// equals this value (the projection is single-relay scoped).
-    pub host_relay_url: String,
+    /// The relays this discovery session is currently tracking, sorted.
+    pub host_relay_urls: Vec<String>,
     pub groups: Vec<DiscoveredGroup>,
 }
 
@@ -123,16 +130,17 @@ impl DiscoveredGroupsSnapshot {
     /// Empty snapshot — what a freshly-constructed projection (or one whose
     /// internal lock is poisoned, D6) reports.
     #[must_use]
-    pub fn empty(host_relay_url: impl Into<String>) -> Self {
+    pub fn empty(host_relay_urls: impl IntoIterator<Item = impl Into<String>>) -> Self {
         Self {
-            host_relay_url: host_relay_url.into(),
+            host_relay_urls: host_relay_urls.into_iter().map(Into::into).collect(),
             groups: Vec::new(),
         }
     }
 }
 
-/// Per-(kind, d) latest-event entry. The projection only keeps the most
-/// recent event per `(kind, d)`; this struct is the comparator key.
+/// Per-(relay, kind, d) latest-event entry. The projection only keeps the
+/// most recent event per `(relay, kind, d)`; this struct is the comparator
+/// key.
 #[derive(Clone, Debug)]
 struct LatestEvent {
     created_at: u64,
@@ -153,51 +161,89 @@ impl LatestEvent {
     }
 }
 
-/// Accumulates one host relay's kind:39000/39001/39002 events into a flat
-/// list of discovered groups.
+/// Accumulates a SET of host relays' kind:39000/39001/39002 events into a
+/// flat list of discovered groups, one row per `(host_relay_url, local_id)`
+/// pair (#93 — multi-relay group discovery).
 ///
-/// Construct with the [`RelayUrl`] the relay-pinned interest is targeting;
-/// register the same `Arc` as a [`ObservedProjectionSink`] (ingest) and capture
-/// it in a snapshot-projection closure (output). Only events whose kind is
-/// 39000 / 39001 / 39002 **and** which carry a `["d", _]` tag are retained.
+/// Construct with the initially-tracked relay set; grow/shrink it over the
+/// projection's lifetime with [`Self::add_relay`] / [`Self::remove_relay`] as
+/// the live discovery session's desired relay set changes. Register the same
+/// `Arc` as a [`ObservedProjectionSink`] (ingest) and capture it in a
+/// snapshot-projection closure (output). Only events whose kind is 39000 /
+/// 39001 / 39002 **and** which carry a `["d", _]` tag, AND whose
+/// `relay_provenance` names a currently-tracked relay, are retained.
 pub struct DiscoveredGroupsProjection {
-    /// The host relay this projection is scoped to. Mirrors the
-    /// `relay_pin` value the companion `relay_discovery_interest` pushes.
-    host_relay_url: RelayUrl,
-    /// Latest event per `(kind, d)`. NIP-33 replaceable semantics: a newer
-    /// event for the same `(kind, d)` strictly supersedes the older one.
-    /// Keys are `(kind, d_tag)`; values are the comparator snapshot of the
-    /// winning event.
+    /// The relays this projection currently tracks. An event is folded into
+    /// a row for every relay in its `relay_provenance` that is also a member
+    /// of this set (see module docs — attribution is per-event, not
+    /// per-projection).
+    relays: Mutex<BTreeSet<RelayUrl>>,
+    /// Latest event per `(relay, kind, d)`. NIP-33 replaceable semantics: a
+    /// newer event for the same key strictly supersedes the older one.
     ///
     /// Bounded by [`MAX_PROJECTION_MESSAGES`] — once full, the oldest entry
     /// by insertion order is evicted. The cap defends the outer map against
     /// adversarial relays that spam fake group ids: without it, every
-    /// distinct `(kind, d)` pair would persist for the lifetime of the
-    /// session, growing the snapshot and the resident set unboundedly.
-    /// Re-delivering an existing `(kind, d)` updates in place and does not
-    /// shift eviction order — replaceable-event semantics are preserved by
-    /// the [`LatestEvent::supersedes`] check before the call to `insert`.
-    latest: Mutex<BoundedMessageMap<(u32, String), LatestEvent>>,
+    /// distinct `(relay, kind, d)` triple would persist for the lifetime of
+    /// the session, growing the snapshot and the resident set unboundedly.
+    /// Re-delivering an existing key updates in place and does not shift
+    /// eviction order — replaceable-event semantics are preserved by the
+    /// [`LatestEvent::supersedes`] check before the call to `insert`.
+    latest: Mutex<BoundedMessageMap<(RelayUrl, u32, String), LatestEvent>>,
 }
 
 impl DiscoveredGroupsProjection {
-    /// Construct a projection scoped to `host_relay_url`. The internal map
+    /// Construct a projection tracking `host_relay_urls`. The internal map
     /// starts empty; events arrive via [`ObservedProjectionSink::on_kernel_event`].
     #[must_use]
-    pub fn new(host_relay_url: impl Into<RelayUrl>) -> Self {
+    pub fn new(host_relay_urls: impl IntoIterator<Item = impl Into<RelayUrl>>) -> Self {
         Self {
-            host_relay_url: host_relay_url.into(),
+            relays: Mutex::new(host_relay_urls.into_iter().map(Into::into).collect()),
             latest: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 
-    /// The host relay this projection is scoped to.
-    pub fn host_relay_url(&self) -> &str {
-        &self.host_relay_url
+    /// The relays this projection currently tracks, sorted.
+    #[must_use]
+    pub fn host_relay_urls(&self) -> Vec<String> {
+        self.relays
+            .lock()
+            .map(|relays| relays.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Start tracking `relay`: future events whose `relay_provenance` names it
+    /// are folded in. A no-op if already tracked.
+    pub fn add_relay(&self, relay: impl Into<RelayUrl>) {
+        if let Ok(mut relays) = self.relays.lock() {
+            relays.insert(relay.into());
+        }
+    }
+
+    /// Stop tracking `relay` and purge every row already attributed to it —
+    /// a live discovery session's relay set shrinking must not leave stale
+    /// groups from a relay the caller is no longer browsing.
+    pub fn remove_relay(&self, relay: &str) {
+        if let Ok(mut relays) = self.relays.lock() {
+            relays.remove(relay);
+        }
+        let Ok(mut latest) = self.latest.lock() else {
+            return;
+        };
+        let stale: Vec<(RelayUrl, u32, String)> = latest
+            .iter()
+            .filter(|((r, _, _), _)| r == relay)
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in stale {
+            latest.remove(&key);
+        }
     }
 
     /// Whether `event` belongs in this projection: one of the three metadata
-    /// kinds AND a `["d", _]` tag is present.
+    /// kinds AND a `["d", _]` tag is present. Relay attribution is checked
+    /// separately (see [`Self::on_kernel_event`]) since it depends on
+    /// per-event provenance, not just the event's own fields.
     fn accepts(event: &KernelEvent) -> bool {
         let kind_ok = matches!(
             event.kind,
@@ -206,35 +252,40 @@ impl DiscoveredGroupsProjection {
         kind_ok && d_tag_value(&event.tags).is_some()
     }
 
-    /// Snapshot the current discovered-group set, alphabetised by group id.
+    /// Snapshot the current discovered-group set, ordered by
+    /// `(host_relay_url, group_id)`.
     ///
     /// D6: a poisoned mutex degrades to [`DiscoveredGroupsSnapshot::empty`]
     /// rather than panicking — this can run on the actor thread inside a
     /// snapshot tick, where a panic would unwind the kernel.
     #[must_use]
     pub fn snapshot(&self) -> DiscoveredGroupsSnapshot {
+        let host_relay_urls = self.host_relay_urls();
         let Ok(latest) = self.latest.lock() else {
-            return DiscoveredGroupsSnapshot::empty(self.host_relay_url.clone());
+            return DiscoveredGroupsSnapshot::empty(host_relay_urls);
         };
 
-        // Bucket the per-(kind, d) latest events by `d` so each group_id
-        // appears once with all three kinds rolled in. A `BTreeMap` keyed
-        // on `d` gives alphabetical ordering for free.
-        let mut by_d: BTreeMap<String, DiscoveredGroup> = BTreeMap::new();
-        for ((kind, d), entry) in latest.iter() {
-            let row = by_d.entry(d.clone()).or_insert_with(|| DiscoveredGroup {
-                group_id: d.clone(),
-                host_relay_url: self.host_relay_url.clone(),
-                public: true,
-                open: true,
-                ..Default::default()
-            });
+        // Bucket the per-(relay, kind, d) latest events by (relay, d) so
+        // each (host_relay_url, group_id) pair appears once with all three
+        // kinds rolled in. A `BTreeMap` keyed on that pair gives a total,
+        // relay-then-id order for free.
+        let mut by_key: BTreeMap<(RelayUrl, String), DiscoveredGroup> = BTreeMap::new();
+        for ((relay, kind, d), entry) in latest.iter() {
+            let row = by_key
+                .entry((relay.clone(), d.clone()))
+                .or_insert_with(|| DiscoveredGroup {
+                    group_id: d.clone(),
+                    host_relay_url: relay.clone(),
+                    public: true,
+                    open: true,
+                    ..Default::default()
+                });
             apply_event_to_row(row, *kind, &entry.tags);
         }
 
         DiscoveredGroupsSnapshot {
-            host_relay_url: self.host_relay_url.clone(),
-            groups: by_d.into_values().collect(),
+            host_relay_urls,
+            groups: by_key.into_values().collect(),
         }
     }
 
@@ -247,7 +298,7 @@ impl DiscoveredGroupsProjection {
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot()).unwrap_or_else(|_| {
             serde_json::json!({
-                "host_relay_url": self.host_relay_url,
+                "host_relay_urls": self.host_relay_urls(),
                 "groups": [],
             })
         })
@@ -308,11 +359,15 @@ fn count_p_tags(tags: &[Vec<String>]) -> u32 {
 
 impl ObservedProjectionSink for DiscoveredGroupsProjection {
     /// Ingest one accepted kernel event. Non-matching events (wrong kind,
-    /// missing `d` tag) are ignored. Matching events are folded into the
-    /// per-`(kind, d)` latest-event slot per NIP-33 replaceable semantics.
+    /// missing `d` tag, or provenance naming no currently-tracked relay) are
+    /// ignored. A matching event is folded into the per-`(relay, kind, d)`
+    /// latest-event slot per NIP-33 replaceable semantics — once for every
+    /// tracked relay its `relay_provenance` names (almost always exactly
+    /// one; see module docs for why attribution is per-event).
     ///
-    /// Cheap and panic-free, per the `ObservedProjectionSink` contract: a single
-    /// uncontended lock + map insert. A poisoned mutex is a silent no-op (D6).
+    /// Cheap and panic-free, per the `ObservedProjectionSink` contract: a
+    /// couple of uncontended lock + map operations. A poisoned mutex is a
+    /// silent no-op (D6).
     fn on_kernel_event(&self, event: &KernelEvent) {
         if !Self::accepts(event) {
             return;
@@ -322,21 +377,42 @@ impl ObservedProjectionSink for DiscoveredGroupsProjection {
             Some(d) => d.to_string(),
             None => return,
         };
+        if event.relay_provenance.is_empty() {
+            // No provenance to attribute this event to any tracked relay —
+            // fail closed rather than guess (D6).
+            return;
+        }
+        let matched: Vec<RelayUrl> = {
+            let Ok(relays) = self.relays.lock() else {
+                return;
+            };
+            event
+                .relay_provenance
+                .iter()
+                .filter(|r| relays.contains(r.as_str()))
+                .cloned()
+                .collect()
+        };
+        if matched.is_empty() {
+            return;
+        }
         let Ok(mut latest) = self.latest.lock() else {
             return;
         };
-        let key = (event.kind, d);
         let incoming = LatestEvent {
             created_at: event.created_at,
             id: event.id.clone(),
             tags: event.tags.clone(),
         };
-        match latest.get(&key) {
-            Some(existing) if !existing.supersedes(&incoming) => {
-                // Existing is newer or equal-and-higher-id — keep it.
-            }
-            _ => {
-                latest.insert(key, incoming);
+        for relay in matched {
+            let key = (relay, event.kind, d.clone());
+            match latest.get(&key) {
+                Some(existing) if !existing.supersedes(&incoming) => {
+                    // Existing is newer or equal-and-higher-id — keep it.
+                }
+                _ => {
+                    latest.insert(key, incoming.clone());
+                }
             }
         }
     }

@@ -77,13 +77,18 @@ pub fn encode_discovered_groups_snapshot(snapshot: &DiscoveredGroupsSnapshot) ->
         .map(|group| encode_group(&mut fbb, group))
         .collect();
     let groups = fbb.create_vector(&group_offsets);
-    let host_relay_url = fbb.create_string(&snapshot.host_relay_url);
+    let relay_offsets: Vec<_> = snapshot
+        .host_relay_urls
+        .iter()
+        .map(|url| fbb.create_string(url))
+        .collect();
+    let host_relay_urls = fbb.create_vector(&relay_offsets);
 
     let root = fb::DiscoveredGroupsSnapshot::create(
         &mut fbb,
         &fb::DiscoveredGroupsSnapshotArgs {
             schema_version: DISCOVERED_GROUPS_SCHEMA_VERSION,
-            host_relay_url: Some(host_relay_url),
+            host_relay_urls: Some(host_relay_urls),
             groups: Some(groups),
         },
     );
@@ -147,10 +152,10 @@ pub fn decode_discovered_groups_snapshot(bytes: &[u8]) -> Result<DiscoveredGroup
     let root = fb::root_as_discovered_groups_snapshot(bytes)
         .map_err(|e| format!("not a valid DiscoveredGroupsSnapshot buffer: {e}"))?;
 
-    let host_relay_url = str_field(
-        root.host_relay_url(),
-        "DiscoveredGroupsSnapshot.host_relay_url",
-    )?;
+    let host_relay_urls = root
+        .host_relay_urls()
+        .map(|v| v.iter().map(str::to_string).collect())
+        .unwrap_or_default();
 
     let mut groups = Vec::new();
     if let Some(fb_groups) = root.groups() {
@@ -161,7 +166,7 @@ pub fn decode_discovered_groups_snapshot(bytes: &[u8]) -> Result<DiscoveredGroup
     }
 
     Ok(DiscoveredGroupsSnapshot {
-        host_relay_url,
+        host_relay_urls,
         groups,
     })
 }

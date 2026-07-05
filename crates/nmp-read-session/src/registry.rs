@@ -19,9 +19,11 @@
 //! - D8: a closed session is removed from the map and its closures dropped, so
 //!   nothing the session held outlives the close (no leak).
 
+use std::any::Any;
+use std::collections::HashMap;
 use std::sync::{
     atomic::{AtomicU64, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
 
 /// A single teardown step recorded when a read opens.
@@ -29,6 +31,32 @@ use std::sync::{
 /// Boxed `FnOnce` so each action runs exactly once on close. `Send` so the
 /// registry (held behind an `Arc<Mutex<…>>` on a host) is `Send`.
 pub type TeardownAction = Box<dyn FnOnce() + Send>;
+
+/// Per-member teardown actions for a live [`DemandSetState`], keyed by the
+/// concept-chosen member identity (e.g. a relay URL). Each value closes
+/// exactly that member's observed interest; draining the map and running
+/// every remaining closure withdraws whatever is still live at that moment,
+/// regardless of how many `reconcile` calls added/removed members in between.
+pub type DemandSetMembers = Arc<Mutex<HashMap<String, TeardownAction>>>;
+
+/// The state a dynamic read-demand-set session records so a *later* call
+/// (addressed only by projection key, e.g. a concept's `open_*` door called
+/// again with an updated member set) can find the live member map and the
+/// SAME reducer instance rather than constructing a fresh one and losing
+/// accumulated read-model state (#93 multi-relay NIP-29 discovery).
+///
+/// `reducer` is type-erased ([`Any`]) because the registry is concept-neutral
+/// (D0): it never names a concept's projection type. The concept crate that
+/// opened the session downcasts it back to its own concrete type.
+pub struct DemandSetState {
+    /// Currently-open members, keyed by the concept's member identity.
+    pub members: DemandSetMembers,
+    /// The shared reducer every member's `ObservedProjection` was opened
+    /// with. Cloneable (it is itself an `Arc`), so re-wrapping it as an
+    /// `Arc<dyn ObservedProjectionSink>` for a newly-added member costs
+    /// nothing extra.
+    pub reducer: Arc<dyn Any + Send + Sync>,
+}
 
 /// An opaque, monotonically-minted read-session identifier.
 ///
@@ -45,6 +73,11 @@ struct ReadSession {
     /// Teardown steps in **registration** order. [`close`](ReadSessionRegistry::close)
     /// runs them in reverse so the last thing wired is the first released.
     teardown: Vec<TeardownAction>,
+    /// Present only for a session opened via
+    /// [`crate::demand_set::open_read_demand_set`] — lets a later call
+    /// addressed by the SAME projection key reconcile membership instead of
+    /// tearing the whole session down (#93).
+    demand_set: Option<DemandSetState>,
 }
 
 /// The recipe [`crate::open_read`] hands to [`ReadSessionRegistry::open`]: the
@@ -55,6 +88,10 @@ pub struct ReadSessionBuild {
     pub projection_key: String,
     /// Teardown steps in registration order (run reversed on close).
     pub teardown: Vec<TeardownAction>,
+    /// Dynamic-membership state, for sessions opened through
+    /// [`crate::demand_set::open_read_demand_set`]. `None` for every ordinary
+    /// [`crate::open_read`] session.
+    pub demand_set: Option<DemandSetState>,
 }
 
 /// Registry of live read sessions, keyed by an opaque, monotonically-minted
@@ -95,6 +132,7 @@ impl ReadSessionRegistry {
         let ReadSessionBuild {
             projection_key,
             teardown,
+            demand_set,
         } = build;
         match self.sessions.lock() {
             Ok(mut sessions) => {
@@ -103,6 +141,7 @@ impl ReadSessionRegistry {
                     ReadSession {
                         projection_key,
                         teardown,
+                        demand_set,
                     },
                 );
                 id
@@ -176,6 +215,49 @@ impl ReadSessionRegistry {
             .lock()
             .ok()
             .and_then(|sessions| sessions.get(id).map(|s| s.projection_key.clone()))
+    }
+
+    /// The live session id currently registered under `projection_key`, or
+    /// `None` if no session is live there. The read-demand-set door
+    /// ([`crate::demand_set`]) uses this to hand back the SAME handle across
+    /// repeated `open_*` calls that reconcile membership rather than replace
+    /// the session (#93).
+    #[must_use]
+    pub fn session_id_for_projection_key(&self, projection_key: &str) -> Option<ReadSessionId> {
+        self.sessions.lock().ok().and_then(|sessions| {
+            sessions
+                .iter()
+                .find_map(|(id, s)| (s.projection_key == projection_key).then_some(*id))
+        })
+    }
+
+    /// The live [`DemandSetMembers`] map for the demand-set session
+    /// registered under `projection_key`, or `None` when there is no live
+    /// session there or it wasn't opened as a demand set.
+    #[must_use]
+    pub fn demand_set_members(&self, projection_key: &str) -> Option<DemandSetMembers> {
+        self.sessions.lock().ok().and_then(|sessions| {
+            sessions
+                .values()
+                .find(|s| s.projection_key == projection_key)
+                .and_then(|s| s.demand_set.as_ref())
+                .map(|d| Arc::clone(&d.members))
+        })
+    }
+
+    /// The type-erased reducer of the demand-set session registered under
+    /// `projection_key`, or `None` under the same conditions as
+    /// [`Self::demand_set_members`]. The concept crate that opened the
+    /// session downcasts this back to its own concrete projection type.
+    #[must_use]
+    pub fn demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+        self.sessions.lock().ok().and_then(|sessions| {
+            sessions
+                .values()
+                .find(|s| s.projection_key == projection_key)
+                .and_then(|s| s.demand_set.as_ref())
+                .map(|d| Arc::clone(&d.reducer))
+        })
     }
 }
 

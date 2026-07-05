@@ -96,7 +96,7 @@ fn nip29_discovery_session_receives_live_group_rows() {
     let app_ref = unsafe { &*app.app };
     let (handle, reader) = open_nip29_group_discovery_session_with_reader(
         app_ref,
-        Nip29GroupDiscoverySession::new(NIP29_RELAY.to_string()),
+        Nip29GroupDiscoverySession::new(vec![NIP29_RELAY.to_string()]),
     );
 
     let payload = DiscoverGroupsInput {
