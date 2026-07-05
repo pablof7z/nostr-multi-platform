@@ -14,7 +14,7 @@
 
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_planner::stable_hash::stable_hash64;
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 // Kind integers from the canonical Layer-0 registry (`nmp-kinds`, reached via
 // nmp-nip59 / nmp-core). KIND_GIFT_WRAP = 1059; the Marmot key-package,
 // group-message, and welcome kinds were previously re-declared as literals in
@@ -67,6 +67,22 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// registration and the subscription must stay pinned to it. The kernel's
 /// Marmot's ingest parser then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
+///
+/// `p_tag_routing` is forced to [`PTagRouting::Nip17DmRelays`] (#3057). A
+/// Marmot Welcome is gift-wrapped and PUBLISHED to the invitee's verified
+/// kind:10050 DM-inbox relays — the exact same `VerifiedPrivateInbox` route
+/// class a NIP-17 DM uses (see `projection/ops/welcome.rs::wrap_and_publish_welcomes`
+/// / `resolve_invitee_inboxes`). Without this override,
+/// `ViewDependencies::into_logical_interest`'s default
+/// (`PTagRouting::Nip65ReadRelays`) routed the RECEIVE side through the
+/// account's public kind:10002 read relays instead — a relay set that need
+/// not overlap the kind:10050 DM-inbox relays the Welcome was actually
+/// delivered to. The publish and subscribe sides must agree on the SAME
+/// relay-selection policy for a "verified private inbox" or the invitee's
+/// client can go connected-but-deaf: it holds live sockets to other relays
+/// while the delivering relay carries no matching REQ (nmp-nip17's own
+/// `active_giftwrap_inbox_interest` sets this override for the identical
+/// reason — see `nmp_nip17::inbox::active_giftwrap_inbox_interest`).
 #[must_use]
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = nmp_core::substrate::ViewDependencies {
@@ -74,11 +90,13 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
         tag_refs: vec![("p".to_string(), pubkey.to_string())],
         ..Default::default()
     };
-    deps.into_logical_interest(
+    let mut interest = deps.into_logical_interest(
         giftwrap_interest_id(pubkey),
         nmp_planner::InterestScope::Account(pubkey.to_string()),
         InterestLifecycle::Tailing,
-    )
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
+    interest
 }
 
 /// Scoped registry identity for a Marmot gift-wrap inbox subscription.
@@ -176,85 +194,5 @@ pub fn group_message_registrations(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn giftwrap_interest_id_is_deterministic_per_pubkey() {
-        let a = giftwrap_interest_id("abc123");
-        let b = giftwrap_interest_id("abc123");
-        let c = giftwrap_interest_id("def456");
-        assert_eq!(a, b, "same pubkey must yield same id");
-        assert_ne!(a, c, "different pubkeys must yield different ids");
-        assert_eq!(a, InterestId(0x95ff_bdc5_c509_4315));
-    }
-
-    #[test]
-    fn lookup_and_group_interest_ids_are_restart_stable() {
-        assert_eq!(
-            key_package_lookup_interest_id("peerpubkey"),
-            InterestId(0xfa96_6f05_f77c_1fe2)
-        );
-        assert_eq!(
-            group_message_interest_id("abcd", "wss://group-a/"),
-            InterestId(0x65ae_a778_1d18_8e5d)
-        );
-    }
-
-    #[test]
-    fn giftwrap_inbox_interest_is_account_scoped_and_p_filtered() {
-        let i = giftwrap_inbox_interest("selfpubkey");
-        assert!(i.shape.relay_pin.is_none());
-        assert!(i.shape.kinds.contains(&KIND_GIFT_WRAP));
-        assert!(i.shape.tags.get("p").unwrap().contains("selfpubkey"));
-        assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
-        assert!(matches!(
-            i.scope,
-            InterestScope::Account(ref pk) if pk == "selfpubkey"
-        ));
-        assert_eq!(i.id, giftwrap_interest_id("selfpubkey"));
-    }
-
-    #[test]
-    fn key_package_lookup_interest_targets_only_kind_30443() {
-        let i = key_package_lookup_interest("peerpubkey");
-        assert!(i.shape.authors.contains("peerpubkey"));
-        assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE));
-        // Legacy kind:443 is retired — must NOT appear in lookup interests.
-        assert_eq!(
-            i.shape.kinds.len(),
-            1,
-            "only kind:30443, no legacy kind:443"
-        );
-        assert_eq!(i.shape.limit, Some(4));
-        assert!(i.shape.relay_pin.is_none());
-        assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
-        assert_eq!(i.id, key_package_lookup_interest_id("peerpubkey"));
-    }
-
-    #[test]
-    fn group_message_interests_are_relay_pinned_and_tailing() {
-        let interests = group_message_interests(
-            "abcd",
-            ["wss://group-a/", "wss://group-b/"]
-                .into_iter()
-                .map(String::from),
-        );
-        assert_eq!(interests.len(), 2);
-        for i in &interests {
-            assert!(i.shape.kinds.contains(&KIND_MARMOT_GROUP_MESSAGE));
-            assert_eq!(i.shape.limit, Some(200));
-            assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
-            assert!(matches!(i.scope, InterestScope::Global));
-        }
-        assert_eq!(
-            interests[0].shape.relay_pin.as_deref(),
-            Some("wss://group-a/")
-        );
-        assert_eq!(
-            interests[1].shape.relay_pin.as_deref(),
-            Some("wss://group-b/")
-        );
-        assert_ne!(interests[0].id, interests[1].id);
-    }
-}
+#[path = "interest_tests.rs"]
+mod tests;
