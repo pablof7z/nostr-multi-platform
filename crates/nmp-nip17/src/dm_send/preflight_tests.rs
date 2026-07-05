@@ -71,6 +71,7 @@ fn missing_kind10050_for_recipient_fails_closed() {
     // Seed the sender's relays; deliberately leave the recipient's missing.
     cache.upsert(
         sender_hex.clone(),
+        100,
         vec!["wss://sender-dm.example".to_string()],
     );
 

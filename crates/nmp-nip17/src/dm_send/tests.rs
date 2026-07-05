@@ -316,8 +316,8 @@ fn every_port_step_pins_the_originating_account() {
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+    cache.upsert(sender_hex.clone(), 100, vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), 100, vec!["wss://r.example".to_string()]);
 
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
@@ -356,8 +356,8 @@ fn mid_chain_account_switch_signs_seal_with_originating_account() {
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(originating_hex.clone(), vec!["wss://s.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+    cache.upsert(originating_hex.clone(), 100, vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), 100, vec!["wss://r.example".to_string()]);
 
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&originating_hex, &recipient_hex),

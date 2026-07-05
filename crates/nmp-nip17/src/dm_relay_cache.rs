@@ -61,7 +61,10 @@ use nmp_core::substrate::DmInboxRelayLookup;
 /// the kernel as `Arc<dyn DmInboxRelayLookup>`).
 #[derive(Default)]
 pub struct DmRelayCache {
-    inner: RwLock<HashMap<String, Vec<String>>>,
+    /// author pubkey → (source event `created_at`, deduped relay list). The
+    /// `created_at` is retained even for a cleared (empty) list so a LATER
+    /// upsert with an OLDER event is correctly ignored (#3071 keep-newest).
+    inner: RwLock<HashMap<String, (u64, Vec<String>)>>,
 }
 
 impl DmRelayCache {
@@ -81,6 +84,7 @@ impl DmRelayCache {
         match self.inner.read() {
             Ok(guard) => guard
                 .get(pubkey)
+                .map(|(_created_at, relays)| relays)
                 .filter(|relays| !relays.is_empty())
                 .cloned(),
             Err(e) => {
@@ -94,14 +98,22 @@ impl DmRelayCache {
         }
     }
 
-    /// Upsert `pubkey`'s DM-inbox relays. An empty `relays` slice removes
-    /// the entry (the "author cleared their list" path the kind:10050
-    /// supersession contract requires).
+    /// Upsert `pubkey`'s DM-inbox relays from a kind:10050 published at
+    /// `created_at`. KEEPS THE NEWEST (#3071): an event OLDER than the cached
+    /// one is ignored, so a reused-identity cache that accumulated multiple
+    /// kind:10050 across sessions — or a cold-relaunch replay that delivers a
+    /// stale event last — never overwrites the current DM-inbox list with a
+    /// stale one pointing at a dead relay. (Mirrors the kind:30443 key-package
+    /// keep-newest in #3068.) On an equal `created_at` the last write wins
+    /// (idempotent for a re-delivered replaceable event).
     ///
-    /// D4: the single production writer is [`crate::Kind10050Parser`];
-    /// tests may write directly through this method. D6 — a poisoned
-    /// lock is logged and dropped (no panic, no partial write).
-    pub fn upsert(&self, pubkey: String, relays: Vec<String>) {
+    /// An empty `relays` slice is the "author cleared their list" signal; it is
+    /// stored as a `created_at`-stamped tombstone (so a subsequent OLDER event
+    /// cannot resurrect a stale list) and [`Self::read_relays`] returns `None`.
+    ///
+    /// D4: the single production writer is [`crate::Kind10050Parser`]; tests may
+    /// write directly. D6 — a poisoned lock is logged and dropped.
+    pub fn upsert(&self, pubkey: String, created_at: u64, relays: Vec<String>) {
         let mut guard = match self.inner.write() {
             Ok(g) => g,
             Err(e) => {
@@ -113,17 +125,34 @@ impl DmRelayCache {
                 return;
             }
         };
-        if relays.is_empty() {
-            guard.remove(&pubkey);
-        } else {
-            guard.insert(pubkey, relays);
+        use std::collections::hash_map::Entry;
+        match guard.entry(pubkey) {
+            Entry::Occupied(mut slot) => {
+                if created_at >= slot.get().0 {
+                    slot.insert((created_at, relays));
+                } else {
+                    tracing::debug!(
+                        pubkey = %slot.key(),
+                        stale_created_at = created_at,
+                        kept_created_at = slot.get().0,
+                        "DmRelayCache: ignoring stale kind:10050 (kept newer DM-inbox list)"
+                    );
+                }
+            }
+            Entry::Vacant(slot) => {
+                slot.insert((created_at, relays));
+            }
         }
     }
 
-    /// Number of pubkeys with cached entries. Diagnostic + test helper.
+    /// Number of pubkeys with a NON-empty cached relay list (a cleared/tombstone
+    /// entry is not counted). Diagnostic + test helper.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.inner.read().map(|g| g.len()).unwrap_or(0)
+        self.inner
+            .read()
+            .map(|g| g.values().filter(|(_, relays)| !relays.is_empty()).count())
+            .unwrap_or(0)
     }
 
     /// `true` iff no pubkey is cached.
@@ -156,6 +185,7 @@ mod tests {
         let cache = DmRelayCache::new();
         cache.upsert(
             "alice".to_string(),
+            100,
             vec![
                 "wss://dm-a.example".to_string(),
                 "wss://dm-b.example".to_string(),
@@ -174,27 +204,28 @@ mod tests {
     }
 
     #[test]
-    fn upsert_with_empty_relays_removes_entry() {
+    fn upsert_with_empty_relays_clears_the_list() {
         let cache = DmRelayCache::new();
-        cache.upsert("alice".to_string(), vec!["wss://dm.example".to_string()]);
+        cache.upsert("alice".to_string(), 100, vec!["wss://dm.example".to_string()]);
         assert!(
             cache.read_relays("alice").is_some(),
             "precondition: populated"
         );
 
-        cache.upsert("alice".to_string(), Vec::new());
+        // A NEWER empty kind:10050 (author cleared their list).
+        cache.upsert("alice".to_string(), 200, Vec::new());
         assert!(
             cache.read_relays("alice").is_none(),
-            "an empty kind:10050 (author cleared their list) removes the entry"
+            "an empty kind:10050 (author cleared their list) resolves to None"
         );
-        assert!(cache.is_empty(), "the entry must be gone, not stored empty");
+        assert!(cache.is_empty(), "no non-empty list remains");
     }
 
     #[test]
-    fn upsert_replaces_previous_entry() {
+    fn upsert_replaces_previous_entry_when_newer() {
         let cache = DmRelayCache::new();
-        cache.upsert("alice".to_string(), vec!["wss://old.example".to_string()]);
-        cache.upsert("alice".to_string(), vec!["wss://new.example".to_string()]);
+        cache.upsert("alice".to_string(), 100, vec!["wss://old.example".to_string()]);
+        cache.upsert("alice".to_string(), 200, vec!["wss://new.example".to_string()]);
 
         let resolved = cache
             .read_relays("alice")
@@ -207,11 +238,37 @@ mod tests {
         assert_eq!(cache.len(), 1, "only one entry per author");
     }
 
+    /// #3071 — the keep-newest invariant. A STALE kind:10050 arriving AFTER a
+    /// fresher one (accumulated across sessions / replayed last on cold
+    /// relaunch) must NOT overwrite the current DM-inbox list with a dead relay.
+    #[test]
+    fn stale_upsert_after_a_newer_one_is_ignored() {
+        let cache = DmRelayCache::new();
+        // Fresh list (created_at=200) pointing at the LIVE relay arrives first.
+        cache.upsert("alice".to_string(), 200, vec!["wss://live.example".to_string()]);
+        // A STALE list (created_at=100) pointing at a DEAD relay arrives last.
+        cache.upsert("alice".to_string(), 100, vec!["wss://dead.example".to_string()]);
+
+        assert_eq!(
+            cache.read_relays("alice"),
+            Some(vec!["wss://live.example".to_string()]),
+            "the newest kind:10050 (by created_at) must win regardless of ingest order"
+        );
+
+        // And a stale CLEAR must not wipe the fresh list either.
+        cache.upsert("alice".to_string(), 50, Vec::new());
+        assert_eq!(
+            cache.read_relays("alice"),
+            Some(vec!["wss://live.example".to_string()]),
+            "a stale empty kind:10050 must not clear a newer list"
+        );
+    }
+
     #[test]
     fn multi_author_seeds_are_independent() {
         let cache = DmRelayCache::new();
-        cache.upsert("alice".to_string(), vec!["wss://a.example".to_string()]);
-        cache.upsert("bob".to_string(), vec!["wss://b.example".to_string()]);
+        cache.upsert("alice".to_string(), 100, vec!["wss://a.example".to_string()]);
+        cache.upsert("bob".to_string(), 100, vec!["wss://b.example".to_string()]);
 
         assert_eq!(
             cache.read_relays("alice"),
@@ -230,7 +287,7 @@ mod tests {
         // `Arc<dyn DmInboxRelayLookup>`. Both the trait method and the
         // inherent method MUST return the same payload.
         let cache = Arc::new(DmRelayCache::new());
-        cache.upsert("alice".to_string(), vec!["wss://via.lookup".to_string()]);
+        cache.upsert("alice".to_string(), 100, vec!["wss://via.lookup".to_string()]);
 
         let as_trait: Arc<dyn DmInboxRelayLookup> = Arc::clone(&cache) as _;
         assert_eq!(

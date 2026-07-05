@@ -12,10 +12,12 @@ fn happy_path_publishes_two_envelopes_pinned_to_kind10050_relays() {
     let cache = Arc::new(DmRelayCache::new());
     cache.upsert(
         sender_hex.clone(),
+         100,
         vec!["wss://sender-dm.example".to_string()],
     );
     cache.upsert(
         recipient_hex.clone(),
+         100,
         vec!["wss://recipient-dm.example".to_string()],
     );
 
@@ -103,8 +105,8 @@ fn recipient_envelope_round_trips_to_the_original_rumor() {
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+    cache.upsert(sender_hex.clone(), 100, vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), 100, vec!["wss://r.example".to_string()]);
 
     let cmd = SendGiftWrappedDmCommand {
         rumor: sample_rumor(&sender_hex, &recipient_hex),
@@ -144,8 +146,8 @@ fn rumor_created_at_is_restamped_when_zero_sentinel() {
     let recipient_keys = nostr::Keys::generate();
     let recipient_hex = recipient_keys.public_key().to_hex();
     let cache = Arc::new(DmRelayCache::new());
-    cache.upsert(sender_hex.clone(), vec!["wss://s.example".to_string()]);
-    cache.upsert(recipient_hex.clone(), vec!["wss://r.example".to_string()]);
+    cache.upsert(sender_hex.clone(), 100, vec!["wss://s.example".to_string()]);
+    cache.upsert(recipient_hex.clone(), 100, vec!["wss://r.example".to_string()]);
 
     let now: u64 = 1_700_000_777;
     let cmd = SendGiftWrappedDmCommand {
