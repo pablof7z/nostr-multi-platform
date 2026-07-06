@@ -50,12 +50,10 @@ const BANNED_POLICY_VOCAB: &[(&str, &str)] = &[
 ];
 
 pub fn file_is_in_scope(path: &Path) -> bool {
-    // Only applies to nmp-wasm/src/** (or future ABI modules).
-    // The nmp-wasm crate is retired (#2202), so this function will return false
-    // for the foreseeable future. When a future browser-runtime ABI module is
-    // added, extend this check accordingly.
+    // Applies to browser-runtime ABI modules under nmp-browser-runtime/src/wasm/**
+    // (the wasm-bindgen Worker export interface).
     let s = path.to_string_lossy().replace('\\', "/");
-    (s.contains("/nmp-wasm/src/") || s.starts_with("nmp-wasm/src/"))
+    (s.contains("/nmp-browser-runtime/src/wasm/") || s.starts_with("nmp-browser-runtime/src/wasm/"))
         && !s.contains("/doc/") // Exempt doc tests from the strict ABI boundary
 }
 
@@ -67,38 +65,45 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
     }
     let mut hits = Vec::new();
 
-    // Check for banned imports
+    // Check for banned imports (match whole words only)
     for (import, reason) in BANNED_IMPORTS {
         if let Some(rel) = line.find(import) {
-            let col = rel + 1; // 1-indexed
-            hits.push((
-                col,
-                format!(
-                    "banned import `{}` in ABI — {} (WASM_ABI_ONLY)",
-                    import, reason
-                ),
-                format!("Use a type bridge from nmp-browser-runtime::wasm instead of importing {}", import),
-            ));
+            // Verify it's a whole word match (not part of another identifier)
+            if is_word_boundary(line, rel, import.len()) {
+                let col = rel + 1; // 1-indexed
+                hits.push((
+                    col,
+                    format!(
+                        "banned import `{}` in ABI — {} (WASM_ABI_ONLY)",
+                        import, reason
+                    ),
+                    format!("Use a type bridge from nmp-browser-runtime::wasm instead of importing {}", import),
+                ));
+            }
         }
     }
 
-    // Check for banned policy vocabulary
+    // Check for banned policy vocabulary (match whole words only)
     for (vocab, reason) in BANNED_POLICY_VOCAB {
         let mut start = 0;
         while let Some(rel) = line[start..].find(vocab) {
-            let col = start + rel + 1; // 1-indexed
-            hits.push((
-                col,
-                format!(
-                    "banned policy vocabulary `{}` in ABI — {} (WASM_ABI_ONLY)",
-                    vocab, reason
-                ),
-                format!(
-                    "Remove policy vocabulary from ABI glue; {} belongs in nmp-core/app composition",
-                    vocab
-                ),
-            ));
-            start = start + rel + vocab.len();
+            let abs_pos = start + rel;
+            // Verify it's a whole word match (not part of another identifier)
+            if is_word_boundary(line, abs_pos, vocab.len()) {
+                let col = abs_pos + 1; // 1-indexed
+                hits.push((
+                    col,
+                    format!(
+                        "banned policy vocabulary `{}` in ABI — {} (WASM_ABI_ONLY)",
+                        vocab, reason
+                    ),
+                    format!(
+                        "Remove policy vocabulary from ABI glue; {} belongs in nmp-core/app composition",
+                        vocab
+                    ),
+                ));
+            }
+            start = abs_pos + vocab.len();
         }
     }
 
@@ -116,6 +121,31 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
     }
 
     hits
+}
+
+/// Helper: true if `word` at position `start` in `line` is a word boundary match
+/// (not embedded within another identifier). Checks that the character before/after
+/// are not alphanumeric or underscore.
+fn is_word_boundary(line: &str, start: usize, word_len: usize) -> bool {
+    let end = start + word_len;
+
+    // Check character before (if exists)
+    if start > 0 {
+        let before = line.chars().nth(start - 1).unwrap_or(' ');
+        if before.is_alphanumeric() || before == '_' {
+            return false;
+        }
+    }
+
+    // Check character after (if exists)
+    if end < line.len() {
+        let after = line.chars().nth(end).unwrap_or(' ');
+        if after.is_alphanumeric() || after == '_' {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

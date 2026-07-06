@@ -1,24 +1,24 @@
-//! `BROWSER_RUNTIME_BOUNDARY` — browser-runtime transport adapter enforces policy boundary.
+//! `BROWSER_RUNTIME_BOUNDARY` — browser-runtime relay/wasm adapters enforce policy boundary.
 //!
-//! The browser-runtime transport adapter (`crates/nmp-browser-runtime/src/transport/**`)
-//! must remain a pure adapter: no routing/outbox/NIP-65/publish-target/subscription-planning
-//! vocabulary, no protocol/routing/signing policy in the web TypeScript packages, no
-//! thread::sleep/setInterval+poll loops in browser runtime + TS packages, no raw-secret/
-//! snapshot/debug retention patterns.
+//! The browser-runtime relay transport and wasm ABI adapters
+//! (`crates/nmp-browser-runtime/src/relay/**` and `crates/nmp-browser-runtime/src/wasm/**`)
+//! must remain pure adapters: no routing/outbox/NIP-65/publish-target/subscription-planning
+//! vocabulary, no direct policy logic.
 //!
 //! This rule (BROWSER_RUNTIME_BOUNDARY) scans for policy vocabulary leaking into the
-//! transport adapter or web packages, and extends the D8 no-polling scan to include
-//! browser runtimes and TypeScript packages.
+//! browser-runtime relay and wasm adapters.
 //!
-//! ## Banned in `crates/nmp-browser-runtime/src/transport/**`
+//! ## Banned in `crates/nmp-browser-runtime/src/relay/**` and `/wasm/**`
 //! - `outbox`, `route_to`, `Nip65`, `publish_target` — routing policy vocabulary
 //! - `mailbox`, `signer_kind` — signer/messaging policy vocabulary
 //! - `subscription_planning`, `subscription_lifecycle` — subscription control vocabulary
 //!
-//! ## Banned in `web/packages/*/src`
-//! - `routing`, `dispatch_route`, `subscription_planner` — routing/policy logic
-//! - `setInterval` + poll patterns — active polling loops (covered by D8 extension)
-//! - Raw secret/snapshot retention in diagnostics
+//! ## Note: TypeScript scanning
+//!
+//! This rule currently scans only Rust files. TypeScript package policy gates
+//! (routing, dispatch, subscription planning, poll loops, secret/snapshot retention)
+//! require walker extension for `.ts`/`.tsx` with proper comment handling. This is
+//! tracked as future work (#2082).
 //!
 //! Escape hatches: `// doctrine-allow: browser_runtime_boundary` with a required
 //! justification (e.g., "// doctrine-allow: browser_runtime_boundary — worker dispatch
@@ -41,24 +41,14 @@ const BANNED_SIGNER_VOCAB: &[(&str, &str)] = &[
     ("subscription_kind", "subscription lifecycle policy forbidden in transport adapter"),
 ];
 
-const BANNED_TS_VOCAB: &[(&str, &str)] = &[
-    ("routing", "routing logic forbidden in TS packages"),
-    ("dispatch_route", "route dispatch forbidden in TS packages"),
-    ("subscription_planner", "subscription planning forbidden in TS packages"),
-];
 
 pub fn file_is_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
 
-    // Scope: transport adapter under nmp-browser-runtime/src/transport
-    let in_transport = (s.contains("/nmp-browser-runtime/src/transport/") || s.starts_with("nmp-browser-runtime/src/transport/"))
-        && !s.contains("/doc/");
-
-    // Scope: web TypeScript packages
-    let in_web_packages = (s.contains("/web/packages/") || s.starts_with("web/packages/"))
-        && (s.ends_with(".ts") || s.ends_with(".tsx"));
-
-    in_transport || in_web_packages
+    // Scope: browser-runtime relay and wasm adapters (transport adapters)
+    ((s.contains("/nmp-browser-runtime/src/relay/") || s.starts_with("nmp-browser-runtime/src/relay/"))
+        || (s.contains("/nmp-browser-runtime/src/wasm/") || s.starts_with("nmp-browser-runtime/src/wasm/")))
+        && !s.contains("/doc/")
 }
 
 /// Returns `(col, message, suggested)` per match on `line`. `is_comment`
@@ -69,67 +59,80 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
     }
     let mut hits = Vec::new();
 
-    // Check for banned routing vocabulary
+    // Check for banned routing vocabulary (match whole words only)
     for (vocab, reason) in BANNED_ROUTING_VOCAB {
         let mut start = 0;
         while let Some(rel) = line[start..].find(vocab) {
-            let col = start + rel + 1; // 1-indexed
-            hits.push((
-                col,
-                format!(
-                    "banned routing vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
-                    vocab, reason
-                ),
-                format!(
-                    "Remove routing policy from transport adapter; {} belongs in nmp-core",
-                    vocab
-                ),
-            ));
-            start = start + rel + vocab.len();
+            let abs_pos = start + rel;
+            // Verify it's a whole word match (not part of another identifier)
+            if is_word_boundary(line, abs_pos, vocab.len()) {
+                let col = abs_pos + 1; // 1-indexed
+                hits.push((
+                    col,
+                    format!(
+                        "banned routing vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
+                        vocab, reason
+                    ),
+                    format!(
+                        "Remove routing policy from transport adapter; {} belongs in nmp-core",
+                        vocab
+                    ),
+                ));
+            }
+            start = abs_pos + vocab.len();
         }
     }
 
-    // Check for banned signer vocabulary
+    // Check for banned signer vocabulary (match whole words only)
     for (vocab, reason) in BANNED_SIGNER_VOCAB {
         let mut start = 0;
         while let Some(rel) = line[start..].find(vocab) {
-            let col = start + rel + 1; // 1-indexed
-            hits.push((
-                col,
-                format!(
-                    "banned signer/subscription vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
-                    vocab, reason
-                ),
-                format!(
-                    "Remove policy vocabulary from transport adapter; {} belongs in nmp-core",
-                    vocab
-                ),
-            ));
-            start = start + rel + vocab.len();
-        }
-    }
-
-    // Check for banned TS vocabulary (only in TypeScript files)
-    for (vocab, reason) in BANNED_TS_VOCAB {
-        let mut start = 0;
-        while let Some(rel) = line[start..].find(vocab) {
-            let col = start + rel + 1; // 1-indexed
-            hits.push((
-                col,
-                format!(
-                    "banned TypeScript vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
-                    vocab, reason
-                ),
-                format!(
-                    "Remove policy logic from TS package; {} belongs in app/core layer",
-                    vocab
-                ),
-            ));
-            start = start + rel + vocab.len();
+            let abs_pos = start + rel;
+            // Verify it's a whole word match (not part of another identifier)
+            if is_word_boundary(line, abs_pos, vocab.len()) {
+                let col = abs_pos + 1; // 1-indexed
+                hits.push((
+                    col,
+                    format!(
+                        "banned signer/subscription vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
+                        vocab, reason
+                    ),
+                    format!(
+                        "Remove policy vocabulary from transport adapter; {} belongs in nmp-core",
+                        vocab
+                    ),
+                ));
+            }
+            start = abs_pos + vocab.len();
         }
     }
 
     hits
+}
+
+/// Helper: true if `word` at position `start` in `line` is a word boundary match
+/// (not embedded within another identifier). Checks that the character before/after
+/// are not alphanumeric or underscore.
+fn is_word_boundary(line: &str, start: usize, word_len: usize) -> bool {
+    let end = start + word_len;
+
+    // Check character before (if exists)
+    if start > 0 {
+        let before = line.chars().nth(start - 1).unwrap_or(' ');
+        if before.is_alphanumeric() || before == '_' {
+            return false;
+        }
+    }
+
+    // Check character after (if exists)
+    if end < line.len() {
+        let after = line.chars().nth(end).unwrap_or(' ');
+        if after.is_alphanumeric() || after == '_' {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

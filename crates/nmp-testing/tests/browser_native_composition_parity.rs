@@ -21,8 +21,6 @@
 //! a comment per exclusion explaining why the namespace/resolver/parser/etc.
 //! is native-only.
 
-use std::sync::Arc;
-
 /// Documented platform exclusions: action namespaces, resolvers, parsers, etc.
 /// that are intentionally native-only and should NOT appear in browser composition.
 ///
@@ -106,24 +104,35 @@ fn assert_resolver_parity(
 
 #[test]
 fn browser_native_composition_parity() {
-    // This test is currently a structural placeholder. Future commits will:
-    //
+    // Verify that PLATFORM_EXCLUSIONS contains intentionally documented native-only
+    // components. This is a basic parity check to ensure the exclusion list is used.
+    let has_exclusions = !PLATFORM_EXCLUSIONS.is_empty();
+    assert!(
+        has_exclusions,
+        "PLATFORM_EXCLUSIONS must contain at least one documented platform exclusion. \
+         If the browser and native platforms have identical compositions with no intentional \
+         platform-specific exclusions, this assumption is invalidated and should be documented."
+    );
+
+    // Verify that no exclusion has an empty reason.
+    for (namespace, reason) in PLATFORM_EXCLUSIONS {
+        assert!(
+            !reason.is_empty(),
+            "Platform exclusion for '{}' has empty reason. \
+             Provide a clear explanation of why it's native-only.",
+            namespace
+        );
+    }
+
+    // TODO: Future commits will implement real composition parity checks:
     // 1. Construct actual `BrowserAppBuilder` and native builder instances
     // 2. Register platform-specific modules on each
     // 3. Query registered action namespaces, routing factory, publish resolver,
     //    ingest parsers, projections, scopes, and capability slots
     // 4. Compare the two sets and assert equivalence (or intentional platform exclusions)
     //
-    // For now, we pass the test to establish the plumbing in Cargo.toml
-    // and prove the test infrastructure works.
-
-    // TODO: After #2046 completes and `BrowserAppBuilder` is fully wired,
-    // implement the real composition parity checks.
-    assert!(
-        true,
-        "Placeholder: browser/native composition parity test. \
-         Full implementation pending #2046."
-    );
+    // For now, we verify the test infrastructure (PLATFORM_EXCLUSIONS) and ensure
+    // it can be used to validate real compositions once wiring is complete.
 }
 
 #[test]

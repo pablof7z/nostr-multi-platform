@@ -18,10 +18,12 @@ use crate::rules::{
     wasm_abi_only,
 };
 use crate::scope::{
-    action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
-    d14_file_in_scope, d15_file_in_scope, d17_file_in_scope, d19_file_in_scope, d20_file_in_scope,
-    d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope, d27_file_in_scope,
-    d6_file_in_scope, d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
+    action_namespace_file_in_scope, browser_runtime_boundary_file_in_scope, d10_file_in_scope,
+    d12_file_in_scope, d13_file_extra_in_scope, d14_file_in_scope, d15_file_in_scope,
+    d17_file_in_scope, d19_file_in_scope, d20_file_in_scope, d21_file_in_scope,
+    d26_active_local_keys_in_scope, d26_app_host_in_scope, d27_file_in_scope, d6_file_in_scope,
+    d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
+    wasm_abi_only_file_in_scope,
 };
 use crate::{allow, walker};
 
@@ -132,8 +134,8 @@ impl FileContext {
             d26_app_host_scope: d26_app_host_in_scope(path, &cfg.d26_extra_scopes),
             d26_alk_scope: d26_active_local_keys_in_scope(path, &cfg.d26_extra_scopes),
             d27_in_scope: d27_file_in_scope(path, &cfg.d27_extra_scopes),
-            wasm_abi_only_in_scope: wasm_abi_only::file_is_in_scope(path),
-            browser_runtime_boundary_in_scope: browser_runtime_boundary::file_is_in_scope(path),
+            wasm_abi_only_in_scope: wasm_abi_only_file_in_scope(path),
+            browser_runtime_boundary_in_scope: browser_runtime_boundary_file_in_scope(path),
             ef_scope: event_flow_gates::FileScope::resolve(
                 path,
                 &cfg.d23_extra_scopes,

@@ -96,23 +96,23 @@ jobs:
 
       # Gate (c): WASM_ABI_ONLY denylist rule (#2064).
       - name: Run doctrine-lint wasm_abi_only rule
-        run: |
-          cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-wasm || true
+        run: cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src/wasm
 
       # Gate (d): BROWSER_RUNTIME_BOUNDARY policy boundary rule (#2082).
       - name: Run doctrine-lint browser_runtime_boundary rule
-        run: cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src
+        run: cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src/relay --path crates/nmp-browser-runtime/src/wasm
 
       # Gate (e): Full doctrine-lint smoke test (all rules, including new fixtures).
       - name: Run doctrine-lint smoke test
         run: cargo test -p nmp-testing --test doctrine_lint_smoke
 
   # Stub for Playwright/browser smoke test (awaiting rebuilt Chirp Web).
-  # This job will be activated once a real app/fixture exists to drive the
-  # browser-runtime Worker interface. For now, it is a no-op.
+  # This job validates that the wasm32 build succeeds but does NOT run real browser tests.
+  # Real browser smoke tests (Worker startup, callback/update delivery automation) are
+  # tracked as issue #2081 and require a fully rebuilt Chirp Web shell.
   # See: issue #2046 "Rebuild Chirp Web on browser-runtime floor"
   browser-smoke-stub:
-    name: Browser smoke test (stub, awaiting #2046)
+    name: Browser smoke test (stub, awaiting #2046/#2081)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -120,4 +120,5 @@ jobs:
       - name: Stub message
         run: |
           echo "Browser smoke test is a stub; awaiting rebuilt Chirp Web (issue #2046)."
+          echo "Real Worker startup/callback coverage is tracked as issue #2081."
           echo "Once a fixture app exists, this job will run Playwright tests."

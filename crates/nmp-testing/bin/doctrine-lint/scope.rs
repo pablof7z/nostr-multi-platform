@@ -13,7 +13,8 @@
 use std::path::Path;
 
 use crate::rules::{
-    a6, action_namespace, d10, d12, d14, d15, d17, d19, d20, d21, d23, d24, d25, d26, d27, d6, d9,
+    a6, action_namespace, browser_runtime_boundary, d10, d12, d14, d15, d17, d19, d20, d21, d23,
+    d24, d25, d26, d27, d6, d9, wasm_abi_only,
 };
 
 /// True iff the action-namespace prefix rule should scan `path`.
@@ -280,4 +281,32 @@ pub(crate) fn is_nmp_testing_harness_bin(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     (s.contains("/nmp-testing/bin/") || s.contains("nmp-testing/bin/"))
         && !s.contains("/doctrine-lint/")
+}
+
+/// True iff WASM_ABI_ONLY should scan `path` — either the file is inside
+/// actual ABI modules (wasm-bindgen exports, future nmp-wasm paths), or the
+/// caller opted-in via `--path` to a fixture under `fixtures/wasm_abi_only/`.
+/// The fixture smoke test uses this hook to stage test files outside the real
+/// crates/ layout while still reaching the rule.
+pub(crate) fn wasm_abi_only_file_in_scope(path: &Path) -> bool {
+    if wasm_abi_only::file_is_in_scope(path) {
+        return true;
+    }
+    // Fixture path opt-in for smoke tests.
+    let s = path.to_string_lossy().replace('\\', "/");
+    (s.contains("/fixtures/wasm_abi_only/") || s.contains("fixtures/wasm_abi_only/"))
+}
+
+/// True iff BROWSER_RUNTIME_BOUNDARY should scan `path` — either the file is
+/// in a browser-runtime transport adapter or web package path, or the caller
+/// opted-in via `--path` to a fixture under `fixtures/browser_runtime_boundary/`.
+/// The fixture smoke test uses this hook to stage test files outside the real
+/// crates/ layout while still reaching the rule.
+pub(crate) fn browser_runtime_boundary_file_in_scope(path: &Path) -> bool {
+    if browser_runtime_boundary::file_is_in_scope(path) {
+        return true;
+    }
+    // Fixture path opt-in for smoke tests.
+    let s = path.to_string_lossy().replace('\\', "/");
+    (s.contains("/fixtures/browser_runtime_boundary/") || s.contains("fixtures/browser_runtime_boundary/"))
 }

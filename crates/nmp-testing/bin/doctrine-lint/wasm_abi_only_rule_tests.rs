@@ -13,7 +13,7 @@ use super::run_lint;
 
 #[test]
 fn wasm_abi_only_negative_fixture_passes() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/neg.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/neg.rs"];
     let (code, stdout, stderr) = run_lint(&args);
 
     assert_eq!(
@@ -26,7 +26,7 @@ fn wasm_abi_only_negative_fixture_passes() {
 
 #[test]
 fn wasm_abi_only_positive_fixture_fails() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(
@@ -44,7 +44,7 @@ fn wasm_abi_only_positive_fixture_fails() {
 
 #[test]
 fn wasm_abi_only_detects_banned_imports() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(code, 0);
@@ -66,7 +66,7 @@ fn wasm_abi_only_detects_banned_imports() {
 
 #[test]
 fn wasm_abi_only_detects_banned_vocabulary() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/wasm_abi_only/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(code, 0);

@@ -13,7 +13,7 @@ use super::run_lint;
 
 #[test]
 fn browser_runtime_boundary_negative_fixture_passes() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/neg.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/neg.rs"];
     let (code, stdout, stderr) = run_lint(&args);
 
     assert_eq!(
@@ -26,7 +26,7 @@ fn browser_runtime_boundary_negative_fixture_passes() {
 
 #[test]
 fn browser_runtime_boundary_positive_fixture_fails() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(
@@ -44,7 +44,7 @@ fn browser_runtime_boundary_positive_fixture_fails() {
 
 #[test]
 fn browser_runtime_boundary_detects_outbox() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(code, 0);
@@ -60,7 +60,7 @@ fn browser_runtime_boundary_detects_outbox() {
 
 #[test]
 fn browser_runtime_boundary_detects_routing_vocab() {
-    let args = vec!["--fixture", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
+    let args = vec!["--path", "crates/nmp-testing/bin/doctrine-lint/fixtures/browser_runtime_boundary/pos.rs"];
     let (code, stdout, _stderr) = run_lint(&args);
 
     assert_ne!(code, 0);
