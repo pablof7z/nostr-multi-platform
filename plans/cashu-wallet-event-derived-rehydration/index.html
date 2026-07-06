@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cashu Wallet Event-Derived Rehydration</title>
+    <link rel="stylesheet" href="../../assets/style.css">
+  </head>
+  <body>
+    <main class="shell">
+      <nav class="topbar">
+        <a href="../../">Planning pages</a>
+        
+      </nav>
+      <section class="hero">
+        <div class="eyebrow">Architecture plan</div>
+        <h1>Cashu Wallet Event-Derived Rehydration</h1>
+        <p class="summary">Make the account&#x27;s self-authored wallet event stream the source of truth for Cashu wallet state. The wallet should rehydrate from cache replay plus relay tailing on launch/account activation; cashu.recover is only an explicit status or retry surface, not the correctness path.</p>
+        <div class="meta">
+          <span class="pill ready">Ready to implement</span>
+          <span class="pill">86 percent certainty</span>
+        </div>
+      </section>
+      <div class="grid">
+        <div>
+
+          <section class="section">
+            <h2>Boundaries</h2>
+            <pre class="mermaid">flowchart LR
+  Relay[Relays + local store] --&gt; Interest[wallet_self_authored tail authors=self]
+  Interest --&gt; Sink[WalletRuntime event sink]
+  Sink --&gt; Backend[CashuWalletBackend on_wallet_event]
+  Backend --&gt; Fold[Decrypt + fold config/proofs]
+  Fold --&gt; Projection[bounded wallet.merged projection]
+  Recover[cashu.recover] -. status/retry only .-&gt; Backend</pre>
+          </section>
+          <section class="section">
+            <h2>Very High Level</h2>
+            <p>Issue #3029 should not be fixed as an imperative &quot;recover loads wallet state&quot; feature. The correct invariant is that a composed wallet runtime always tails the active account&#x27;s own wallet events and folds them into Rust-owned wallet state. On launch or signer activation, store-first replay should feed the same path as live relay delivery: self-authored kind:17375 config, kind:7375 token events, history/quote/info events as needed, plus inbound kind:9321 nutzaps. The bounded projection then renders the state Rust already knows; the host never calls create to rediscover a wallet and never mirrors wallet state locally.
+
+Current master appears to already contain the intended structure: nmp-wallet registers an identity-reactive wallet_self_authored observed projection, eagerly syncs it on cold start, tails authors=self wallet kinds, routes observed KernelEvents through WalletRuntime, and CashuWalletBackend passively decrypts/folds kind:17375 and kind:7375. The implementation plan is therefore an audit-and-hardening pass, not a parallel recovery design: prove that the tailing/cache path reaches the external consumer&#x27;s projection, fix any missing lifecycle/routing/projection registration gap, and add regressions that fail if a returning wallet requires cashu.create or explicit recover.
+
+A key review point is the replay cap. FFI output must stay bounded, but wallet correctness must not silently depend on seeing only the last N cached wallet events unless the writer guarantees compaction. If the current observed-projection replay limit can omit live token state, replace it with budgeted internal wallet replay or a proven consolidation invariant while keeping the public WalletProjection bounded.</p>
+          </section>
+          <section class="section">
+            <h2>Existing Rules Or ADRs</h2>
+            <ul><li>AGENTS.md: Rust owns wallet recovery and relay-derived state; native shells render projections and dispatch typed actions only.</li><li>D3/ADR-0071: relay selection stays automatic and route-provenanced. The wallet stream must use NMP interests and NIP-65/app-relay routing, not host-provided relay lists.</li><li>D4: nmp-wallet is the single writer for wallet facts; no native cache or separate recovery store.</li><li>D5/ADR-0070: emitted WalletProjection rows stay bounded and typed. Internal replay may be more complete than the UI projection, but raw events/proofs never cross FFI.</li><li>D6/D7: signer decrypt failures and recovery status surface as state/action-stage results. Native never decides recoverability.</li><li>D8: replay and tailing are event-driven and budgeted, with no polling or blocking projection closures.</li><li>Crate boundaries: nmp-wallet owns the wallet product composition; nmp-nip60 owns codecs/mechanics; nmp-core must not learn Cashu or NIP-60/NIP-61 kind lists.</li></ul>
+          </section>
+          <section class="section">
+            <h2>Rule Tension And Tightening</h2>
+            <h3>Possible loosening</h3>
+            <ul><li>No rule or ADR should be loosened. The requested direction is stricter than an imperative recover action and aligns with Rust-owned, event-derived state.</li><li>Do not loosen D5 by exporting raw wallet events or proofs to let a consumer rebuild wallet state.</li></ul>
+            <h3>Possible tightening</h3>
+            <ul><li>Consider adding a wallet-specific builder-guide invariant: recovery actions must not be the sole hydration path for durable protocol state that can be replayed from relays/cache.</li><li>Consider a doctrine or test ratchet that prevents wallet correctness from depending on a projection replay cap unless a compaction/consolidation invariant proves the cap is safe.</li><li>Clarify in the wallet builder guide which projection key external consumers should decode, especially if the merged Cashu projection is under wallet.merged while older NWC status remains under wallet.</li></ul>
+          </section>
+          <section class="section">
+            <h2>Alternatives Considered</h2>
+            <ul><li>Implement cashu.recover as the primary loader. Rejected: it makes correctness imperative and easy for consumers to skip.</li><li>Add NIP-60/NIP-61 kinds to nmp-core SELF_KINDS_TAILING. Rejected: it violates the crate-boundary rule that nmp-core stays Cashu-free.</li><li>Let consumers persist or reconstruct wallet state locally. Rejected: creates a second writer and leaks wallet policy into shells.</li><li>Only read the latest kind:17375 and ignore token-event replay. Rejected: it recovers the receive key but not balances or proof inventory.</li><li>Export raw wallet events across FFI and let the host fold them. Rejected: violates bounded typed projections and native-thin-shell doctrine.</li></ul>
+          </section>
+        </div>
+        <aside>
+          <section class="card">
+            <h2>TTS Version</h2>
+            <audio controls preload="metadata" src="https://blossom.primal.net/0790ddb391b51d425b36c7d0a16d8bb222cafa4cd3f7f8701f7f10610afff261.mp3"></audio>
+            <p>Audio-friendly narration generated from the planning payload.</p>
+          </section>
+          <section class="card">
+            <h2>Certainty</h2>
+            <div class="certainty ">86%</div>
+            <p>Ready to implement.</p>
+          </section>
+          <section class="card links">
+            <h2>Links</h2>
+            
+            <a href="https://blossom.primal.net/0790ddb391b51d425b36c7d0a16d8bb222cafa4cd3f7f8701f7f10610afff261.mp3">Open narration</a>
+            <a href="../../docs/plans/cashu-wallet-event-derived-rehydration/plan.md">Detailed plan file</a>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+    </script>
+  </body>
+</html>
