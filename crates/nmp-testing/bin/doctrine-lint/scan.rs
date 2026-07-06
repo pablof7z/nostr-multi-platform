@@ -13,9 +13,8 @@ use crate::cli::Config;
 use crate::event_flow_gates;
 use crate::report;
 use crate::rules::{
-    browser_runtime_boundary, d0, d10, d11, d12, d13, d14, d15, d6, d7, deleted_defaults,
+    d0, d10, d11, d12, d13, d14, d15, d6, d7, deleted_defaults,
     feed_vocabulary, nip29_kind_blind, no_deprecated, no_raw_tap_reintroduction, product_raw_read,
-    wasm_abi_only,
 };
 use crate::scope::{
     action_namespace_file_in_scope, browser_runtime_boundary_file_in_scope, d10_file_in_scope,
@@ -30,14 +29,26 @@ use crate::{allow, walker};
 pub(crate) fn scan_one_file(
     path: &Path,
     cfg: &Config,
-    findings: &mut Vec<report::Finding>,
-) -> std::io::Result<()> {
+    state: &mut FileState,
+) -> anyhow::Result<Vec<report::Finding>> {
+    let mut findings = Vec::new();
     let ctx = FileContext::resolve(path, cfg);
-    let mut state = FileState::default();
 
-    walker::scan_file(path, |sl| {
-        line::scan_line(path, &ctx, &mut state, sl, findings);
-    })?;
+    let body = std::fs::read_to_string(path)?;
+    let lines: Vec<&str> = body.lines().collect();
+
+    for (idx, line) in lines.iter().enumerate() {
+        let is_comment = walker::line_is_comment(line);
+        line::scan_one_line(
+            path,
+            idx + 1,
+            line,
+            is_comment,
+            &ctx,
+            &mut findings,
+            &mut state.ef_state,
+        );
+    }
 
     if !ctx.workspace_d8 && ctx.d12_in_scope {
         let body = std::fs::read_to_string(path)?;

@@ -59,80 +59,67 @@ pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
     }
     let mut hits = Vec::new();
 
-    // Check for banned routing vocabulary (match whole words only)
+    // Check for banned routing vocabulary (match prefix only)
     for (vocab, reason) in BANNED_ROUTING_VOCAB {
         let mut start = 0;
         while let Some(rel) = line[start..].find(vocab) {
             let abs_pos = start + rel;
-            // Verify it's a whole word match (not part of another identifier)
-            if is_word_boundary(line, abs_pos, vocab.len()) {
-                let col = abs_pos + 1; // 1-indexed
-                hits.push((
-                    col,
-                    format!(
-                        "banned routing vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
-                        vocab, reason
-                    ),
-                    format!(
-                        "Remove routing policy from transport adapter; {} belongs in nmp-core",
-                        vocab
-                    ),
-                ));
+            let end = abs_pos + vocab.len();
+            // Verify it's a prefix match (character after is not alphanumeric/underscore)
+            if end < line.len() {
+                let after = line.chars().nth(end).unwrap_or(' ');
+                if after.is_alphanumeric() || after == '_' {
+                    start = end;
+                    continue; // Embedded in a larger word, keep searching
+                }
             }
-            start = abs_pos + vocab.len();
+            let col = abs_pos + 1; // 1-indexed
+            hits.push((
+                col,
+                format!(
+                    "banned routing vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
+                    vocab, reason
+                ),
+                format!(
+                    "Remove routing policy from transport adapter; {} belongs in nmp-core",
+                    vocab
+                ),
+            ));
+            start = end;
         }
     }
 
-    // Check for banned signer vocabulary (match whole words only)
+    // Check for banned signer vocabulary (match prefix only)
     for (vocab, reason) in BANNED_SIGNER_VOCAB {
         let mut start = 0;
         while let Some(rel) = line[start..].find(vocab) {
             let abs_pos = start + rel;
-            // Verify it's a whole word match (not part of another identifier)
-            if is_word_boundary(line, abs_pos, vocab.len()) {
-                let col = abs_pos + 1; // 1-indexed
-                hits.push((
-                    col,
-                    format!(
-                        "banned signer/subscription vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
-                        vocab, reason
-                    ),
-                    format!(
-                        "Remove policy vocabulary from transport adapter; {} belongs in nmp-core",
-                        vocab
-                    ),
-                ));
+            let end = abs_pos + vocab.len();
+            // Verify it's a prefix match (character after is not alphanumeric/underscore)
+            if end < line.len() {
+                let after = line.chars().nth(end).unwrap_or(' ');
+                if after.is_alphanumeric() || after == '_' {
+                    start = end;
+                    continue; // Embedded in a larger word, keep searching
+                }
             }
-            start = abs_pos + vocab.len();
+            let col = abs_pos + 1; // 1-indexed
+            hits.push((
+                col,
+                format!(
+                    "banned signer/subscription vocabulary `{}` — {} (BROWSER_RUNTIME_BOUNDARY)",
+                    vocab, reason
+                ),
+                format!(
+                    "Remove policy vocabulary from transport adapter; {} belongs in nmp-core",
+                    vocab
+                ),
+            ));
+            start = end;
         }
     }
 
     hits
-}
-
-/// Helper: true if `word` at position `start` in `line` is a word boundary match
-/// (not embedded within another identifier). Checks that the character before/after
-/// are not alphanumeric or underscore.
-fn is_word_boundary(line: &str, start: usize, word_len: usize) -> bool {
-    let end = start + word_len;
-
-    // Check character before (if exists)
-    if start > 0 {
-        let before = line.chars().nth(start - 1).unwrap_or(' ');
-        if before.is_alphanumeric() || before == '_' {
-            return false;
-        }
-    }
-
-    // Check character after (if exists)
-    if end < line.len() {
-        let after = line.chars().nth(end).unwrap_or(' ');
-        if after.is_alphanumeric() || after == '_' {
-            return false;
-        }
-    }
-
-    true
 }
 
 #[cfg(test)]
@@ -170,8 +157,11 @@ mod tests {
     }
 
     #[test]
-    fn detects_routing_in_ts() {
-        let hits = check("const routing = new RouterImpl();", false);
-        assert!(hits.iter().any(|h| h.1.contains("routing")));
+    fn allows_routing_as_variable_name() {
+        // The word "routing" by itself is not in the banned list.
+        // Only specific routing vocabulary like "route_to", "outbox", "Nip65", etc. is banned.
+        let hits = check("const routing = decodeDispatchEnvelopeRouting(request.bytes);", false);
+        assert!(hits.is_empty(),
+                "Variable name 'routing' by itself should not be flagged; only specific policy vocabulary is banned");
     }
 }

@@ -294,7 +294,7 @@ pub(crate) fn wasm_abi_only_file_in_scope(path: &Path) -> bool {
     }
     // Fixture path opt-in for smoke tests.
     let s = path.to_string_lossy().replace('\\', "/");
-    (s.contains("/fixtures/wasm_abi_only/") || s.contains("fixtures/wasm_abi_only/"))
+    s.contains("/fixtures/wasm_abi_only/") || s.contains("fixtures/wasm_abi_only/")
 }
 
 /// True iff BROWSER_RUNTIME_BOUNDARY should scan `path` — either the file is
@@ -308,5 +308,5 @@ pub(crate) fn browser_runtime_boundary_file_in_scope(path: &Path) -> bool {
     }
     // Fixture path opt-in for smoke tests.
     let s = path.to_string_lossy().replace('\\', "/");
-    (s.contains("/fixtures/browser_runtime_boundary/") || s.contains("fixtures/browser_runtime_boundary/"))
+    s.contains("/fixtures/browser_runtime_boundary/") || s.contains("fixtures/browser_runtime_boundary/")
 }
