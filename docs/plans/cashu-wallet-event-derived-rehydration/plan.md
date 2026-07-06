@@ -119,6 +119,6 @@ ready
 
 ## Hosted Artifacts
 
-- Plan page: Generated after publishing.
+- Plan page: https://pablof7z.github.io/nostr-multi-platform/plans/cashu-wallet-event-derived-rehydration/
 
 - TTS audio: https://blossom.primal.net/0790ddb391b51d425b36c7d0a16d8bb222cafa4cd3f7f8701f7f10610afff261.mp3
