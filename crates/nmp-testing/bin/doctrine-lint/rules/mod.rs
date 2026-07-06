@@ -35,3 +35,5 @@ pub mod no_deprecated;
 pub mod no_raw_tap_reintroduction;
 pub mod product_raw_read;
 pub mod split_call;
+pub mod wasm_abi_only;
+pub mod browser_runtime_boundary;

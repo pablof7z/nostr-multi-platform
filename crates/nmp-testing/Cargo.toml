@@ -175,6 +175,14 @@ path = "bin/doctrine-lint/tests.rs"
 name = "kernel_ingest_allocation_gate"
 path = "tests/kernel_ingest_allocation_gate.rs"
 
+# Browser/native composition parity test (#2061) — asserts that browser and
+# native compositions register equivalent action namespaces, resolvers, parsers,
+# projections, scopes, and capability slots (or intentionally exclude via PLATFORM_EXCLUSIONS).
+# `cargo test -p nmp-testing --test browser_native_composition_parity`
+[[test]]
+name = "browser_native_composition_parity"
+path = "tests/browser_native_composition_parity.rs"
+
 [[test]]
 name = "doctrine_native_smoke"
 path = "bin/doctrine-lint/native_tests.rs"

@@ -3,9 +3,9 @@
 use std::path::Path;
 
 use crate::rules::{
-    action_namespace, d0, d10, d11, d13, d14, d15, d17, d19, d20, d21, d26, d27, d6, d7, d8, d9,
-    deleted_defaults, feed_vocabulary, nip29_kind_blind, no_deprecated, no_raw_tap_reintroduction,
-    product_raw_read,
+    action_namespace, browser_runtime_boundary, d0, d10, d11, d13, d14, d15, d17, d19, d20, d21,
+    d26, d27, d6, d7, d8, d9, deleted_defaults, feed_vocabulary, nip29_kind_blind, no_deprecated,
+    no_raw_tap_reintroduction, product_raw_read, wasm_abi_only,
 };
 use crate::{allow, event_flow_gates, report, scope::is_doctrine_lint_source, walker::ScannedLine};
 
@@ -291,6 +291,32 @@ pub(super) fn scan_line(
     if !ctx.d8_test_file {
         for hit in d8::check_no_polling(sl.text, sl.is_comment, sl.in_test_cfg) {
             emit_unless_allowed(path, sl, d8::ID, hit, allow::line_allows, findings);
+        }
+    }
+
+    if !ctx.workspace_d8 && ctx.wasm_abi_only_in_scope && !sl.in_test_cfg {
+        for hit in wasm_abi_only::check(sl.text, sl.is_comment) {
+            emit_unless_allowed(
+                path,
+                sl,
+                wasm_abi_only::ID,
+                hit,
+                allow::line_allows,
+                findings,
+            );
+        }
+    }
+
+    if !ctx.workspace_d8 && ctx.browser_runtime_boundary_in_scope && !sl.in_test_cfg {
+        for hit in browser_runtime_boundary::check(sl.text, sl.is_comment) {
+            emit_unless_allowed(
+                path,
+                sl,
+                browser_runtime_boundary::ID,
+                hit,
+                allow::line_allows,
+                findings,
+            );
         }
     }
 }

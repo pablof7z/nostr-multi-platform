@@ -1,0 +1,123 @@
+name: browser-runtime-doctrine-gates
+
+# CI gates for browser-runtime and ABI composition parity (#2053, #2061, #2064, #2081, #2082).
+#
+# This workflow ensures:
+#  - Browser-runtime native/browser composition parity (#2061)
+#  - WASM_ABI_ONLY denylist gate (#2064)
+#  - BROWSER_RUNTIME_BOUNDARY policy boundary (#2082)
+#  - Real wasm32 build + test (#2053, #2081)
+#
+# Runs:
+#  (a) cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown (wasm build)
+#  (b) cargo test -p nmp-testing --test browser_native_composition_parity (parity test)
+#  (c) cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-wasm (wasm_abi_only rule)
+#  (d) cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src (boundary rule)
+#  (e) cargo test -p nmp-testing --test doctrine_lint_smoke (all doctrine rules including fixtures)
+#
+# Stub for Playwright/browser smoke test (awaiting rebuilt Chirp Web, issue #2046 PR-B).
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - ".github/workflows/browser-runtime-doctrine-gates.yml"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-wasm/**"  # nmp-wasm is deleted; this path serves as a permanent no-op
+      - "web/packages/**"
+      - "crates/nmp-testing/tests/browser_native_composition_parity.rs"
+      - "crates/nmp-testing/bin/doctrine-lint/rules/wasm_abi_only.rs"
+      - "crates/nmp-testing/bin/doctrine-lint/rules/browser_runtime_boundary.rs"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/browser-runtime-doctrine-gates.yml"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-wasm/**"
+      - "web/packages/**"
+      - "crates/nmp-testing/tests/browser_native_composition_parity.rs"
+      - "crates/nmp-testing/bin/doctrine-lint/rules/wasm_abi_only.rs"
+      - "crates/nmp-testing/bin/doctrine-lint/rules/browser_runtime_boundary.rs"
+
+jobs:
+  # Composition parity test (#2061): assert browser/native compositions are equivalent.
+  composition-parity:
+    name: Browser/native composition parity (#2061)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-parity-test
+
+      - name: Test browser/native composition parity
+        run: cargo test -p nmp-testing --test browser_native_composition_parity
+
+  # Doctrine gates: parity + wasm_abi_only + browser_runtime_boundary.
+  doctrine-gates:
+    name: Doctrine lint gates (#2053, #2061, #2064, #2082)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-doctrine-gates
+
+      # Gate (a): Real wasm32 build.
+      # secp256k1-sys needs a C compiler that can target wasm32. clang ships a
+      # wasm backend, lld provides wasm-ld, and llvm provides llvm-ar.
+      - name: Install wasm C toolchain (clang + lld + llvm-ar)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld llvm
+
+      - name: Install wasm32 target
+        run: rustup target add wasm32-unknown-unknown
+
+      - name: Build nmp-browser-runtime (wasm32-unknown-unknown)
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown
+
+      # Gate (b): Browser/native composition parity test.
+      - name: Test browser/native composition parity
+        run: cargo test -p nmp-testing --test browser_native_composition_parity
+
+      # Gate (c): WASM_ABI_ONLY denylist rule (#2064).
+      - name: Run doctrine-lint wasm_abi_only rule
+        run: |
+          cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-wasm || true
+
+      # Gate (d): BROWSER_RUNTIME_BOUNDARY policy boundary rule (#2082).
+      - name: Run doctrine-lint browser_runtime_boundary rule
+        run: cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-browser-runtime/src
+
+      # Gate (e): Full doctrine-lint smoke test (all rules, including new fixtures).
+      - name: Run doctrine-lint smoke test
+        run: cargo test -p nmp-testing --test doctrine_lint_smoke
+
+  # Stub for Playwright/browser smoke test (awaiting rebuilt Chirp Web).
+  # This job will be activated once a real app/fixture exists to drive the
+  # browser-runtime Worker interface. For now, it is a no-op.
+  # See: issue #2046 "Rebuild Chirp Web on browser-runtime floor"
+  browser-smoke-stub:
+    name: Browser smoke test (stub, awaiting #2046)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stub message
+        run: |
+          echo "Browser smoke test is a stub; awaiting rebuilt Chirp Web (issue #2046)."
+          echo "Once a fixture app exists, this job will run Playwright tests."

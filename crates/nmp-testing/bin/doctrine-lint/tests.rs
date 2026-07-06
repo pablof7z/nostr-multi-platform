@@ -38,6 +38,8 @@
 //! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
 //! | `browser_composition_gates.rs` | browser app-composition boundary (#2907) |
 //! | `doc_citation_truth_gates.rs` | crate-boundaries.md §N.M / ADR-NNNN content-truth (#2768) |
+//! | `wasm_abi_only_rule_tests.rs`| WASM_ABI_ONLY nmp-wasm/browser-runtime ABI boundary (#2064) |
+//! | `browser_runtime_boundary_rule_tests.rs` | BROWSER_RUNTIME_BOUNDARY transport policy gate (#2082) | |
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -80,6 +82,8 @@ mod trellis_phase_a_support; // #2858 release graph and manifest scan helpers.
 mod trellis_public_api_gates; // Trellis must stay private implementation machinery.
 mod trellis_public_api_support; // Shared Trellis public-surface scan helpers.
 mod wasm_abi_gates; // nmp-wasm retired-crate gates (deleted #2202; must stay deleted).
+mod wasm_abi_only_rule_tests; // WASM_ABI_ONLY fixture smoke tests (#2064).
+mod browser_runtime_boundary_rule_tests; // BROWSER_RUNTIME_BOUNDARY fixture smoke tests (#2082).
 
 const FIXTURE_ROOT: &str = "crates/nmp-testing/bin/doctrine-lint/fixtures";
 

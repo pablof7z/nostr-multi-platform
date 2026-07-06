@@ -13,8 +13,9 @@ use crate::cli::Config;
 use crate::event_flow_gates;
 use crate::report;
 use crate::rules::{
-    d0, d10, d11, d12, d13, d14, d15, d6, d7, deleted_defaults, feed_vocabulary, nip29_kind_blind,
-    no_deprecated, no_raw_tap_reintroduction, product_raw_read,
+    browser_runtime_boundary, d0, d10, d11, d12, d13, d14, d15, d6, d7, deleted_defaults,
+    feed_vocabulary, nip29_kind_blind, no_deprecated, no_raw_tap_reintroduction, product_raw_read,
+    wasm_abi_only,
 };
 use crate::scope::{
     action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
@@ -85,6 +86,8 @@ pub(super) struct FileContext {
     d26_app_host_scope: bool,
     d26_alk_scope: bool,
     d27_in_scope: bool,
+    wasm_abi_only_in_scope: bool,
+    browser_runtime_boundary_in_scope: bool,
     ef_scope: event_flow_gates::FileScope,
 }
 
@@ -129,6 +132,8 @@ impl FileContext {
             d26_app_host_scope: d26_app_host_in_scope(path, &cfg.d26_extra_scopes),
             d26_alk_scope: d26_active_local_keys_in_scope(path, &cfg.d26_extra_scopes),
             d27_in_scope: d27_file_in_scope(path, &cfg.d27_extra_scopes),
+            wasm_abi_only_in_scope: wasm_abi_only::file_is_in_scope(path),
+            browser_runtime_boundary_in_scope: browser_runtime_boundary::file_is_in_scope(path),
             ef_scope: event_flow_gates::FileScope::resolve(
                 path,
                 &cfg.d23_extra_scopes,
