@@ -1,15 +1,14 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use crate::delivered_ref::typed_ref_target_shape;
+use crate::delivered_ref::{typed_ref_target_shape, DemandedTargets};
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_content::{EmbedTarget, PointerSortMode, PointerSourceModel};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{RootAdmission, TypedRefTarget};
-use nmp_planner::InterestShape;
 
-use super::resolve::{not_supported, resolve_scope};
+use super::resolve::{not_supported, resolve_scope, unique_consumer_id};
 use super::source::{
     empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
     ReducedSource, SessionReactivityHook,
@@ -63,7 +62,7 @@ pub(super) fn resolve_pointer_target_hydration(
     let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         pointer_observer,
-        "nmp.feed.resolver.pointer_target_hydration.pointer",
+        unique_consumer_id("nmp.feed.resolver.pointer_target_hydration.pointer"),
         interest_scope_code(pointer_source.observer_scope),
         Arc::clone(&pointer_source.live_shapes),
         512,
@@ -176,41 +175,33 @@ fn typed_demand(model: &PointerSourceModel) -> Vec<nmp_feed::TypedRefTarget> {
     model.target_demand().map(as_typed_ref_target).collect()
 }
 
+/// [`Mutex<PointerSourceModel>`] is the OTHER [`DemandedTargets`] source
+/// (#3082 SHOULD-FIX 5): unlike [`crate::delivered_ref::DeliveredRefDemand`]
+/// (monotonic within a session), the pointer model's `target_demand()`
+/// already retracts a target once no live pointer names it — the union math
+/// over "whatever is currently demanded" below is identical either way, so
+/// [`target_admission`]/[`target_live_shape`] delegate to the SAME
+/// [`crate::delivered_ref::union_admission`]/[`crate::delivered_ref::union_live_shape`]
+/// builders `composite_compiler.rs` uses, rather than re-deriving a second
+/// union loop.
+impl DemandedTargets for Mutex<PointerSourceModel> {
+    fn demanded_targets(&self) -> Vec<TypedRefTarget> {
+        typed_demand(&lock(self))
+    }
+}
+
 fn target_live_shape(
     model: &Arc<Mutex<PointerSourceModel>>,
     primary_kinds: &BTreeSet<u32>,
 ) -> LiveShape {
-    let model = Arc::clone(model);
-    let render_target_kinds: Vec<u32> = primary_kinds.iter().copied().collect();
-    Arc::new(move || {
-        let targets = typed_demand(&lock(&model));
-        let mut shape = InterestShape::default();
-        let mut any = false;
-        for target in &targets {
-            if let Some(target_shape) = typed_ref_target_shape(target, &render_target_kinds) {
-                shape.kinds.extend(target_shape.kinds);
-                shape.event_ids.extend(target_shape.event_ids);
-                shape.addresses.extend(target_shape.addresses);
-                any = true;
-            }
-        }
-        any.then_some(shape)
-    })
+    crate::delivered_ref::union_live_shape(model, primary_kinds.iter().copied().collect())
 }
 
 fn target_admission(
     model: &Arc<Mutex<PointerSourceModel>>,
     primary_kinds: &BTreeSet<u32>,
 ) -> RootAdmission {
-    let model = Arc::clone(model);
-    let render_target_kinds: Vec<u32> = primary_kinds.iter().copied().collect();
-    Arc::new(move |event: &KernelEvent| {
-        let targets = typed_demand(&lock(&model));
-        render_target_kinds.contains(&event.kind)
-            && targets
-                .iter()
-                .any(|target| crate::delivered_ref::typed_ref_target_matches(target, event))
-    })
+    crate::delivered_ref::union_admission(model, primary_kinds.iter().copied().collect())
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {

@@ -90,6 +90,29 @@ impl NmpApp {
     pub fn wait_barrier_for_test(&self, timeout: Duration) -> bool {
         nmp_core::testing::wait_barrier(&self.actor_sender(), timeout)
     }
+
+    /// #3082/#3086 test/composition seam — open a composite feed against an
+    /// EXPLICIT [`nmp_feed::LaneMappingRegistry`] instead of this app's own
+    /// production registry (`NmpApp::open_composite_feed`'s `self.lane_mappings`).
+    ///
+    /// This lets an integration test register a scenario-local mapping (e.g. a
+    /// coordinate-keyed "direct" mapping for an address-replaceable content
+    /// kind — a real app's OWN composition root would register one for its
+    /// content kind, exactly like `nmp-nip18`/`nmp-nip22` register
+    /// `nip18.target`/`nip22.root`) alongside the REAL production
+    /// `nip18_target_mapping`/`nip22_root_mapping` closures, while every other
+    /// step of the open — registry lookup, per-lane acquisition resolution,
+    /// `build_flat_scope_session` registration, live acquisition — runs
+    /// through the SAME real host/compiler path `open_composite_feed` uses.
+    /// Mirrors `open_feed_with_compiler`'s existing test-injection precedent
+    /// (`feed_session.rs`).
+    pub fn open_composite_feed_with_mappings_for_test(
+        &self,
+        params: &nmp_feed::CompositeFeedParams,
+        mappings: &nmp_feed::LaneMappingRegistry,
+    ) -> Result<nmp_feed::FeedHandle, nmp_feed_session::FeedOpenError> {
+        self.open_composite_feed_with_mappings(params, mappings)
+    }
 }
 
 #[cfg(test)]

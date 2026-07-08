@@ -27,8 +27,20 @@ pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 /// Arity is `Vec`, not `Option`, so one source event can fan out into several
 /// rows (e.g. a curated-list event surfacing many member rows) as well as the
 /// ordinary one-row and zero-row (filtered) cases. The builder MUST be a pure
-/// function of the delivered event — no store peek, no ambient state — so
-/// membership stays deterministic and replay-order-independent.
+/// function of the delivered event — no store peek, no ambient state — so the
+/// ROWS it returns stay deterministic and replay-order-independent.
+///
+/// The one narrow, explicitly-permitted exception: a builder MAY perform
+/// monotonic, presence-only demand REGISTRATION as a side effect (composite's
+/// `crate::LaneMappingRegistry`-driven builders register a `Delivered` ref's
+/// target with `DeliveredRefDemand` this way). That side channel never feeds
+/// back into the RETURNED rows for the CURRENT call — it only widens which
+/// FUTURE events the session's admission/acquisition surface accepts — so it
+/// cannot make the builder's output for a given event depend on call order or
+/// prior state; only a later, independent call (on the demanded target's own
+/// delivery) can be affected, and that call's output is itself a pure
+/// function of THAT event once the demand exists. No store peek, no read of
+/// mutable ambient state feeds a row's fields.
 pub type FlatFeedItemBuilder<C> = Arc<dyn Fn(&KernelEvent) -> Vec<FlatFeedItem<C>> + Send + Sync>;
 
 /// Merge policy when two source events surface the same canonical item id.

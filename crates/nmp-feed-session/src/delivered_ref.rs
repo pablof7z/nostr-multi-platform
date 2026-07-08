@@ -124,33 +124,56 @@ impl DeliveredRefDemand {
     }
 }
 
-/// Build the admission predicate for a [`DeliveredRefDemand`]: admits an event
-/// iff its kind is in `render_target_kinds` AND it is the delivered form of a
-/// currently demanded target.
+/// Anything that can report its CURRENT set of demanded [`TypedRefTarget`]s.
+///
+/// Implemented once by both demand sources this crate has — [`DeliveredRefDemand`]
+/// (composite-lane `Delivered` refs, monotonic within a session's lifetime) and
+/// [`nmp_content::PointerSourceModel`] (`pointer_target_hydration`'s pointer
+/// model, which DOES retract a target once no live pointer still names it) —
+/// so [`union_admission`]/[`union_live_shape`] are the ONE union builder over
+/// "whatever is currently demanded", not two disjoint copies of the same
+/// union loop (#3082 SHOULD-FIX 5, the sibling of #3085's `resolve_ref` unification:
+/// the demand SOURCE differs, the union math over it must not).
+pub(crate) trait DemandedTargets {
+    fn demanded_targets(&self) -> Vec<TypedRefTarget>;
+}
+
+impl DemandedTargets for DeliveredRefDemand {
+    fn demanded_targets(&self) -> Vec<TypedRefTarget> {
+        self.targets()
+    }
+}
+
+/// Build the admission predicate over any [`DemandedTargets`] source: admits
+/// an event iff its kind is in `render_target_kinds` AND it is the delivered
+/// form of a currently demanded target.
 #[must_use]
-pub(crate) fn demand_admission(
-    demand: &Arc<DeliveredRefDemand>,
-    render_target_kinds: Vec<u32>,
-) -> RootAdmission {
+pub(crate) fn union_admission<D>(demand: &Arc<D>, render_target_kinds: Vec<u32>) -> RootAdmission
+where
+    D: DemandedTargets + Send + Sync + 'static,
+{
     let demand = Arc::clone(demand);
     Arc::new(move |event: &KernelEvent| {
         render_target_kinds.contains(&event.kind)
-            && demand.demanded_target_for_event(event).is_some()
+            && demand
+                .demanded_targets()
+                .iter()
+                .any(|target| typed_ref_target_matches(target, event))
     })
 }
 
-/// Build the live acquisition shape for a [`DeliveredRefDemand`]: the union of
-/// every currently demanded target's shape.
+/// Build the live acquisition shape over any [`DemandedTargets`] source: the
+/// union of every currently demanded target's shape.
 #[must_use]
-pub(crate) fn demand_live_shape(
-    demand: &Arc<DeliveredRefDemand>,
-    render_target_kinds: Vec<u32>,
-) -> LiveShape {
+pub(crate) fn union_live_shape<D>(demand: &Arc<D>, render_target_kinds: Vec<u32>) -> LiveShape
+where
+    D: DemandedTargets + Send + Sync + 'static,
+{
     let demand = Arc::clone(demand);
     Arc::new(move || {
         let mut shape = InterestShape::default();
         let mut any = false;
-        for target in demand.targets() {
+        for target in demand.demanded_targets() {
             if let Some(target_shape) = typed_ref_target_shape(&target, &render_target_kinds) {
                 shape.kinds.extend(target_shape.kinds);
                 shape.event_ids.extend(target_shape.event_ids);
@@ -183,7 +206,7 @@ mod tests {
     fn event_id_target_admits_only_the_matching_id_and_kind() {
         let demand = DeliveredRefDemand::new();
         demand.demand(TypedRefTarget::EventId("root".to_string()));
-        let admit = demand_admission(&demand, vec![30_023]);
+        let admit = union_admission(&demand, vec![30_023]);
 
         assert!(admit(&event("root", 30_023)));
         assert!(!admit(&event("root", 1)), "wrong kind ⇒ not admitted");
@@ -213,7 +236,7 @@ mod tests {
             pubkey: "bob".to_string(),
             d: "d1".to_string(),
         });
-        let shape = demand_live_shape(&demand, vec![30_023])().expect("shape");
+        let shape = union_live_shape(&demand, vec![30_023])().expect("shape");
         assert!(shape.event_ids.contains("a"));
         assert_eq!(shape.addresses.len(), 1);
     }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_core::substrate::KernelEvent;
@@ -60,7 +60,47 @@ pub(super) fn build_flat_scope_session(
         merge,
         window,
     );
-    let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
+    // Built here (before `observer_for_registry`/`apply`) so BOTH ingestion
+    // paths below can re-sync it per event — nothing below depends on
+    // `provider`/`pull`/`apply`/`controller` existing first.
+    let sender = app.command_sender();
+    let acquisition_adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
+        key,
+        FeedShape::Flat,
+        interests.clone(),
+        sender,
+        app.feed_session_diagnostics(),
+    )?;
+
+    // A composite lane's mapping may register NEW `Delivered`-ref demand as a
+    // side effect of ingesting an event (#3082/#3086). LIVE events reach this
+    // session through the OBSERVED-PROJECTION sink registered right below
+    // (`ResyncingObserver`) — NOT through `apply`, which `PullFeedController`
+    // uses only for the on-demand `load_older` PULL/backfill drain, a
+    // SEPARATE ingestion path (see `pull_controller.rs`'s module doc). Both
+    // paths must resync so a newly demanded target actually gets
+    // (re-)fetched regardless of which path delivered the demanding event:
+    //   1. the OBSERVED-projection `engine_observer`, so an event the kernel
+    //      already holds/streams for the new shape reaches `on_kernel_event`;
+    //   2. the Trellis-backed `acquisition_adapter`, so a target that is NOT
+    //      already flowing (arrived-and-dropped before any lane demanded it,
+    //      or never fetched at all) gets a fresh dependent-interest
+    //      open/replace and is actually (re-)acquired — without this, a
+    //      target-first delivery ordering permanently stalls on a
+    //      placeholder row, because the admission gate that dropped the
+    //      target's first delivery has no OTHER path back in.
+    // `engine_observer` is constructed AFTER this sink (it wraps it as the
+    // registered observer), so the sink resolves it through a slot populated
+    // once construction below completes.
+    let engine_observer_slot: Arc<
+        Mutex<Option<crate::dynamic_observer::DynamicObservedProjectionSet>>,
+    > = Arc::new(Mutex::new(None));
+    let observer_for_registry: Arc<dyn ObservedProjectionSink> = Arc::new(ResyncingObserver {
+        feed: Arc::clone(&feed),
+        acquisition_adapter: acquisition_adapter.clone(),
+        extra_acquisition: extra_acquisition.clone(),
+        engine_observer: Arc::clone(&engine_observer_slot),
+    });
     let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         observer_for_registry,
@@ -69,6 +109,9 @@ pub(super) fn build_flat_scope_session(
         live_shapes.clone(),
         512,
     );
+    *engine_observer_slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(engine_observer.clone());
     engine_observer.sync();
 
     let provider: Arc<dyn nmp_feed::FeedInterestShapes + Send + Sync> = {
@@ -79,16 +122,21 @@ pub(super) fn build_flat_scope_session(
     let apply: FeedApply = {
         let feed = Arc::clone(&feed);
         let engine_observer = engine_observer.clone();
+        let acquisition_adapter = acquisition_adapter.clone();
+        let extra_acquisition = extra_acquisition.clone();
         Arc::new(move |event: &KernelEvent| {
             let before = visible_flat_payload(&feed);
             feed.on_kernel_event(event);
-            // A composite lane's mapping may register NEW `Delivered`-ref
-            // demand as a side effect of ingesting this event (#3082); re-sync
-            // the observed acquisition so a newly demanded target's shape
-            // actually gets subscribed. A no-op re-sync (the common case —
-            // `live_shapes()` unchanged) costs one shape-set comparison
-            // (`DynamicObservedProjectionSet::sync`'s `same_shape_set` check).
+            // Mirrors `ResyncingObserver` (above) for the PULL/backfill
+            // ingestion path (#3082/#3086) — a drained page can ALSO register
+            // new `Delivered`-ref demand, and `apply` is this path's own
+            // ingest entry point (`pull_controller.rs`'s module doc), so it
+            // needs the SAME two re-syncs. Both are no-ops in the common case
+            // (shape/demand-map unchanged) — `DynamicObservedProjectionSet::sync`'s
+            // `same_shape_set` check and `FeedSessionTrellisAdapter::sync`'s
+            // resource-ledger diff each cost one comparison.
             engine_observer.sync();
+            acquisition_adapter.sync(&extra_acquisition, "feed-session-acquisition-demand");
             visible_flat_payload(&feed) != before
         })
     };
@@ -131,14 +179,6 @@ pub(super) fn build_flat_scope_session(
             ..Default::default()
         })
     });
-    let sender = app.command_sender();
-    let acquisition_adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
-        key,
-        FeedShape::Flat,
-        interests.clone(),
-        sender,
-        app.feed_session_diagnostics(),
-    )?;
     let replayed_tail = app.load_older_feed(key);
     let replayed_ids = super::super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
     acquisition_adapter.rebaseline_output_if_changed(replayed_ids && !replayed_tail);
@@ -180,4 +220,38 @@ pub(super) fn build_flat_scope_session(
         projection_key: nmp_feed::ProjectionKey::app_owned(key).unwrap(),
         teardown,
     })
+}
+
+/// The sink registered with the kernel's observed-projection dispatch for
+/// LIVE (push) event delivery (#3082/#3086) — replaces a bare `feed.clone()`
+/// so a `Delivered`-ref demand a lane registers while ingesting one event
+/// re-syncs BOTH the observed-projection shape and the Trellis acquisition
+/// before the next event arrives. See the constructor's doc comment in
+/// `build_flat_scope_session` for why this is a SEPARATE mechanism from
+/// `apply`'s equivalent resync (`apply` is the PULL/backfill path only).
+struct ResyncingObserver {
+    feed: Arc<nmp_feed::FlatFeed<nmp_feed::FeedRow>>,
+    acquisition_adapter: FeedSessionTrellisAdapter,
+    extra_acquisition: crate::source::ExtraAcquisition,
+    /// Populated once `DynamicObservedProjectionSet::new` returns — this sink
+    /// is constructed BEFORE that call (it IS the observer that call wraps),
+    /// so the self-reference is deferred through this slot rather than
+    /// requiring a second construction pass.
+    engine_observer: Arc<Mutex<Option<crate::dynamic_observer::DynamicObservedProjectionSet>>>,
+}
+
+impl ObservedProjectionSink for ResyncingObserver {
+    fn on_kernel_event(&self, event: &KernelEvent) {
+        self.feed.on_kernel_event(event);
+        let engine_observer = self
+            .engine_observer
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
+        if let Some(engine_observer) = engine_observer {
+            engine_observer.sync();
+        }
+        self.acquisition_adapter
+            .sync(&self.extra_acquisition, "feed-session-acquisition-demand");
+    }
 }

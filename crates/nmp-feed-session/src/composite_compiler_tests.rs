@@ -34,7 +34,7 @@ use nmp_core::ObservedProjectionSink;
 use nmp_feed::{FeedRequest, FeedRow, FeedRowContext, FlatFeed, SortPolicy};
 
 use super::{build_composite_rows, composite_merge, lane_claims, tags_match, CompiledLane};
-use crate::delivered_ref::{demand_admission, demand_live_shape, DeliveredRefDemand};
+use crate::delivered_ref::{union_admission, union_live_shape, DeliveredRefDemand};
 
 const KIND_ARTICLE: u32 = 30_023;
 const KIND_COMMENT: u32 = 1111;
@@ -159,7 +159,7 @@ fn driving_example(follows: BTreeSet<String>) -> DrivingExample {
 
     let admission = {
         let lanes = Arc::clone(&lanes);
-        let demand_admits = demand_admission(&demand, render_target_kinds.clone());
+        let demand_admits = union_admission(&demand, render_target_kinds.clone());
         Arc::new(move |event: &KernelEvent| {
             lanes.iter().any(|lane| lane_claims(lane, event)) || demand_admits(event)
         })
@@ -337,6 +337,58 @@ fn delivered_ref_admits_the_article_even_when_the_direct_lane_would_not() {
     assert_eq!(row.created_at, 42);
 }
 
+/// #3086 SHOULD-FIX 3 — `ByTargetCreatedAt`'s both-hydrated merge arm used to
+/// unconditionally adopt `incoming`, but `FlatFeed::merge_sources` folds
+/// sources in `sort_created_at`-DESCENDING order and terminates on the
+/// lowest, so `incoming` is the OLDER of two hydrated revisions roughly half
+/// the time. Two delivered revisions of the SAME replaceable coordinate must
+/// collapse to the NEWEST revision's payload/sort regardless of which one
+/// happens to arrive (and therefore get folded as `incoming`) first.
+#[test]
+fn by_target_created_at_keeps_the_newest_revision_regardless_of_delivery_order() {
+    let author = "article-author".to_string();
+    let follows: BTreeSet<String> = [author.clone()].into_iter().collect();
+
+    // Older revision delivered FIRST, newer SECOND.
+    let example = driving_example(follows.clone());
+    let d_tag = "revisioned-article";
+    let coordinate = format!("{KIND_ARTICLE}:{author}:{d_tag}");
+    example
+        .feed
+        .on_kernel_event(&article(&author, d_tag, 50, "v1-old", "stale body"));
+    example
+        .feed
+        .on_kernel_event(&article(&author, d_tag, 100, "v2-new", "fresh body"));
+
+    let snap = example.feed.snapshot(&FeedRequest::newest(10));
+    assert_eq!(snap.cards.len(), 1, "same coordinate collapses to one row");
+    let row = &snap.cards[0].card;
+    assert_eq!(row.canonical_row_id, coordinate);
+    assert_eq!(row.created_at, 100, "the NEWER revision's created_at wins");
+    assert_eq!(row.content, "fresh body", "the NEWER revision's payload wins");
+
+    // Newer revision delivered FIRST, older SECOND — the SAME outcome must
+    // hold; `merge_sources`'s fold order (not delivery order) determines
+    // which side is `incoming`, so this is the arrival ordering the bug
+    // silently regressed.
+    let example2 = driving_example(follows);
+    let d_tag2 = "revisioned-article-2";
+    let coordinate2 = format!("{KIND_ARTICLE}:{author}:{d_tag2}");
+    example2
+        .feed
+        .on_kernel_event(&article(&author, d_tag2, 100, "v2-new", "fresh body"));
+    example2
+        .feed
+        .on_kernel_event(&article(&author, d_tag2, 50, "v1-old", "stale body"));
+
+    let snap2 = example2.feed.snapshot(&FeedRequest::newest(10));
+    assert_eq!(snap2.cards.len(), 1);
+    let row2 = &snap2.cards[0].card;
+    assert_eq!(row2.canonical_row_id, coordinate2);
+    assert_eq!(row2.created_at, 100, "still the newer revision's created_at");
+    assert_eq!(row2.content, "fresh body", "still the newer revision's payload");
+}
+
 #[test]
 fn tags_match_requires_every_declared_tag_to_have_a_matching_value() {
     let match_tags = [("K".to_string(), BTreeSet::from(["30023".to_string()]))]
@@ -358,8 +410,8 @@ fn demand_live_shape_and_admission_agree_on_the_same_demanded_target() {
         pubkey: "bob".to_string(),
         d: "d1".to_string(),
     });
-    let admit = demand_admission(&demand, vec![KIND_ARTICLE]);
-    let shape = demand_live_shape(&demand, vec![KIND_ARTICLE])().expect("shape");
+    let admit = union_admission(&demand, vec![KIND_ARTICLE]);
+    let shape = union_live_shape(&demand, vec![KIND_ARTICLE])().expect("shape");
     assert_eq!(shape.addresses.len(), 1);
     assert!(admit(&article("bob", "d1", 1, "x", "")));
     assert!(!admit(&article("bob", "other-d", 1, "y", "")));

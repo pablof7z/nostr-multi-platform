@@ -27,7 +27,7 @@ use nmp_feed::{
 };
 use nmp_planner::InterestScope;
 
-use crate::delivered_ref::{demand_admission, demand_live_shape, DeliveredRefDemand};
+use crate::delivered_ref::{union_admission, union_live_shape, DeliveredRefDemand};
 use crate::session_engine::build_flat_scope_session;
 use crate::source::{ExtraAcquisition, LiveShapes, ReducedSource};
 use crate::{custom, FeedOpenError, FeedSessionHost};
@@ -85,7 +85,7 @@ pub fn open_composite_feed(
     let admission: RootAdmission = {
         let lanes = Arc::clone(&lanes);
         let lane_admission = lanes_any_admission(Arc::clone(&lanes));
-        let demand_admits = demand_admission(&demand, render_target_kinds.clone());
+        let demand_admits = union_admission(&demand, render_target_kinds.clone());
         let _ = lanes;
         Arc::new(move |event: &KernelEvent| lane_admission(event) || demand_admits(event))
     };
@@ -103,7 +103,7 @@ pub fn open_composite_feed(
 
     let extra_acquisition: ExtraAcquisition = {
         let base = folded.extra_acquisition.clone();
-        let demand_shape = demand_live_shape(&demand, render_target_kinds.clone());
+        let demand_shape = union_live_shape(&demand, render_target_kinds.clone());
         Arc::new(move || {
             let mut shapes = base();
             if let Some(shape) = demand_shape() {
@@ -117,7 +117,7 @@ pub fn open_composite_feed(
     };
     let live_shapes: LiveShapes = {
         let base = folded.live_shapes.clone();
-        let demand_shape = demand_live_shape(&demand, render_target_kinds);
+        let demand_shape = union_live_shape(&demand, render_target_kinds);
         Arc::new(move || {
             let mut shapes = base();
             shapes.extend(demand_shape().into_iter());
@@ -262,7 +262,6 @@ fn build_row(event: &KernelEvent, mapped: MappedRow) -> FlatFeedItem<FeedRow> {
 fn composite_merge(sort: nmp_feed::SortPolicy) -> FlatFeedMerge<FeedRow> {
     match sort {
         nmp_feed::SortPolicy::ByInteractionTime => Arc::new(|existing, incoming| {
-            merge_provenance(existing, &incoming);
             match existing {
                 Some(existing) if existing.sort_created_at >= incoming.sort_created_at => {
                     let mut card = existing.card.clone();
@@ -286,9 +285,35 @@ fn composite_merge(sort: nmp_feed::SortPolicy) -> FlatFeedMerge<FeedRow> {
             let context = nmp_feed::merge_context(&existing.card.context, &incoming.card.context);
             let refs = nmp_feed::merge_refs(&existing.card.refs, &incoming.card.refs);
             match (existing_hydrated, incoming_hydrated) {
-                // The incoming delivery is the real target: adopt its payload
+                // Both sides are real, hydrated revisions of the SAME
+                // canonical coordinate (e.g. two delivered revisions of a
+                // replaceable kind:30023 target). `merge_sources` folds
+                // sources in `sort_created_at`-DESCENDING order and
+                // terminates on the lowest, so `existing` is typically the
+                // newer accumulator and `incoming` the older fold step —
+                // unconditionally adopting `incoming` here silently regressed
+                // to the OLDER revision. Adopt whichever side carries the
+                // newer `created_at` (newest revision wins), never a fixed
+                // side.
+                (true, true) => {
+                    let newer = if incoming.sort_created_at >= existing.sort_created_at {
+                        incoming.clone()
+                    } else {
+                        existing.clone()
+                    };
+                    let mut card = newer.card.clone();
+                    card.context = context;
+                    card.refs = refs;
+                    FlatFeedItem {
+                        id: newer.id.clone(),
+                        source_id: newer.source_id.clone(),
+                        sort_created_at: newer.sort_created_at,
+                        card,
+                    }
+                }
+                // Only the incoming delivery is hydrated: adopt its payload
                 // and its true `created_at` as the row's sort key.
-                (_, true) => {
+                (false, true) => {
                     let mut card = incoming.card.clone();
                     card.context = context;
                     card.refs = refs;
@@ -327,12 +352,6 @@ fn composite_merge(sort: nmp_feed::SortPolicy) -> FlatFeedMerge<FeedRow> {
         }),
     }
 }
-
-/// No-op placeholder kept for symmetry with the merge-function signature —
-/// provenance accumulation happens inline in [`composite_merge`]; this exists
-/// only so the `ByInteractionTime` arm reads as accumulate-then-pick rather
-/// than pick-then-forget-to-accumulate.
-fn merge_provenance(_existing: Option<&FlatFeedItem<FeedRow>>, _incoming: &FlatFeedItem<FeedRow>) {}
 
 /// Fold every lane's resolved acquisition into ONE combined [`ReducedSource`]
 /// for the cross-cutting fields `build_flat_scope_session` consumes

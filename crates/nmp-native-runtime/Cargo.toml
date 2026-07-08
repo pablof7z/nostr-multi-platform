@@ -69,6 +69,12 @@ nmp-content = { path = "../nmp-content", version = "1.0.0-rc.1" }
 nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 nmp-feed-session = { path = "../nmp-feed-session", version = "1.0.0-rc.1" }
 nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
+# Composite-feed (#3082) lane-mapping composition root: the `nip18.target` /
+# `nip22.root` registered mappings `NmpApp::composite_lane_mappings` installs
+# alongside `nmp-feed`'s own `feed.authored`. Unconditional (not feature-gated)
+# because `open_composite_feed` is core engine surface, not an optional NIP.
+nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
+nmp-nip22 = { path = "../nmp-nip22", version = "1.0.0-rc.1" }
 nmp-note-feed = { path = "../nmp-note-feed", optional = true, version = "1.0.0-rc.1" }
 nmp-nip02 = { path = "../nmp-nip02", optional = true, version = "1.0.0-rc.1" }
 nmp-nip05 = { path = "../nmp-nip05", optional = true, version = "1.0.0-rc.1" }

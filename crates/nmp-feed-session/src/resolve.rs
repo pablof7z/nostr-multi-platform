@@ -255,7 +255,7 @@ fn resolve_wot(
         .observed_projection_handle()
         .open(ObservedProjection::from_shape(
             Arc::clone(&graph) as Arc<dyn ObservedProjectionSink>,
-            "nmp.feed.resolver.wot",
+            unique_consumer_id("nmp.feed.resolver.wot"),
             0,
             seed_contacts_shape(seed),
             256,

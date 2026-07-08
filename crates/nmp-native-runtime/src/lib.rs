@@ -23,6 +23,7 @@ pub mod app_mirror;
 mod app_struct;
 mod app_sub_structs;
 mod capability;
+mod composite_feed;
 mod debug_info;
 mod declared_projections;
 #[cfg(feature = "external-signer")]
