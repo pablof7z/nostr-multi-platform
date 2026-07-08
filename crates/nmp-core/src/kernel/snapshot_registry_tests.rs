@@ -306,6 +306,39 @@ fn typed_closure_runs_with_registry_lock_released() {
     );
 }
 
+/// #3078 — the feed-author-provider path (`collect_feed_author_sets`) got the
+/// identical snapshot-then-release fix as the typed path; assert it too runs
+/// providers with the registry lock RELEASED. Symmetric guard so a future
+/// refactor can't quietly reintroduce under-lock running on this path.
+#[test]
+fn feed_author_provider_runs_with_registry_lock_released() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+
+    let observed_lock_free = Arc::new(AtomicBool::new(false));
+    let probe = Arc::clone(&observed_lock_free);
+    let reentrant = Arc::clone(&slot);
+    slot.lock()
+        .unwrap()
+        .register_feed_author_provider("test.feed.home", move || {
+            if reentrant.try_lock().is_ok() {
+                probe.store(true, Ordering::SeqCst);
+            }
+            Vec::new()
+        });
+    kernel.set_snapshot_projection_handle(slot);
+
+    let _ = kernel.collect_feed_author_sets();
+
+    assert!(
+        observed_lock_free.load(Ordering::SeqCst),
+        "the registry lock was still held while a feed-author provider ran — a \
+         read-session open from that provider would deadlock the emit loop (#3078)"
+    );
+}
+
 /// Time-aware typed projections receive the current kernel clock value when the
 /// snapshot is emitted, not a registration-time/default timestamp.
 #[test]

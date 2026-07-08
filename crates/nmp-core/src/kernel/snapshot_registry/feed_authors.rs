@@ -82,9 +82,11 @@ impl SnapshotRegistry {
     }
 
     /// ADR-0070 D7 (#1671 Lane H) — a clone of the emitted-author sink handle, for
-    /// a typed-producer closure to write to WITHOUT re-locking the registry (it
-    /// runs inside `run_typed()` while the registry mutex is held). Write through
-    /// the free function [`record_emitted_feed_authors`].
+    /// a typed-producer closure to write to. The closure is a plain `Fn` with no
+    /// `&SnapshotRegistry`, so it reports emitted authors through this captured
+    /// handle rather than through the registry (independent of the registry lock;
+    /// #3078 moved production closure execution out from under that lock). Write
+    /// through the free function [`record_emitted_feed_authors`].
     #[must_use]
     pub fn emitted_feed_authors_handle(&self) -> EmittedFeedAuthorsSlot {
         Arc::clone(&self.emitted_feed_authors)

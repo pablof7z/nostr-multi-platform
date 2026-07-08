@@ -216,9 +216,13 @@ pub struct SnapshotRegistry {
     /// feed's authors don't linger. `BTreeSet` for dedup; keyed by consumer id.
     ///
     /// An `Arc<Mutex<…>>` (NOT a plain field) because a typed-producer closure
-    /// writes to it WHILE the registry's own mutex is held by `run_typed()` — it
-    /// captures a clone of THIS handle (via [`Self::emitted_feed_authors_handle`])
-    /// and writes without re-locking the registry (which would deadlock).
+    /// is a plain `Fn(u64) -> Option<…>` and never holds an `&SnapshotRegistry`,
+    /// so it can only report its emitted authors through a shared handle it
+    /// captured at registration (via [`Self::emitted_feed_authors_handle`]) — this
+    /// side-channel is independent of the registry lock. (Historically it also
+    /// dodged a deadlock, since closures ran under the registry mutex; #3078 moved
+    /// production closure execution OUT from under that lock, but the handle is
+    /// still required because the closure has no `&self` to write through.)
     emitted_feed_authors: EmittedFeedAuthorsSlot,
 }
 
@@ -232,8 +236,8 @@ pub type EmittedFeedAuthorsSlot =
 ///
 /// A free function (not a method) so a typed-producer closure that captured a
 /// clone of the [`EmittedFeedAuthorsSlot`] handle can write WITHOUT holding a
-/// `&SnapshotRegistry` (it runs inside `run_typed()` while the registry mutex is
-/// already held). A poisoned sink mutex (D6) is a silent no-op.
+/// `&SnapshotRegistry` (the closure is a plain `Fn` with no `&self`). A poisoned
+/// sink mutex (D6) is a silent no-op.
 pub fn record_emitted_feed_authors(
     slot: &EmittedFeedAuthorsSlot,
     tick_rev: u64,
@@ -380,6 +384,14 @@ impl SnapshotRegistry {
     ///
     /// Returns `(closures, cleared_rows)`: the cloned closure handles and the
     /// one-shot `Cleared` rows for removed typed keys (already materialized).
+    ///
+    /// One-tick deferral semantics (a behavior change from the old under-lock
+    /// path): the closure set and the pending clears are both snapshotted HERE,
+    /// before any closure runs. If a closure closes a read-session mid-run, the
+    /// `remove` it triggers pushes a `Cleared` row that this drain already passed,
+    /// so that clear emits on the NEXT tick — and the just-removed key's closure,
+    /// already cloned into this tick's plan, still emits one final row this tick.
+    /// Benign and consistent with the "re-entrant changes land next tick" model.
     pub fn drain_typed_run_plan(&mut self) -> (Vec<TypedProjectionFn>, Vec<TypedProjectionData>) {
         let closures = self.typed_projections.values().cloned().collect();
         let cleared = std::mem::take(&mut self.pending_typed_clears)
