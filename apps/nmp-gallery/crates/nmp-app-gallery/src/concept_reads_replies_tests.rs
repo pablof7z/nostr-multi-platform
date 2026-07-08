@@ -77,10 +77,21 @@ fn open_replies_then_close_replies_round_trips_through_the_generated_shape_expor
     assert!(!opened.projection_key.is_empty());
     assert_ne!(opened.handle_id, 0);
 
-    // DECODE (before any reply arrives) — the typed output is live from the
-    // moment `open_replies` returns, with count 0.
+    // #3080 — `open_replies`'s typed-output install is now deferred onto the
+    // actor's command queue (`ReadHost::install_read_output` no longer
+    // re-locks the snapshot registry on the caller's thread); it is
+    // guaranteed live only after the actor drains, before the next emit —
+    // not synchronously the instant `open_replies` returns. Drain with the
+    // same actor barrier this test already uses below for the reply ingest.
+    assert!(
+        app.runtime().wait_barrier_for_test(Duration::from_secs(5)),
+        "the actor must drain the deferred install before we read the projection"
+    );
+
+    // DECODE (before any reply arrives) — the typed output is live after the
+    // install command drains (before the next emit), with count 0.
     let before = find_projection(&app, &opened.projection_key)
-        .expect("open_replies installs a live typed output immediately");
+        .expect("open_replies installs a live typed output after the actor drains");
     let before_snapshot = nmp_replies::decode_reply_summary_snapshot(&before.payload)
         .expect("a valid REPLY_SUMMARY payload decodes");
     assert_eq!(before_snapshot.target_id, TARGET_EVENT_ID);
@@ -110,6 +121,15 @@ fn open_replies_then_close_replies_round_trips_through_the_generated_shape_expor
     // handle from the SAME scalar parts `open_replies` returned (no
     // facade-owned handle map anywhere in `concept_reads_replies.rs`).
     assert!(app.close_replies(opened.clone()));
+
+    // #3080 — the teardown's output removal is deferred the same way install
+    // is; drain it before reading, so the tombstone sequencing below observes
+    // the removal's `Cleared` row on the FIRST post-close read, not a
+    // still-live `Changed` payload racing the actor's own drain.
+    assert!(
+        app.runtime().wait_barrier_for_test(Duration::from_secs(5)),
+        "the actor must drain the deferred remove before we read the projection"
+    );
 
     // TOMBSTONED — `SnapshotRegistry::remove` (nmp-core) emits ONE pending
     // `Cleared` row for the removed key, then omits it entirely from every
