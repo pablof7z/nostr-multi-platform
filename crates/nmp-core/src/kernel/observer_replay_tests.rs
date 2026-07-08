@@ -7,8 +7,10 @@
 //! that matching events replay to that observer only.
 //!
 //! NIT-1 store-point-lookup tests (eviction + dedup) live in the sibling
-//! `observer_replay_store_tests` module to keep each file within the 500 LOC
-//! ceiling (AGENTS.md § file-size rules).
+//! `observer_replay_store_tests` module, and #3088 activation-shape
+//! regression tests live in the sibling `observer_replay_activation_tests`
+//! module, to keep each file within the 500 LOC ceiling (AGENTS.md §
+//! file-size rules).
 
 use super::*;
 use crate::actor::{

@@ -99,7 +99,15 @@ impl Kernel {
         replay: ObserverReplayRequest,
         reason: &'static str,
     ) -> bool {
-        let live_shape = interest.shape.clone();
+        // Cloned before `interest` moves into `register_interest` below.
+        // Fallback activation shape for `ObservedProjectionCommandHandle::open_live_only`
+        // callers (e.g. NIP-50 search), whose `replay.shapes` is deliberately
+        // empty (see `open_with_replay`'s `!replay` branch) — those still need
+        // an activation shape, and `interest.shape` is a wire round-trip of
+        // their filter_json, which is exact for every field a search shape
+        // uses (no `addresses`). See the `#3088` note below for why it is NOT
+        // safe to use as the primary source when `replay.shapes` is present.
+        let live_only_fallback_shape = interest.shape.clone();
 
         // Step 1: normal interest registration (UNCHANGED — do not gate replay
         // on the `changed` outcome; a multi-owner slot returns changed:false
@@ -120,8 +128,42 @@ impl Kernel {
 
         // Step 3: promote muted → scoped-live so future fan-out includes it
         // only for events matching the observed interest.
+        //
+        // #3088 — activate against `replay.shapes` (the caller-declared shapes,
+        // ALREADY used for replay matching above) when present, NOT
+        // `interest.shape`. The latter is reconstructed from the compiled wire
+        // filter JSON (`build_open_interest` → `InterestShape::from_filter_json`),
+        // which is lossy for any field with no NIP-01 wire representation:
+        // `filter_json_for` serializes a non-empty `shape.addresses` as a
+        // generic `#a` tag filter (`subs/wire.rs`), but `from_filter_json` has
+        // no `addresses` case — it reads `#a` back through the generic
+        // single-letter-tag branch into `shape.tags["a"]` instead
+        // (`nmp-planner/src/interest/shape.rs`). That silently turns "match
+        // this addressable event" into "require this event to carry a literal
+        // `#a` self-reference tag", which an addressable event never does — so
+        // the live fan-out gate (`RustObserverDelivery::matches`) permanently
+        // rejected the very event the shape was opened to receive, even though
+        // replay (which already used `replay.shapes` directly) worked fine.
+        // Activating on the same shapes replay already used keeps live
+        // delivery and catch-up replay in agreement, and also correctly scopes
+        // live delivery to the FULL union of a multi-shape declaration instead
+        // of just one wire-reconstructed shape.
         if let Some(slot) = &self.event_observers {
-            crate::actor::activate_observer_scoped(slot, replay.observer_id, live_shape);
+            if replay.shapes.is_empty() {
+                crate::actor::activate_observer_scoped(
+                    slot,
+                    replay.observer_id,
+                    live_only_fallback_shape,
+                );
+            } else {
+                for shape in &replay.shapes {
+                    crate::actor::activate_observer_scoped(
+                        slot,
+                        replay.observer_id,
+                        shape.clone(),
+                    );
+                }
+            }
         }
 
         outcomes[0].newly_installed

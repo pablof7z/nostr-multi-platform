@@ -45,6 +45,8 @@ mod config;
 mod dispatch;
 #[cfg(all(feature = "native", any(test, feature = "test-support")))]
 mod test_actor_spawn;
+#[cfg(all(feature = "native", test))]
+mod observed_interest_real_actor_tests;
 // ADR-0072 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
 // delivery), split out to keep `dispatch.rs` within budget. Native-only (uses
 // the native `ActorContext`).
