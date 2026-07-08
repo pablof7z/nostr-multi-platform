@@ -35,10 +35,16 @@ pub(super) fn build_flat_scope_session(
         row_context,
     } = resolved;
 
-    let feed = nmp_note_feed::FlatFeed::new_with_window_policy_and_hosted_group_context(
+    // Generic flat engine over the kind-agnostic `FeedRow`. The four knobs:
+    //   admission  = the compiled perspective predicate (`admission`);
+    //   identity   = NIP-18 repost → target id (in `feed_row_builder`);
+    //   sort/merge = `timeline_merge` (repost bump + hydrate).
+    let feed = nmp_feed::FlatFeed::with_merge_and_window_policy(
         admission,
+        nmp_note_feed::feed_row_builder(row_context),
+        None,
+        nmp_note_feed::timeline_merge(),
         window,
-        row_context,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
     let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
@@ -90,15 +96,15 @@ pub(super) fn build_flat_scope_session(
     let typed_key = key.to_string();
     let source = nmp_feed::FeedWindowSource::new(move || feed_for_typed.snapshot_current_window());
     app.register_feed_window_source(key.to_string(), source, move |snapshot| {
+        // PROVISIONAL feed-row wire (serde-JSON, `NFRW`) — TODO(#3082): replace
+        // with the frozen typed FlatBuffers wire once the FeedRow shape settles.
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
-            schema_id: nmp_note_feed::op_feed::OP_FEED_SCHEMA_ID.to_string(),
-            schema_version: nmp_note_feed::op_feed::OP_FEED_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(
-                nmp_note_feed::op_feed::OP_FEED_FILE_IDENTIFIER,
-            )
-            .into_owned(),
-            payload: nmp_note_feed::op_feed::encode_op_feed_snapshot(snapshot),
+            schema_id: nmp_note_feed::FEED_ROW_SCHEMA_ID.to_string(),
+            schema_version: nmp_note_feed::FEED_ROW_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_note_feed::FEED_ROW_FILE_IDENTIFIER)
+                .into_owned(),
+            payload: nmp_note_feed::encode_feed_row_snapshot(snapshot),
             ..Default::default()
         })
     });

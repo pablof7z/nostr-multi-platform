@@ -189,10 +189,9 @@ where
     }
 
     /// Build the visible-window snapshot: cards newest-first by
-    /// `(sort_created_at, id)`, windowed to the request limit. Attribution is
-    /// empty for flat feeds.
+    /// `(sort_created_at, id)`, windowed to the request limit.
     #[must_use]
-    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<C, ()> {
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<C> {
         let Ok(st) = self.state.lock() else {
             return RootFeedSnapshot {
                 cards: Vec::new(),
@@ -225,7 +224,6 @@ where
             .iter()
             .map(|(_, _, card)| RootCard {
                 card: (*card).clone(),
-                attribution: Vec::new(),
             })
             .collect::<Vec<_>>();
 
@@ -352,7 +350,7 @@ where
 
     /// Snapshot using the current render viewport.
     #[must_use]
-    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C, ()> {
+    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C> {
         let limit = self.visible_limit.load(Ordering::Relaxed);
         self.snapshot(&FeedRequest::newest(limit))
     }

@@ -19,7 +19,7 @@ fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {
     let (sender, rx) = command_receiver();
     let adapter = FeedSessionTrellisAdapter::new(
         "app.feed.equivalence",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender,
     )
@@ -144,14 +144,14 @@ fn local_source_change_does_not_replan_unrelated_session_adapter() {
     let (sender, rx) = command_receiver();
     let active_adapter = FeedSessionTrellisAdapter::new(
         "app.feed.active",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender.clone(),
     )
     .unwrap();
     let static_adapter = FeedSessionTrellisAdapter::new(
         "app.feed.static",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender,
     )

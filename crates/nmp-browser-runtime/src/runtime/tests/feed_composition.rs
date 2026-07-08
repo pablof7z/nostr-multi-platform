@@ -418,7 +418,7 @@ fn relay_event_frame(sub_id: &str, event_json: String) -> String {
 fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHandle {
     let params = nmp_feed::FeedParams {
         primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
-        shape: nmp_feed::FeedShape::RootIndexed,
+        shape: nmp_feed::FeedShape::Flat,
         source: nmp_feed::FeedScope::ActiveUserFollows,
         admission: nmp_feed::FeedAdmission::All,
         order: nmp_feed::FeedOrder::NewestByFeedPosition,
@@ -468,7 +468,7 @@ fn req_frame_for_kind(
 
 fn decode_home_feed(
     frame: &crate::runtime::SnapshotOutcome,
-) -> nmp_note_feed::op_feed::OpFeedSnapshot {
+) -> nmp_note_feed::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -477,5 +477,5 @@ fn decode_home_feed(
         .into_iter()
         .find(|row| row.key == BROWSER_FEED_KEY)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
+    nmp_note_feed::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

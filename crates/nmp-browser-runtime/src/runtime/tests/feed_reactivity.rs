@@ -294,7 +294,7 @@ fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHan
             nmp_feed::feed::events()
                 .primary_kinds([nmp_kinds::KIND_SHORT_TEXT_NOTE])
                 .from(nmp_feed::source::active_user().follows())
-                .shape(nmp_feed::FeedShape::RootIndexed)
+                .shape(nmp_feed::FeedShape::Flat)
                 .order(nmp_feed::FeedOrder::NewestByFeedPosition)
                 .window(nmp_feed::FeedWindowPolicy::bounded(
                     nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
@@ -359,7 +359,7 @@ fn req_frame_mentions_author(text: &str, author: &str) -> bool {
     })
 }
 
-fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_note_feed::op_feed::OpFeedSnapshot {
+fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_note_feed::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -368,5 +368,5 @@ fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_note_feed::op_fee
         .into_iter()
         .find(|row| row.key == BROWSER_FEED_KEY)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
+    nmp_note_feed::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

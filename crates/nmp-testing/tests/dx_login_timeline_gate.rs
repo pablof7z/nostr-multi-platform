@@ -357,7 +357,7 @@ fn g7_example_uses_declared_feed_spec_path() {
         "feed::events()",
         "source::active_user().follows()",
         ".open_spec(",
-        "FeedShape::RootIndexed",
+        "FeedShape::Flat",
         "FeedOrder::NewestByFeedPosition",
         "FeedItemProjection::feed_rows()",
     ] {

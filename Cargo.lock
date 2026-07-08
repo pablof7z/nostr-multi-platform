@@ -4928,17 +4928,11 @@ dependencies = [
 name = "nmp-note-feed"
 version = "1.0.0-rc.1"
 dependencies = [
- "flatbuffers",
- "nmp-content",
  "nmp-core",
  "nmp-feed",
- "nmp-nip01",
- "nmp-nip09",
  "nmp-nip18",
  "nmp-ownership",
  "nmp-planner",
- "nmp-threading",
- "serde",
  "serde_json",
 ]
 

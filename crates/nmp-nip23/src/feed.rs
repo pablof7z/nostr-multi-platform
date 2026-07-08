@@ -112,7 +112,7 @@ impl LongformFeed {
 
     /// Build a newest-first snapshot over the visible rows.
     #[must_use]
-    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<LongformFeedEntry, ()> {
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<LongformFeedEntry> {
         self.inner.snapshot(request)
     }
 

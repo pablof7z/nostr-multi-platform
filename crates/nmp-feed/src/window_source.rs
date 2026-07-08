@@ -35,7 +35,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::root_indexed::FeedAuthorRefs;
+use crate::FeedAuthorRefs;
 
 /// A feed's visible-window source, materialized once per snapshot tick.
 ///
@@ -45,7 +45,7 @@ use crate::root_indexed::FeedAuthorRefs;
 /// reuses the cached `Arc<S>`. A new tick rev invalidates the memo, so a feed
 /// whose window changed between ticks re-materializes.
 ///
-/// `S` is the concrete snapshot type (`RootFeedSnapshot<C, A>`); it must
+/// `S` is the concrete snapshot type (`RootFeedSnapshot<C>`); it must
 /// implement [`FeedAuthorRefs`] so the provider can extract the visible author
 /// keys from the SAME snapshot the typed producer encodes.
 pub struct FeedWindowSource<S> {
@@ -113,7 +113,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::root_indexed::{CardAuthors, RootCard, RootFeedSnapshot};
+    use crate::{CardAuthors, RootCard, RootFeedSnapshot};
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Clone, serde::Serialize)]
@@ -126,7 +126,7 @@ mod tests {
         }
     }
 
-    fn snap(authors: &[&str]) -> RootFeedSnapshot<Card, ()> {
+    fn snap(authors: &[&str]) -> RootFeedSnapshot<Card> {
         RootFeedSnapshot {
             cards: authors
                 .iter()
@@ -134,7 +134,6 @@ mod tests {
                     card: Card {
                         author: a.to_string(),
                     },
-                    attribution: Vec::new(),
                 })
                 .collect(),
             page: None,

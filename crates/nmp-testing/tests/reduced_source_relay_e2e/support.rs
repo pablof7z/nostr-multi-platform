@@ -188,7 +188,7 @@ pub(crate) fn signed_note(keys: &Keys, content: &str, created_at: u64) -> Event 
 pub(crate) fn active_follows_params(key: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        shape: FeedShape::RootIndexed,
+        shape: FeedShape::Flat,
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
@@ -266,7 +266,7 @@ pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
         .collect()
 }
 
-pub(crate) fn flat_feed_cards(app: &NmpApp, key: &str) -> Vec<nmp_note_feed::NoteFeedItem> {
+pub(crate) fn flat_feed_cards(app: &NmpApp, key: &str) -> Vec<nmp_feed::FeedRow> {
     let Some(row) = app
         .run_typed_snapshot_projections()
         .into_iter()
@@ -274,8 +274,8 @@ pub(crate) fn flat_feed_cards(app: &NmpApp, key: &str) -> Vec<nmp_note_feed::Not
     else {
         return Vec::new();
     };
-    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload)
-        .expect("NNFS payload decodes")
+    nmp_note_feed::decode_feed_row_snapshot(&row.payload)
+        .expect("feed-row payload decodes")
         .cards
         .into_iter()
         .map(|card| card.card)

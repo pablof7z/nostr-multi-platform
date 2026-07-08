@@ -356,7 +356,6 @@ pub(crate) fn lifecycle_part(value: &InterestLifecycle) -> &'static str {
 
 pub(crate) fn shape_part(value: &FeedShape) -> &'static str {
     match value {
-        FeedShape::RootIndexed => "root-indexed",
         FeedShape::Flat => "flat",
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_note_feed::HostedGroupContext;
+use nmp_feed::FeedRowContext;
 use nmp_planner::InterestShape;
 
 pub(super) fn group_event_shapes(
@@ -47,7 +47,7 @@ pub(super) fn group_event_context(
     groups: &BTreeSet<nmp_nip51::SimpleGroupRef>,
     kinds: &BTreeSet<u32>,
     event: &KernelEvent,
-) -> Option<HostedGroupContext> {
+) -> Option<FeedRowContext> {
     if groups.is_empty() || !kinds.contains(&event.kind) {
         return None;
     }
@@ -72,9 +72,9 @@ pub(super) fn group_event_context(
             .relay_provenance
             .iter()
             .any(|relay| relay == &group_id.host_relay_url)
-            .then_some(HostedGroupContext {
-                host_relay_url: group_id.host_relay_url,
-                local_id: group_id.local_id,
+            .then_some(FeedRowContext::Group {
+                relay: group_id.host_relay_url,
+                id: group_id.local_id,
             })
     });
     if by_relay.is_some() {
@@ -96,9 +96,9 @@ pub(super) fn group_event_context(
     local_matches
         .next()
         .is_none()
-        .then_some(HostedGroupContext {
-            host_relay_url: only_match.host_relay_url,
-            local_id: only_match.local_id,
+        .then_some(FeedRowContext::Group {
+            relay: only_match.host_relay_url,
+            id: only_match.local_id,
         })
 }
 
@@ -195,9 +195,9 @@ mod tests {
         .expect("matched context");
         assert_eq!(
             context,
-            HostedGroupContext {
-                host_relay_url: "wss://relay-a".to_string(),
-                local_id: "room-b".to_string(),
+            FeedRowContext::Group {
+                relay: "wss://relay-a".to_string(),
+                id: "room-b".to_string(),
             }
         );
     }
@@ -219,9 +219,9 @@ mod tests {
         .expect("unambiguous local group");
         assert_eq!(
             context,
-            HostedGroupContext {
-                host_relay_url: "wss://relay-a".to_string(),
-                local_id: "room-b".to_string(),
+            FeedRowContext::Group {
+                relay: "wss://relay-a".to_string(),
+                id: "room-b".to_string(),
             }
         );
     }

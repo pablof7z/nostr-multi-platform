@@ -249,7 +249,6 @@ fn custom_merge_can_hydrate_existing_bumped_item() {
 
     let snap = feed.snapshot(&FeedRequest::default());
     assert_eq!(snap.cards[0].card, "original+repost");
-    assert_eq!(snap.cards[0].attribution, Vec::<()>::new());
 }
 
 #[test]

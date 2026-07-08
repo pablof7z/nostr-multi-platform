@@ -112,7 +112,7 @@ fn typed_payloads_keep_output_and_retry_policy_out_of_resource_identity() {
     expected.sort();
     assert_eq!(sorted_children, expected);
 
-    let attachment = ProjectionAttachment::new(projection.clone(), FeedShape::RootIndexed);
+    let attachment = ProjectionAttachment::new(projection.clone(), FeedShape::Flat);
     let replay = ReplayDemand::new(projection, vec![bob, alice.clone()]);
     assert_ne!(attachment.resource_key(), replay.resource_key());
 

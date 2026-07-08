@@ -1,256 +1,176 @@
-//! `FlatFeed` — a predicate-gated flat note feed (ADR-0076 §5.1).
+//! Protocol composition: build a generic [`nmp_feed::FeedRow`] from NIP-01 /
+//! NIP-18 facts on the four generic [`nmp_feed::FlatFeed`] knobs.
 //!
-//! The M2 author/thread read-path replacement. Unlike the OP-centric root-indexed feed
-//! ([`crate::OpFeedEngine`] / [`crate::register_op_feed`]), which is a stream of
-//! **thread roots only** with a followed author's replies rolled up as
-//! *attribution* metadata, a profile screen and a thread screen each render a
-//! **flat list** where every matching note is its own top-level row:
+//! This crate no longer owns a feed ENGINE or an authoritative row type. The
+//! engine is the generic `nmp_feed::FlatFeed<FeedRow>`; the row is the generic
+//! `nmp_feed::FeedRow`. This module only supplies the app/protocol knobs:
 //!
-//! * **Author feed** — every primary kind:1 event plus derived kind:6 repost
-//!   wrapper authored by one pubkey (including that author's replies to other
-//!   people), shown as top-level rows. The root-indexed engine structurally
-//!   cannot express this (it would hide the replies under other people's roots).
-//! * **Thread feed** — the root note plus every admitted kind:1/kind:6 event
-//!   that references it via `#e`, each as its own row (`ThreadScreen` does
-//!   `ForEach(thread.items)`).
+//!   * admission — supplied by the caller (a `nmp_feed::FlatFeedPredicate`);
+//!   * identity  — [`feed_row_builder`] keys a NIP-18 repost by its TARGET id
+//!                 (`nmp-nip18` parse), defaulting to `event.id` otherwise;
+//!   * sort      — `sort_created_at = event.created_at` (a repost bumps the row);
+//!   * merge     — [`timeline_merge`] folds a repost wrapper and the target's own
+//!                 event into one row, preserving repost provenance.
 //!
-//! Both are the same machine: a flat, newest-first, D5-windowed list of
-//! [`NoteFeedItem`]s, gated by an injected admission predicate. The
-//! emitted snapshot is the **same** [`RootFeedSnapshot`] wire shape OP-centric
-//! feeds emit (`RootCard { card, attribution }`), with `attribution` always
-//! empty — so the iOS/Android shells decode it through the same NNFS
-//! `OpFeedSnapshot` schema with zero new FlatBuffers schema or codegen. Apps
-//! supply their own projection keys and declare primary kinds (`[1]` for Chirp);
-//! the NIP-18 adapter derives the
-//! compiled acquisition set (`{1,6}`), and this protocol adapter renders those
-//! admitted events. `nmp-core` never owns the primary-kind policy.
-//!
-//! Registration mirrors [`crate::register_op_feed`]: the host registers a
-//! `FlatFeed` as both a [`ObservedProjectionSink`] (ingest fan-out) and a
-//! [`FeedController`] under its own app-owned snapshot key
-//! (`microblog.feed.author.<pk>` / `test.feed.thread.<id>`) —
-//! `DynamicProjectionKey::app_owned`, never `nmp.*` (PR #2610).
+//! The former note-only magic (NIP-10 root promotion, reply rollup, repost L-2
+//! rekey, synchronous `EventLookup` cache reads — the order-dependent cache-luck
+//! bug #3083) is DELETED. Reposts carry a typed [`nmp_feed::RenderTarget`]
+//! pointer resolved lazily via `resolve_ref`, not by an in-feed cache read.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    FeedController, FeedInterestShape, FeedRequest, FeedWindowPolicy, FlatFeed as GenericFlatFeed,
-    FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
+    FeedRow, FeedRowContext, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate,
+    RenderTarget,
 };
 use nmp_planner::InterestShape;
 
-use crate::{HostedGroupContext, Nip10ReplyAttribution, NoteFeedItem, RepostAttribution};
+/// Source-owned provider of NIP-29 hosted-group context for a feed row.
+///
+/// Returns a [`FeedRowContext::Group`] (carried as data). The canonical typed
+/// group id is `nmp_nip29::GroupId`, owned by `nmp-nip29`; it is intentionally
+/// NOT duplicated as a typed struct in the low `nmp-feed` row crate.
+pub type FeedRowGroupContext = Arc<dyn Fn(&KernelEvent) -> Option<FeedRowContext> + Send + Sync>;
 
-pub use nmp_feed::FlatFeedPredicate;
-
-pub type HostedGroupContextProvider =
-    Arc<dyn Fn(&KernelEvent) -> Option<HostedGroupContext> + Send + Sync>;
-
-/// A flat, predicate-gated note feed. Wire-compatible with OP-centric feeds'
-/// [`RootFeedSnapshot`] (empty `attribution`).
-pub struct FlatFeed {
-    inner: Arc<GenericFlatFeed<NoteFeedItem>>,
+/// An empty group-context provider.
+#[must_use]
+pub fn no_group_context() -> FeedRowGroupContext {
+    Arc::new(|_| None)
 }
 
-impl FlatFeed {
-    /// Construct a flat feed admitting events for which `predicate` is `true`.
-    ///
-    /// The feed has **no** pull interest (`interest_shape() == None`), so a host
-    /// that registers it without a pull controller gets projection-only
-    /// `load_older` — the historical, fail-closed behaviour. Use
-    /// [`Self::with_interest`] to make it pull-pageable.
-    #[must_use]
-    pub fn new(predicate: FlatFeedPredicate) -> Arc<Self> {
-        Self::new_with_window_policy(predicate, FeedWindowPolicy::default())
-    }
+/// Build the item-builder knob: `KernelEvent -> Option<FlatFeedItem<FeedRow>>`.
+///
+/// NIP-18 reposts key the row by the TARGET id and carry a render-target
+/// pointer + repost provenance context. When the wrapper embeds the target JSON
+/// (NIP-18 kind:6 `content`), the row is hydrated from that embedded event —
+/// this is parsing the wrapper's own payload, NOT a cache read.
+///
+/// TODO(#3082): whether the embedded target JSON is ALSO ingested into the
+/// kernel event store at parse time (so `render_target` cache-serves for OTHER
+/// surfaces) is an open decision. Not implemented here — bare reposts resolve
+/// their target lazily via `resolve_ref`.
+#[must_use]
+pub fn feed_row_builder(group_context: FeedRowGroupContext) -> FlatFeedItemBuilder<FeedRow> {
+    Arc::new(move |event: &KernelEvent| Some(build_item(event, group_context(event))))
+}
 
-    /// Construct a flat feed with explicit app-declared window policy.
-    #[must_use]
-    pub fn new_with_window_policy(
-        predicate: FlatFeedPredicate,
-        window_policy: FeedWindowPolicy,
-    ) -> Arc<Self> {
-        Self::new_with_window_policy_and_hosted_group_context(
-            predicate,
-            window_policy,
-            Arc::new(|_| None),
-        )
-    }
-
-    /// Construct a flat feed with explicit app-declared window policy and
-    /// source-owned row context.
-    #[must_use]
-    pub fn new_with_window_policy_and_hosted_group_context(
-        predicate: FlatFeedPredicate,
-        window_policy: FeedWindowPolicy,
-        hosted_group_context: HostedGroupContextProvider,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            inner: GenericFlatFeed::with_merge_and_window_policy(
-                predicate,
-                event_card_builder(hosted_group_context),
-                None,
-                timeline_merge(),
-                window_policy,
-            ),
-        })
-    }
-
-    /// Construct a flat feed with both its admission predicate and a covered
-    /// pull [`InterestShape`] (e.g. [`author_feed_shape`] / [`thread_feed_shape`]).
-    ///
-    /// The host pairs this with `nmp_feed::PullFeedController` (built over the
-    /// app's `feed_pull_fn`) so `load_older` drains older matching notes by
-    /// ingest seq; the predicate still gates ingest and display order stays
-    /// `(created_at, id)`. Pass `None` to fail closed (equivalent to
-    /// [`Self::new`]).
-    #[must_use]
-    pub fn with_interest(
-        predicate: FlatFeedPredicate,
-        interest: Option<InterestShape>,
-    ) -> Arc<Self> {
-        Self::with_interest_and_window_policy(predicate, interest, FeedWindowPolicy::default())
-    }
-
-    /// Construct a flat feed with pull interest and explicit app-declared
-    /// window policy.
-    #[must_use]
-    pub fn with_interest_and_window_policy(
-        predicate: FlatFeedPredicate,
-        interest: Option<InterestShape>,
-        window_policy: FeedWindowPolicy,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            inner: GenericFlatFeed::with_merge_and_window_policy(
-                predicate,
-                event_card_builder(Arc::new(|_| None)),
-                interest,
-                timeline_merge(),
-                window_policy,
-            ),
-        })
-    }
-
-    #[cfg(test)]
-    fn ingest(&self, event: &KernelEvent) {
-        self.inner.on_kernel_event(event);
-    }
-
-    /// Build the visible-window snapshot: cards newest-first by
-    /// `(created_at, id)`, windowed to the request limit (D5). `attribution` is
-    /// always empty — a flat feed has no per-root attribution rollup.
-    #[must_use]
-    pub fn snapshot(
-        &self,
-        request: &FeedRequest,
-    ) -> RootFeedSnapshot<NoteFeedItem, Nip10ReplyAttribution> {
-        let snap = self.inner.snapshot(request);
-        RootFeedSnapshot {
-            cards: snap
-                .cards
-                .into_iter()
-                .map(|card| RootCard {
-                    card: card.card,
-                    attribution: Vec::new(),
-                })
-                .collect(),
-            page: snap.page,
-            metrics: snap.metrics,
+fn build_item(event: &KernelEvent, group: Option<FeedRowContext>) -> FlatFeedItem<FeedRow> {
+    match nmp_nip18::try_from_kernel_event(event) {
+        Some(repost) => build_repost_item(event, &repost, group),
+        None => {
+            let mut row = FeedRow::from_event(event);
+            if let Some(group) = group {
+                row.context.push(group);
+            }
+            FlatFeedItem {
+                id: row.id.clone(),
+                source_id: event.id.clone(),
+                sort_created_at: row.created_at,
+                card: row,
+            }
         }
     }
+}
 
-    /// Build the visible-window snapshot using the feed's current render
-    /// viewport limit. This honors any prior [`Self::grow_visible_window`] call
-    /// that widened the viewport beyond the first page.
-    #[must_use]
-    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<NoteFeedItem, Nip10ReplyAttribution> {
-        let snap = self.inner.snapshot_current_window();
-        RootFeedSnapshot {
-            cards: snap
-                .cards
-                .into_iter()
-                .map(|card| RootCard {
-                    card: card.card,
-                    attribution: Vec::new(),
-                })
-                .collect(),
-            page: snap.page,
-            metrics: snap.metrics,
-        }
+fn build_repost_item(
+    event: &KernelEvent,
+    repost: &nmp_nip18::RepostRecord,
+    group: Option<FeedRowContext>,
+) -> FlatFeedItem<FeedRow> {
+    let target_id = repost
+        .target_event_id
+        .clone()
+        .unwrap_or_else(|| event.id.clone());
+    let render_target = Some(RenderTarget::Event {
+        id: target_id.clone(),
+        relay: None,
+        event_kind: repost.target_kind,
+    });
+
+    let (author_pubkey, kind, content, tags, note_created_at) = match repost.embedded_event.as_ref()
+    {
+        Some(inner) => (
+            inner.author.clone(),
+            inner.kind,
+            inner.content.clone(),
+            inner.tags.clone(),
+            inner.created_at,
+        ),
+        // No embedded JSON: placeholder row. The render-target pointer drives a
+        // lazy `resolve_ref`; when the target's own event is admitted it merges
+        // in (see `timeline_merge`).
+        None => (
+            String::new(),
+            repost.target_kind.unwrap_or(0),
+            String::new(),
+            Vec::new(),
+            event.created_at,
+        ),
+    };
+
+    let mut context = vec![FeedRowContext::Repost {
+        author_pubkey: event.author.clone(),
+        note_created_at,
+    }];
+    if let Some(group) = group {
+        context.push(group);
     }
 
-    /// Number of rows currently held.
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    /// `true` when no rows are held.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
-    }
-
-    /// Grow the render viewport by one page over already-ingested rows.
-    pub fn grow_visible_window(&self) -> bool {
-        self.inner.grow_visible_window()
-    }
-
-    /// Clear all rows and reset the visible window to the first page.
-    pub fn reset_for_perspective_change(&self) -> bool {
-        self.inner.reset_for_perspective_change()
+    let row = FeedRow {
+        id: target_id.clone(),
+        source_id: event.id.clone(),
+        author_pubkey,
+        kind,
+        created_at: event.created_at,
+        content,
+        tags,
+        relay_provenance: event.received_from_relays(),
+        render_target,
+        context,
+    };
+    FlatFeedItem {
+        id: target_id,
+        source_id: event.id.clone(),
+        // A repost bumps the shared row to the repost time.
+        sort_created_at: event.created_at,
+        card: row,
     }
 }
 
-fn event_card_builder(
-    hosted_group_context: HostedGroupContextProvider,
-) -> FlatFeedItemBuilder<NoteFeedItem> {
-    Arc::new(move |event| {
-        let card = NoteFeedItem::from_event_for_op_feed_with_hosted_group(
-            event,
-            None,
-            hosted_group_context(event),
-        );
-        Some(FlatFeedItem {
-            id: card.id.clone(),
-            source_id: event.id.clone(),
-            sort_created_at: card.created_at,
-            card,
-        })
-    })
-}
-
-fn timeline_merge() -> FlatFeedMerge<NoteFeedItem> {
+/// The follows-timeline merge knob: when a repost wrapper and the target's own
+/// event map to the same row id, keep the bumped sort position and repost
+/// provenance while preferring the hydrated (non-placeholder) content.
+#[must_use]
+pub fn timeline_merge() -> FlatFeedMerge<FeedRow> {
     Arc::new(|existing, incoming| match existing {
         Some(existing) if existing.sort_created_at > incoming.sort_created_at => {
-            merge_older_target_into_bumped_row(existing, incoming)
+            merge_target_into_bumped_row(existing, incoming)
         }
         Some(existing) if existing.sort_created_at == incoming.sort_created_at => {
-            prefer_hydrated_card(existing, incoming)
+            prefer_hydrated(existing, incoming)
         }
         _ => incoming,
     })
 }
 
-fn merge_older_target_into_bumped_row(
-    existing: &FlatFeedItem<NoteFeedItem>,
-    incoming: FlatFeedItem<NoteFeedItem>,
-) -> FlatFeedItem<NoteFeedItem> {
-    let Some(existing_repost) = existing.card.reposted_by.clone() else {
+fn merge_target_into_bumped_row(
+    existing: &FlatFeedItem<FeedRow>,
+    incoming: FlatFeedItem<FeedRow>,
+) -> FlatFeedItem<FeedRow> {
+    let Some(repost) = repost_context(&existing.card) else {
         return existing.clone();
     };
-    if incoming.card.reposted_by.is_some() {
+    if repost_context(&incoming.card).is_some() {
+        // Both are reposts; keep the newer (existing sorts higher).
         return existing.clone();
     }
+    // `incoming` is the plain target event: take its hydrated fields but keep
+    // the bumped sort position and re-attach repost provenance.
     let mut card = incoming.card;
-    card.reposted_by = Some(RepostAttribution {
-        author_pubkey: existing_repost.author_pubkey,
-        note_created_at: card.created_at,
-    });
-    card.created_at = existing.sort_created_at;
+    card.context.push(repost);
+    card.render_target = existing.card.render_target.clone();
     FlatFeedItem {
         id: existing.id.clone(),
         source_id: existing.source_id.clone(),
@@ -259,11 +179,11 @@ fn merge_older_target_into_bumped_row(
     }
 }
 
-fn prefer_hydrated_card(
-    existing: &FlatFeedItem<NoteFeedItem>,
-    incoming: FlatFeedItem<NoteFeedItem>,
-) -> FlatFeedItem<NoteFeedItem> {
-    if card_is_placeholder(&existing.card) && !card_is_placeholder(&incoming.card) {
+fn prefer_hydrated(
+    existing: &FlatFeedItem<FeedRow>,
+    incoming: FlatFeedItem<FeedRow>,
+) -> FlatFeedItem<FeedRow> {
+    if is_placeholder(&existing.card) && !is_placeholder(&incoming.card) {
         return FlatFeedItem {
             id: incoming.id,
             source_id: existing.source_id.clone(),
@@ -274,39 +194,20 @@ fn prefer_hydrated_card(
     incoming
 }
 
-fn card_is_placeholder(card: &NoteFeedItem) -> bool {
-    card.content.is_empty() && card.reposted_by.is_some()
+fn repost_context(card: &FeedRow) -> Option<FeedRowContext> {
+    card.context
+        .iter()
+        .find(|ctx| matches!(ctx, FeedRowContext::Repost { .. }))
+        .cloned()
 }
 
-impl ObservedProjectionSink for FlatFeed {
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        self.inner.on_kernel_event(event);
-    }
+fn is_placeholder(card: &FeedRow) -> bool {
+    card.content.is_empty() && repost_context(card).is_some()
 }
 
-impl FeedInterestShape for FlatFeed {
-    /// The feed's covered pull interest, or `None` to fail closed (ADR-0072 §8
-    /// 6B). The host pairs the feed with a `nmp_feed::PullFeedController`, which
-    /// is constructed UNCONDITIONALLY; its `load_older` re-reads this shape on
-    /// every call and fails closed (returns `false`, no pull, no broad-scan)
-    /// whenever it yields `None`.
-    fn interest_shape(&self) -> Option<InterestShape> {
-        self.inner.interest_shape()
-    }
-}
+// ── Author / thread flat-feed predicates and shapes (generic protocol knobs) ──
 
-impl FeedController for FlatFeed {
-    fn load_older(&self) -> bool {
-        self.inner.load_older()
-    }
-}
-
-/// Build the **author-feed** pull [`InterestShape`]: `{authors:[pk], kinds}` —
-/// the covered E1 `AuthorsKind` shape the kernel pull substrate maps to
-/// `idx_kind_author_time` (ADR-0070). Pair with [`author_feed_predicate`] and a
-/// `nmp_feed::PullFeedController` so `load_older` drains older notes by that
-/// author. The `kinds` argument is the compiled acquisition set derived from the
-/// app's primary-kind declaration.
+/// Author-feed pull interest: `{authors:[pk], kinds}`.
 #[must_use]
 pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
     InterestShape::timeline_for(
@@ -315,13 +216,7 @@ pub fn author_feed_shape(author: String, kinds: Vec<u32>) -> InterestShape {
     )
 }
 
-/// Build the **thread-feed reply-tail** pull [`InterestShape`]:
-/// `{kinds, #e:[root]}` — the covered E2 `Etag` shape. This pages the *replies*
-/// that reference `root_id` via `#e`; the root note itself is an event-id-only
-/// interest that the pull substrate does not cover, so the screen/component that
-/// needs the root owns that separate dependency (ADR-0072 §8 6B). Pair with
-/// [`thread_feed_predicate`] (which still admits the root by id) and a
-/// `nmp_feed::PullFeedController`.
+/// Thread-feed reply-tail pull interest: `{kinds, #e:[root]}`.
 #[must_use]
 pub fn thread_feed_shape(root_id: String, kinds: Vec<u32>) -> InterestShape {
     let mut shape = InterestShape {
@@ -334,24 +229,14 @@ pub fn thread_feed_shape(root_id: String, kinds: Vec<u32>) -> InterestShape {
     shape
 }
 
-/// Build an **author-feed** predicate: a compiled acquisition kind set authored
-/// by one pubkey. For a primary kind `[1]` feed, the caller passes the adapter-
-/// derived `{1,6}` set; the substrate never chooses that policy.
-///
-/// `kinds` is the compiled acquisition kind set. `author` is the raw hex pubkey.
+/// Author-feed admission predicate: a kind set authored by one pubkey.
 #[must_use]
 pub fn author_feed_predicate(author: String, kinds: Vec<u32>) -> FlatFeedPredicate {
     Arc::new(move |event: &KernelEvent| event.author == author && kinds.contains(&event.kind))
 }
 
-/// Build a **thread-feed** predicate: the root note itself plus every event of
-/// a host-chosen kind that references the root via a NIP-10 `#e` tag.
-///
-/// Crucially this admits the root event by id (`event.id == root_id`) — a
-/// a compiled acquisition filter with only `#e=[root]` would fetch the
-/// *replies* but not the root, and `ThreadScreen` must show the root as a row.
-/// The `#e` match is any `e` tag whose value equals `root_id` (NIP-10 root or
-/// reply marker).
+/// Thread-feed admission predicate: the root note itself plus every event of a
+/// host-chosen kind that references the root via a NIP-10 `#e` tag.
 #[must_use]
 pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredicate {
     Arc::new(move |event: &KernelEvent| {
@@ -367,7 +252,3 @@ pub fn thread_feed_predicate(root_id: String, kinds: Vec<u32>) -> FlatFeedPredic
             .any(|tag| tag.first().map(String::as_str) == Some("e") && tag.get(1) == Some(&root_id))
     })
 }
-
-#[cfg(test)]
-#[path = "flat_feed/tests.rs"]
-mod tests;

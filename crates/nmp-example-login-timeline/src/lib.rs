@@ -46,7 +46,7 @@ use nmp_feed::{
     FeedWindowPolicy,
 };
 use nmp_native_runtime::NmpApp;
-use nmp_note_feed::op_feed::decode_op_feed_snapshot;
+use nmp_note_feed::decode_feed_row_snapshot;
 
 #[cfg(feature = "harness")]
 pub mod harness;
@@ -129,7 +129,7 @@ pub fn following_timeline_spec() -> FeedSpec {
     feed::events()
         .primary_kinds(FOLLOWING_PRIMARY_FEED_KINDS)
         .from(source::active_user().follows())
-        .shape(FeedShape::RootIndexed)
+        .shape(FeedShape::Flat)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(
             nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
@@ -181,7 +181,7 @@ impl TimelineRow {
 /// Step 3 — render the FOLLOWING timeline from the Rust-owned typed projection.
 ///
 /// Reads this example's typed FlatBuffers sidecar (`NNFS`) the kernel emits
-/// every tick, decodes it with the NMP-provided [`decode_op_feed_snapshot`], and
+/// every tick, decodes it with the NMP-provided [`decode_feed_row_snapshot`], and
 /// maps each root card to a [`TimelineRow`]. This is exactly the projection→
 /// render contract a platform shell follows: decode the NNFS bytes and render
 /// rows from the same typed projection.
@@ -198,7 +198,7 @@ pub fn render_home_rows(app: &NmpApp) -> Vec<TimelineRow> {
     else {
         return Vec::new();
     };
-    let Ok(snapshot) = decode_op_feed_snapshot(&home.payload) else {
+    let Ok(snapshot) = decode_feed_row_snapshot(&home.payload) else {
         return Vec::new();
     };
     snapshot
@@ -208,11 +208,9 @@ pub fn render_home_rows(app: &NmpApp) -> Vec<TimelineRow> {
             author_pubkey: root.card.author_pubkey.clone(),
             created_at: root.card.created_at,
             content: root.card.content.clone(),
-            attribution_pubkeys: root
-                .attribution
-                .iter()
-                .map(|a| a.author_pubkey.clone())
-                .collect(),
+            // Reply-rollup attribution was deleted from the feed model (#3082).
+            // An app that wants a reply digest rebuilds it from delivered rows.
+            attribution_pubkeys: Vec::new(),
         })
         .collect()
 }

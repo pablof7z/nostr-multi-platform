@@ -81,7 +81,7 @@ pub use diagnostics::{
 pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use params::validate_feed_params;
-pub use session_engine::OpScopeSessionArtifacts;
+pub use session_engine::ScopeSessionBuild;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

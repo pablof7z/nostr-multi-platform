@@ -84,8 +84,12 @@ fn active_hosted_groups_flat_rows_include_matched_group_context() {
     wait_for(&rx, "hosted group context row", || {
         flat_feed_cards(app_ref, key).iter().any(|card| {
             card.id == group_message_id
-                && card.hosted_group.as_ref().is_some_and(|context| {
-                    context.host_relay_url == relay_url && context.local_id == "room-a"
+                && card.context.iter().any(|ctx| {
+                    matches!(
+                        ctx,
+                        nmp_feed::FeedRowContext::Group { relay, id }
+                            if relay == &relay_url && id == "room-a"
+                    )
                 })
         })
     });
@@ -95,12 +99,12 @@ fn active_hosted_groups_flat_rows_include_matched_group_context() {
         .iter()
         .find(|card| card.id == group_message_id)
         .expect("group message card");
-    assert_eq!(
-        card.hosted_group,
-        Some(nmp_note_feed::HostedGroupContext {
-            host_relay_url: relay_url,
-            local_id: "room-a".to_string(),
-        })
+    assert!(
+        card.context.contains(&nmp_feed::FeedRowContext::Group {
+            relay: relay_url.clone(),
+            id: "room-a".to_string(),
+        }),
+        "group context carried on the feed row"
     );
 
     unsafe { drop(Box::from_raw(app)) };

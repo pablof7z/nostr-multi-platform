@@ -49,7 +49,7 @@ fn capture_frame(bytes: &[u8]) {
     let Some(entry) = projections.iter().find(|e| e.key == key.as_str()) else {
         return;
     };
-    let card_ids = nmp_note_feed::op_feed::decode_op_feed_snapshot(&entry.payload)
+    let card_ids = nmp_note_feed::decode_feed_row_snapshot(&entry.payload)
         .map(|snap| snap.cards.into_iter().map(|c| c.card.id).collect::<Vec<_>>())
         .unwrap_or_default();
     if let Ok(mut g) = frames().lock() {
