@@ -348,6 +348,7 @@ pub fn new_app() -> NmpApp {
         // #1740 step 4 — empty until custom feed policy registration.
         custom_feed_policies: Arc::new(nmp_feed::CustomFeedPolicyRegistry::default()),
         // #3082/#3086 — composite-feed lane mappings, register-once at construction.
+        #[cfg(feature = "composite-feed")]
         lane_mappings: Arc::new(crate::composite_feed::composite_lane_mappings()),
         queue_depth,
         #[cfg(any(test, feature = "test-support"))]

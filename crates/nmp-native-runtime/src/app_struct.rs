@@ -237,6 +237,7 @@ pub struct NmpApp {
     /// (pre-installed by `LaneMappingRegistry::new`) plus the protocol-owned
     /// `nip18.target`/`nip22.root` mappings registered once at app
     /// construction (see `crate::composite_feed::composite_lane_mappings`).
+    #[cfg(feature = "composite-feed")]
     pub(crate) lane_mappings: Arc<nmp_feed::LaneMappingRegistry>,
     /// G-S4 — straddle counter for the actor command channel depth.
     pub(crate) queue_depth: Arc<AtomicU64>,

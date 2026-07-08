@@ -106,6 +106,7 @@ impl NmpApp {
     /// through the SAME real host/compiler path `open_composite_feed` uses.
     /// Mirrors `open_feed_with_compiler`'s existing test-injection precedent
     /// (`feed_session.rs`).
+    #[cfg(feature = "composite-feed")]
     pub fn open_composite_feed_with_mappings_for_test(
         &self,
         params: &nmp_feed::CompositeFeedParams,
