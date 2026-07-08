@@ -56,6 +56,7 @@ impl SearchHost for NmpApp {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+    use std::time::Duration;
 
     use nmp_nip50::{
         close_search, open_search, search_snapshot_bytes, Nip50SearchHandle, Nip50SearchSession,
@@ -64,13 +65,26 @@ mod tests {
 
     const KIND_SHORT_TEXT_NOTE: u32 = 1;
 
+    /// #3080 — `install_read_output` / `teardown_remove_output` are now
+    /// deferred onto the actor's command queue instead of applying
+    /// synchronously (the read-session install/remove re-lock door #3080
+    /// closes), so `search_snapshot_bytes` immediately after `open_search` /
+    /// `close_search` is racy against the actor's own drain. Settle with the
+    /// deterministic actor barrier (not a `sleep`) after every open/close
+    /// before asserting on the sidecar — the same replacement/stale-close
+    /// behavior this test has always guarded is otherwise unaffected.
     #[test]
     fn stale_typed_search_handle_does_not_close_replacement() {
         let app = crate::new_app();
+        app.start_runtime(50, 30);
         let first = search_request("nostr");
         let second = search_request("relay");
 
         let first_handle = open_search(&app, Nip50SearchSession::new(first, "native-search"));
+        assert!(
+            app.wait_barrier_for_test(Duration::from_secs(5)),
+            "actor did not drain the deferred install"
+        );
         assert!(
             search_snapshot_bytes(&app, &first_handle).is_some(),
             "initial search sidecar should be registered"
@@ -79,11 +93,19 @@ mod tests {
         let second_handle = open_search(&app, Nip50SearchSession::new(second, "native-search"));
         close_search(&app, &first_handle);
         assert!(
+            app.wait_barrier_for_test(Duration::from_secs(5)),
+            "actor did not drain the deferred reopen"
+        );
+        assert!(
             search_snapshot_bytes(&app, &second_handle).is_some(),
             "stale typed close must not remove the replacement session"
         );
 
         close_search(&app, &Nip50SearchHandle::for_key("native-search"));
+        assert!(
+            app.wait_barrier_for_test(Duration::from_secs(5)),
+            "actor did not drain the deferred close"
+        );
         assert!(
             search_snapshot_bytes(&app, &second_handle).is_none(),
             "legacy key close still removes the live session"

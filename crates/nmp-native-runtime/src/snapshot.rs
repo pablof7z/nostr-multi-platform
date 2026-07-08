@@ -127,20 +127,33 @@ impl NmpApp {
     /// closure returning `None` contributes nothing. Pending `Cleared` rows for
     /// removed typed keys are drained exactly once. A poisoned registry mutex
     /// degrades to an empty vector (D6).
+    ///
+    /// #3080 — this is a production-reachable caller (the NIP-50 search-poll
+    /// host, `search.rs`'s `search_snapshot_payload`): a host thread can call
+    /// this WHILE a registered snapshot closure opens/closes a read-session.
+    /// Runs the same #3079 snapshot-then-release split as the emit loop's
+    /// `run_typed_projections` — drain the closure handles under the lock,
+    /// release it, then run them via [`nmp_core::__ffi_internal::run_typed_plan`]
+    /// — so a closure that re-locks this registry lands cleanly instead of
+    /// deadlocking this accessor against itself.
     #[must_use]
     pub fn run_typed_snapshot_projections(&self) -> Vec<nmp_core::TypedProjectionData> {
-        self.snapshot_projections
-            .lock()
-            .map(|mut registry| {
+        let (closures, cleared) = match self.snapshot_projections.lock() {
+            Ok(mut registry) => {
                 // ADR-0070 D7 (#1671 Lane H) — OUT-OF-BAND introspection path
                 // (tests/hosts reading the sidecar without a full `make_update`).
                 // Bump the per-tick rev so a `FeedWindowSource` memo re-materializes
                 // per ad-hoc call (reflecting a `load_older` grow between calls).
                 // The production tick path is a different method, so no double-bump.
                 registry.bump_frame_tick_rev();
-                registry.run_typed()
-            })
-            .unwrap_or_default()
+                registry.drain_typed_run_plan()
+            }
+            Err(_) => return Vec::new(),
+        };
+        // `now_secs = 0`: matches the prior `registry.run_typed()` body
+        // (`run_typed_at(0)`) — this out-of-band path has no kernel clock to
+        // stamp with, same as before.
+        nmp_core::__ffi_internal::run_typed_plan(&closures, 0, cleared)
     }
 
     /// Return the set of typed projection keys currently registered — without
