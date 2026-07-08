@@ -47,14 +47,40 @@ pub(super) fn build_scope_session_with_artifacts(
     _suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
     match shape {
-        FeedShape::Flat => flat_session::build_flat_scope_session(app, key, window, resolved)
-            .map(|build| ScopeSessionBuild { build }),
+        FeedShape::Flat => {
+            // The single-scope `FeedParams` path's identity/merge knobs:
+            // NIP-18 repost → target id + repost/target hydration merge
+            // (unchanged behavior). The composite-lane compiler
+            // (`crate::composite_compiler`) supplies its own combined
+            // lane-dispatching builder/merge over the SAME
+            // `build_flat_scope_session` entry point instead.
+            let item_builder = nmp_note_feed::feed_row_builder(resolved.row_context.clone());
+            let merge = nmp_note_feed::timeline_merge();
+            flat_session::build_flat_scope_session(app, key, window, resolved, item_builder, merge)
+                .map(|build| ScopeSessionBuild { build })
+        }
     }
+}
+
+/// Build a flat-shape feed session over a caller-supplied identity/merge knob
+/// pair (#3082 composite-lane compiler entry point). `flat_session` is a
+/// private submodule of `session_engine`; this re-export is the ONE crate-visible
+/// door into it, so `composite_compiler` shares the exact same session-build
+/// mechanics the single-lane `FeedParams` path uses (no second engine wiring).
+pub(crate) fn build_flat_scope_session(
+    app: &impl FeedSessionHost,
+    key: &str,
+    window: FeedWindowPolicy,
+    resolved: ReducedSource,
+    item_builder: nmp_feed::FlatFeedItemBuilder<nmp_feed::FeedRow>,
+    merge: nmp_feed::FlatFeedMerge<nmp_feed::FeedRow>,
+) -> Result<FeedSessionBuild, FeedOpenError> {
+    flat_session::build_flat_scope_session(app, key, window, resolved, item_builder, merge)
 }
 
 pub(super) fn visible_flat_payload(feed: &nmp_feed::FlatFeed<nmp_feed::FeedRow>) -> Vec<u8> {
     let snapshot = feed.snapshot_current_window();
-    nmp_note_feed::encode_feed_row_snapshot(&snapshot)
+    nmp_feed::typed_wire::encode_feed_row_snapshot(&snapshot)
 }
 
 pub(crate) fn interest_scope_code(scope: InterestScope) -> u32 {

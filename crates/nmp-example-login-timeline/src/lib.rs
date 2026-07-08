@@ -46,7 +46,7 @@ use nmp_feed::{
     FeedWindowPolicy,
 };
 use nmp_native_runtime::NmpApp;
-use nmp_note_feed::decode_feed_row_snapshot;
+use nmp_feed::typed_wire::decode_feed_row_snapshot;
 
 #[cfg(feature = "harness")]
 pub mod harness;

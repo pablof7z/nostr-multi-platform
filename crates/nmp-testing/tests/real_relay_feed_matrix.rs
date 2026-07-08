@@ -230,7 +230,7 @@ fn assert_custom_ranking_and_page(events: &[KernelEvent]) -> Option<usize> {
         Arc::new(|event: &KernelEvent| event.content.split_whitespace().count() >= 3),
         Arc::new(|event: &KernelEvent| {
             let words = event.content.split_whitespace().count() as u64;
-            Some(FlatFeedItem {
+            vec![FlatFeedItem {
                 id: event.id.clone(),
                 source_id: event.id.clone(),
                 sort_created_at: words,
@@ -238,7 +238,7 @@ fn assert_custom_ranking_and_page(events: &[KernelEvent]) -> Option<usize> {
                     id: event.id.clone(),
                     words,
                 },
-            })
+            }]
         }),
     );
     for event in events {

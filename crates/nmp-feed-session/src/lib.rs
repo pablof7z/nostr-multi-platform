@@ -35,7 +35,9 @@ use nmp_feed::{
 };
 
 mod active_shape;
+mod composite_compiler;
 mod custom;
+mod delivered_ref;
 mod diagnostics;
 mod dynamic_observer;
 mod flat_replay;
@@ -72,12 +74,14 @@ mod trellis_resources;
 mod trellis_resources_tests;
 mod wot_graph;
 pub(crate) use active_shape::read_active;
+pub use composite_compiler::open_composite_feed;
 pub use diagnostics::{
     FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
     FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReason, FeedSessionDiagnosticReasonCode,
     FeedSessionDiagnosticReceipt, FeedSessionDiagnosticTransaction, FeedSessionDiagnosticsHandle,
     FeedSessionDiagnosticsSink,
 };
+pub use nmp_feed::{LaneMapping, LaneMappingRegistry, MappedPayload, MappedRow};
 pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use params::validate_feed_params;

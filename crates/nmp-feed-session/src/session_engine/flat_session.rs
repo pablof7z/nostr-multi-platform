@@ -12,11 +12,21 @@ use super::{interest_scope_code, visible_flat_payload};
 use crate::source::ReducedSource;
 use crate::trellis_adapter::FeedSessionTrellisAdapter;
 
+/// Build a registered flat-shape feed session.
+///
+/// `item_builder` and `merge` are the identity + sort/merge knobs (#3082 — the
+/// two engine changes: `item_builder` is arity-`Vec`, so it can fan a single
+/// event out into zero, one, or many rows). The single-scope `FeedParams` path
+/// supplies `nmp_note_feed::feed_row_builder`/`timeline_merge` (unchanged
+/// behavior); the composite-lane compiler supplies its own combined
+/// lane-dispatching builder/merge over the SAME engine.
 pub(super) fn build_flat_scope_session(
     app: &impl FeedSessionHost,
     key: &str,
     window: FeedWindowPolicy,
     resolved: ReducedSource,
+    item_builder: nmp_feed::FlatFeedItemBuilder<nmp_feed::FeedRow>,
+    merge: nmp_feed::FlatFeedMerge<nmp_feed::FeedRow>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let ReducedSource {
         op_session_identity: _,
@@ -32,18 +42,22 @@ pub(super) fn build_flat_scope_session(
         identity_observer_ids,
         resolver_teardown,
         active_follow_set: _,
-        row_context,
+        // The single-scope `FeedParams` caller already folded `row_context`
+        // into its `item_builder` closure before calling this function; the
+        // composite-lane compiler folds its per-lane row contexts the same
+        // way. Neither needs it again here.
+        row_context: _,
     } = resolved;
 
     // Generic flat engine over the kind-agnostic `FeedRow`. The four knobs:
     //   admission  = the compiled perspective predicate (`admission`);
-    //   identity   = NIP-18 repost → target id (in `feed_row_builder`);
-    //   sort/merge = `timeline_merge` (repost bump + hydrate).
+    //   identity   = caller-supplied `item_builder` (arity-`Vec`, #3082);
+    //   sort/merge = caller-supplied `merge`.
     let feed = nmp_feed::FlatFeed::with_merge_and_window_policy(
         admission,
-        nmp_note_feed::feed_row_builder(row_context),
+        item_builder,
         None,
-        nmp_note_feed::timeline_merge(),
+        merge,
         window,
     );
     let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
@@ -64,9 +78,17 @@ pub(super) fn build_flat_scope_session(
     let pull = app.feed_pull_fn();
     let apply: FeedApply = {
         let feed = Arc::clone(&feed);
+        let engine_observer = engine_observer.clone();
         Arc::new(move |event: &KernelEvent| {
             let before = visible_flat_payload(&feed);
             feed.on_kernel_event(event);
+            // A composite lane's mapping may register NEW `Delivered`-ref
+            // demand as a side effect of ingesting this event (#3082); re-sync
+            // the observed acquisition so a newly demanded target's shape
+            // actually gets subscribed. A no-op re-sync (the common case —
+            // `live_shapes()` unchanged) costs one shape-set comparison
+            // (`DynamicObservedProjectionSet::sync`'s `same_shape_set` check).
+            engine_observer.sync();
             visible_flat_payload(&feed) != before
         })
     };
@@ -96,15 +118,16 @@ pub(super) fn build_flat_scope_session(
     let typed_key = key.to_string();
     let source = nmp_feed::FeedWindowSource::new(move || feed_for_typed.snapshot_current_window());
     app.register_feed_window_source(key.to_string(), source, move |snapshot| {
-        // PROVISIONAL feed-row wire (serde-JSON, `NFRW`) — TODO(#3082): replace
-        // with the frozen typed FlatBuffers wire once the FeedRow shape settles.
+        // Frozen feed-row FlatBuffers wire (`NFRS`, #3082 settled design).
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
-            schema_id: nmp_note_feed::FEED_ROW_SCHEMA_ID.to_string(),
-            schema_version: nmp_note_feed::FEED_ROW_SCHEMA_VERSION,
-            file_identifier: String::from_utf8_lossy(nmp_note_feed::FEED_ROW_FILE_IDENTIFIER)
-                .into_owned(),
-            payload: nmp_note_feed::encode_feed_row_snapshot(snapshot),
+            schema_id: nmp_feed::typed_wire::FEED_ROW_SCHEMA_ID.to_string(),
+            schema_version: nmp_feed::typed_wire::FEED_ROW_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(
+                nmp_feed::typed_wire::FEED_ROW_FILE_IDENTIFIER,
+            )
+            .into_owned(),
+            payload: nmp_feed::typed_wire::encode_feed_row_snapshot(snapshot),
             ..Default::default()
         })
     });

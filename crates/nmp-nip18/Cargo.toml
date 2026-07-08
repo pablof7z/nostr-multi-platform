@@ -9,6 +9,11 @@ description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+# The `nip18.target` composite-feed lane mapping (#3082) — a pure
+# `KernelEvent -> Vec<MappedRow>` extractor over nmp-feed's generic types.
+# nmp-feed sits BELOW this crate (it does not depend on any NIP crate), so
+# this is not a cycle.
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 # Canonical DeleteRecord (kind:5 decode) and AddressCoordinate (a-tag identity)
 # — nmp-nip09 is the exclusive owner of the generic NIP-09 deletion grammar

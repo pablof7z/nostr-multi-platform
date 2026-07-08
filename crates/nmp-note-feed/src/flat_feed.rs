@@ -14,7 +14,7 @@
 //!
 //! The former note-only magic (NIP-10 root promotion, reply rollup, repost L-2
 //! rekey, synchronous `EventLookup` cache reads — the order-dependent cache-luck
-//! bug #3083) is DELETED. Reposts carry a typed [`nmp_feed::RenderTarget`]
+//! bug #3083) is DELETED. Reposts carry a `nmp_feed::TypedRef` render-only
 //! pointer resolved lazily via `resolve_ref`, not by an in-feed cache read.
 
 use std::collections::BTreeSet;
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use nmp_core::substrate::KernelEvent;
 use nmp_feed::{
     FeedRow, FeedRowContext, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate,
-    RenderTarget,
+    TypedRef,
 };
 use nmp_planner::InterestShape;
 
@@ -53,7 +53,7 @@ pub fn no_group_context() -> FeedRowGroupContext {
 /// their target lazily via `resolve_ref`.
 #[must_use]
 pub fn feed_row_builder(group_context: FeedRowGroupContext) -> FlatFeedItemBuilder<FeedRow> {
-    Arc::new(move |event: &KernelEvent| Some(build_item(event, group_context(event))))
+    Arc::new(move |event: &KernelEvent| vec![build_item(event, group_context(event))])
 }
 
 fn build_item(event: &KernelEvent, group: Option<FeedRowContext>) -> FlatFeedItem<FeedRow> {
@@ -61,11 +61,12 @@ fn build_item(event: &KernelEvent, group: Option<FeedRowContext>) -> FlatFeedIte
         Some(repost) => build_repost_item(event, &repost, group),
         None => {
             let mut row = FeedRow::from_event(event);
+            row.context.push(FeedRowContext::Authored);
             if let Some(group) = group {
                 row.context.push(group);
             }
             FlatFeedItem {
-                id: row.id.clone(),
+                id: row.canonical_row_id.clone(),
                 source_id: event.id.clone(),
                 sort_created_at: row.created_at,
                 card: row,
@@ -83,11 +84,11 @@ fn build_repost_item(
         .target_event_id
         .clone()
         .unwrap_or_else(|| event.id.clone());
-    let render_target = Some(RenderTarget::Event {
-        id: target_id.clone(),
-        relay: None,
-        event_kind: repost.target_kind,
-    });
+    // The render-target pointer is RenderOnly: a shell resolves it lazily via
+    // `resolve_ref` (the D7 lane) for a quote/repost preview. It is NOT a
+    // `Delivered` ref — this single-lane path predates the composite delivered-
+    // ref hydration mechanism and keeps its existing lazy-resolve behavior.
+    let refs = vec![TypedRef::render_only_event(target_id.clone())];
 
     let (author_pubkey, kind, content, tags, note_created_at) = match repost.embedded_event.as_ref()
     {
@@ -110,7 +111,7 @@ fn build_repost_item(
         ),
     };
 
-    let mut context = vec![FeedRowContext::Repost {
+    let mut context = vec![FeedRowContext::RepostedBy {
         author_pubkey: event.author.clone(),
         note_created_at,
     }];
@@ -119,7 +120,7 @@ fn build_repost_item(
     }
 
     let row = FeedRow {
-        id: target_id.clone(),
+        canonical_row_id: target_id.clone(),
         source_id: event.id.clone(),
         author_pubkey,
         kind,
@@ -127,7 +128,7 @@ fn build_repost_item(
         content,
         tags,
         relay_provenance: event.received_from_relays(),
-        render_target,
+        refs,
         context,
     };
     FlatFeedItem {
@@ -170,7 +171,7 @@ fn merge_target_into_bumped_row(
     // the bumped sort position and re-attach repost provenance.
     let mut card = incoming.card;
     card.context.push(repost);
-    card.render_target = existing.card.render_target.clone();
+    card.refs = existing.card.refs.clone();
     FlatFeedItem {
         id: existing.id.clone(),
         source_id: existing.source_id.clone(),
@@ -197,7 +198,7 @@ fn prefer_hydrated(
 fn repost_context(card: &FeedRow) -> Option<FeedRowContext> {
     card.context
         .iter()
-        .find(|ctx| matches!(ctx, FeedRowContext::Repost { .. }))
+        .find(|ctx| matches!(ctx, FeedRowContext::RepostedBy { .. }))
         .cloned()
 }
 

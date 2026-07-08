@@ -64,7 +64,7 @@ object GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): String = buildFeedParamsJson(feedKey, primaryKinds, "\"ActiveUserFollows\"", visibleLimit, shape)
 
     fun openActiveUserFollowsFeed(
@@ -72,7 +72,7 @@ object GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): FeedHandle {
         val paramsJson = activeUserFollowsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
@@ -83,7 +83,7 @@ object GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): String = buildFeedParamsJson(feedKey, primaryKinds, "\"ActiveUserHostedGroups\"", visibleLimit, shape)
 
     fun openHostedGroupsFeed(
@@ -91,7 +91,7 @@ object GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: List<Int>,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): FeedHandle {
         val paramsJson = hostedGroupsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
@@ -103,7 +103,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         listId: String,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): String {
         val sourceJson = "{\"ListMembers\":{\"list\":${jsonString(listId)}}}"
         return buildFeedParamsJson(feedKey, primaryKinds, sourceJson, visibleLimit, shape)
@@ -115,7 +115,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         listId: String,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): FeedHandle {
         val paramsJson = listMembersFeedParamsJson(feedKey, primaryKinds, listId, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
@@ -127,7 +127,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         relaySetId: String,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): String {
         val sourceJson = "{\"RelaySet\":{\"relays\":${jsonString(relaySetId)}}}"
         return buildFeedParamsJson(feedKey, primaryKinds, sourceJson, visibleLimit, shape)
@@ -139,7 +139,7 @@ object GeneratedFeedHelpers {
         primaryKinds: List<Int>,
         relaySetId: String,
         visibleLimit: Int = 80,
-        shape: FeedHelperShape = FeedHelperShape.RootIndexed,
+        shape: FeedHelperShape = FeedHelperShape.Flat,
     ): FeedHandle {
         val paramsJson = relaySetFeedParamsJson(feedKey, primaryKinds, relaySetId, visibleLimit, shape)
         return app.openFeedJson(paramsJson)
@@ -172,7 +172,6 @@ object GeneratedFeedHelpers {
 }
 
 enum class FeedHelperShape(val wireValue: String) {
-    RootIndexed("RootIndexed"),
     Flat("Flat"),
 }
 "#

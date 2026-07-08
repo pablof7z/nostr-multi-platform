@@ -206,7 +206,7 @@ fn req_frame_mentions_h(text: &str, local_id: &str) -> bool {
 pub(super) fn decode_feed(
     frame: &crate::runtime::SnapshotOutcome,
     feed_key: &str,
-) -> nmp_note_feed::FeedRowSnapshot {
+) -> nmp_feed::typed_wire::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -215,5 +215,5 @@ pub(super) fn decode_feed(
         .into_iter()
         .find(|row| row.key == feed_key)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

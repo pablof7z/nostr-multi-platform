@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "Thin protocol-composition adapter (post-demolition): NIP-01/NIP-18 knobs + provisional feed-row wire for the generic nmp-feed FlatFeed engine. See #3082."
+description = "Thin protocol-composition adapter (post-demolition): NIP-01/NIP-18 knobs for the generic nmp-feed FlatFeed engine. See #3082."
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
@@ -12,7 +12,6 @@ nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
 nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

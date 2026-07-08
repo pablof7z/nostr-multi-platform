@@ -51,7 +51,7 @@ fn simple_group_feed_replaces_group_list_without_app_intervention() {
     deliver(&mut handle, GROUP_RELAY_A, &group_sub_a, note_a_json);
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_REPLACE);
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_a_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_a_id),
         "listed room-a note must render before replacement"
     );
 
@@ -82,7 +82,7 @@ fn simple_group_feed_replaces_group_list_without_app_intervention() {
 
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_REPLACE);
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "simple-groups replacement must reset rows from the old group set"
     );
 
@@ -91,11 +91,11 @@ fn simple_group_feed_replaces_group_list_without_app_intervention() {
     deliver(&mut handle, GROUP_RELAY_B, &group_sub_b, note_b_json);
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_REPLACE);
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_b_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_b_id),
         "newly listed room-b note must render after replacement"
     );
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "old group rows must stay absent after replacement renders"
     );
 }
@@ -143,7 +143,7 @@ fn simple_group_feed_retargets_on_account_switch_without_app_intervention() {
     deliver(&mut handle, GROUP_RELAY_A, &group_sub_one, note_a_json);
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_SWITCH);
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_a_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_a_id),
         "viewer one's listed group note must render before the switch"
     );
 
@@ -160,7 +160,7 @@ fn simple_group_feed_retargets_on_account_switch_without_app_intervention() {
 
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_SWITCH);
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "account switch must reset rendered rows from the prior account's groups"
     );
 
@@ -184,11 +184,11 @@ fn simple_group_feed_retargets_on_account_switch_without_app_intervention() {
     deliver(&mut handle, GROUP_RELAY_B, &group_sub_two, note_b_json);
     let feed = decode_feed(&handle.next_frame(true), FEED_KEY_SWITCH);
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_b_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_b_id),
         "viewer two's listed group note must render after the switch"
     );
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "viewer one's group rows must not survive the active-account switch"
     );
 }

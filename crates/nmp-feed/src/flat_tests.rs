@@ -53,12 +53,12 @@ fn canonical_identity_dedups_and_keeps_newer_sort_source() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
         Arc::new(|event| {
-            Some(sourced_item(
+            vec![sourced_item(
                 "target",
                 &event.id,
                 event.created_at,
                 &event.content,
-            ))
+            )]
         }),
     );
 
@@ -76,12 +76,12 @@ fn equal_timestamp_sources_keep_deterministic_first_source() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
         Arc::new(|event| {
-            Some(sourced_item(
+            vec![sourced_item(
                 "target",
                 &event.id,
                 event.created_at,
                 &event.content,
-            ))
+            )]
         }),
     );
 
@@ -98,12 +98,12 @@ fn removing_one_source_recomputes_canonical_row() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
         Arc::new(|event| {
-            Some(sourced_item(
+            vec![sourced_item(
                 "target",
                 &event.id,
                 event.created_at,
                 &event.content,
-            ))
+            )]
         }),
     );
 
@@ -125,12 +125,12 @@ fn removing_matching_sources_drops_empty_rows_only() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
         Arc::new(|event| {
-            Some(sourced_item(
+            vec![sourced_item(
                 &event.id.replace("-wrapper", ""),
                 &event.id,
                 event.created_at,
                 &event.content,
-            ))
+            )]
         }),
     );
 
@@ -150,7 +150,7 @@ fn removing_matching_sources_drops_empty_rows_only() {
 fn perspective_reset_clears_rows_and_restores_first_window() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),
-        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        Arc::new(|event| vec![item(&event.id, event.created_at, &event.content)]),
     );
 
     let total_rows = DEFAULT_FEED_WINDOW_LIMIT + 5;
@@ -182,7 +182,7 @@ fn flat_feed_window_policy_drives_initial_grow_and_reset_limits() {
     };
     let feed = FlatFeed::with_merge_and_window_policy(
         Arc::new(|_| true),
-        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        Arc::new(|event| vec![item(&event.id, event.created_at, &event.content)]),
         None,
         default_merge(),
         policy,
@@ -233,12 +233,12 @@ fn custom_merge_can_hydrate_existing_bumped_item() {
     let feed = FlatFeed::with_merge(
         Arc::new(|_| true),
         Arc::new(|event| {
-            Some(sourced_item(
+            vec![sourced_item(
                 "target",
                 &event.id,
                 event.created_at,
                 &event.content,
-            ))
+            )]
         }),
         None,
         merge,
@@ -261,8 +261,10 @@ fn caller_supplied_admission_and_rank_key_drive_flat_feed() {
                 .iter()
                 .find(|tag| tag.first().is_some_and(|key| key == "rank"))
                 .and_then(|tag| tag.get(1))
-                .and_then(|raw| raw.parse::<u64>().ok())?;
-            Some(item(&event.id, rank, &event.content))
+                .and_then(|raw| raw.parse::<u64>().ok());
+            rank.map(|rank| item(&event.id, rank, &event.content))
+                .into_iter()
+                .collect()
         }),
     );
 

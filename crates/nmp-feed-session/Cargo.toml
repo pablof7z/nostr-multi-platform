@@ -22,3 +22,9 @@ nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 nmp-wot = { path = "../nmp-wot", version = "1.0.0-rc.1" }
 trellis-core = "0.2.1"
+
+[dev-dependencies]
+# Driving-example proof (#3082): the composite-feed test exercises the REAL
+# `nip22.root` mapping alongside the REAL `nip18.target` mapping (already a
+# main dependency). Test-only — nmp-nip22 does not depend back on this crate.
+nmp-nip22 = { path = "../nmp-nip22", version = "1.0.0-rc.1" }

@@ -1,0 +1,105 @@
+namespace nmp.feed;
+
+// Typed FlatBuffers wire for `nmp_feed::RootFeedSnapshot<nmp_feed::FeedRow>` —
+// the FROZEN kind-agnostic feed row (#3082 settled design). This is the
+// SOLE row shape the flat feed engine emits: raw protocol facts (payload),
+// canonical dedup identity, contributing-source identity, a delivery-tagged
+// typed ref vector, and an accumulated provenance-context set.
+//
+// It carries NO display strings, NO parsed content tree, NO counts, and NO
+// previews. Reply-digest / rollup is NOT a variant here — that concept read
+// does not live on the feed row.
+//
+// Regenerate the checked-in Rust bindings only with the matching workspace
+// flatc pin (25.12.19), via ci/regenerate-flatbuffers.sh — never raw flatc.
+
+// ── Typed ref target + delivery tag ─────────────────────────────────────────
+
+table RefEventId {
+  id:string;
+}
+
+table RefAddress {
+  kind:uint32 = 0;
+  pubkey:string;
+  d:string;
+}
+
+union RefTargetUnion { RefEventId, RefAddress }
+
+enum DeliveryMode:uint8 { RenderOnly = 0, Delivered = 1 }
+
+// A single delivery-tagged typed ref a row declares. `RenderOnly` refs are
+// declared for lazy `resolve_ref` resolution (the D7 lane); `Delivered` refs
+// are absorbed into the owning feed session's own acquisition/admission so the
+// target re-enters as a real delivered row. At most one `Delivered` ref per
+// row.
+table TypedRef {
+  target:RefTargetUnion;
+  delivery_mode:DeliveryMode = 0;
+}
+
+// ── Provenance context (accumulated SET across contributing sources) ───────
+
+table Authored {}
+
+table RepostedBy {
+  author_pubkey:string;
+  note_created_at:uint64 = 0;
+}
+
+table CommentedBy {
+  author_pubkey:string;
+  comment_event_id:string;
+  comment_created_at:uint64 = 0;
+}
+
+table GroupContext {
+  relay:string;
+  id:string;
+}
+
+union ProvenanceUnion { Authored, RepostedBy, CommentedBy, GroupContext }
+
+table FeedRowContext {
+  value:ProvenanceUnion;
+}
+
+// ── Row payload ──────────────────────────────────────────────────────────
+
+// One raw event tag (`["e", "abc123", "wss://relay"]`) as a typed string
+// vector — FlatBuffers has no native vector-of-vector-of-string.
+table TagRow {
+  values:[string];
+}
+
+table FeedRow {
+  canonical_row_id:string;
+  source_id:string;
+  author_pubkey:string;
+  kind:uint32 = 0;
+  created_at:uint64 = 0;
+  content:string;
+  tags:[TagRow];
+  relay_provenance:[string];
+  refs:[TypedRef];
+  context:[FeedRowContext];
+}
+
+// ── Snapshot envelope ────────────────────────────────────────────────────
+
+table RootCard {
+  card:FeedRow;
+}
+
+table FeedRowSnapshot {
+  schema_version:uint32 = 1;
+  cards:[RootCard];
+  // Typed nmp-feed FeedWindow buffer (NFWM file identifier).
+  feed_window_bytes:[ubyte];
+  has_page:bool = false;
+  has_metrics:bool = false;
+}
+
+root_type FeedRowSnapshot;
+file_identifier "NFRS";

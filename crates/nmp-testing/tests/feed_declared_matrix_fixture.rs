@@ -324,10 +324,13 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
     // Post-demolition: the follows timeline is the generic flat feed over
     // `FeedRow`, admission = "authored by the source", identity/merge from the
     // NIP-18 knobs (#3082). Reposts key by the TARGET id and carry repost
-    // provenance as `FeedRowContext::Repost` — wrapper-local, no store peek.
+    // provenance as `FeedRowContext::RepostedBy` — wrapper-local, no store peek.
     let admission: nmp_feed::FlatFeedPredicate = {
         let source_pubkey = source_author.public_key().to_hex();
-        Arc::new(move |event: &nmp_core::substrate::KernelEvent| event.author == source_pubkey)
+        Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            event.author == source_pubkey
+                && (event.kind == 1 || event.kind == nmp_nip18::KIND_REPOST)
+        })
     };
     let op_feed = nmp_feed::FlatFeed::with_merge(
         admission,
@@ -354,12 +357,12 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
     let repost_row = op_snapshot
         .cards
         .iter()
-        .find(|card| card.card.id == target_note.id.to_hex())
+        .find(|card| card.card.canonical_row_id == target_note.id.to_hex())
         .expect("reposted target row keyed by target id");
     assert!(
         repost_row.card.context.iter().any(|ctx| matches!(
             ctx,
-            nmp_feed::FeedRowContext::Repost { author_pubkey, .. }
+            nmp_feed::FeedRowContext::RepostedBy { author_pubkey, .. }
                 if author_pubkey == &source_author.public_key().to_hex()
         )),
         "kind:6 repost provenance carried as wrapper-local context"
@@ -368,7 +371,7 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
         op_snapshot
             .cards
             .iter()
-            .any(|card| card.card.id == direct_note.id.to_hex()),
+            .any(|card| card.card.canonical_row_id == direct_note.id.to_hex()),
         "direct note is its own row"
     );
 

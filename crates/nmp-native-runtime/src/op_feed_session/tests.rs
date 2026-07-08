@@ -105,11 +105,11 @@ fn visible_feed_ids(app: &crate::NmpApp, key: &str) -> Vec<String> {
     else {
         return Vec::new();
     };
-    nmp_note_feed::decode_feed_row_snapshot(&row.payload)
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload)
         .expect("feed-row payload decodes")
         .cards
         .into_iter()
-        .map(|card| card.card.id)
+        .map(|card| card.card.canonical_row_id)
         .collect()
 }
 

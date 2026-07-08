@@ -2,7 +2,18 @@
 
 /* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-assertion */
 
-export { FeedCursor } from './feed/feed-cursor.js';
-export { FeedPage } from './feed/feed-page.js';
-export { FeedWindow } from './feed/feed-window.js';
-export { FeedWindowMetrics } from './feed/feed-window-metrics.js';
+export { Authored } from './feed/authored.js';
+export { CommentedBy } from './feed/commented-by.js';
+export { DeliveryMode } from './feed/delivery-mode.js';
+export { FeedRow } from './feed/feed-row.js';
+export { FeedRowContext } from './feed/feed-row-context.js';
+export { FeedRowSnapshot } from './feed/feed-row-snapshot.js';
+export { GroupContext } from './feed/group-context.js';
+export { ProvenanceUnion } from './feed/provenance-union.js';
+export { RefAddress } from './feed/ref-address.js';
+export { RefEventId } from './feed/ref-event-id.js';
+export { RefTargetUnion } from './feed/ref-target-union.js';
+export { RepostedBy } from './feed/reposted-by.js';
+export { RootCard } from './feed/root-card.js';
+export { TagRow } from './feed/tag-row.js';
+export { TypedRef } from './feed/typed-ref.js';

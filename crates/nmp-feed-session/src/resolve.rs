@@ -28,6 +28,7 @@
 //! * `CustomSource` — step 4 (the registration mechanism).
 
 use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
@@ -44,6 +45,24 @@ use super::trellis_resources::FeedSessionRouteProvenance;
 use super::wot_graph::SessionWotGraph;
 
 const KIND_CONTACT_LIST: u32 = 3;
+
+/// Process-wide counter minting a per-instance-unique suffix for resolver
+/// `consumer_id`s (#3085).
+///
+/// `ObservedProjection::consumer_id` is a refcount OWNER key ("unique per open
+/// screen / component" — `crates/nmp-core/src/substrate/app_host/observed.rs`);
+/// demand is keyed by shape+scope and refcounted by a set of these owner keys.
+/// A hardcoded literal id collapses every independent resolver instance onto
+/// ONE shared owner, so the first instance to close tears the subscription down
+/// out from under sibling instances still using it. A composite/multi-lane feed
+/// resolves the SAME scope (e.g. `ActiveUserFollows`) from multiple independent
+/// lanes, so this is exactly the many-readers-of-one-shape case the contract
+/// exists for.
+pub(super) fn unique_consumer_id(prefix: &'static str) -> String {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    let n = NEXT.fetch_add(1, Ordering::Relaxed);
+    format!("{prefix}#{n}")
+}
 
 /// Resolve a non-set-algebra scope. Set algebra is handled by
 /// [`super::set_algebra`]; `CustomSource` is handled in `custom.rs`.
@@ -154,7 +173,7 @@ fn resolve_active_follow_set(
     let resolver_reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         follow_observer,
-        "nmp.feed.resolver.follow_set",
+        unique_consumer_id("nmp.feed.resolver.follow_set"),
         0,
         64,
         resolver_live_shape,

@@ -36,6 +36,6 @@ fn flat_visible_ids(feed: &nmp_feed::FlatFeed<nmp_feed::FeedRow>) -> Vec<String>
     feed.snapshot_current_window()
         .cards
         .into_iter()
-        .map(|card| card.card.id)
+        .map(|card| card.card.canonical_row_id)
         .collect()
 }

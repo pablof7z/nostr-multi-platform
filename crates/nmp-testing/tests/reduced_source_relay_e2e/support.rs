@@ -262,7 +262,7 @@ pub(crate) fn list_members_params(key: &str, list_id: &str) -> FeedParams {
 pub(crate) fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
     flat_feed_cards(app, key)
         .into_iter()
-        .map(|card| card.id)
+        .map(|card| card.canonical_row_id)
         .collect()
 }
 
@@ -274,7 +274,7 @@ pub(crate) fn flat_feed_cards(app: &NmpApp, key: &str) -> Vec<nmp_feed::FeedRow>
     else {
         return Vec::new();
     };
-    nmp_note_feed::decode_feed_row_snapshot(&row.payload)
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload)
         .expect("feed-row payload decodes")
         .cards
         .into_iter()

@@ -31,6 +31,12 @@ use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use crate::{FeedCursor, FeedPage, FeedWindowMetrics};
 
+mod feed_row_wire;
+pub use feed_row_wire::{
+    decode_feed_row_snapshot, encode_feed_row_snapshot, FeedRowSnapshot, FEED_ROW_FILE_IDENTIFIER,
+    FEED_ROW_SCHEMA_ID, FEED_ROW_SCHEMA_VERSION,
+};
+
 /// Stable schema identifier for the structural feed-window payload.
 pub const FEED_WINDOW_SCHEMA_ID: &str = "nmp.feed.window";
 

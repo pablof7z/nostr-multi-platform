@@ -310,13 +310,9 @@ fn close_scope_clears_once_and_late_source_effect_cannot_resurrect_demand() {
 #[test]
 fn adapter_output_lifecycle_frames_drive_rebaseline_and_clear() {
     let (sender, rx) = command_receiver();
-    let adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.synthetic",
-        FeedShape::Flat,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
 
     assert_eq!(
         adapter.output_frame_kinds_for_test(),
@@ -380,13 +376,9 @@ fn adapter_serializes_cross_thread_trellis_mutation() {
 #[test]
 fn source_effect_callbacks_enqueue_actor_command_before_trellis_mutation() {
     let (sender, rx) = command_receiver();
-    let adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.synthetic",
-        FeedShape::Flat,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
 
     let callback_adapter = adapter.clone();
     let callback_result = thread::spawn(move || {

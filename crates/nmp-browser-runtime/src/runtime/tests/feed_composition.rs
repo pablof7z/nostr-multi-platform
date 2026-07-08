@@ -198,7 +198,7 @@ fn browser_home_feed_projection_renders_followed_note() {
     let frame = handle.next_frame(true);
     let feed = decode_home_feed(&frame);
     assert_eq!(feed.cards.len(), 1, "followed kind:1 note must render");
-    assert_eq!(feed.cards[0].card.id, FOLLOW_NOTE_ID);
+    assert_eq!(feed.cards[0].card.canonical_row_id, FOLLOW_NOTE_ID);
     assert_eq!(feed.cards[0].card.author_pubkey, FOLLOW_A_PK);
     assert_eq!(feed.cards[0].card.content, "hello from runtime composition");
 }
@@ -281,7 +281,7 @@ fn browser_home_feed_projection_renders_followed_note_from_relay_frames() {
     let frame = handle.next_frame(true);
     let feed = decode_home_feed(&frame);
     assert_eq!(feed.cards.len(), 1);
-    assert_eq!(feed.cards[0].card.id, note_id);
+    assert_eq!(feed.cards[0].card.canonical_row_id, note_id);
     assert_eq!(feed.cards[0].card.author_pubkey, follow_pk);
     assert_eq!(feed.cards[0].card.content, "hello from relay frame");
 }
@@ -341,7 +341,7 @@ fn browser_home_feed_projection_renders_followed_note_from_runtime_wire_subs() {
     let frame = handle.next_frame(true);
     let feed = decode_home_feed(&frame);
     assert_eq!(feed.cards.len(), 1);
-    assert_eq!(feed.cards[0].card.id, note_id);
+    assert_eq!(feed.cards[0].card.canonical_row_id, note_id);
     assert_eq!(feed.cards[0].card.author_pubkey, follow_pk);
     assert_eq!(feed.cards[0].card.content, "hello through real wire sub");
 }
@@ -468,7 +468,7 @@ fn req_frame_for_kind(
 
 fn decode_home_feed(
     frame: &crate::runtime::SnapshotOutcome,
-) -> nmp_note_feed::FeedRowSnapshot {
+) -> nmp_feed::typed_wire::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -477,5 +477,5 @@ fn decode_home_feed(
         .into_iter()
         .find(|row| row.key == BROWSER_FEED_KEY)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

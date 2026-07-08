@@ -118,7 +118,10 @@ mod tests {
     #[test]
     fn extracts_authors_and_target_refs() {
         let snapshot = RootFeedSnapshot {
-            cards: vec![row("alice", Some("reposter"), Some("target1")), row("bob", None, None)],
+            cards: vec![
+                row("alice", Some("reposter"), Some("target1")),
+                row("bob", None, None),
+            ],
             page: None,
             metrics: None,
         };
@@ -133,7 +136,11 @@ mod tests {
     #[test]
     fn dedupes_and_skips_empty() {
         let snapshot = RootFeedSnapshot {
-            cards: vec![row("alice", None, None), row("alice", Some("alice"), None), row("", None, None)],
+            cards: vec![
+                row("alice", None, None),
+                row("alice", Some("alice"), None),
+                row("", None, None),
+            ],
             page: None,
             metrics: None,
         };

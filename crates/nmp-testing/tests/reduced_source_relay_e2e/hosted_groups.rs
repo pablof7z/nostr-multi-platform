@@ -83,7 +83,7 @@ fn active_hosted_groups_flat_rows_include_matched_group_context() {
 
     wait_for(&rx, "hosted group context row", || {
         flat_feed_cards(app_ref, key).iter().any(|card| {
-            card.id == group_message_id
+            card.canonical_row_id == group_message_id
                 && card.context.iter().any(|ctx| {
                     matches!(
                         ctx,
@@ -97,7 +97,7 @@ fn active_hosted_groups_flat_rows_include_matched_group_context() {
     let cards = flat_feed_cards(app_ref, key);
     let card = cards
         .iter()
-        .find(|card| card.id == group_message_id)
+        .find(|card| card.canonical_row_id == group_message_id)
         .expect("group message card");
     assert!(
         card.context.contains(&nmp_feed::FeedRowContext::Group {

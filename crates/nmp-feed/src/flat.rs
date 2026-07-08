@@ -22,9 +22,14 @@ use crate::{
 /// Admission predicate: `true` when an event belongs in this feed.
 pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
-/// Converts an admitted event into a canonical feed item.
-pub type FlatFeedItemBuilder<C> =
-    Arc<dyn Fn(&KernelEvent) -> Option<FlatFeedItem<C>> + Send + Sync>;
+/// Converts an admitted event into zero, one, or many canonical feed items.
+///
+/// Arity is `Vec`, not `Option`, so one source event can fan out into several
+/// rows (e.g. a curated-list event surfacing many member rows) as well as the
+/// ordinary one-row and zero-row (filtered) cases. The builder MUST be a pure
+/// function of the delivered event — no store peek, no ambient state — so
+/// membership stays deterministic and replay-order-independent.
+pub type FlatFeedItemBuilder<C> = Arc<dyn Fn(&KernelEvent) -> Vec<FlatFeedItem<C>> + Send + Sync>;
 
 /// Merge policy when two source events surface the same canonical item id.
 pub type FlatFeedMerge<C> =
@@ -160,10 +165,14 @@ where
         if !(self.predicate)(event) {
             return;
         }
-        let Some(incoming) = (self.item_builder)(event) else {
+        let incoming_items = (self.item_builder)(event);
+        if incoming_items.is_empty() {
+            return;
+        }
+        let Ok(mut st) = self.state.lock() else {
             return;
         };
-        if let Ok(mut st) = self.state.lock() {
+        for incoming in incoming_items {
             let row_id = incoming.id.clone();
             let source_id = incoming.source_id.clone();
             match st.rows.get_mut(&row_id) {
