@@ -413,6 +413,13 @@ pub mod __ffi_internal {
     // Blocker C: `nmp-ffi` reads the admission result to record a truthful
     // composition-ledger disposition (Installed / Replaced / DroppedFull).
     pub use crate::kernel::snapshot_registry::TypedAdmission;
+    // #3080 — `nmp-native-runtime`'s out-of-band introspection accessor
+    // (`NmpApp::run_typed_snapshot_projections`, used by e.g. the NIP-50
+    // search-poll host) needs the SAME snapshot-then-release split #3079 gave
+    // the production emit loop: drain the closure handles under the lock,
+    // release it, then run them via this free function. Without it, that
+    // accessor is the second live re-lock deadlock door #3080 closes.
+    pub use crate::kernel::snapshot_registry::run_typed_plan;
     // Blocker C test support: the D5 cap constant so the over-cap test can
     // fill the registry to exactly the ceiling without hard-coding the value.
     pub use crate::kernel::snapshot_registry::bounds::MAX_SNAPSHOT_PROJECTIONS;

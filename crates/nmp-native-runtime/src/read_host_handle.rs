@@ -12,16 +12,17 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{ObservedProjection, ObservedProjectionCommandHandle};
-use nmp_core::{CommandSender, CompositionLedger, ObservedProjectionId};
 use nmp_core::__ffi_internal::SnapshotProjectionSlot;
+use nmp_core::actor::ActorCommand;
+use nmp_core::substrate::{ObservedProjection, ObservedProjectionCommandHandle};
+use nmp_core::{CommandSendStatus, CommandSender, CompositionLedger, ObservedProjectionId};
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
     ReadHost, ReadInterestController, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
     TeardownAction,
 };
 
-use crate::snapshot::register_typed_snapshot_projection_on;
+use crate::read_output_commands::{InstallReadOutputCommand, RemoveReadOutputCommand};
 use crate::NmpApp;
 
 /// Detached, cheaply-cloneable read-lifecycle host. Every field is an Arc-backed
@@ -54,14 +55,30 @@ impl NmpApp {
 
 impl ReadHost for NmpReadHost {
     fn install_read_output(&self, key: ProjectionRegistrationKey, encoder: ReadOutputEncoder) {
-        // Same coalesced typed emission NmpApp registers (ADR-0069/0070/0072),
-        // via the one canonical registration body — no fork.
-        register_typed_snapshot_projection_on(
-            &self.snapshot_projections,
-            &self.composition_ledger,
-            key,
-            move |_tick| encoder(),
-        );
+        // #3080 — deferred, not synchronous. A snapshot-projection closure can
+        // legally capture an `Arc<NmpApp>` / `NmpReadHost` and call
+        // `open_read` from inside the snapshot tick; the old body here
+        // re-locked `snapshot_projections` on the caller's thread, which is
+        // the SAME lock the tick holds while running closures pre-#3079 (and
+        // still re-locks other synchronous introspection paths). Enqueuing a
+        // `Protocol` command instead means this door never re-locks on the
+        // caller's thread, regardless of who the caller is — re-entrancy is
+        // gone by construction, not by the emit loop's timing discipline.
+        // Best-effort, matching the observed-interest half of the same open
+        // (`self.observed.open`, a fire-and-forget `try_send`): a dropped
+        // install under a saturated inbox loses one read output rather than
+        // blocking the caller.
+        let status =
+            self.command_sender
+                .send(ActorCommand::Protocol(Box::new(InstallReadOutputCommand {
+                    key,
+                    producer: encoder,
+                    projections: Arc::clone(&self.snapshot_projections),
+                    ledger: Arc::clone(&self.composition_ledger),
+                })));
+        if matches!(status, Ok(CommandSendStatus::DroppedFull)) {
+            tracing::warn!("install_read_output dropped — actor inbox full");
+        }
     }
 
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
@@ -81,10 +98,19 @@ impl ReadHost for NmpReadHost {
     }
 
     fn teardown_remove_output(&self, key: String) -> TeardownAction {
+        // #3080 — same deferral as `install_read_output`: enqueue a `Protocol`
+        // command instead of re-locking `snapshot_projections` when this
+        // teardown closure runs (which may itself be from inside a snapshot
+        // closure that is tearing down and reopening a session mid-tick).
         let projections = Arc::clone(&self.snapshot_projections);
+        let sender = self.command_sender.clone();
         Box::new(move || {
-            if let Ok(mut registry) = projections.lock() {
-                let _ = registry.remove(&key);
+            let status = sender.send(ActorCommand::Protocol(Box::new(RemoveReadOutputCommand {
+                key,
+                projections,
+            })));
+            if matches!(status, Ok(CommandSendStatus::DroppedFull)) {
+                tracing::warn!("teardown_remove_output dropped — actor inbox full");
             }
         })
     }
@@ -147,3 +173,7 @@ impl ReadHost for NmpReadHost {
             .demand_set_reducer(projection_key)
     }
 }
+
+#[cfg(test)]
+#[path = "read_host_handle_tests.rs"]
+mod tests;

@@ -46,6 +46,7 @@ mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;
 mod read_host_handle;
+mod read_output_commands;
 mod relay_config;
 #[cfg(feature = "search")]
 mod search;

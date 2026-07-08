@@ -209,6 +209,16 @@ pub struct ReadHandle {
 pub trait ReadHost {
     /// Install the read's typed output under `key` (coalesced emission +
     /// tombstone-on-remove are host-owned). Last-writer-wins per key.
+    ///
+    /// #3080: application against the host's registry MAY be deferred (e.g.
+    /// onto an actor command queue) rather than synchronous — this call is
+    /// NOT guaranteed to make the output observable before it returns. The
+    /// one guarantee every host MUST uphold: the output is visible before the
+    /// NEXT snapshot emit. A multi-threaded native host uses this to close a
+    /// re-entrancy door (a registered snapshot-projection closure that calls
+    /// `open_read` must never re-lock the host's own registry on the calling
+    /// thread); a single-threaded host (e.g. the browser runtime) may still
+    /// apply it synchronously — both satisfy the same contract.
     fn install_read_output(&self, key: ProjectionRegistrationKey, encoder: ReadOutputEncoder);
 
     /// Open ONE replay-before-live observed interest and return the withdrawal
@@ -229,6 +239,10 @@ pub trait ReadHost {
 
     /// Build the teardown step that removes (tombstones) the typed output under
     /// `key`.
+    ///
+    /// #3080: same deferred-but-visible-before-next-emit contract as
+    /// [`Self::install_read_output`] — the returned [`TeardownAction`], when
+    /// run, MAY only enqueue the removal rather than apply it inline.
     fn teardown_remove_output(&self, key: String) -> TeardownAction;
 
     /// Build the teardown step that flags the next snapshot tick to reflect the
