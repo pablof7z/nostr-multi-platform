@@ -8,6 +8,7 @@ use nmp_feed::RootAdmission;
 use nmp_kinds::{KIND_FOLLOW_SET, KIND_MUTE_LIST};
 use nmp_planner::InterestShape;
 
+use super::resolve::unique_consumer_id;
 use super::source::{
     empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
     OpSessionIdentity, ReducedSource, SessionReactivityHook,
@@ -38,7 +39,7 @@ pub(super) fn resolve_list_members(
     let resolver_reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         projection_observer,
-        "nmp.feed.resolver.people_list",
+        unique_consumer_id("nmp.feed.resolver.people_list"),
         0,
         64,
         resolver_live_shape,
@@ -147,7 +148,7 @@ pub(super) fn resolve_active_mute_list_members(
     let resolver_reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         projection_observer,
-        "nmp.feed.resolver.active_mute_list",
+        unique_consumer_id("nmp.feed.resolver.active_mute_list"),
         0,
         64,
         resolver_live_shape,

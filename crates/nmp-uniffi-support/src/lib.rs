@@ -323,12 +323,19 @@ mod tests {
 /// Active-account-change observation (shared Arc-sink + panic containment over
 /// `NmpApp::register_identity_change_observer`).
 pub mod account;
+/// Composite multi-lane feed open mechanics over
+/// `NmpApp::open_composite_feed` (#3086). Feature-gated: see
+/// `composite_sessions`'s module doc.
+#[cfg(feature = "composite-feed")]
+pub mod composite_sessions;
 /// Feed open/close/reopen mechanics over `NmpApp::open_feed`/`close_feed`.
 pub mod sessions;
 
 pub use account::{
     account_change_observer_from_sink, register_account_change_sink, unregister_account_change_sink,
 };
+#[cfg(feature = "composite-feed")]
+pub use composite_sessions::open_composite_feed;
 pub use sessions::{
     close_feed, load_older_feed, load_older_feed_status, open_feed, reopen_feed, FeedError,
     OpenedFeed,
