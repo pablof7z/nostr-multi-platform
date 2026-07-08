@@ -27,11 +27,16 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 /// never a clear signal. To clear a registered typed key, remove it through
 /// [`SnapshotRegistry::remove`], which emits a one-shot `Cleared` row.
 ///
-/// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with
+/// `Send + Sync` because the closure lives behind an `Arc<Mutex<…>>` shared with
 /// the actor thread (D8: the closure itself must also be non-blocking — it runs
 /// inside the snapshot tick, exactly like a generic projection).
+///
+/// Held as an `Arc` (not a `Box`) so the emit loop can clone the closure handles
+/// out from under the registry lock and run them AFTER releasing it (#3078). A
+/// closure that opens/closes a read-session re-locks this same registry; running
+/// it under the lock would deadlock the actor against itself.
 pub type TypedProjectionFn =
-    Box<dyn Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static>;
+    Arc<dyn Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
 /// A feed-author-set provider (ADR-0070 D7, #1671 Lane H).
 ///
@@ -47,7 +52,43 @@ pub type TypedProjectionFn =
 /// so it MUST be non-blocking — it only reads the engine's current window
 /// (`snapshot_current_window`) and returns the keys; it does no I/O and waits on
 /// no lock the actor thread could be holding.
-pub type FeedAuthorProviderFn = Box<dyn Fn() -> Vec<String> + Send + Sync + 'static>;
+///
+/// Held as an `Arc` (not a `Box`) for the same reason as [`TypedProjectionFn`]:
+/// the emit loop clones the providers out from under the registry lock and runs
+/// them AFTER releasing it (#3078).
+pub type FeedAuthorProviderFn = Arc<dyn Fn() -> Vec<String> + Send + Sync + 'static>;
+
+/// Run pre-snapshotted typed-projection closures OUTSIDE the registry lock and
+/// append the pre-drained `Cleared` rows (#3078).
+///
+/// A free function (takes no `&SnapshotRegistry`) so the emit loop can call it
+/// AFTER dropping the registry mutex guard. `closures` and `cleared` come from
+/// [`SnapshotRegistry::drain_typed_run_plan`], taken while the lock was held.
+/// A closure that re-locks the registry (opening/closing a read-session) now
+/// finds the lock free rather than deadlocking the actor against itself.
+#[must_use]
+pub fn run_typed_plan(
+    closures: &[TypedProjectionFn],
+    now_secs: u64,
+    mut cleared: Vec<TypedProjectionData>,
+) -> Vec<TypedProjectionData> {
+    let mut out = Vec::with_capacity(closures.len() + cleared.len());
+    for projection in closures {
+        // `AssertUnwindSafe`: an `Arc`'d `Fn` closure is not `UnwindSafe`, but a
+        // panic here is fully contained — nothing the closure touched is observed
+        // again after it unwinds, so there is no broken-invariant hazard. The
+        // default panic hook still prints the payload, so the bug stays visible.
+        match catch_unwind(AssertUnwindSafe(|| (**projection)(now_secs))) {
+            Ok(Some(data)) => out.push(data),
+            // `Ok(None)`: nothing to emit this tick. `Err(_)`: the closure
+            // panicked — swallow it (the namespace is omitted, the same shape as
+            // an unregistered projection).
+            Ok(None) | Err(_) => continue,
+        }
+    }
+    out.append(&mut cleared);
+    out
+}
 
 // D5 — registration-count ceilings and the loud-no-op admission helper.
 // Extracted to a `pub` submodule so the registry file stays within its LOC
@@ -175,9 +216,13 @@ pub struct SnapshotRegistry {
     /// feed's authors don't linger. `BTreeSet` for dedup; keyed by consumer id.
     ///
     /// An `Arc<Mutex<…>>` (NOT a plain field) because a typed-producer closure
-    /// writes to it WHILE the registry's own mutex is held by `run_typed()` — it
-    /// captures a clone of THIS handle (via [`Self::emitted_feed_authors_handle`])
-    /// and writes without re-locking the registry (which would deadlock).
+    /// is a plain `Fn(u64) -> Option<…>` and never holds an `&SnapshotRegistry`,
+    /// so it can only report its emitted authors through a shared handle it
+    /// captured at registration (via [`Self::emitted_feed_authors_handle`]) — this
+    /// side-channel is independent of the registry lock. (Historically it also
+    /// dodged a deadlock, since closures ran under the registry mutex; #3078 moved
+    /// production closure execution OUT from under that lock, but the handle is
+    /// still required because the closure has no `&self` to write through.)
     emitted_feed_authors: EmittedFeedAuthorsSlot,
 }
 
@@ -191,8 +236,8 @@ pub type EmittedFeedAuthorsSlot =
 ///
 /// A free function (not a method) so a typed-producer closure that captured a
 /// clone of the [`EmittedFeedAuthorsSlot`] handle can write WITHOUT holding a
-/// `&SnapshotRegistry` (it runs inside `run_typed()` while the registry mutex is
-/// already held). A poisoned sink mutex (D6) is a silent no-op.
+/// `&SnapshotRegistry` (the closure is a plain `Fn` with no `&self`). A poisoned
+/// sink mutex (D6) is a silent no-op.
 pub fn record_emitted_feed_authors(
     slot: &EmittedFeedAuthorsSlot,
     tick_rev: u64,
@@ -296,7 +341,7 @@ impl SnapshotRegistry {
             return TypedAdmission::DroppedFull;
         }
         self.pending_typed_clears.retain(|pending| pending != &key);
-        self.typed_projections.insert(key, Box::new(f));
+        self.typed_projections.insert(key, Arc::new(f));
         if key_exists {
             TypedAdmission::Replaced
         } else {
@@ -317,32 +362,47 @@ impl SnapshotRegistry {
 
     /// Run every registered typed projection using the supplied kernel-authored
     /// Unix timestamp for time-aware producers.
+    ///
+    /// Convenience for callers that already hold the registry mutex and accept
+    /// running closures under it (out-of-band host/test introspection). The
+    /// production emit loop instead uses [`Self::drain_typed_run_plan`] +
+    /// [`run_typed_plan`] to run closures AFTER releasing the lock (#3078).
     pub fn run_typed_at(&mut self, now_secs: u64) -> Vec<TypedProjectionData> {
-        let mut out = Vec::with_capacity(self.typed_projections.len());
-        for projection in self.typed_projections.values() {
-            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but
-            // a panic here is fully contained — nothing the closure touched is
-            // observed again after it unwinds, so there is no broken-invariant
-            // hazard. The default panic hook still prints the payload, so the
-            // bug stays visible.
-            match catch_unwind(AssertUnwindSafe(|| projection(now_secs))) {
-                Ok(Some(data)) => out.push(data),
-                // `Ok(None)`: nothing to emit this tick. `Err(_)`: the closure
-                // panicked — swallow it (the namespace is omitted, the same
-                // shape as an unregistered projection).
-                Ok(None) | Err(_) => continue,
-            }
-        }
-        out.extend(
-            std::mem::take(&mut self.pending_typed_clears)
-                .into_iter()
-                .map(|key| TypedProjectionData {
-                    key,
-                    state: WireProjectionState::Cleared,
-                    ..Default::default()
-                }),
-        );
-        out
+        let (closures, cleared) = self.drain_typed_run_plan();
+        run_typed_plan(&closures, now_secs, cleared)
+    }
+
+    /// Snapshot the registered typed-projection closure handles and drain the
+    /// pending `Cleared` rows WITHOUT running any closure (#3078).
+    ///
+    /// The emit loop calls this under the registry lock, releases the lock, then
+    /// hands the returned closures to [`run_typed_plan`]. Because the closures are
+    /// `Arc`s, cloning them out is cheap and — crucially — a closure that opens or
+    /// closes a read-session (which re-locks THIS registry) runs against a FREE
+    /// lock instead of deadlocking the actor against itself. The re-entrant
+    /// registration/removal simply lands on the next tick.
+    ///
+    /// Returns `(closures, cleared_rows)`: the cloned closure handles and the
+    /// one-shot `Cleared` rows for removed typed keys (already materialized).
+    ///
+    /// One-tick deferral semantics (a behavior change from the old under-lock
+    /// path): the closure set and the pending clears are both snapshotted HERE,
+    /// before any closure runs. If a closure closes a read-session mid-run, the
+    /// `remove` it triggers pushes a `Cleared` row that this drain already passed,
+    /// so that clear emits on the NEXT tick — and the just-removed key's closure,
+    /// already cloned into this tick's plan, still emits one final row this tick.
+    /// Benign and consistent with the "re-entrant changes land next tick" model.
+    pub fn drain_typed_run_plan(&mut self) -> (Vec<TypedProjectionFn>, Vec<TypedProjectionData>) {
+        let closures = self.typed_projections.values().cloned().collect();
+        let cleared = std::mem::take(&mut self.pending_typed_clears)
+            .into_iter()
+            .map(|key| TypedProjectionData {
+                key,
+                state: WireProjectionState::Cleared,
+                ..Default::default()
+            })
+            .collect();
+        (closures, cleared)
     }
 
     // ADR-0070 host-declared consumed-projection methods

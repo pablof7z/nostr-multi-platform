@@ -267,6 +267,78 @@ fn typed_projection_surfaces_through_kernel_run_typed_projections() {
     assert_eq!(typed[0].payload, vec![0xab, 0xcd]);
 }
 
+/// #3078 — the emit loop must run typed snapshot closures with the registry lock
+/// RELEASED. Opening a read-session from inside a closure re-locks this same
+/// registry (`install_read_output` → `register_typed_snapshot_projection_on` →
+/// `snapshot_projections.lock()`); if the lock is still held while the closure
+/// runs, that re-lock is a same-thread acquisition of a non-reentrant
+/// `std::sync::Mutex` → permanent deadlock of the emit loop.
+///
+/// The probe re-locks via `try_lock` (which stands in for the read-session open
+/// WITHOUT hanging the test): `Ok` proves the lock was free when the closure ran
+/// (the fix); `Err(WouldBlock)` proves it was still held (the `master` bug that
+/// would deadlock a real blocking re-lock). Deterministic — no threads, no
+/// timeout.
+#[test]
+fn typed_closure_runs_with_registry_lock_released() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+
+    let observed_lock_free = Arc::new(AtomicBool::new(false));
+    let probe = Arc::clone(&observed_lock_free);
+    let reentrant = Arc::clone(&slot);
+    slot.lock().unwrap().register_typed("test.reentrant", move || {
+        if reentrant.try_lock().is_ok() {
+            probe.store(true, Ordering::SeqCst);
+        }
+        None
+    });
+    kernel.set_snapshot_projection_handle(slot);
+
+    let _ = kernel.run_typed_projections();
+
+    assert!(
+        observed_lock_free.load(Ordering::SeqCst),
+        "the registry lock was still held while a typed snapshot closure ran — a \
+         read-session open from that closure would deadlock the emit loop (#3078)"
+    );
+}
+
+/// #3078 — the feed-author-provider path (`collect_feed_author_sets`) got the
+/// identical snapshot-then-release fix as the typed path; assert it too runs
+/// providers with the registry lock RELEASED. Symmetric guard so a future
+/// refactor can't quietly reintroduce under-lock running on this path.
+#[test]
+fn feed_author_provider_runs_with_registry_lock_released() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+
+    let observed_lock_free = Arc::new(AtomicBool::new(false));
+    let probe = Arc::clone(&observed_lock_free);
+    let reentrant = Arc::clone(&slot);
+    slot.lock()
+        .unwrap()
+        .register_feed_author_provider("test.feed.home", move || {
+            if reentrant.try_lock().is_ok() {
+                probe.store(true, Ordering::SeqCst);
+            }
+            Vec::new()
+        });
+    kernel.set_snapshot_projection_handle(slot);
+
+    let _ = kernel.collect_feed_author_sets();
+
+    assert!(
+        observed_lock_free.load(Ordering::SeqCst),
+        "the registry lock was still held while a feed-author provider ran — a \
+         read-session open from that provider would deadlock the emit loop (#3078)"
+    );
+}
+
 /// Time-aware typed projections receive the current kernel clock value when the
 /// snapshot is emitted, not a registration-time/default timestamp.
 #[test]

@@ -11,7 +11,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
 use super::bounds::admit_keyed;
-use super::{record_emitted_feed_authors, EmittedFeedAuthorsSlot, SnapshotRegistry};
+use super::{
+    record_emitted_feed_authors, EmittedFeedAuthorsSlot, FeedAuthorProviderFn, SnapshotRegistry,
+};
 
 impl SnapshotRegistry {
     /// ADR-0070 D7 (#1671 Lane H) — register the feed-author-set provider for
@@ -37,7 +39,7 @@ impl SnapshotRegistry {
         ) {
             return;
         }
-        self.feed_author_providers.insert(feed_key, Box::new(f));
+        self.feed_author_providers.insert(feed_key, Arc::new(f));
     }
 
     /// Return the set of feed-author-provider keys currently registered —
@@ -80,9 +82,11 @@ impl SnapshotRegistry {
     }
 
     /// ADR-0070 D7 (#1671 Lane H) — a clone of the emitted-author sink handle, for
-    /// a typed-producer closure to write to WITHOUT re-locking the registry (it
-    /// runs inside `run_typed()` while the registry mutex is held). Write through
-    /// the free function [`record_emitted_feed_authors`].
+    /// a typed-producer closure to write to. The closure is a plain `Fn` with no
+    /// `&SnapshotRegistry`, so it reports emitted authors through this captured
+    /// handle rather than through the registry (independent of the registry lock;
+    /// #3078 moved production closure execution out from under that lock). Write
+    /// through the free function [`record_emitted_feed_authors`].
     #[must_use]
     pub fn emitted_feed_authors_handle(&self) -> EmittedFeedAuthorsSlot {
         Arc::clone(&self.emitted_feed_authors)
@@ -118,9 +122,24 @@ impl SnapshotRegistry {
     #[must_use]
     pub fn run_feed_author_provider(&self, feed_key: &str) -> Vec<String> {
         match self.feed_author_providers.get(feed_key) {
-            Some(provider) => catch_unwind(AssertUnwindSafe(provider)).unwrap_or_default(),
+            Some(provider) => catch_unwind(AssertUnwindSafe(|| (**provider)())).unwrap_or_default(),
             None => Vec::new(),
         }
+    }
+
+    /// Snapshot the registered feed-author providers as `(feed_key, provider)`
+    /// handles WITHOUT running any provider (#3078).
+    ///
+    /// The emit loop calls this under the registry lock, releases the lock, then
+    /// hands the returned providers to [`run_feed_author_provider_plan`] — the same
+    /// deadlock-avoiding split as [`SnapshotRegistry::drain_typed_run_plan`]. The
+    /// `Arc` provider handles make the clone cheap.
+    #[must_use]
+    pub fn snapshot_feed_author_providers(&self) -> Vec<(String, FeedAuthorProviderFn)> {
+        self.feed_author_providers
+            .iter()
+            .map(|(feed_key, provider)| (feed_key.clone(), Arc::clone(provider)))
+            .collect()
     }
 
     /// Run every registered feed-author provider and return `(feed_key, keys)`
@@ -132,13 +151,27 @@ impl SnapshotRegistry {
     /// authors this tick — the same shape as an unregistered provider). The kernel
     /// then reconciles each `(feed_key, keys)` against its prior set.
     pub fn run_feed_author_providers(&self) -> Vec<(String, Vec<String>)> {
-        let mut out = Vec::with_capacity(self.feed_author_providers.len());
-        for (feed_key, provider) in &self.feed_author_providers {
-            match catch_unwind(AssertUnwindSafe(provider)) {
-                Ok(keys) => out.push((feed_key.clone(), keys)),
-                Err(_) => continue,
-            }
-        }
-        out
+        run_feed_author_provider_plan(&self.snapshot_feed_author_providers())
     }
+}
+
+/// Run pre-snapshotted feed-author providers OUTSIDE the registry lock (#3078).
+///
+/// A free function (takes no `&SnapshotRegistry`) so the emit loop can call it
+/// AFTER dropping the registry mutex guard. `providers` comes from
+/// [`SnapshotRegistry::snapshot_feed_author_providers`], cloned while the lock
+/// was held. Mirrors `run_typed_plan`'s D6 contract: a panicking provider is
+/// swallowed inside [`catch_unwind`] (its feed contributes no authors this tick).
+#[must_use]
+pub fn run_feed_author_provider_plan(
+    providers: &[(String, FeedAuthorProviderFn)],
+) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::with_capacity(providers.len());
+    for (feed_key, provider) in providers {
+        match catch_unwind(AssertUnwindSafe(|| (**provider)())) {
+            Ok(keys) => out.push((feed_key.clone(), keys)),
+            Err(_) => continue,
+        }
+    }
+    out
 }
