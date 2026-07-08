@@ -41,13 +41,19 @@ impl Kernel {
     /// registered — D6: a projection failure is data, never a panic at the
     /// boundary. Called from `make_update`.
     pub(in crate::kernel) fn run_typed_projections(&self) -> Vec<TypedProjectionData> {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|mut registry| registry.run_typed_at(self.now_secs()))
-                .unwrap_or_default(),
-            None => Vec::new(),
-        }
+        // #3078 — snapshot the closure handles UNDER the lock, then release it
+        // and run them. A closure that opens/closes a read-session re-locks THIS
+        // same registry; running it under the lock would deadlock the actor
+        // against itself and freeze the emit loop forever.
+        let (closures, cleared) = match &self.snapshot_projections {
+            Some(slot) => match slot.lock() {
+                Ok(mut registry) => registry.drain_typed_run_plan(),
+                // Poisoned mutex degrades to an empty frame (D6) — never a panic.
+                Err(_) => return Vec::new(),
+            },
+            None => return Vec::new(),
+        };
+        super::run_typed_plan(&closures, self.now_secs(), cleared)
     }
 
     /// ADR-0070 D7 (#1671 Lane H) — collect every registered feed-author
@@ -59,13 +65,17 @@ impl Kernel {
     /// kernel then reconciles each set against the prior tick via
     /// [`Kernel::reconcile_feed_author_refs`].
     pub(in crate::kernel) fn collect_feed_author_sets(&self) -> Vec<(String, Vec<String>)> {
-        match &self.snapshot_projections {
-            Some(slot) => slot
-                .lock()
-                .map(|registry| registry.run_feed_author_providers())
-                .unwrap_or_default(),
-            None => Vec::new(),
-        }
+        // #3078 — same snapshot-then-release split as `run_typed_projections`:
+        // clone the providers under the lock, release it, then run them, so a
+        // provider that re-locks the registry cannot deadlock the emit loop.
+        let providers = match &self.snapshot_projections {
+            Some(slot) => match slot.lock() {
+                Ok(registry) => registry.snapshot_feed_author_providers(),
+                Err(_) => return Vec::new(),
+            },
+            None => return Vec::new(),
+        };
+        super::feed_authors::run_feed_author_provider_plan(&providers)
     }
 
     /// ADR-0070 — snapshot the host-declared consumed-projection set for this
