@@ -210,7 +210,7 @@ below identifies the migration targets.
 | typed read helpers | The surviving product read door | UniFFI native session helpers / wasm structured controls / Rust app helpers |
 | Observed delivery | Internal event-delivery and replay machinery behind typed read sessions (ADR-0070); not app-facing | `nmp-core` substrate |
 | Dynamic source reconciliation | Internal source compiler behind a session (ADR-0070); not app-facing | `nmp-core` substrate |
-| App-owned feed projection key | Product/session key for a typed `OpFeedSnapshot` row; the key is caller-owned while the NNFS schema is shared | app crate/runtime session, using `nmp-note-feed` schema |
+| App-owned feed projection key | Product/session key for a typed `FeedRow` row (delivery-tagged refs + accumulated provenance context); the key is caller-owned while the frozen NFRS schema is shared | app crate/runtime session, using `nmp-feed` schema (composite lanes: #3082/#3086) |
 | raw publish body | Low-level arbitrary-kind publish shape under the one write doorway (ADR-0071); reserved for protocol/import/diagnostic paths, not starter app writes | publish action schema |
 | verbatim signed-event publish | Imported signed events stay imported/manual and do not acquire protocol guarantees (ADR-0071) | protocol/import dispatch doorway |
 

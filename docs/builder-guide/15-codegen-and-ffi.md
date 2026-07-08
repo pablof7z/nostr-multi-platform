@@ -340,10 +340,10 @@ Use `nmp gen feed-helpers --platform swift|kotlin|ts --out <path>` when a host
 binding wants checked generated helper code over that JSON bridge. The generated
 helpers cover four source families — active-user-follows, active-user-hosted-groups,
 list-members, and relay-set — each building canonical `FeedParams` JSON with
-typed `RootIndexed`/`Flat` shape selection and calling the platform feed-opening
-door (`openFeedJson` on native bindings, `feed_open_json` in `runtime-web`);
-they do not create a second runtime path. Rust app crates should prefer the
-typed shape directly:
+the (now single-variant) `Flat` shape selection and calling the platform
+feed-opening door (`openFeedJson` on native bindings, `feed_open_json` in
+`runtime-web`); they do not create a second runtime path. Rust app crates
+should prefer the typed shape directly:
 
 ```rust
 let handle = app.feeds().open_spec(
@@ -351,12 +351,22 @@ let handle = app.feeds().open_spec(
     feed::events()
         .primary_kinds([1])
         .from(source::active_user().follows())
-        .shape(FeedShape::RootIndexed)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(80))
         .project(FeedItemProjection::feed_rows()),
 )?;
 ```
+
+`FeedShape` has exactly one variant, `Flat` (its own default), since
+`RootIndexed`'s baked reply-rollup engine was demolished (#3082/#3086); the
+`.shape(...)` builder call is omitted above because there is nothing to
+select. Multi-source feeds (an authored/commented/reposted union collapsing
+onto one row) are declared through the composite lane surface
+(`CompositeFeedParams`/`FeedLane`, `NmpApp::open_composite_feed`), not through
+`FeedShape` — see
+[07a — Build a composite feed](07a-build-a-composite-feed.md). As of #3086
+`open_composite_feed` is Rust/`nmp-feed-session`-only; it is not yet exposed
+through `nmp gen feed-helpers` or the UniFFI/wasm binding surface.
 
 ### Account-change and account-scoped feeds (#2516)
 

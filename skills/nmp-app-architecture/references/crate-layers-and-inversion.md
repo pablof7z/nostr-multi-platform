@@ -91,9 +91,38 @@ Fifteen confirmed violations across five crates; issues are the canonical tracke
 | NIP-01 render-card | `nmp-nip01` (L4) | `TimelineEventCard` "render-ready event card" + `schema/timeline_snapshot.fbs` | #2510 |
 
 The `#2510` family had a root cause in `crate-boundaries.md` §8, which previously sanctioned a
-"note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. #2508
-settled the relation/read side: global social summaries are rejected; reads belong to the
+"note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. That
+amendment landed via #3082/#3086: `crate-boundaries.md` §8 now names `nmp-feed` as the owner of
+the generic feed engine/row/wire (including the composite multi-lane surface below) and
+`nmp-note-feed` as a thin protocol-composition adapter with no engine, row, or wire of its own.
+#2508 settled the relation/read side: global social summaries are rejected; reads belong to the
 concept crate that defines them.
+
+## Composite-feed doctrine (#3082/#3086)
+
+A composite feed is an additive set of **lanes** over one `FlatFeed`-style engine
+(`crates/nmp-feed/src/composite.rs`), not a second engine. Two rules extend the layer table
+above:
+
+1. **Mappings/extractors cross FFI as opaque registered ids, never native closures.**
+   `LaneMappingId(String)` names a `LaneMapping` closure
+   (`Arc<dyn Fn(&KernelEvent) -> Vec<MappedRow> + Send + Sync>`) built in Rust **at the
+   composition root** (ADR-0069) and resolved through `LaneMappingRegistry`
+   (`crates/nmp-feed/src/lane_mapping.rs`). This is the same discipline as `CustomAdmissionId` —
+   a "yes" to "does this cross FFI as a closure instead of an id" is a D7 violation.
+2. **The engine never learns a kind; protocol crates own extraction, render policy is
+   app-owned.** `nmp-feed` registers only its own kind-blind identity mapping
+   (`feed.authored`). `nmp-nip18` registers `nip18.target`; `nmp-nip22` registers `nip22.root`.
+   A lane's row carries a delivery-tagged `TypedRef` (`RenderOnly` stays in the lazy
+   render/embed channel; `Delivered` folds the target into the SAME session's own acquisition).
+   Whether an app renders the activity or the target, dedupes, or applies a weighted sort is
+   app/composition-root policy — never baked into `nmp-feed`. The former `RootIndexedFeed`
+   engine and `FeedShape::RootIndexed` reply-rollup shape are deleted, not generalized:
+   `FeedShape` has exactly one variant, `Flat`.
+
+See [`docs/perf/composite-feed-architecture.md`](../../../docs/perf/composite-feed-architecture.md)
+for the full design record and driving example (a 30023-article composite feed via authored +
+commented + reposted lanes).
 
 ## Known-Legitimate Patterns (do NOT flag)
 

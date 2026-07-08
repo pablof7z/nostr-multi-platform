@@ -33,4 +33,4 @@ For the developer-facing overview, see
 - [ADR-0075](0075-trellis-private-reconciliation-substrate.md) - Trellis as
   private reconciliation substrate.
 - [ADR-0076](0076-app-facing-feed-helpers.md) - App-facing feed APIs as typed
-  read-session helpers.
+  read-session helpers, including composite multi-lane feeds (#3082/#3086).

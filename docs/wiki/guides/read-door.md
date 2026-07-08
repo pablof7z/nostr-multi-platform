@@ -24,4 +24,20 @@ The read door follows the typed sessions architecture established in ADR-0070. I
 
 The read door is not yet 100% complete. The product-read cutover (#2399) and the search read doors (#2418/#2427) are still open.
 
+## Feed reads are composite lanes over one engine (#3082/#3086)
+
+Feed-shaped reads sit on the same typed-session model. A feed builder is now
+arity-`Vec` (one source event may expand into zero, one, or many rows), and
+each row declares a delivery-tagged typed ref vector instead of a single
+render-target pointer: a `RenderOnly` ref stays in the lazy render/embed
+channel (`resolve_ref`), while a `Delivered` ref folds its target into the
+SAME session's own acquisition so it re-enters as a real event. A composite
+feed (`CompositeFeedParams`, `crates/nmp-feed/src/composite.rs`) declares this
+as an additive set of lanes — each naming a source, a kind/tag match, and an
+opaque `LaneMappingId` resolved to a composition-root closure (never a native
+closure crossing FFI). The former baked reply-rollup shape
+(`FeedShape::RootIndexed`) is deleted; a reply digest, if wanted, is a
+concept-owned read over delivered rows, not a feed shape. See
+[`docs/perf/composite-feed-architecture.md`](../../perf/composite-feed-architecture.md).
+
 <!-- citations: [^898a4-84131] [^898a4-83357] [^3c942-35224] -->

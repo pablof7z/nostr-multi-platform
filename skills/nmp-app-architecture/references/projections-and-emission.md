@@ -97,6 +97,14 @@ post-start returns `Err(AlreadyStarted)`. This is durable architecture, not a co
 Drain projections must never be "reused from cache" — each Changed tick carries only newly
 settled entries.
 
+Composite feed rows (`FeedRow`, #3082/#3086) flow through this same registered-closure
+discipline — a feed session's projection closure reads pre-computed `FlatFeed` state, never
+peeks the store by id. A row's `refs: Vec<TypedRef>` (`RenderOnly`/`Delivered`) is carried as
+DATA inside the row payload; a `Delivered` ref's target re-enters through the normal
+`on_kernel_event`/projection path as its own row, never through a synchronous resolve inside the
+projection closure itself (that would be the store-scan/allocation-in-steady-state violation
+this section's D8 requirements already forbid).
+
 ## Projection closures: D8 requirements
 
 Every registered closure runs **on the actor thread** inside `make_update`. It MUST be

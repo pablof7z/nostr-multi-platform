@@ -41,7 +41,6 @@ let handle = app.feeds().open_spec(
     feed::events()
         .primary_kinds([KIND_NOTE])
         .from(source::active_user().follows())
-        .shape(FeedShape::RootIndexed)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(80))
         .project(FeedItemProjection::feed_rows()),
@@ -54,7 +53,7 @@ transport; it is not a second app programming model:
 ```json
 {
   "primary_kinds": [1],
-  "shape": "RootIndexed",
+  "shape": "Flat",
   "source": "ActiveUserFollows",
   "admission": "All",
   "order": "NewestByFeedPosition",
@@ -65,7 +64,14 @@ transport; it is not a second app programming model:
 ```
 
 Do not pass wrapper kinds such as `6` or `16` as primary input. The compiler
-derives acquisition below the app boundary.
+derives acquisition below the app boundary. `FeedShape` has exactly one
+variant, `Flat` (its own default) — the former `RootIndexed` reply-rollup
+shape was demolished (#3082/#3086); every admitted event is a top-level row
+and the app supplies identity/sort/merge on the generic `FlatFeed` knobs. A
+union of several sources collapsing onto one row (a repost/comment folding
+onto its target, a curated-list fan-out) is a **composite feed** — an
+additive set of lanes over the same engine, not a `FeedShape` variant. See
+[builder-guide 07a — Build a composite feed](../builder-guide/07a-build-a-composite-feed.md).
 
 ## Kind-Filtered Explorer
 

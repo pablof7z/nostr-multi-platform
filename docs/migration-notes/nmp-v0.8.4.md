@@ -5,6 +5,13 @@ release tag. It complements the durable target guide in `docs/migration.md`;
 the target guide explains the final shape, while this file names the concrete
 breaks a pinned consumer must handle when crossing this release.
 
+> **Superseded field:** the `.shape(FeedShape::RootIndexed)` example below is
+> historical — `RootIndexed` was demolished by #3082/#3086. `FeedShape` now
+> has one variant, `Flat`. A consumer crossing a release after `nmp-v0.8.4`
+> should read
+> [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architecture.md)
+> instead of copying the `RootIndexed` shape below.
+
 ## Deleted Or Renamed Crates And APIs
 
 - Do not depend on `nmp-defaults` or a generated defaults bundle. App Rust code

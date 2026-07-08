@@ -287,18 +287,39 @@ Examples:
 - `nmp-nip01` owns base note/profile/reply primitives: the kind:1 note
   builder/decoder, reply/thread views, kind:0 profile + kind:3 contacts caches,
   and NIP-10 timeline grouping. It does not own concrete feed rows, render
-  payloads, social/action-row aggregation, or OP-feed wire. Counts, loading
+  payloads, social/action-row aggregation, or a feed wire. Counts, loading
   state, and teardown for replies, reactions, reposts, zaps, bookmarks, mutes,
   and other markers belong to the concept crate that defines that behavior.
-- `nmp-note-feed` owns concrete note-feed composition: OP/flat feed rows,
-  typed note-feed wire, repost row composition, and reusable feed projection
-  mechanisms.
-  It composes `nmp-nip01` kind:1/NIP-10 facts, `nmp-nip18` repost facts,
-  `nmp-content` content trees, and `nmp-feed` mechanics; it does not own
-  relation-count concepts or app render policy.
+- `nmp-feed` owns the generic, kind-agnostic feed engine and row (#3082/#3086):
+  the `FlatFeed<C>` mechanics (bounded windows, viewport growth, observer
+  ingestion, pull-controller compatibility), the frozen `FeedRow` shape and its
+  delivery-tagged `TypedRef` vector (`RenderOnly`/`Delivered`), the composite
+  multi-lane declaration surface (`CompositeFeedParams`/`FeedLane`/
+  `SortPolicy`), and the `LaneMappingRegistry` that resolves opaque
+  `LaneMappingId`s to composition-root-constructed mapping closures. A
+  composite feed is an additive set of lanes over one `FlatFeed`; today's
+  single-scope `FeedParams` feed is the degenerate one-lane case. `nmp-feed`
+  never learns a protocol kind or a NIP name — lane mappings are registered by
+  the protocol crate that owns the extraction (`nmp-nip18` registers
+  `nip18.target`, `nmp-nip22` registers `nip22.root`) and resolved only at the
+  composition root (ADR-0069). The former `RootIndexedFeed` engine,
+  `AttributionPayload` reply-rollup, and `FeedShape::RootIndexed` variant are
+  deleted, not generalized — `FeedShape` has one variant, `Flat`. See
+  [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architecture.md).
+- `nmp-note-feed` shrank to a thin protocol-composition adapter (#3082/#3086):
+  it supplies app/protocol knobs for the generic `nmp_feed::FlatFeed<
+  nmp_feed::FeedRow>` engine — identity (NIP-18 repost → target id), merge
+  policy, and admission predicates/shapes for author and thread feeds. It owns
+  no engine, no row type, and no wire; those live in `nmp-feed`. It composes
+  `nmp-nip01` kind:1/NIP-10 facts and `nmp-nip18` repost facts. It does not own
+  relation-count concepts or app render policy, and it may be deleted entirely
+  once its remaining knobs relocate into the composition root
+  (`nmp-feed-session`) — tracked as a follow-up to #3082.
 - `nmp-feed-session` owns runtime-independent feed-session compilation:
-  mapping reusable feed declarations to source graphs, controller registration
-  plans, and session-scoped dependency re-resolution. App-owned projection keys
+  mapping reusable feed declarations (including composite lane declarations)
+  to source graphs, controller registration plans, session-scoped dependency
+  re-resolution, and the delivered-ref hydration primitive shared by pointer
+  targets and composite lanes (`delivered_ref.rs`). App-owned projection keys
   and product feed meaning remain in the composing app/runtime.
 - `nmp-replies` owns app-facing reply policy and read planning: a `ReplyTarget`
   plus content becomes either a NIP-10 kind:1 note or a NIP-22 kind:1111

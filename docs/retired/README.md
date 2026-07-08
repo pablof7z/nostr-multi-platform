@@ -8,6 +8,9 @@ wrong, edit the owning document in place.
 
 Current retired breadcrumbs:
 
+- `op-centric-feed-architecture.md` — the demolished `RootIndexedFeed`/
+  `NoteFeedItem`/`AttributionPayload` reply-rollup design (#3082/#3086).
+  Superseded by [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architecture.md).
 - `removed-v2-traits.md` — removed trait-family / generated-app design names.
 - `removed-api-surface.md` — removed generator and retired action transport notes.
 - `lmdb-watermarks.md` — removed persisted-watermark and claim-register schema.
