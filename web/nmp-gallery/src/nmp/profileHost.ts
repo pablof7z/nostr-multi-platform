@@ -21,7 +21,7 @@ import { RefEventStore, REFS_EVENT_KEY, type ClaimedEventWire } from "./refEvent
 import { RefProfileStore } from "./refProfileStore";
 import type { EventRefResolver } from "@nmpis/components-web/component-host";
 import type { EmbeddedEventModel } from "@nmpis/components-web/content-kind-registry";
-import type { NostrProfileHost, ProfileWire } from "@nmpis/components-web/user-avatar";
+import { truncateNpub, type NostrProfileHost, type ProfileWire } from "@nmpis/components-web/user-avatar";
 
 export { tagValue, type ClaimedEventWire } from "./refEventStore";
 
@@ -85,8 +85,10 @@ export type GalleryRuntime = {
   /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
    *  pubkey). The result lands reactively in `npub(pubkey)`. */
   requestNpub: (pubkey: string) => void;
-  /** Reactive — the Rust-encoded `{ npub, npubShort }` for a pubkey, or
-   *  undefined until `requestNpub` resolves. */
+  /** Reactive — `{ npub, npubShort }` for a pubkey, or undefined until
+   *  `requestNpub` resolves. `npub` is the Rust-encoded bech32 string;
+   *  `npubShort` is `truncateNpub(npub)` computed here (#3098 — pure string
+   *  truncation, not re-encoded, never baked into the kernel wire). */
   npub: (pubkey: string) => { npub?: string; npubShort?: string } | undefined;
 };
 
@@ -145,7 +147,9 @@ export function createGalleryRuntime(): GalleryRuntime {
     );
   }
 
-  // Rust-encoded npub/npubShort per pubkey (aim.md §6.9 — never browser-encoded).
+  // `npub` per pubkey is Rust-encoded (aim.md §6.9 — never browser-encoded);
+  // `npubShort` is `truncateNpub(npub)` computed locally on arrival (#3098 —
+  // pure string truncation, a display decision this host owns).
   const [npubs, setNpubs] = createStore<Record<string, { npub?: string; npubShort?: string }>>({});
   const requestedNpubs = new Set<string>();
 
@@ -356,8 +360,11 @@ export function createGalleryRuntime(): GalleryRuntime {
       // Calls the Rust NIP-19 encoder directly via the wasm free function
       // (no worker round-trip — encodeNpub loads the wasm module lazily on the
       // main thread; the binary is already cached from the worker's load).
+      // #3098 — the wasm function returns `{ npub }` only; `npubShort` is
+      // derived here via `truncateNpub` (pure string truncation, a display
+      // decision this host owns, never baked into the kernel wire).
       void encodeNpub(pubkey).then((result) => {
-        if (result) setNpubs(pubkey, result);
+        if (result) setNpubs(pubkey, { npub: result.npub, npubShort: truncateNpub(result.npub) });
       });
     },
     npub: (pubkey: string) => npubs[pubkey],

@@ -32,7 +32,6 @@ struct GalleryShowcaseReferences: Decodable, Sendable {
 struct GalleryShowcaseProfile: Decodable, Sendable {
     let pubkeyHex: String
     let npub: String
-    let npubShort: String
 }
 
 struct GalleryShowcaseEvent: Decodable, Sendable {
@@ -59,7 +58,6 @@ struct GalleryRelayRoleOption: Decodable, Equatable, Sendable {
 let GALLERY_SHOWCASE = GalleryShowcaseReferences.loadFromRust()
 let SHOWCASE_PUBKEY_HEX = GALLERY_SHOWCASE.profile.pubkeyHex
 let SHOWCASE_NPUB = GALLERY_SHOWCASE.profile.npub
-let SHOWCASE_NPUB_SHORT = GALLERY_SHOWCASE.profile.npubShort
 let SHOWCASE_ARTICLE_NADDR = GALLERY_SHOWCASE.article.uri
 let SHOWCASE_ARTICLE_PRIMARY_ID = GALLERY_SHOWCASE.article.primaryId
 let SHOWCASE_NOTE_EVENT_ID = GALLERY_SHOWCASE.note.primaryId
@@ -210,8 +208,9 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
 }
 
 /// Build a `ProfileWire` from one `refs.profile` entry. The gallery JSON
-/// adapter derives the full `npub` from the raw pubkey; `npubShort` is the only
-/// Swift-side derivation. aim.md §2 stipulates shells own abbreviation.
+/// adapter derives the full `npub` from the raw pubkey; `ProfileWire` itself
+/// derives `npubShort` (a computed property — #3098, aim.md §2 stipulates
+/// shells own abbreviation).
 private func profileWire(fromRefProfile card: RefProfileWire, pubkey: String) -> ProfileWire {
     ProfileWire(
         pubkey: pubkey,
@@ -219,18 +218,8 @@ private func profileWire(fromRefProfile card: RefProfileWire, pubkey: String) ->
         about: card.about?.nonEmpty,
         pictureUrl: card.pictureUrl?.nonEmpty,
         nip05: card.nip05?.nonEmpty,
-        npub: card.npub,
-        npubShort: shortenNpub(card.npub)
+        npub: card.npub
     )
-}
-
-/// Truncate a bech32 npub for display (e.g. `npub1abcd…wxyz`). Mirrors the
-/// Rust-side helper the kernel deleted (aim.md §2 — shells own abbreviation).
-private func shortenNpub(_ npub: String) -> String {
-    guard npub.count > 12 else { return npub }
-    let prefix = npub.prefix(9) // "npub1XXXX"
-    let suffix = npub.suffix(4)
-    return "\(prefix)…\(suffix)"
 }
 
 private extension String {
@@ -354,8 +343,9 @@ final class GalleryModel: NostrProfileHost {
 
     /// Always-renderable `ProfileWire` for the showcase identity. Returns the
     /// real kernel-supplied profile when kind:0 has arrived; otherwise a
-    /// fallback built from `(SHOWCASE_PUBKEY_HEX, SHOWCASE_NPUB, SHOWCASE_NPUB_SHORT)`
-    /// with every optional field set to nil.
+    /// fallback built from `(SHOWCASE_PUBKEY_HEX, SHOWCASE_NPUB)` with every
+    /// optional field set to nil (`npubShort` is derived by `ProfileWire`
+    /// itself from `SHOWCASE_NPUB`).
     ///
     /// The registry components are designed to degrade gracefully on
     /// missing fields (identicon avatar fallback, `npubShort` display name
@@ -376,8 +366,7 @@ final class GalleryModel: NostrProfileHost {
             about: nil,
             pictureUrl: nil,
             nip05: nil,
-            npub: SHOWCASE_NPUB,
-            npubShort: SHOWCASE_NPUB_SHORT
+            npub: SHOWCASE_NPUB
         )
     }
 

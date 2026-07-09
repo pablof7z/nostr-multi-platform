@@ -310,7 +310,7 @@ export const userComponents: Component[] = [
         ],
         screenshots: ["user-npub-ios-gallery-preview.png"],
         customization: [
-          "`npub` and `npubShort` must come from the kernel projection — never format them in Swift (aim.md §6.9).",
+          "`npub` must come from the kernel projection (the canonical Rust bech32 encoder) — never re-derive it in Swift (aim.md §6.9). `npubShort` is a pure string truncation of `npub` computed locally by `ProfileWire` (#3098).",
         ],
       },
       compose: {
@@ -323,7 +323,7 @@ export const userComponents: Component[] = [
         ],
         screenshots: ["user-npub-kotlin-preview.png"],
         customization: [
-          "`npub` and `npubShort` must come from the kernel projection — never format them in Kotlin.",
+          "`npub` must come from the kernel projection (the canonical Rust bech32 encoder) — never re-derive it in Kotlin. `npubShort` is a pure string truncation of `npub` computed locally by `ProfileWire` (#3098).",
           "Uses `ClipboardManager` directly; no permission required on API 32 and below.",
         ],
       },

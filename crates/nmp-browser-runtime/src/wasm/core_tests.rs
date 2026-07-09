@@ -303,10 +303,13 @@ fn deliver_signer_response_failure_emits_sign_failed() {
 
 // ── BLOCKER 3: nmp_encode_npub JSON shape ─────────────────────────────────
 
-/// `nmp_encode_npub` must return a JSON object with `npub` and `npubShort`
-/// fields so `wasmBridge.ts`'s `JSON.parse(json)` call works (#2139 BLOCKER 3).
+/// `nmp_encode_npub` must return a JSON object with an `npub` field so
+/// `wasmBridge.ts`'s `JSON.parse(json)` call works (#2139 BLOCKER 3). #3098 —
+/// `npubShort` (bech32 abbreviation) is no longer part of the wire: it is
+/// pure string truncation of `npub`, which the JS host now derives locally
+/// rather than the kernel baking a display artifact into the payload.
 #[test]
-fn encode_npub_returns_json_with_npub_and_npub_short() {
+fn encode_npub_returns_json_with_npub() {
     let json = crate::wasm::nmp_encode_npub(PK);
     assert!(
         !json.is_empty(),
@@ -316,17 +319,14 @@ fn encode_npub_returns_json_with_npub_and_npub_short() {
     let npub = parsed["npub"]
         .as_str()
         .expect("npub field must be a string");
-    let npub_short = parsed["npubShort"]
-        .as_str()
-        .expect("npubShort field must be a string");
     assert!(
         npub.starts_with("npub1"),
         "npub must start with npub1, got: {npub}"
     );
-    assert!(!npub_short.is_empty(), "npubShort must be non-empty");
     assert!(
-        npub_short.contains('…'),
-        "npubShort must be abbreviated with ellipsis"
+        parsed.get("npubShort").is_none(),
+        "npubShort must not be baked into the wire; the JS host truncates \
+         locally, got: {parsed:?}"
     );
 }
 

@@ -185,8 +185,9 @@ class GalleryModel : ViewModel() {
         // ADR-0070 (#1671): projections["refs.profile"][pubkey] is a
         // ProfileWire-shaped entry materialised from the FULL current
         // refs.profile store set (snapshot_json re-materialises the whole store
-        // every frame). `npub_short` is derived from `npub` by the ProfileWire
-        // constructor default when absent (same algorithm as before).
+        // every frame). `npub_short` is NOT on the wire (#3098); `ProfileWire`
+        // derives it as a computed property from `npub` (pure string
+        // truncation, a display decision the host owns).
         //
         // REPLACE the map exactly each frame — no accumulation, no second
         // source of truth (D4). The decoded set IS the live store, so a

@@ -1,9 +1,10 @@
 import { displayLabel, type ProfileWire } from "../user-avatar/ProfileWire";
 
 // Inline display-name text for a Nostr profile. Shows `displayName` when set;
-// falls back to `npubShort` (Rust-formatted) and finally to a short raw-hex
-// form of the pubkey. Pure render of the `ProfileWire` it is given — mirrors
-// the SwiftUI / Compose `NostrProfileName`.
+// falls back to `npubShort` (a host-derived truncation of the Rust-encoded
+// npub, #3098) and finally to a short raw-hex form of the pubkey. Pure render
+// of the `ProfileWire` it is given — mirrors the SwiftUI / Compose
+// `NostrProfileName`.
 //
 // Depends on `web/user-avatar` for `ProfileWire`.
 export function NostrProfileName(props: {

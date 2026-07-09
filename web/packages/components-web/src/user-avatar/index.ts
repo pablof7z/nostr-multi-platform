@@ -13,5 +13,6 @@ export {
   avatarUrl,
   displayLabel,
   shortHex,
+  truncateNpub,
   type ProfileWire,
 } from "./ProfileWire";

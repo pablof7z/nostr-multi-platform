@@ -1,10 +1,11 @@
 /**
  * NostrNpubChip — copyable short-npub chip for the web.
  *
- * Pure renderer (D7): takes the `npub` (full bech32) and `npubShort` (truncated)
- * the host obtained from the kernel — both are produced by the canonical Rust
- * NIP-19 encoder, never bech32-encoded or reformatted in the browser (aim.md
- * §6.9). Renders the short form as a monospace chip; clicking copies the full
+ * Pure renderer (D7): takes the `npub` (full bech32, from the canonical Rust
+ * NIP-19 encoder — never re-derived in the browser, aim.md §6.9) and
+ * `npubShort` (a pure string truncation of `npub` the host derives locally
+ * via `truncateNpub`, #3098 — a display decision the host owns, not Rust).
+ * Renders the short form as a monospace chip; clicking copies the full
  * `npub` to the clipboard. Mirrors the SwiftUI/Compose `NostrNpubChip`.
  */
 import type { JSX } from "solid-js";

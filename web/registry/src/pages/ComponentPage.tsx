@@ -173,11 +173,13 @@ export default function ComponentPage() {
             >
               <p>
                 User components consume <code class="inline-code">ProfileWire</code>:
-                a Rust-owned projection containing the raw pubkey plus
-                Rust-formatted display strings such as{" "}
-                <code class="inline-code">npubShort</code>. Apps own fetching and
-                persistence; these files only render the profile snapshot they are
-                given.
+                a raw-data projection carrying the pubkey and kind:0 fields
+                verbatim, plus the Rust-encoded bech32 npub. Purely-derived
+                display strings such as{" "}
+                <code class="inline-code">npubShort</code> are computed by the
+                host, never baked into the projection. Apps own fetching and
+                persistence; these files only render the profile snapshot they
+                are given.
               </p>
             </Show>
           </div>

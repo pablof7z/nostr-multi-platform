@@ -14,14 +14,14 @@ export const webUserCore: PlatformImpl = {
   version: "0.1.0",
   dependencies: [],
   longDescription:
-    "`ProfileWire` is the web-side render model hydrated from the kernel's `refs.profile` row projection — the shared wire type every web user-* component renders. It carries display-ready fields (display name, picture URL, nip05, lnurl, optional Rust-formatted `npubShort`) plus pure helpers (`avatarUrl`, `displayLabel`, `shortHex`). The hex fallback is honest raw protocol data — npubs are never bech32-encoded in the browser (aim.md §6.9). On web this type co-locates with `user-avatar` (web doesn't split the renderer from the wire type the way the Rust platforms do), so installing any user-* component brings it in.",
+    "`ProfileWire` is the web-side render model hydrated from the kernel's `refs.profile` row projection — the shared wire type every web user-* component renders. It carries display-ready fields (display name, picture URL, nip05, lnurl, optional host-derived `npubShort`) plus pure helpers (`avatarUrl`, `displayLabel`, `shortHex`, `truncateNpub`). Bech32 encoding stays Rust-owned (the canonical NIP-19 encoder, called on demand — see user-npub); `npubShort` is pure string truncation of an already-encoded npub, a display decision the host computes locally via `truncateNpub` rather than the kernel baking it into the wire (#3098, aim.md §6.9). On web this type co-locates with `user-avatar` (web doesn't split the renderer from the wire type the way the Rust platforms do), so installing any user-* component brings it in.",
   files: [
     { source: "web/user-avatar/ProfileWire.ts", target: "src/components/nostr-user/ProfileWire.ts", role: "source", content: profileWireWeb },
   ],
   screenshots: ["user-core-web-preview.png"],
   customization: [
     "Keep this interface aligned with the kernel projection; the user-* components are pure renderers over it.",
-    "Populate `npubShort` from the kernel's Rust NIP-19 encoder (see user-npub) rather than deriving an npub in the browser.",
+    "Populate `npubShort` via `truncateNpub(npub)` after obtaining the npub from the kernel's Rust NIP-19 encoder (see user-npub) — never re-derive the bech32 encoding itself in the browser.",
   ],
 };
 
@@ -51,14 +51,14 @@ export const webUserName: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["user-avatar"],
   longDescription:
-    "`<NostrProfileName profile={...} />` renders the resolved display name, falling back to `npubShort` (Rust-formatted, when the kernel emits it) and finally to a short raw-hex form of the pubkey. Pure render of the `ProfileWire` it is given — the host owns resolution. Verified live in the NMP web gallery (real kind:0 display name).",
+    "`<NostrProfileName profile={...} />` renders the resolved display name, falling back to `npubShort` (a host-derived truncation of the Rust-encoded npub, when present) and finally to a short raw-hex form of the pubkey. Pure render of the `ProfileWire` it is given — the host owns resolution. Verified live in the NMP web gallery (real kind:0 display name).",
   files: [
     { source: "web/user-name/NostrProfileName.tsx", target: "src/components/nostr-user/NostrProfileName.tsx", role: "source", content: nostrProfileNameWeb },
   ],
   screenshots: ["user-name-web-preview.png"],
   customization: [
     "Style via the `nostr-profile-name` class (or pass `class`); the component emits a single `<span>`.",
-    "The hex fallback is honest raw protocol data — do not bech32-encode an npub in the browser; surface `npubShort` from the kernel projection instead.",
+    "The hex fallback is honest raw protocol data — do not bech32-encode an npub in the browser; derive `npubShort` locally via `truncateNpub` from the kernel-encoded npub instead.",
   ],
 };
 
@@ -85,13 +85,13 @@ export const webUserNpub: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["user-core"],
   longDescription:
-    "`<NostrNpubChip npub={...} npubShort={...} />` is the copyable short-npub chip. Both forms come from the canonical Rust NIP-19 encoder exposed through the WASM module (`nmp_encode_npub`) — never bech32-encoded or truncated in the browser (aim.md §6.9). Renders the short form as a monospace chip; clicking copies the full npub to the clipboard. Verified live in the NMP web gallery: the showcase identity's npub is encoded by the real kernel and matches the curated reference exactly.",
+    "`<NostrNpubChip npub={...} npubShort={...} />` is the copyable short-npub chip. `npub` comes from the canonical Rust NIP-19 encoder exposed through the WASM module (`nmp_encode_npub`) — never bech32-encoded in the browser (aim.md §6.9). `npubShort` is pure string truncation of that npub, computed by the host via `truncateNpub` (#3098) — not re-encoded, but also not baked into the kernel wire. Renders the short form as a monospace chip; clicking copies the full npub to the clipboard. Verified live in the NMP web gallery: the showcase identity's npub is encoded by the real kernel and matches the curated reference exactly.",
   files: [
     { source: "web/user-npub/NostrNpubChip.tsx", target: "src/components/nostr-user/NostrNpubChip.tsx", role: "source", content: nostrNpubChipWeb },
   ],
   screenshots: ["user-npub-web-preview.png"],
   customization: [
-    "Obtain `npub`/`npubShort` from your kernel boundary (the gallery adds a worker `encode_npub` round-trip to the Rust encoder) — do not bech32-encode in JS.",
+    "Obtain `npub` from your kernel boundary (the gallery adds a worker `encode_npub` round-trip to the Rust encoder) and derive `npubShort` locally via `truncateNpub` — do not bech32-encode in JS.",
     "Clipboard writes use `navigator.clipboard`; swap in your own copy affordance if you need a fallback for non-secure contexts.",
   ],
 };

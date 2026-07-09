@@ -14,10 +14,11 @@ import SwiftUI
 ///     triggers resolution (resolve-only invariant — every author-displaying
 ///     surface must self-resolve).
 ///
-/// Display always comes from a Rust-formatted source — `displayName` when set,
-/// else `npubShort` (always Rust-formatted — aim.md §6.9). Until the host has
-/// any profile for the pubkey, the self-resolving variant renders nothing rather
-/// than synthesize a Swift-side abbreviation.
+/// Display always comes from a Rust-sourced field — `displayName` when set,
+/// else `npubShort` (a local string truncation of the Rust-encoded `npub`;
+/// #3098 — see `ProfileWire.npubShort`). Until the host has any profile for
+/// the pubkey, the self-resolving variant renders nothing rather than
+/// synthesize a partial display from an unresolved pubkey.
 ///
 /// Depends on `swiftui/user-avatar` for `ProfileWire` and `NostrProfileHost`.
 public struct NostrProfileName: View {
@@ -73,8 +74,8 @@ public struct NostrProfileName: View {
             if let resolved {
                 label(for: resolved)
             } else {
-                // No kind:0 yet, and no Rust-formatted npubShort available.
-                // Render nothing rather than a Swift-side abbreviation.
+                // No kind:0 (and no npub) resolved yet for this pubkey.
+                // Render nothing rather than a partial/synthesized label.
                 EmptyView()
             }
         }

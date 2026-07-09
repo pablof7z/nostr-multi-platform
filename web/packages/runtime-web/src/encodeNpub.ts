@@ -1,4 +1,4 @@
-// Hex pubkey → { npub, npubShort } via the canonical Rust NIP-19 encoder
+// Hex pubkey → { npub } via the canonical Rust NIP-19 encoder
 // (`nmp_encode_npub`) exposed as a wasm free function.
 //
 // The wasm module instance lives inside the web worker (wasmBridge.ts). The
@@ -12,6 +12,12 @@
 //
 // The wasm module path must match the path the worker loads. The default is
 // package-relative so split apps do not copy NMP wasm into public/ by hand.
+//
+// #3098 — `npubShort` is no longer part of the wasm free function's JSON:
+// it is pure string truncation of `npub`, a display decision the host owns,
+// so callers derive it locally (see `truncateNpub` in
+// `@nmpis/components-web/user-avatar`) instead of round-tripping it through
+// Rust.
 
 const defaultModuleUrl = new URL("./wasm/nmp_browser_runtime.js", import.meta.url).toString();
 
@@ -46,9 +52,9 @@ async function ensureLoaded(modulePath: string | URL = defaultModuleUrl): Promis
   await loadPromise;
 }
 
-/** Encode a hex pubkey to `{ npub, npubShort }` via the canonical Rust
- *  NIP-19 encoder. Returns `undefined` when the wasm module is unavailable
- *  or the pubkey is invalid (D6 — honest empty, no throw).
+/** Encode a hex pubkey to `{ npub }` via the canonical Rust NIP-19 encoder.
+ *  Returns `undefined` when the wasm module is unavailable or the pubkey is
+ *  invalid (D6 — honest empty, no throw).
  *
  *  Call site: `const result = await encodeNpub(pubkey)`.
  *  The result is stable across calls for the same pubkey — cache it at the
@@ -56,15 +62,15 @@ async function ensureLoaded(modulePath: string | URL = defaultModuleUrl): Promis
 export async function encodeNpub(
   pubkey: string,
   modulePath?: string | URL,
-): Promise<{ npub: string; npubShort: string } | undefined> {
+): Promise<{ npub: string } | undefined> {
   await ensureLoaded(modulePath);
   if (!encodeNpubFn) return undefined;
   try {
     const json = encodeNpubFn(pubkey);
     if (!json) return undefined;
-    const parsed = JSON.parse(json) as { npub?: string; npubShort?: string };
-    if (!parsed.npub || !parsed.npubShort) return undefined;
-    return { npub: parsed.npub, npubShort: parsed.npubShort };
+    const parsed = JSON.parse(json) as { npub?: string };
+    if (!parsed.npub) return undefined;
+    return { npub: parsed.npub };
   } catch {
     return undefined;
   }
