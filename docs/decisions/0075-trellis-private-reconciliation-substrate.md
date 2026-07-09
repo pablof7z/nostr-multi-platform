@@ -110,12 +110,73 @@ recompute. Those tests cover source expansion, source shrink, empty-source
 fail-closed behavior, scoped teardown, stale host feedback, output
 baseline/delta/rebaseline/clear, and replay.
 
+## Read-layer reconciler adoption (#3115/#3116)
+
+The owner posture on #3116 was explicit: **default = migrate every
+hand-rolled open-added/close-removed/drain-on-close reconciler onto Trellis**,
+with staying off the seam requiring a structural, ADR-recorded justification
+(dependency-direction or bootstrap-ordering only — "runs in-tick" and tempo
+are not valid grounds, since Trellis's diff is pure/data-only and composes
+with an in-tick apply). That sweep is now complete for the read layer:
+
+- **`replace_dependent_interest_set` — deleted, not migrated** (#3119). It was
+  `#[allow(dead_code)]` with no production sender; its Trellis-fed twin
+  `apply_dependent_interest_delta` was already the live authoritative path.
+- **`demand_set` — migrated** (#3121, `nmp-read-session/src/demand_set.rs`).
+  `nmp-nip29`'s per-relay discovery reconcile now feeds
+  `nmp_core::trellis_reconciler::KeyedReconciler<String, ReadDemand>` the full
+  desired member map every call; the shared type-erased reducer identity that
+  predates #3116 is unchanged.
+- **`feed_author_refs` — migrated** (#3122,
+  `nmp-core/src/kernel/feed_author_refs.rs`). The kernel's in-tick,
+  `&mut self` auto-resolve reconcile now feeds a persistent
+  `KeyedReconciler<(String, String), ()>` a composite `(consumer_id,
+  author_key)` key every tick; in-tick execution is preserved exactly (the
+  reconcile is still called from `Kernel::make_update`, before typed
+  projections are emitted).
+- **The reusable core** (`nmp_core::trellis_reconciler::KeyedReconciler<K,
+  C>`, factored once during #3121) owns the Trellis `Graph` + diff and
+  returns an ordered `Vec<ResourceCommand<C>>`; each caller applies it in
+  `Vec` order (LIFO close-vs-close ordering is substrate-guaranteed, so the
+  caller only owns applying in order, never re-sorting) and, where the
+  reconciler composes with a typed-session executor, drains `resource_plan`
+  before `output_frames` (the cross-lane ordering the substrate does not
+  impose on the host). The same core underlies both shapes of the new public
+  primitive — `nmp_read_session::demand_set` (shape a: one shared
+  reducer/output across a keyed member set) and
+  `nmp_read_session::KeyedReadCollection` (shape b: N independent per-key
+  live resources) — see [ADR-0078](0078-keyed-live-read-collection.md).
+
+**Phase-A ratchet widened.** `nmp-core` already depended on `trellis-core`
+(the feed-session adapter); `nmp-read-session` now also depends on it
+directly (`demand_set.rs`, `keyed_collection.rs`) to consume
+`KeyedReconciler` and to plumb `ResourceCommand`/`ResourceKey` through its own
+executor. `trellis-core` is an external leaf dependency with no NMP-graph
+edge, so this adds no cycle. The one tradeoff this ADR records (not an
+exception): both crates' consumers now carry `trellis-core`'s transitive
+compile weight — seen and accepted, consistent with the original feed-session
+adoption.
+
+**Family unified.** Zero hand-rolled open-added/close-removed reconcilers
+remain in the read layer. Every such reconciler — `demand_set`,
+`feed_author_refs`, and the new `KeyedReadCollection` primitive — now shares
+one Trellis-backed core, one `FullRecomputeCheck` leak oracle, and one
+apply-in-order executor contract.
+
 ## Related
 
 - [ADR-0070](0070-typed-read-sessions.md) - app-visible read sessions.
 - [ADR-0076](0076-app-facing-feed-helpers.md) - feed helpers over sessions.
+- [ADR-0078](0078-keyed-live-read-collection.md) - the keyed live
+  read-collection primitive built on the reusable `KeyedReconciler` core.
 - #2626 - Trellis private-substrate epic.
 - #2627 - Trellis/NMP boundary.
 - #2746 - ADR current-only cleanup.
 - #2809 - diagnostic surface amendment.
 - #2858 - X-Ray diagnostic surface epic.
+- #3115 - keyed live read-collection primitive.
+- #3116 - read-layer reconciler consolidation epic (per-reconciler
+  migrate-or-justify sweep).
+- #3119 - deleted dead `replace_dependent_interest_set`.
+- #3121 - `demand_set` migration + reusable `KeyedReconciler` core.
+- #3122 - `feed_author_refs` migration (composite key, in-tick preserved).

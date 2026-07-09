@@ -41,6 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-sqlite-wasm`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
+| 3a | Concept-neutral session/read-lifecycle engine, built on the L3 kernel substrate and consumed by every L4 protocol crate that opens a live read | `nmp-read-session` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-mint-discovery`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features, including `nmp-substrate` |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned UniFFI facades and delivery crates |
@@ -112,6 +113,32 @@ An optional `audit` feature composes the external `cashu-mint-audit` crate for
 Cashu-mint-auditor reliability enrichment; the async fetch helper it adds must
 never run on the projection producer's emit path (D8) — only a pure fold runs
 there.
+
+`nmp-read-session` (Layer 3a) is the concept-neutral read-lifecycle engine:
+one open/replace/close registry, replay-before-live ordering, exact-demand
+withdrawal, reverse teardown, and typed-output tombstone behind every
+concept-owned active read (ADR-0070). It sits strictly between the kernel
+substrate and the L4 protocol crates that consume it: it depends on
+`nmp-core` (L3), `nmp-planner` (L2), `nmp-ownership` (L0), and the external
+leaf `trellis-core` crate (no NMP-graph edge); every L4 protocol crate that
+opens a live read against `NmpApp` — including `nmp-feed`, `nmp-nip29`,
+`nmp-nip50`, `nmp-replies`, and `nmp-threading` — plus the L6 platform
+runtimes (`nmp-native-runtime`, `nmp-browser-runtime`, `nmp-uniffi-support`)
+and leaf app crates depend on it in turn. Because multiple L4 siblings
+depend on it uniformly, it cannot be an L4 sibling itself — hence the
+distinct 3a position, immediately above L3 and immediately below L4, rather
+than folding into either.
+
+`nmp-read-session` owns the public `KeyedReadCollection<K, C>` keyed
+live-resource primitive (`docs/decisions/0078-keyed-live-read-collection.md`);
+`nmp-core` owns the reusable `KeyedReconciler<K, C>` core underneath it
+(`trellis_reconciler.rs`) and the private in-kernel reconcilers built
+directly on that core (`feed_author_refs`). Both crates carry the
+`trellis-core` dependency as an accepted, ADR-recorded tradeoff
+(`docs/decisions/0075-trellis-private-reconciliation-substrate.md`) — never
+as an app/native/web-facing public dependency; `KeyedReadCollection` and its
+`nmp-uniffi-support` facade constructors are typed entirely in
+`nmp_read_session::MemberKey`, never the raw `trellis_core::ResourceKey`.
 
 ---
 

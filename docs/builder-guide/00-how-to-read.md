@@ -94,7 +94,8 @@ read (replies, reactions, discovery, content feeds, parameterised lookups).
 Start at **03** (the doctrine is the law) → **02** (where things live) →
 **04/05/06/07/08** (the substrate). Use **20** (`nmp-nip29` as the canonical
 reference) when adding a protocol module, **28** when a view needs to open a
-concept-owned active read, **22** as the PR-review gate; correct wrong docs in place and use GitHub Issues for active work.
+concept-owned active read (**28a** for a per-key live-resource set that
+changes over a session's lifetime), **22** as the PR-review gate; correct wrong docs in place and use GitHub Issues for active work.
 
 ## Section dependency graph (read upstream before downstream)
 
@@ -105,7 +106,8 @@ concept-owned active read, **22** as the PR-review gate; correct wrong docs in p
                 │       ├─▶ 07 ─▶ 08 ─▶ 09
                 │       ├─▶ 11 ─▶ 12
                 │       ├─▶ 16
-                │       └─▶ 20
+                │       ├─▶ 20
+                │       └─▶ 28 ─▶ 28a (keyed live read-collection)
                 ├─▶ 10 (07,11)   13 (07,08)   14 (07,12,13)
                 ├─▶ 15 ─▶ 19a ─▶ 19b ─┬─▶ 19c (Rust shell)
                 │                    └─▶ 26

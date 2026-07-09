@@ -1,8 +1,10 @@
 # Typed Read Sessions
 
-> Authority: ADR-0070 for typed read sessions, ADR-0076 for feed helpers, and
-> ADR-0072 for runtime/binding boundaries. For the projection emission/transport
-> mechanics that sessions emit through, see `projections-and-emission.md`.
+> Authority: ADR-0070 for typed read sessions, ADR-0076 for feed helpers,
+> ADR-0072 for runtime/binding boundaries, ADR-0075 for the Trellis private
+> reconciliation boundary, and ADR-0078 for the keyed live read-collection
+> primitive. For the projection emission/transport mechanics that sessions
+> emit through, see `projections-and-emission.md`.
 
 ## The read model in one sentence
 
@@ -38,6 +40,53 @@ The shell opens one, renders the pushed typed output on the projection key, and 
 handle to close. These are typed session helpers, not lifecycle peers of `open_interest`.
 `NmpApp::open_feed(params, compiler)` and `nmp_uniffi_support::open_feed` are lower-level
 compiler/bridge mechanics, not the product API taught to apps.
+
+## Dynamic-membership reads: the demand-reconciler family (ADR-0078)
+
+A read whose membership is a caller-controlled, unbounded key-set that grows
+and shrinks over a session's lifetime — a relay's discovery read, a followed
+author's profile-ref, a per-group presence session — is a **demand
+reconciler**, not an ordinary fixed-demand session. #3116 audited every such
+reconciler in the read layer and consolidated all of them onto one reusable
+core:
+
+- **Never hand-roll an open-added/close-removed diff.** Use
+  `nmp_core::trellis_reconciler::KeyedReconciler<K, C>` for a private,
+  substrate-internal reconciler, or `nmp_read_session::KeyedReadCollection<K,
+  C>` for the public per-key-live-resource primitive
+  (`nmp-uniffi-support::keyed_read_session_collection` /
+  `keyed_observed_projection_collection` for the facade-composable form). A
+  new `HashSet`/`HashMap` diff for this shape is a regression of the exact
+  pattern #3116 consolidated three separate implementations of
+  (`demand_set`, `feed_author_refs`, the deleted
+  `replace_dependent_interest_set`).
+- **The reconcile runs on the read/actor lane, never a render/snapshot
+  closure.** Calling `.sync()`/`reconcile()` from inside a snapshot-tick or
+  render closure that itself may re-enter the registry is the #60 deadlock
+  class (#3078-#3081). Open the collection once at discovery-open time; the
+  tick closure only reads current per-key outputs.
+- **`key_fn`/`MemberKey` must be a total function of every parameter that
+  distinguishes one live member from another.** Trellis's resource identity
+  is the `ResourceKey` alone — an under-specified key either silently
+  coalesces two distinct members (equal payload) or hard-aborts the whole
+  commit (`GraphError::ResourcePayloadConflict`, divergent payload). This is
+  a correctness bug, not a perf detail.
+- **An exogenous scalar the payload depends on (not part of the key) belongs
+  in the payload `C`, not in a force-close+reopen.** `C: PartialEq` already
+  makes a same-key value change diff to `Replace` — see ADR-0078's
+  exogenous-scalar pattern (29er's `active_pubkey`-dependent presence
+  descriptor).
+- **Raw Trellis vocabulary never crosses this primitive's public surface.**
+  `KeyedReadCollection` and its facade constructors are typed in
+  `nmp_read_session::MemberKey` (the NMP-owned wrapper around
+  `trellis_core::ResourceKey`), never the raw Trellis type — same ADR-0075
+  boundary as everywhere else in this document.
+
+See `docs/decisions/0078-keyed-live-read-collection.md` for the full contract
+(the `ResourceKey` identity rule, the drain-order executor obligation, and
+the two reconciled shapes — one shared reducer vs. N independent
+resources) and `docs/builder-guide/28a-build-a-keyed-live-read-collection.md`
+for a worked example.
 
 ## Substrate-only primitives — NOT the product read API
 
@@ -105,6 +154,12 @@ session opened for a closed view leaks D5 — teardown must run when the view is
 ## See also
 
 - `docs/decisions/0070-typed-read-sessions.md` — primary ADR, full fitness functions.
+- `docs/decisions/0075-trellis-private-reconciliation-substrate.md` — Trellis
+  private-substrate boundary and the read-layer reconciler-adoption record.
+- `docs/decisions/0078-keyed-live-read-collection.md` — the demand-reconciler
+  family primitive.
 - `docs/builder-guide/19a-walkthrough-microblog.md` — `register_microblog_read_session` shape.
 - `docs/builder-guide/06-reactivity-contract.md`, `07-subscription-planner.md`.
+- `docs/builder-guide/28a-build-a-keyed-live-read-collection.md` — worked
+  example (29er's group-tree, both reconciled shapes).
 - `projections-and-emission.md` — the typed-projection transport sessions emit through.

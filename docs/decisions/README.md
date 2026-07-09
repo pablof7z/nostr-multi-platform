@@ -36,3 +36,5 @@ For the developer-facing overview, see
   private reconciliation substrate.
 - [ADR-0076](0076-app-facing-feed-helpers.md) - App-facing feed APIs as typed
   read-session helpers, including composite multi-lane feeds (#3082/#3086).
+- [ADR-0078](0078-keyed-live-read-collection.md) - Keyed live read-collection,
+  the reusable demand-reconciler family primitive (#3115/#3116).
