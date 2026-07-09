@@ -106,8 +106,8 @@ surfaces, not the taught product API.
 Generated host-language helpers are allowed only as a convenience over that
 same descriptor. `nmp gen feed-helpers` emits Swift/Kotlin/TypeScript helpers
 for four source families — active-user-follows, active-user-hosted-groups,
-list-members, and relay-set — each with typed `RootIndexed`/`Flat` shape
-selection, constructing canonical `FeedParams` JSON and calling the platform
+list-members, and relay-set — each with the (now single-variant) `Flat`
+shape, constructing canonical `FeedParams` JSON and calling the platform
 feed-session door (`openFeedJson` on native bindings, `feed_open_json` in
 `runtime-web`). They do not choose a compiler, own feed reactivity, or replace
 the handle-owned session lifecycle. There is no public raw observed-feed-source
@@ -118,9 +118,24 @@ event-sink escape hatch.
 Feed descriptors declare app-owned keys, primary content kinds only, source
 expressions, admission/order policy, bounded window policy, and an item
 projection/schema contract. Protocol wrapper and maintenance kinds are derived
-below the app boundary. Feed rows may expose stable refs, but profile hydration,
-event embeds, reply counts, media, target hydration, and thread hydration belong
-to the component/read model that renders those refs.
+below the app boundary. Feed rows carry a delivery-tagged typed ref vector
+(`RenderOnly`/`Delivered`, `crates/nmp-feed/src/typed_ref.rs`) instead of a
+single render-target pointer, but profile hydration, event embeds, reply
+counts, media, and thread hydration still belong to the component/read model
+that renders those refs, not to the feed declaration.
+
+A **composite feed** (`CompositeFeedParams`/`FeedLane`, #3082/#3086) declares
+an additive set of lanes over the same `Flat` engine — each lane naming a
+source, a kind/tag match, and an opaque `LaneMappingId` resolved to a
+composition-root closure. This is the mechanism for a union-of-sources row
+(authored + commented + reposted collapsing onto one article row) and for
+curated-list fan-out (one list event expanding into many member rows); it is
+not a `FeedShape` variant. As of #3086 `NmpApp::open_composite_feed` is fully
+wired through `nmp-native-runtime`, and a UniFFI-support open path exists
+(`nmp_uniffi_support::open_composite_feed`) behind the `composite-feed`
+Cargo feature (not enabled by default); it is not yet exposed through
+`nmp gen feed-helpers` codegen or the wasm binding surface. See
+[docs/perf/composite-feed-architecture.md](../perf/composite-feed-architecture.md).
 
 Current permanent concepts:
 

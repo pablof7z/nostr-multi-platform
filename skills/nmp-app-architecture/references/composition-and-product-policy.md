@@ -86,6 +86,20 @@ pub fn register(app: &mut (impl AppHost + ActionRegistrar)) {
 }
 ```
 
+## Composite-Feed Lane Mappings Are A Composition-Root Concern (#3082/#3086)
+
+A composite feed's `LaneMappingId`s (`nip18.target`, `nip22.root`, app-owned
+mapping ids) resolve to closures built in Rust at the composition root, the
+same discipline as protocol/substrate installers above. `nmp-native-runtime`
+builds one process-shared `LaneMappingRegistry` at `NmpApp` construction
+(`crates/nmp-native-runtime/src/composite_feed.rs`), pre-installed with
+`nmp-feed`'s own `feed.authored` identity mapping plus whatever protocol
+mappings the app's composed protocol crates expose. A reader auditing the
+composition root should be able to name every lane mapping a composite feed
+can reference, the same way they can name every installed protocol feature —
+a mapping resolved from anywhere else (a shell, a per-screen registration) is
+the same D0/ADR-0069 violation as a hidden preset.
+
 ## Deleted Aggregate Vocabulary
 
 `crates/nmp-defaults`, `nmp_defaults`, `NmpDefaults`, `SearchDefaults`, `register_defaults*`,

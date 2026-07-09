@@ -175,7 +175,6 @@ pub fn open_home_feed(app: &impl AppHost) -> Result<FeedHandle, FeedSpecOpenErro
         feed::events()
             .primary_kinds([1])
             .from(source::active_user().follows())
-            .shape(FeedShape::RootIndexed)
             .order(FeedOrder::NewestByFeedPosition)
             .window(FeedWindowPolicy::bounded(80))
             .project(FeedItemProjection::feed_rows()),
@@ -190,6 +189,14 @@ teardown (`app.feeds().close(&handle)`). Compiler selection, observer
 registration, replay-before-live sequencing, source reconciliation (follows
 change on account switch), and typed output all stay internal runtime
 machinery behind that one call — the app never touches them directly.
+
+> `.shape(...)` is omitted above because `FeedShape` has exactly one variant,
+> `Flat` (its own default) — the former `RootIndexed` reply-rollup shape was
+> demolished (#3082/#3086). Every admitted event is a top-level row; the app
+> supplies identity/sort/merge on the generic knobs. A repost of a followed
+> note collapsing onto its target — the one behavior `RootIndexed` baked — is
+> rebuilt as a lane mapping (`nip18.target`) if this walkthrough later grows a
+> [composite feed](07a-build-a-composite-feed.md).
 
 Each pushed row decodes (host-side, via the generated typed-output helper)
 into the app-owned `NoteRecord` declared above.
@@ -324,6 +331,7 @@ not the recipe for new apps.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
+[07a — Build a composite feed](07a-build-a-composite-feed.md) ·
 [12 — Publishing + the publish engine](12-publish-and-ledger.md) ·
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·
 [19b — Walkthrough: build a microblog app (wire & run)](19b-walkthrough-microblog.md) ·

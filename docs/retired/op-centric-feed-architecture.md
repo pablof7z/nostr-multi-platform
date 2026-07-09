@@ -1,6 +1,19 @@
-# OP-Centric Feed Architecture
+# OP-Centric Feed Architecture (RETIRED)
 
-> **Status:** Shipped. Design record for ADR-0076/ADR-0076/ADR-0072/ADR-0076.
+> **RETIRED (#3082/#3086).** This design record describes the `RootIndexedFeed`
+> engine, `NoteFeedItem` row, `AttributionPayload` reply-rollup, and
+> `FeedShape::RootIndexed` — all demolished by the composite-feed redesign.
+> None of the concrete types named below exist on current `master`. The
+> current design record is
+> [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architecture.md).
+> This file is kept only as a searchable historical breadcrumb; do not treat
+> any claim below as current. See also
+> [ADR-0076](../decisions/0076-app-facing-feed-helpers.md) and
+> [`docs/architecture/crate-boundaries.md`](../architecture/crate-boundaries.md) §8.
+
+---
+
+> **Status (historical):** Shipped. Design record for ADR-0076/ADR-0076/ADR-0072/ADR-0076.
 > The shipped invariants are: `nmp-feed` provides bounded feed mechanics only;
 > protocol/app layers declare primary kinds and perspectives; protocol adapters
 > derive repost wrapper acquisition; app/runtime composition roots wire

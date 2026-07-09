@@ -215,6 +215,7 @@ consumer (ADR-0071; `docs/decisions/0071-write-intents-and-route-provenance.md`)
    the wire-emitter diff.
 
 See also: [06 — Reactivity contract (D8)](06-reactivity-contract.md) ·
+[07a — Build a composite feed](07a-build-a-composite-feed.md) ·
 [08 — EventStore + insert invariants + GC](08-eventstore.md) ·
 [10 — Outbox routing (NIP-65)](10-outbox-routing.md) ·
 [14 — Subscription lifecycle + relay manager + NIP-42](14-relay-manager.md) ·

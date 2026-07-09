@@ -23,6 +23,18 @@ Empty dynamic source sets fail closed unless the typed session explicitly
 declares a fallback. Empty authors, tags, refs, groups, or relay sets never
 become wildcard relay demand by accident.
 
+A typed session's output rows may declare typed refs (`TypedRef`,
+`crates/nmp-feed/src/typed_ref.rs`) tagged with a `DeliveryMode`: `RenderOnly`
+declares a target into the render/embed channel for lazy `resolve_ref`
+resolution only; `Delivered` folds the target into the SAME session's own
+acquisition/admission so it re-enters as a real delivered event carrying its
+true `created_at` and its own provenance contribution. A session declares
+refs; it never resolves them itself — resolving a `RenderOnly` ref is the
+component/shell's job through the existing `resolve_ref` reactive primitive,
+and a `Delivered` ref never triggers a synchronous by-id store peek (the kind
+of order-dependent read this ADR forecloses). At most one `Delivered` ref per
+row.
+
 ## Context
 
 Visible product reads were assembled from separate pipes: acquisition, route
