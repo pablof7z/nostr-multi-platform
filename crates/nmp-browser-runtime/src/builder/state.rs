@@ -22,9 +22,9 @@ use nmp_core::substrate::InputScopeRegistry;
 use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_core::substrate::{
-    BlockedRelayLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, MailboxCache,
-    ObservedProjectionSessionMap, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
-    RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+    BlockedRelayLookup, DmInboxRelayLookup, MailboxCache, ObservedProjectionSessionMap,
+    OutboxRouter, ProfileLookup, RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor,
+    RoutingTraceObserver,
 };
 use nmp_core::{
     publish::OutboxResolver,
@@ -49,10 +49,6 @@ type PublishResolverFactory = Box<
         + Send
         + Sync,
 >;
-type ExternalEventSinkPolicyFactory = Box<
-    dyn Fn(RawEventForwardPolicyContext) -> Vec<Arc<dyn ExternalEventSinkPolicy>> + Send + Sync,
->;
-
 /// Everything the builder accumulates before `start()`.
 ///
 /// `&mut` settings (applied to the kernel in `start()`) are stored here until
@@ -94,36 +90,10 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) dm_inbox_relay_lookup: Option<Arc<dyn DmInboxRelayLookup>>,
     pub(crate) blocked_relay_lookup: Option<Arc<dyn BlockedRelayLookup>>,
     pub(crate) external_id_validator: Option<Arc<dyn nmp_core::substrate::ExternalIdValidator>>,
-    /// Read-only `MailboxCache` for the NIP-19 `nprofile` encoder. Stored here;
-    /// consumed when the browser snapshot/projection/encoding contract wires the
-    /// identity encoder — seam: #2051.
-    // `allow(dead_code)`: stored at builder time; consumed by the #2051
-    // identity-encoder wiring in `from_builder_inner` (not yet implemented).
-    #[allow(dead_code)]
-    pub(crate) mailbox_cache_reader: Option<Arc<dyn MailboxCache>>,
     pub(crate) routing_substrate_factory: Option<RoutingSubstrateFactory>,
     pub(crate) publish_resolver_factory: Option<PublishResolverFactory>,
     pub(crate) relay_list_publish_support: Option<Arc<dyn RelayListPublishSupport>>,
-    /// Raw-event forward (external sink) policy factory. Stored here; consumed by
-    /// the browser relay transport's outbound-forward path — seam: bounded
-    /// transport-only relay adapter (#2050).
-    // `allow(dead_code)`: stored at builder time; consumed by the relay transport
-    // outbound-forward path in `from_builder_inner` (wiring pending).
-    #[allow(dead_code)]
-    pub(crate) external_event_sink_policy_factory: Option<ExternalEventSinkPolicyFactory>,
     pub(crate) outbound_public_tags: Vec<Vec<String>>,
-    /// NIP-46 `nostrconnect://` bootstrap relay URL. Stored here; consumed by the
-    /// browser NIP-46 signer provider — seam: signer-provider registry (#2049).
-    // `allow(dead_code)`: stored at builder time; consumed by the NIP-46 signer
-    // provider in `from_builder_inner` (capability registry wiring pending).
-    #[allow(dead_code)]
-    pub(crate) nostrconnect_bootstrap_relay: Option<String>,
-    /// NIP-46 requested permissions. Stored here; consumed by the browser NIP-46
-    /// signer provider — seam: signer-provider registry (#2049).
-    // `allow(dead_code)`: same as `nostrconnect_bootstrap_relay` — NIP-46
-    // signer provider wiring pending in `from_builder_inner`.
-    #[allow(dead_code)]
-    pub(crate) nostrconnect_perms: Option<String>,
     /// Relay-handshake User-Agent. Stored here; consumed by the browser relay
     /// driver when it opens sockets — seam: relay transport adapter (#2050).
     pub(crate) relay_user_agent: Option<String>,
@@ -188,14 +158,10 @@ impl BrowserBuilderInner {
             dm_inbox_relay_lookup: None,
             blocked_relay_lookup: None,
             external_id_validator: None,
-            mailbox_cache_reader: None,
             routing_substrate_factory: None,
             publish_resolver_factory: None,
             relay_list_publish_support: None,
-            external_event_sink_policy_factory: None,
             outbound_public_tags: Vec::new(),
-            nostrconnect_bootstrap_relay: None,
-            nostrconnect_perms: None,
             relay_user_agent: None,
             relay_text_interceptors: Vec::new(),
             relay_connected_hooks: Vec::new(),

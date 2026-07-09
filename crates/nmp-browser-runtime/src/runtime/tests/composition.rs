@@ -201,7 +201,6 @@ fn browser_runtime_floor_defers_required_substrate_slots_before_start() {
 
     assert!(inner.routing_substrate_factory.is_some());
     assert!(inner.publish_resolver_factory.is_some());
-    assert!(inner.mailbox_cache_reader.is_some());
     assert!(inner.profile_lookup.is_some());
     assert!(inner.dm_inbox_relay_lookup.is_none());
     assert!(inner.blocked_relay_lookup.is_some());
