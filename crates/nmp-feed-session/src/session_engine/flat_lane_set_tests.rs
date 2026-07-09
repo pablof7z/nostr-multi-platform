@@ -96,20 +96,49 @@ fn an_event_outside_the_admission_predicate_is_dropped() {
 #[test]
 fn an_embedded_repost_hydrates_immediately_and_dedupes_onto_the_target_id() {
     let feed = build_feed();
+    // The reposted TARGET's author is NOT independently followed — its content
+    // reaches the feed ONLY through the wrapper's embedded JSON, never as its
+    // own admitted delivery.
     let target = note(OUTSIDE_AUTHOR, "target", 100, "outside content");
     let repost = embedded_repost(FOLLOWED_AUTHOR, "wrapper", &target, 200);
     feed.on_kernel_event(&repost);
 
+    // A followed-author direct note authored at 150 — BETWEEN the target's own
+    // authored time (100) and the repost wrapper's time (200). It pins the
+    // repost row's SORT position: the repost row must sort ABOVE this note
+    // (proving the row's sort_created_at is the repost bump 200, not the
+    // target's 100), while the row's own `created_at` field shows the target's
+    // real authored time 100.
+    feed.on_kernel_event(&note(FOLLOWED_AUTHOR, "between", 150, "between content"));
+
     let snapshot = feed.snapshot(&FeedRequest::newest(10));
-    assert_eq!(snapshot.cards.len(), 1, "repost dedups onto its target row");
+    assert_eq!(
+        snapshot.cards.len(),
+        2,
+        "repost dedups onto its target row; the between note is its own row"
+    );
     let row = &snapshot.cards[0].card;
     assert_eq!(row.canonical_row_id, "target");
     assert_eq!(row.author_pubkey, OUTSIDE_AUTHOR);
     assert_eq!(row.content, "outside content");
+    // #3092 ACCEPTED divergence (a): the card shows the reposted note's REAL
+    // authored time (100), not the wrapper's time (200). The deleted single-lane
+    // builder set the card `created_at` to the wrapper's time; the composite
+    // engine hydrates it from the embedded event. Sort position stays bumped.
+    assert_eq!(
+        row.created_at, 100,
+        "card created_at is the target's real authored time, not the wrapper's"
+    );
     assert!(row.context.iter().any(|ctx| matches!(
         ctx,
         FeedRowContext::RepostedBy { author_pubkey, .. } if author_pubkey == FOLLOWED_AUTHOR
     )));
+    // Sort position is the repost bump (200 > the between note's 150), NOT the
+    // target's own 100 (which would sort the repost row BELOW the between note).
+    assert_eq!(
+        snapshot.cards[1].card.canonical_row_id, "between",
+        "the repost row sorts above the between note ⇒ its sort position is the 200 bump, not 100"
+    );
 }
 
 #[test]
@@ -161,4 +190,55 @@ fn a_repost_and_its_target_arriving_in_the_opposite_order_produce_the_same_row()
     assert_eq!(snapshot.cards.len(), 1);
     let row = &snapshot.cards[0].card;
     assert_eq!(row.content, "real content");
+}
+
+/// A feed whose primary kind is an addressable content kind (kind:30023),
+/// which derives the kind:16 generic-repost wrapper into the acquisition set.
+fn build_addressable_feed() -> Arc<FlatFeed<nmp_feed::FeedRow>> {
+    let (item_builder, merge) = compile_default_lanes(
+        followed_admission(),
+        crate::source::empty_row_context(),
+        &BTreeSet::from([30_023]),
+        &BTreeSet::from([30_023, 16, 5]),
+    );
+    FlatFeed::with_merge(followed_admission(), item_builder, None, merge)
+}
+
+fn addressable_repost(author: &str, id: &str, coord: &str, created_at: u64) -> KernelEvent {
+    KernelEvent {
+        id: EventId::from(id),
+        author: author.to_string(),
+        kind: 16,
+        created_at,
+        tags: vec![
+            vec!["a".to_string(), coord.to_string()],
+            vec!["k".to_string(), "30023".to_string()],
+        ],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+#[test]
+fn an_addressable_repost_keys_by_its_target_coordinate_not_the_wrapper_id() {
+    // #3092 ACCEPTED divergence (c): a kind:16 repost carrying an `a`-tag
+    // coordinate keys its row by the TARGET's coordinate (kind:pubkey:d), so an
+    // addressable article and its reposts collapse onto ONE coordinate row —
+    // rather than the wrapper's own event id (which would never dedupe).
+    let feed = build_addressable_feed();
+    let coord = "30023:article-author:my-article";
+
+    feed.on_kernel_event(&addressable_repost(FOLLOWED_AUTHOR, "wrapper-1", coord, 200));
+    feed.on_kernel_event(&addressable_repost(OTHER_FOLLOWED_AUTHOR, "wrapper-2", coord, 250));
+
+    let snapshot = feed.snapshot(&FeedRequest::newest(10));
+    assert_eq!(
+        snapshot.cards.len(),
+        1,
+        "two reposts of the same coordinate collapse to one coordinate-keyed row"
+    );
+    assert_eq!(
+        snapshot.cards[0].card.canonical_row_id, coord,
+        "row is keyed by the target coordinate, not either wrapper's event id"
+    );
 }
