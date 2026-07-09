@@ -188,29 +188,6 @@ pub(crate) enum FeedSessionResourceCommand {
         reason = "staged close command taxonomy for #2631 adapter slice"
     )]
     CloseInterest(InterestDemand),
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "staged interest-set command taxonomy for #2631 adapter slice"
-        )
-    )]
-    ReplaceInterestSet(InterestSetDemand),
-    #[expect(
-        dead_code,
-        reason = "staged replay command taxonomy for #2631 adapter slice"
-    )]
-    ReplayFromStore(ReplayDemand),
-    #[expect(
-        dead_code,
-        reason = "staged output attachment taxonomy for #2631 adapter slice"
-    )]
-    AttachProjection(ProjectionAttachment),
-    #[expect(
-        dead_code,
-        reason = "staged output attachment taxonomy for #2631 adapter slice"
-    )]
-    DetachProjection(ProjectionAttachment),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

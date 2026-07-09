@@ -208,12 +208,13 @@ impl Kernel {
     ///
     /// The leak guard: a durable app-owned timeline feed consumer is
     /// the #1 leak risk — without this, its visible-author refs would accumulate
-    /// for the life of the process. A shell calls this when the feed closes
-    /// (the `unregister_feed` path removes the provider; the next reconcile sweep
-    /// then releases-all here), and `unregister_feed` calls it directly for a
-    /// transient author/thread feed so the release is immediate, not deferred a
-    /// tick. Returns the release outbound messages. Idempotent — a consumer with
-    /// no tracked refs is a no-op.
+    /// for the life of the process. A shell calls this when the feed closes:
+    /// the `unregister_feed` path removes the provider, and the next reconcile
+    /// sweep then releases-all here. (A same-call, immediate release for a
+    /// transient feed — see [`Self::release_feed_author_refs_for_feed`] — is
+    /// staged for a later lane's `ActorCommand` teardown and has no live call
+    /// site yet.) Returns the release outbound messages. Idempotent — a
+    /// consumer with no tracked refs is a no-op.
     ///
     /// Rebuilds the FULL desired map minus `consumer_id`'s own entries and
     /// reconciles the (persistent) [`Kernel::feed_author_reconciler`] against

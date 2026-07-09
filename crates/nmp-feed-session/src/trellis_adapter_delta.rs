@@ -153,11 +153,7 @@ impl FeedSessionResourceLedger {
 fn active_child_from_command(command: &FeedSessionResourceCommand) -> Option<ActiveChild> {
     match command {
         FeedSessionResourceCommand::OpenInterest(demand) => Some(active_child_from_demand(demand)),
-        FeedSessionResourceCommand::CloseInterest(_)
-        | FeedSessionResourceCommand::ReplaceInterestSet(_)
-        | FeedSessionResourceCommand::ReplayFromStore(_)
-        | FeedSessionResourceCommand::AttachProjection(_)
-        | FeedSessionResourceCommand::DetachProjection(_) => None,
+        FeedSessionResourceCommand::CloseInterest(_) => None,
     }
 }
 

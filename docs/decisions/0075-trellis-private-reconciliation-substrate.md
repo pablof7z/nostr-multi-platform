@@ -159,9 +159,25 @@ adoption.
 
 **Family unified.** Zero hand-rolled open-added/close-removed reconcilers
 remain in the read layer. Every such reconciler — `demand_set`,
-`feed_author_refs`, and the new `KeyedReadCollection` primitive — now shares
-one Trellis-backed core, one `FullRecomputeCheck` leak oracle, and one
-apply-in-order executor contract.
+`feed_author_refs`, `nmp-nip17`'s `dm_runtime` peer-set, and the new
+`KeyedReadCollection` primitive — now shares one Trellis-backed core, one
+`FullRecomputeCheck` leak oracle, and one apply-in-order executor contract.
+
+**Recorded exception: feed-session's adapter stays off the shared core.**
+`nmp-feed-session::FeedSessionTrellisAdapter` (`trellis_adapter.rs`)
+re-implements the same demand-input/`map_collection`/open-replace-close
+planner shape as `KeyedReconciler::new`, but it additionally fuses a
+`materialized_output` node into the SAME scope so a session close emits its
+output `Clear` frames and its resource-teardown plan in one atomic Trellis
+commit — a capability the minimal `KeyedReconciler` core deliberately does
+not express (the core is resource-plan-only; see "What this core does NOT
+own" in `trellis_reconciler.rs`). This is a deliberate, documented exception
+per [ADR-0077](0077-doctrines-are-guardrails-not-dogma.md)'s
+guardrails-not-dogma posture, not an oversight: writing the diff/planner
+mechanics twice (once generic in the core, once fused with output emission
+in the adapter) is the accepted cost of that atomicity. Growing the core an
+optional output-attachment so the adapter could converge onto it is a
+possible future refactor, not a current divergence to chase.
 
 ## Related
 

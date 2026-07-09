@@ -7,10 +7,14 @@
 //! must never touch an already-live key and closing a key must run its
 //! withdrawal exactly once. `nmp-read-session`'s demand-set engine
 //! ([`crate::kernel`]'s sibling crate) hand-rolled this diff itself before
-//! #3116; [`KeyedReconciler`] is the ONE Trellis-backed core every such
-//! reconciler now builds on, so the diff/teardown/replay-oracle mechanics
-//! are written and leak-audited once (owner directive on #3116: "default =
-//! migrate every hand-rolled reconciler onto Trellis").
+//! #3116; [`KeyedReconciler`] is the shared resource-reconciliation core the
+//! read-layer keyed reconcilers build on, so the diff/teardown/replay-oracle
+//! mechanics are written and leak-audited once (owner directive on #3116:
+//! "default = migrate every hand-rolled reconciler onto Trellis"). It is
+//! resource-plan-only by design — `nmp-feed-session`'s adapter is a richer,
+//! output-fused variant that stays off this core because it commits output
+//! `Clear` frames and the resource plan atomically in one Trellis scope; see
+//! the recorded exception in ADR-0075.
 //!
 //! # Shape
 //!

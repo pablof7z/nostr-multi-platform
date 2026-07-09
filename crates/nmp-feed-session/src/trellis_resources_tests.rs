@@ -123,10 +123,10 @@ fn typed_payloads_keep_output_and_retry_policy_out_of_resource_identity() {
         "status identity is resource key + scope + command revision only"
     );
 
-    assert!(matches!(
-        FeedSessionResourceCommand::ReplaceInterestSet(set),
-        FeedSessionResourceCommand::ReplaceInterestSet(_)
-    ));
+    // `set` is the typed interest-set payload under test above; it no longer
+    // wraps into a `FeedSessionResourceCommand` variant (`ReplaceInterestSet`
+    // was deleted as dead staged code — #2631 closed, see #3116).
+    let _ = set;
 }
 
 #[test]
