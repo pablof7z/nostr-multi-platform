@@ -70,3 +70,7 @@ pub use shape::{InterestShape, PTagRouting};
 #[cfg(test)]
 #[path = "interest/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "interest/address_tests.rs"]
+mod address_tests;

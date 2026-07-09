@@ -154,6 +154,36 @@ impl Hash for InterestShape {
     }
 }
 
+/// Does `(author, kind, tags)` satisfy the address coordinate `coord`?
+/// (`InterestShape::matches_event` §`addresses`, #3091.)
+///
+/// `kind == coord.kind && author == coord.pubkey` are required unconditionally.
+/// The `d`-tag check then branches on whether `coord.d_tag` is empty:
+/// - non-empty: the event must carry a `["d", coord.d_tag]` row (addressable
+///   kinds 30000–39999, which always have a meaningful `d` tag).
+/// - empty: the event must carry NO `d` tag, or a `d` tag whose value is
+///   itself empty (non-parameterized replaceable kinds 10000–19999, which
+///   never carry a meaningful `d` tag but may echo an empty one).
+fn address_coord_matches(
+    coord: &NaddrCoord,
+    author: &str,
+    kind: u32,
+    tags: &[Vec<String>],
+) -> bool {
+    if kind != coord.kind || author != coord.pubkey {
+        return false;
+    }
+    let d_tag_value = tags
+        .iter()
+        .find(|row| row.first().is_some_and(|k| k == "d"))
+        .and_then(|row| row.get(1));
+    if coord.d_tag.is_empty() {
+        d_tag_value.is_none_or(String::is_empty)
+    } else {
+        d_tag_value.is_some_and(|v| v == &coord.d_tag)
+    }
+}
+
 impl InterestShape {
     /// Convenience constructor for a tailing author+kind timeline interest.
     ///
@@ -188,16 +218,27 @@ impl InterestShape {
     /// - `kinds`   → `kinds`
     /// - `authors` → `authors`
     /// - `ids`     → `event_ids`
-    /// - `#<x>`    → `tags` (one entry per single-letter generic-tag key)
+    /// - `#a`      → `addresses`, decoded into `NaddrCoord` triples — the
+    ///   exact inverse of `filter_json_for`'s `Coordinate::to_string()`
+    ///   serialisation (`"<kind>:<pubkey>:<d-tag>"`, always exactly two
+    ///   colons since `Coordinate::Display` always emits the identifier
+    ///   segment even when empty)
+    /// - `#<x>` (any other single letter) → `tags` (one entry per
+    ///   single-letter generic-tag key)
     /// - `since` / `until` / `limit` → the same-named fields
     /// - `search`  → bounded NIP-50 relay search string
     ///
-    /// Client-side-only routing fields (`relay_pin`, `p_tag_routing`,
-    /// `addresses`) have no NIP-01 wire representation and are never set by this
-    /// parser; they keep their `Default` values. The `#a` address-coordinate
-    /// tag, if present, is carried through as an opaque `tags["a"]` entry rather
-    /// than decoded into `NaddrCoord` — `open_interest` feeds are plain tailing
-    /// subscriptions, not address-pointer hydration (that path is event refs).
+    /// Client-side-only routing fields (`relay_pin`, `p_tag_routing`) have no
+    /// NIP-01 wire representation and are never set by this parser; they keep
+    /// their `Default` values. `addresses`, in contrast, DOES round-trip
+    /// (#3091): previously a `#a` tag fell through the generic
+    /// single-letter-tag branch into the opaque `shape.tags["a"]` entry
+    /// instead of `shape.addresses`, which was lossy — any caller that
+    /// re-derives its shape from the compiled wire filter JSON (e.g. the
+    /// `open_live_only` fallback path in
+    /// `nmp_core::kernel::observer_replay::open_interest_with_observer_replay`)
+    /// would see an empty `addresses` set and lose the coordinate predicate
+    /// `matches_event` now applies (see below).
     ///
     /// Returns `None` when `json` is not a JSON object (D6 — the FFI shim maps
     /// `None` to a silent no-op + diagnostic toast, never a panic). Unknown
@@ -255,6 +296,35 @@ impl InterestShape {
                         shape.search = bounded_search_query(search);
                     }
                 }
+                "#a" => {
+                    // Address-coordinate tag: exact inverse of
+                    // `filter_json_for`'s `Coordinate::to_string()`
+                    // (`"<kind>:<pubkey>:<d-tag>"`). Split into at most 3
+                    // parts so a `d_tag` containing a literal `:` round-trips
+                    // intact (unlike `nostr::Coordinate::from_kpi_format`,
+                    // which truncates at the first extra colon). Malformed
+                    // entries (missing a segment, non-numeric kind) are
+                    // tolerated and skipped, mirroring every other field's
+                    // drop-on-invalid behaviour in this parser.
+                    if let Some(arr) = val.as_array() {
+                        for coord_str in arr.iter().filter_map(serde_json::Value::as_str) {
+                            let mut parts = coord_str.splitn(3, ':');
+                            let (Some(kind_str), Some(pubkey), Some(d_tag)) =
+                                (parts.next(), parts.next(), parts.next())
+                            else {
+                                continue;
+                            };
+                            let Ok(kind) = kind_str.parse::<u32>() else {
+                                continue;
+                            };
+                            shape.addresses.insert(NaddrCoord {
+                                pubkey: pubkey.to_string(),
+                                kind,
+                                d_tag: d_tag.to_string(),
+                            });
+                        }
+                    }
+                }
                 other => {
                     // Generic single-letter tag filter: `#e`, `#t`, `#p`, …
                     // NIP-01 generic tag keys are `#` + a single ASCII letter;
@@ -290,17 +360,40 @@ impl InterestShape {
     /// observer fan-out can expose it.
     ///
     /// Only the **wire** dimensions are checked (the ones a relay would honour):
-    /// `authors`, `kinds`, `event_ids` (NIP-01 `ids`), `since`/`until`, and the
-    /// single-letter generic `tags` (`#e`/`#p`/`#t`/…). Empty collection =
-    /// wildcard (NIP-01 semantics). The client-side-only routing fields
-    /// (`relay_pin`, `p_tag_routing`, `addresses`, `limit`) are NOT match
-    /// predicates. `search` is relay-evaluated only in this substrate slice
-    /// because there is no local FTS index yet. A default (all-wildcard) shape
-    /// matches every event, mirroring an empty `{}` REQ filter.
+    /// `authors`, `kinds`, `event_ids` (NIP-01 `ids`), `since`/`until`, the
+    /// single-letter generic `tags` (`#e`/`#p`/`#t`/…), and `addresses` (the
+    /// `#a` coordinate dimension — see below). Empty collection = wildcard
+    /// (NIP-01 semantics). The client-side-only routing fields (`relay_pin`,
+    /// `p_tag_routing`, `limit`) are NOT match predicates. `search` is
+    /// relay-evaluated only in this substrate slice because there is no local
+    /// FTS index yet. A default (all-wildcard) shape matches every event,
+    /// mirroring an empty `{}` REQ filter.
     ///
     /// `tags` is the event's raw tag rows (`[["t","nostr"],["e","<id>"],…]`),
     /// exactly the `Vec<Vec<String>>` the kernel ingest path holds. Only
     /// single-letter tag keys participate (NIP-01 generic-tag query semantics).
+    ///
+    /// ## `addresses` (#3091)
+    ///
+    /// When `addresses` is non-empty the event must match **at least one**
+    /// coordinate (OR within the dimension, same as a relay's `#a` filter,
+    /// then AND'd with every other populated dimension — same composition as
+    /// `tags`). An event matches a coordinate `NaddrCoord { pubkey, kind,
+    /// d_tag }` iff `kind == coord.kind && author == coord.pubkey` AND:
+    /// - `coord.d_tag` non-empty: the event carries a `["d", coord.d_tag]` tag
+    ///   row (parameterized-replaceable / addressable kinds 30000–39999).
+    /// - `coord.d_tag` empty: the event carries NO `d` tag, or a `d` tag with
+    ///   an empty value (non-parameterized replaceable kinds 10000–19999,
+    ///   which never carry a meaningful `d` tag — `Coordinate::Display`
+    ///   still emits the trailing empty identifier segment for these).
+    ///
+    /// Previously `addresses` was ignored entirely here, so live delivery for
+    /// an addressable-target shape matched on kind alone — over-delivery that
+    /// downstream consumers (e.g. `PointerIngest::on_kernel_event`) happened
+    /// to self-filter on id/coordinate. This predicate makes the kernel
+    /// itself precise, matching `cache_serve`'s existing `KindDtag` +
+    /// `pubkey_guard_for_address` semantics (`kernel/cache_serve/queries.rs`,
+    /// `kernel/pull/predicate.rs`).
     #[must_use]
     pub fn matches_event(
         &self,
@@ -324,6 +417,14 @@ impl InterestShape {
             if created_at > until {
                 return false;
             }
+        }
+        if !self.addresses.is_empty()
+            && !self
+                .addresses
+                .iter()
+                .any(|coord| address_coord_matches(coord, author, kind, tags))
+        {
+            return false;
         }
         // NIP-01 `ids`: the event's own id must be one of `event_ids`. The
         // event id is row-independent, but the kernel holds it separately; the
