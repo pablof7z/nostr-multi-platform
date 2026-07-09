@@ -20,7 +20,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
 use nmp_feed::{
     FeedRow, FeedSessionBuild, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge,
     LaneMappingRegistry, MappedPayload, MappedRow, RootAdmission,
@@ -154,6 +154,11 @@ pub fn open_composite_feed(
         })
     };
 
+    // #3117: no composite-lane caller supplies a real suppression source yet
+    // (unchanged from this path's prior, always-unsuppressed behaviour) — see
+    // `session_engine`'s doc comment. Tracked as a follow-up, not silent: the
+    // single-lane `FeedParams` path (`session_engine::build_scope_session_with_artifacts`)
+    // threads the caller's real `Arc<dyn SuppressionLookup>`.
     build_flat_scope_session(
         app,
         params.key.as_str(),
@@ -162,6 +167,7 @@ pub fn open_composite_feed(
         item_builder,
         merge,
         Some(source_removed),
+        empty_suppression_lookup(),
     )
 }
 
