@@ -74,15 +74,16 @@ fn canonical_identity_dedups_and_keeps_newer_sort_source() {
 #[test]
 fn reversed_arrival_order_wrapper_before_target_still_surfaces_the_row() {
     // #3099 Bug B (the `RootIndexedFeed`/`pending_attributions` cache-luck
-    // class this engine replaced — see `docs/perf/composite-feed-architecture.md`
-    // §2 and `crates/nmp-note-feed/src/flat_feed.rs`'s module docs). The old
-    // engine buffered a reply/repost's contribution under the WRAPPER's own
-    // id in a side table that only ever drained by the TARGET id once a root
-    // arrived — so a wrapper/reply arriving before its target was silently
-    // orphaned and never surfaced. `FlatFeed` has no side table: every source
-    // maps directly onto the same canonical `row_id` via `st.rows`, so ingest
-    // order cannot matter. Prove the reversed order (wrapper FIRST, target
-    // SECOND) surfaces identically to the target-first case already proven by
+    // class the `FlatFeed` engine replaced — see
+    // `docs/perf/composite-feed-architecture.md` §2 and this module's own
+    // docs). The old engine buffered a reply/repost's contribution under the
+    // WRAPPER's own id in a side table that only ever drained by the TARGET
+    // id once a root arrived — so a wrapper/reply arriving before its target
+    // was silently orphaned and never surfaced. `FlatFeed` has no side
+    // table: every source maps directly onto the same canonical `row_id`
+    // via `st.rows`, so ingest order cannot matter. Prove the reversed
+    // order (wrapper FIRST, target SECOND) surfaces identically to the
+    // target-first case already proven by
     // `canonical_identity_dedups_and_keeps_newer_sort_source`.
     let feed = FlatFeed::new(
         Arc::new(|_| true),
