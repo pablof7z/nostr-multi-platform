@@ -10,8 +10,8 @@
 //!
 //! Any projection that processes kind:5 deletion events (e.g. `nmp-nip25`'s
 //! `ReactionProjection::ingest_delete`, `nmp-nip18`'s repost-wrapper fold,
-//! `nmp-content`'s long-form article fold, `nmp-note-feed`'s note fold) should
-//! call [`DeleteRecord::try_from_kernel_event`] rather than hand-parsing tags.
+//! `nmp-content`'s long-form article fold) should call
+//! [`DeleteRecord::try_from_kernel_event`] rather than hand-parsing tags.
 //! This keeps tag-grammar interpretation centralised in `nmp-nip09` (ADR-0074).
 //!
 //! Author validation is the consumer's job, not this decoder's: a kind:5 only

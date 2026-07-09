@@ -68,7 +68,6 @@ nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 nmp-feed-session = { path = "../nmp-feed-session", version = "1.0.0-rc.1" }
 nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
-nmp-note-feed = { path = "../nmp-note-feed", version = "1.0.0-rc.1" }
 nmp-nip02 = { path = "../nmp-nip02", optional = true, version = "1.0.0-rc.1" }
 nmp-nip23 = { path = "../nmp-nip23", optional = true, version = "1.0.0-rc.1" }
 nmp-nip22 = { path = "../nmp-nip22", optional = true, version = "1.0.0-rc.1" }

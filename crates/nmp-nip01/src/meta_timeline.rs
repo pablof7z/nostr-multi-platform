@@ -98,7 +98,8 @@ impl ModularTimelineState {
 
 /// Modular timeline over NIP-10 short-note reply graphs, exported as a public
 /// type for per-app composition. This view owns NIP-10 grouping only; repost
-/// composition belongs to feed owners such as `nmp-note-feed`.
+/// composition belongs to the composite lane-mapping engine's registered
+/// mappings (e.g. `nmp-nip18`'s `nip18.target`).
 ///
 /// Once an `impl ViewModule`; now a plain type whose inherent methods are
 /// reached via static dispatch — `ModularTimelineProjection` (the live

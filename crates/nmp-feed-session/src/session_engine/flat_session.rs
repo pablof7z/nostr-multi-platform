@@ -17,9 +17,10 @@ use crate::trellis_adapter::FeedSessionTrellisAdapter;
 /// `item_builder` and `merge` are the identity + sort/merge knobs (#3082 — the
 /// two engine changes: `item_builder` is arity-`Vec`, so it can fan a single
 /// event out into zero, one, or many rows). The single-scope `FeedParams` path
-/// supplies `nmp_note_feed::feed_row_builder`/`timeline_merge` (unchanged
-/// behavior); the composite-lane compiler supplies its own combined
-/// lane-dispatching builder/merge over the SAME engine.
+/// (`super::flat_lane_set::compile_default_lanes`) and the multi-lane
+/// `open_composite_feed` compiler (`crate::composite_compiler`) both compile
+/// their own lane-dispatching builder/merge pair over this SAME engine — one
+/// row-building/merge implementation, not two (#3092).
 pub(super) fn build_flat_scope_session(
     app: &impl FeedSessionHost,
     key: &str,

@@ -48,7 +48,6 @@ pub(crate) fn crate_class(name: &str) -> Option<CrateClass> {
         | "nmp-marmot"
         | "nmp-intent"
         | "nmp-mint-discovery"
-        | "nmp-note-feed"
         | "nmp-nwc"
         | "nmp-reactions"
         | "nmp-replies"

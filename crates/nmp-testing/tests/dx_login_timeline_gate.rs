@@ -113,8 +113,8 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
 /// because a FOLLOWED reply pointed at it, `Vec<attribution_pubkeys>` on the
 /// row) was deleted along with the `RootIndexed` engine (#3082/#3086). Under
 /// the current `FlatFeed` engine every admitted event is its own top-level
-/// row (`nmp-note-feed`'s doc: "reply-rollup is no longer a framework
-/// behavior") and admission for `source::active_user().follows()` is gated on
+/// row (reply-rollup is no longer a framework behavior, #3082/#3092) and
+/// admission for `source::active_user().follows()` is gated on
 /// author-set membership: only an event from a followed author is delivered
 /// to this session at all (the harness's injection seam still routes through
 /// the session's live-shape-scoped observer — it bypasses the kernel's OUTER

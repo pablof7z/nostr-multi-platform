@@ -41,7 +41,7 @@ implementation is injected at composition time.
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-sqlite-wasm`, `nmp-network`, `nmp-signers` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
-| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-mint-discovery`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-note-feed`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
+| 4 | Reusable Nostr protocol/product modules | `nmp-blossom`, `nmp-content`, `nmp-content-fixtures`, `nmp-feed`, `nmp-feed-session`, `nmp-intent`, `nmp-marmot`, `nmp-mint-discovery`, `nmp-nip01`, `nmp-nip02`, `nmp-nip05`, `nmp-nip09`, `nmp-nip11`, `nmp-nip17`, `nmp-nip18`, `nmp-nip22`, `nmp-nip23`, `nmp-nip25`, `nmp-nip29`, `nmp-nip42`, `nmp-nip46`, `nmp-nip46-runtime`, `nmp-nip47`, `nmp-nip50`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip68`, `nmp-nip77`, `nmp-nip78`, `nmp-nip84`, `nmp-nip89`, `nmp-nwc`, `nmp-replies`, `nmp-threading`, `nmp-wallet`, `nmp-wot` |
 | 5 | App composition | `apps/<app>/...` Rust crates and runtime builders that explicitly compose substrate/protocol/app features, including `nmp-substrate` |
 | 6 | Platform runtimes, bindings, and deliverables | `nmp-native-runtime`, `nmp-uniffi-support`, `nmp-browser-runtime`, app-owned UniFFI facades and delivery crates |
 | Sidecars | Tooling, tests, diagnostics, conformance vehicles, and private proofs | `nmp-cli`, `nmp-codegen`, `nmp-component-registry`, `nmp-devtools`, `nmp-testing`, `nmp-browser-runtime-conformance`, `nmp-sqlite-wasm-conformance`, `nmp-example-login-timeline`, app shells |
@@ -306,15 +306,15 @@ Examples:
   `AttributionPayload` reply-rollup, and `FeedShape::RootIndexed` variant are
   deleted, not generalized — `FeedShape` has one variant, `Flat`. See
   [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architecture.md).
-- `nmp-note-feed` shrank to a thin protocol-composition adapter (#3082/#3086):
-  it supplies app/protocol knobs for the generic `nmp_feed::FlatFeed<
-  nmp_feed::FeedRow>` engine — identity (NIP-18 repost → target id), merge
-  policy, and admission predicates/shapes for author and thread feeds. It owns
-  no engine, no row type, and no wire; those live in `nmp-feed`. It composes
-  `nmp-nip01` kind:1/NIP-10 facts and `nmp-nip18` repost facts. It does not own
-  relation-count concepts or app render policy, and it may be deleted entirely
-  once its remaining knobs relocate into the composition root
-  (`nmp-feed-session`) — tracked as a follow-up to #3082.
+- `nmp-note-feed` is DELETED (#3092): the single-lane `FeedParams` path (the
+  ordinary follows timeline) now compiles onto the SAME composite
+  lane-mapping engine the multi-lane `open_composite_feed` path uses —
+  `nmp-feed-session`'s `compile_default_lanes` builds a fixed two-lane
+  default set (`feed.authored` over the app's primary kinds, plus
+  `nmp-nip18`'s `nip18_target_render_only_mapping` over the derived
+  repost-wrapper kind) rather than a second, parallel row-building/merge
+  implementation. There is ONE row-building/merge path over the frozen
+  `FeedRow`, not two.
 - `nmp-feed-session` owns runtime-independent feed-session compilation:
   mapping reusable feed declarations (including composite lane declarations)
   to source graphs, controller registration plans, session-scoped dependency

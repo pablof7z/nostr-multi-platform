@@ -38,8 +38,8 @@
 //! table and tier classification are deleted, not shimmed.
 //!
 //! OP-feed sessions are deliberately not rows in this projection-key contract:
-//! products choose their own projection keys, while `nmp-note-feed` owns the
-//! shared `nmp.note_feed.opfeed` / NNFS schema used by those rows.
+//! products choose their own projection keys, while `nmp-feed` owns the
+//! shared frozen `FeedRow` FlatBuffers wire (NFRS) used by those rows.
 
 /// A projection's role in the kernel's projection keyspace.
 ///
@@ -114,7 +114,7 @@ pub struct ProjectionContract {
     /// `*_SCHEMA_ID` constant on the producer crate). For most Tier-2 built-ins
     /// `key == schema_id`; follow-list deliberately splits them. App-owned
     /// OP-feed projections are outside this shared projection-key manifest and
-    /// use the NNFS schema owned by `nmp-note-feed`.
+    /// use the frozen `FeedRow` NFRS schema owned by `nmp-feed`.
     pub schema_id: &'static str,
     /// FlatBuffers `file_identifier` (the 4-byte `*_FILE_IDENTIFIER` constant,
     /// e.g. `"KACC"`, `"NWST"`, `"NRRD"`).

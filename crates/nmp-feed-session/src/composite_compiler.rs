@@ -165,11 +165,11 @@ pub fn open_composite_feed(
     )
 }
 
-struct CompiledLane {
-    admission: RootAdmission,
-    match_kinds: BTreeSet<u32>,
-    match_tags: BTreeMap<String, BTreeSet<String>>,
-    mapping: nmp_feed::LaneMapping,
+pub(crate) struct CompiledLane {
+    pub(crate) admission: RootAdmission,
+    pub(crate) match_kinds: BTreeSet<u32>,
+    pub(crate) match_tags: BTreeMap<String, BTreeSet<String>>,
+    pub(crate) mapping: nmp_feed::LaneMapping,
 }
 
 fn lane_claims(lane: &CompiledLane, event: &KernelEvent) -> bool {
@@ -195,7 +195,7 @@ fn lanes_any_admission(lanes: Arc<Vec<CompiledLane>>) -> RootAdmission {
 /// filter+admission claims the event contributes its mapping's rows, AND (if
 /// the event is the delivered form of a currently demanded target) one
 /// `FromEvent` row keyed by that target's canonical key.
-fn build_composite_rows(
+pub(crate) fn build_composite_rows(
     lanes: &[CompiledLane],
     demand: &Arc<DeliveredRefDemand>,
     render_target_kinds: &[u32],
@@ -268,6 +268,18 @@ fn build_row(event: &KernelEvent, mapped: MappedRow) -> FlatFeedItem<FeedRow> {
             refs: mapped.refs,
             context: mapped.context,
         },
+        MappedPayload::Explicit(fields) => FeedRow {
+            canonical_row_id: mapped.canonical_row_id.clone(),
+            source_id: event.id.clone(),
+            author_pubkey: fields.author_pubkey,
+            kind: fields.kind,
+            created_at: fields.created_at,
+            content: fields.content,
+            tags: fields.tags,
+            relay_provenance: event.received_from_relays(),
+            refs: mapped.refs,
+            context: mapped.context,
+        },
     };
     FlatFeedItem {
         id: mapped.canonical_row_id,
@@ -283,21 +295,35 @@ fn build_row(event: &KernelEvent, mapped: MappedRow) -> FlatFeedItem<FeedRow> {
 /// across every source contributing to a canonical row (`merge_context` /
 /// `merge_refs`) — the difference is only which source's PAYLOAD (and sort
 /// position) wins.
-fn composite_merge(sort: nmp_feed::SortPolicy) -> FlatFeedMerge<FeedRow> {
+pub(crate) fn composite_merge(sort: nmp_feed::SortPolicy) -> FlatFeedMerge<FeedRow> {
     match sort {
         nmp_feed::SortPolicy::ByInteractionTime => Arc::new(|existing, incoming| {
-            match existing {
-                Some(existing) if existing.sort_created_at >= incoming.sort_created_at => {
-                    let mut card = existing.card.clone();
-                    card.context =
-                        nmp_feed::merge_context(&existing.card.context, &incoming.card.context);
-                    card.refs = nmp_feed::merge_refs(&existing.card.refs, &incoming.card.refs);
-                    FlatFeedItem {
-                        card,
-                        ..existing.clone()
-                    }
-                }
-                _ => incoming,
+            let Some(existing) = existing else {
+                return incoming;
+            };
+            // `merge_sources` folds contributions in DESCENDING
+            // `sort_created_at` order, so `existing` is always the
+            // highest-sorted contribution seen so far — its
+            // `sort_created_at`/id/source_id give the row's newest-interaction
+            // SORT POSITION (e.g. a repost bumping its target to the top).
+            // The CARD payload, though, must prefer whichever side is
+            // actually hydrated: a placeholder (no embedded/delivered content
+            // yet) must never shadow an already-hydrated contribution just
+            // because it happens to sort later (e.g. a bare repost bumping an
+            // already-admitted target note) — the same "prefer hydrated"
+            // outcome the pre-composite follows-timeline merge gave (#3092).
+            let context = nmp_feed::merge_context(&existing.card.context, &incoming.card.context);
+            let refs = nmp_feed::merge_refs(&existing.card.refs, &incoming.card.refs);
+            let mut card = if existing.card.is_placeholder() && !incoming.card.is_placeholder() {
+                incoming.card.clone()
+            } else {
+                existing.card.clone()
+            };
+            card.context = context;
+            card.refs = refs;
+            FlatFeedItem {
+                card,
+                ..existing.clone()
             }
         }),
         nmp_feed::SortPolicy::ByTargetCreatedAt => Arc::new(|existing, incoming| {

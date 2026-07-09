@@ -16,8 +16,6 @@ nmp-native-runtime = { path = "../nmp-native-runtime", version = "1.0.0-rc.1" }
 nmp-core = { path = "../nmp-core", version = "1.0.0-rc.1" }
 # Feed declaration model — the app-owned projection key passed to the opener.
 nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
-# The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
-nmp-note-feed = { path = "../nmp-note-feed", version = "1.0.0-rc.1" }
 nmp-nip02 = { path = "../nmp-nip02", version = "1.0.0-rc.1" }
 nmp-nip17 = { path = "../nmp-nip17", version = "1.0.0-rc.1" }
 nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }

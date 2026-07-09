@@ -23,8 +23,8 @@
 //! - Publish signing, routing mechanics, or relay selection (`nmp-core`).
 //! - Repost-target derivation or same-author-retracts-wrapper comparison
 //!   logic — that stays caller-side (`nmp-nip18`, `nmp-content`,
-//!   `nmp-note-feed`), which compares `DeleteRecord::author`/`created_at`
-//!   against their own stored rows.
+//!   `nmp-feed-session`'s lane mappings), which compares
+//!   `DeleteRecord::author`/`created_at` against their own stored rows.
 //! - App-private deletion policy beyond the generic NIP-09 construction rule.
 
 mod action;

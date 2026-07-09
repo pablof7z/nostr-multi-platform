@@ -16,7 +16,6 @@ nmp-nip09 = { path = "../nmp-nip09", version = "1.0.0-rc.1" }
 nmp-nip18 = { path = "../nmp-nip18", version = "1.0.0-rc.1" }
 nmp-nip29 = { path = "../nmp-nip29", version = "1.0.0-rc.1" }
 nmp-nip51 = { path = "../nmp-nip51", version = "1.0.0-rc.1" }
-nmp-note-feed = { path = "../nmp-note-feed", version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
 nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }

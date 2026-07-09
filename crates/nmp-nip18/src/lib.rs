@@ -16,7 +16,9 @@ mod wire;
 pub use action::{
     build_repost_event, QuoteRepostAction, QuoteRepostModule, RepostAction, RepostModule,
 };
-pub use lane_mapping::{nip18_target_mapping, NIP18_TARGET_MAPPING_ID};
+pub use lane_mapping::{
+    nip18_target_mapping, nip18_target_render_only_mapping, NIP18_TARGET_MAPPING_ID,
+};
 pub use primary_kind::{
     acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
     PrimaryKindError,
