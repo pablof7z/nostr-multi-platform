@@ -7,9 +7,9 @@
 # cover schemas in five groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/timeline_snapshot.fbs
-#              + crates/nmp-note-feed/schema/op_feed.fbs
 #              + crates/nmp-content/schema/content_tree.fbs
 #              + crates/nmp-feed/schema/feed_home.fbs
+#              + crates/nmp-feed/schema/feed_row.fbs
 #   KPRF        — crates/nmp-core/schema/profile_card.fbs
 #              + crates/nmp-core/schema/profile.fbs
 #              + crates/nmp-core/schema/claimed_events.fbs
@@ -62,12 +62,12 @@ source "${SCRIPT_DIR}/flatc-pins.sh"
 EXPECTED_FLATC_VERSION="${FLATC_PIN_TS}"
 TRANSPORT_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
 NIP01_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip01/schema"
-NOTE_FEED_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-note-feed/schema"
+NMP_FEED_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-feed/schema"
 FEED_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-nip01/schema/timeline_snapshot.fbs"
-  "${REPO_ROOT}/crates/nmp-note-feed/schema/op_feed.fbs"
   "${REPO_ROOT}/crates/nmp-content/schema/content_tree.fbs"
   "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
+  "${REPO_ROOT}/crates/nmp-feed/schema/feed_row.fbs"
 )
 KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
 # KPRF kernel profile bindings (ADR-0070 #1671): `profile.fbs` (the
@@ -142,13 +142,13 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 # ── Transport schema (nmp_update.fbs → nmp/transport/) ──────────────────────
 flatc --ts -o "${TMP_DIR}" "${TRANSPORT_SCHEMA}"
 
-# ── Feed schemas (note-feed + deps → nmp/note-feed/, nmp/nip01/, nmp/content/,
+# ── Feed schemas (nip01 + content + nmp-feed → nmp/nip01/, nmp/content/,
 #    nmp/feed/) ──────────────────────────────────────────────────────────────
 # Must be one invocation so each generated namespace barrel sees the companion
 # feed/content schemas the runtime decoders import together.
 flatc --ts -o "${TMP_DIR}" \
     -I "${NIP01_SCHEMA_DIR}" \
-    -I "${NOTE_FEED_SCHEMA_DIR}" \
+    -I "${NMP_FEED_SCHEMA_DIR}" \
     "${FEED_SCHEMAS[@]}"
 
 # ── KPRF/KCEV kernel schemas (profile_card + profile + claimed_events →

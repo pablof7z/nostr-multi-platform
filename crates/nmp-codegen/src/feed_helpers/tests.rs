@@ -21,7 +21,10 @@ fn helpers_use_canonical_json_bridge_shape() {
         let rendered = render_feed_helpers(platform);
         assert!(rendered.contains("openFeedJson") || rendered.contains("feed_open_json"));
         assert!(rendered.contains("ActiveUserFollows"));
-        assert!(rendered.contains("RootIndexed"));
+        assert!(
+            !rendered.contains("RootIndexed"),
+            "RootIndexed was demolished (#3082) — Flat is the sole feed shape"
+        );
         assert!(rendered.contains("Flat"));
         assert!(rendered.contains("NewestByFeedPosition"));
         assert!(rendered.contains("FeedRows"));

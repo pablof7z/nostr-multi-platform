@@ -5,7 +5,7 @@ use super::*;
 fn active_follows_feed_params_json(feed_key: &str) -> String {
     serde_json::json!({
         "primary_kinds": [1],
-        "shape": "RootIndexed",
+        "shape": "Flat",
         "source": "ActiveUserFollows",
         "admission": "All",
         "order": "NewestByFeedPosition",

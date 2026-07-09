@@ -38,7 +38,7 @@ pub(super) fn open_simple_group_feed(
 ) -> nmp_feed::FeedHandle {
     let params = nmp_feed::FeedParams {
         primary_kinds: vec![nmp_kinds::KIND_SHORT_TEXT_NOTE],
-        shape: nmp_feed::FeedShape::RootIndexed,
+        shape: nmp_feed::FeedShape::Flat,
         source: nmp_feed::FeedScope::ActiveUserHostedGroups,
         admission: nmp_feed::FeedAdmission::All,
         order: nmp_feed::FeedOrder::NewestByFeedPosition,
@@ -206,7 +206,7 @@ fn req_frame_mentions_h(text: &str, local_id: &str) -> bool {
 pub(super) fn decode_feed(
     frame: &crate::runtime::SnapshotOutcome,
     feed_key: &str,
-) -> nmp_note_feed::op_feed::OpFeedSnapshot {
+) -> nmp_feed::typed_wire::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -215,5 +215,5 @@ pub(super) fn decode_feed(
         .into_iter()
         .find(|row| row.key == feed_key)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

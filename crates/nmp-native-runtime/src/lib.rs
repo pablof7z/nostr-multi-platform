@@ -23,6 +23,8 @@ pub mod app_mirror;
 mod app_struct;
 mod app_sub_structs;
 mod capability;
+#[cfg(feature = "composite-feed")]
+mod composite_feed;
 mod debug_info;
 mod declared_projections;
 #[cfg(feature = "external-signer")]
@@ -80,6 +82,14 @@ pub use feed_params::{
     FeedSourceExpr, FeedSpec, FeedSpecError, FeedWindowPolicy, ProjectionKey,
 };
 pub use feed_session::{handle_projection_key, FeedOpenError};
+// #3086 — `CompositeFeedParams` re-exported so binding-support crates (e.g.
+// `nmp-uniffi-support`) can decode composite-feed JSON without a direct
+// `nmp-feed` dependency, mirroring how the plain-feed types above are
+// re-exported for the same reason. Gated behind `composite-feed` (#2797):
+// the type is only useful alongside `NmpApp::open_composite_feed`, which is
+// itself gated behind the same feature.
+#[cfg(feature = "composite-feed")]
+pub use nmp_feed::CompositeFeedParams;
 pub use intent::InputIntentDispatch;
 #[cfg(feature = "nip05")]
 pub use nip05::Nip05LookupState;

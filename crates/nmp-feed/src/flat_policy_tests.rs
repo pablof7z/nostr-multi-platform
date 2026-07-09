@@ -48,8 +48,10 @@ fn same_interest_shape_custom_policies_are_independent() {
                 .iter()
                 .find(|tag| tag.first().is_some_and(|key| key == "rank"))
                 .and_then(|tag| tag.get(1))
-                .and_then(|raw| raw.parse::<u64>().ok())?;
-            Some(item(&event.id, rank, &event.content))
+                .and_then(|raw| raw.parse::<u64>().ok());
+            rank.map(|rank| item(&event.id, rank, &event.content))
+                .into_iter()
+                .collect()
         }),
         Some(interest.clone()),
     );
@@ -60,7 +62,7 @@ fn same_interest_shape_custom_policies_are_independent() {
                 .iter()
                 .any(|tag| tag.first().is_some_and(|key| key == "photo"))
         }),
-        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        Arc::new(|event| vec![item(&event.id, event.created_at, &event.content)]),
         Some(interest.clone()),
     );
 
@@ -115,12 +117,12 @@ fn resetting_one_same_shape_feed_does_not_clear_sibling_policy_state() {
     };
     let even_feed = FlatFeed::with_interest(
         Arc::new(|event| event.created_at % 2 == 0),
-        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        Arc::new(|event| vec![item(&event.id, event.created_at, &event.content)]),
         Some(interest.clone()),
     );
     let odd_feed = FlatFeed::with_interest(
         Arc::new(|event| event.created_at % 2 == 1),
-        Arc::new(|event| Some(item(&event.id, event.created_at, &event.content))),
+        Arc::new(|event| vec![item(&event.id, event.created_at, &event.content)]),
         Some(interest),
     );
 

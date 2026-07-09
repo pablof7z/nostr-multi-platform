@@ -12,6 +12,11 @@ crate-type = ["rlib"]
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
+# The `nip22.root` composite-feed lane mapping (#3082) — a pure
+# `KernelEvent -> Vec<MappedRow>` extractor over nmp-feed's generic types.
+# nmp-feed sits BELOW this crate (it does not depend on any NIP crate), so
+# this is not a cycle.
+nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
 nmp-signer-iface = { path = "../nmp-signer-iface", version = "1.0.0-rc.1" }
 nmp-kinds = { path = "../nmp-kinds", version = "1.0.0-rc.1" }
 serde = { workspace = true, features = ["derive"] }

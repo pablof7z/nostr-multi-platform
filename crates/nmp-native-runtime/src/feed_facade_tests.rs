@@ -7,7 +7,7 @@ use crate::{
 fn active_follows_params(key: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        shape: FeedShape::RootIndexed,
+        shape: FeedShape::Flat,
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,
@@ -43,7 +43,7 @@ fn feeds_facade_opens_spec_through_canonical_lifecycle() {
     let spec = nmp_feed::feed::events()
         .primary_kinds([1])
         .from(nmp_feed::source::active_user().follows())
-        .shape(FeedShape::RootIndexed)
+        .shape(FeedShape::Flat)
         .order(FeedOrder::NewestByFeedPosition)
         .window(FeedWindowPolicy::bounded(80))
         .project(nmp_feed::FeedItemProjection::feed_rows());

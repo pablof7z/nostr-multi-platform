@@ -35,20 +35,27 @@ use nmp_feed::{
 };
 
 mod active_shape;
+mod composite_compiler;
 mod custom;
+mod delivered_ref;
 mod diagnostics;
 mod dynamic_observer;
 mod flat_replay;
 mod nip29_group_context;
 mod nip29_group_sources;
+mod nip51_mute_list;
 mod nip51_sources;
 mod observed_source;
 mod params;
 mod pointer_target_hydration;
 mod resolve;
-mod resolve_static;
 #[cfg(test)]
-mod resolve_tests;
+mod resolve_consumer_id_tests;
+#[cfg(test)]
+mod resolve_referrer_tests;
+#[cfg(test)]
+mod resolve_scope_admission_tests;
+mod resolve_static;
 mod session_engine;
 mod set_algebra;
 mod source;
@@ -71,17 +78,21 @@ mod trellis_resources;
 #[cfg(test)]
 mod trellis_resources_tests;
 mod wot_graph;
+#[cfg(test)]
+mod wot_graph_tests;
 pub(crate) use active_shape::read_active;
+pub use composite_compiler::open_composite_feed;
 pub use diagnostics::{
     FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
     FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReason, FeedSessionDiagnosticReasonCode,
     FeedSessionDiagnosticReceipt, FeedSessionDiagnosticTransaction, FeedSessionDiagnosticsHandle,
     FeedSessionDiagnosticsSink,
 };
+pub use nmp_feed::{LaneMapping, LaneMappingRegistry, MappedPayload, MappedRow};
 pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use params::validate_feed_params;
-pub use session_engine::OpScopeSessionArtifacts;
+pub use session_engine::ScopeSessionBuild;
 
 /// Compiled ownership descriptor for crate-ownership reports.
 pub mod ownership;

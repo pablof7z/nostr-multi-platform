@@ -22,9 +22,26 @@ use crate::{
 /// Admission predicate: `true` when an event belongs in this feed.
 pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
-/// Converts an admitted event into a canonical feed item.
-pub type FlatFeedItemBuilder<C> =
-    Arc<dyn Fn(&KernelEvent) -> Option<FlatFeedItem<C>> + Send + Sync>;
+/// Converts an admitted event into zero, one, or many canonical feed items.
+///
+/// Arity is `Vec`, not `Option`, so one source event can fan out into several
+/// rows (e.g. a curated-list event surfacing many member rows) as well as the
+/// ordinary one-row and zero-row (filtered) cases. The builder MUST be a pure
+/// function of the delivered event — no store peek, no ambient state — so the
+/// ROWS it returns stay deterministic and replay-order-independent.
+///
+/// The one narrow, explicitly-permitted exception: a builder MAY perform
+/// monotonic, presence-only demand REGISTRATION as a side effect (composite's
+/// `crate::LaneMappingRegistry`-driven builders register a `Delivered` ref's
+/// target with `DeliveredRefDemand` this way). That side channel never feeds
+/// back into the RETURNED rows for the CURRENT call — it only widens which
+/// FUTURE events the session's admission/acquisition surface accepts — so it
+/// cannot make the builder's output for a given event depend on call order or
+/// prior state; only a later, independent call (on the demanded target's own
+/// delivery) can be affected, and that call's output is itself a pure
+/// function of THAT event once the demand exists. No store peek, no read of
+/// mutable ambient state feeds a row's fields.
+pub type FlatFeedItemBuilder<C> = Arc<dyn Fn(&KernelEvent) -> Vec<FlatFeedItem<C>> + Send + Sync>;
 
 /// Merge policy when two source events surface the same canonical item id.
 pub type FlatFeedMerge<C> =
@@ -160,10 +177,14 @@ where
         if !(self.predicate)(event) {
             return;
         }
-        let Some(incoming) = (self.item_builder)(event) else {
+        let incoming_items = (self.item_builder)(event);
+        if incoming_items.is_empty() {
+            return;
+        }
+        let Ok(mut st) = self.state.lock() else {
             return;
         };
-        if let Ok(mut st) = self.state.lock() {
+        for incoming in incoming_items {
             let row_id = incoming.id.clone();
             let source_id = incoming.source_id.clone();
             match st.rows.get_mut(&row_id) {
@@ -189,10 +210,9 @@ where
     }
 
     /// Build the visible-window snapshot: cards newest-first by
-    /// `(sort_created_at, id)`, windowed to the request limit. Attribution is
-    /// empty for flat feeds.
+    /// `(sort_created_at, id)`, windowed to the request limit.
     #[must_use]
-    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<C, ()> {
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<C> {
         let Ok(st) = self.state.lock() else {
             return RootFeedSnapshot {
                 cards: Vec::new(),
@@ -225,7 +245,6 @@ where
             .iter()
             .map(|(_, _, card)| RootCard {
                 card: (*card).clone(),
-                attribution: Vec::new(),
             })
             .collect::<Vec<_>>();
 
@@ -352,7 +371,7 @@ where
 
     /// Snapshot using the current render viewport.
     #[must_use]
-    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C, ()> {
+    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<C> {
         let limit = self.visible_limit.load(Ordering::Relaxed);
         self.snapshot(&FeedRequest::newest(limit))
     }

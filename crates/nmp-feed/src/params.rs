@@ -169,23 +169,17 @@ pub type FeedScope = FeedSourceExpr;
 
 /// (a) SHAPE — how the session projects acquired, admitted rows.
 ///
-/// `RootIndexed` produces a root-indexed reply rollup (OP-feed engine).
-/// `Flat` produces a flat list with empty attribution (NIP-01 FlatFeed engine),
-/// used for profile and thread screens.
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+/// Only `Flat` remains: every admitted event is a top-level row. The former
+/// `RootIndexed` reply-rollup shape (the baked note/reply engine) was demolished
+/// (#3082) — reply-rollup is no longer a framework behavior. An app that wants a
+/// "so-and-so + N others replied" rollup rebuilds it on the four generic
+/// [`crate::FlatFeed`] knobs (admission / identity / sort / merge).
+#[derive(Clone, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum FeedShape {
-    /// Reply-centric: replies roll up as attribution under their parent OP.
-    /// (root-indexed OP-feed engine)
-    RootIndexed,
-    /// Flat: every matching event is a top-level row; no attribution nesting.
-    /// (profile/thread style, FlatFeed engine)
+    /// Flat: every admitted event is a top-level row; the app supplies identity
+    /// (dedup), sort, and merge on the generic knobs.
+    #[default]
     Flat,
-}
-
-impl Default for FeedShape {
-    fn default() -> Self {
-        FeedShape::RootIndexed
-    }
 }
 
 /// (b) ADMISSION policy — which acquired rows are allowed to render.

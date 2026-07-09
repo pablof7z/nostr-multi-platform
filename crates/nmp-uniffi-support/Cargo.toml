@@ -10,6 +10,13 @@ description = "Reusable UniFFI facade contracts and bridge helpers for NMP nativ
 name = "nmp_uniffi_support"
 crate-type = ["rlib"]
 
+[features]
+# #3086 — expose `open_composite_feed` binding-support mechanics. Opt-in, like
+# every other concept-owned native-runtime edge (#2797): a facade that never
+# declares a composite feed does not pull nmp-nip18/nmp-nip22 in through this
+# crate either.
+composite-feed = ["nmp-native-runtime/composite-feed"]
+
 [dependencies]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }

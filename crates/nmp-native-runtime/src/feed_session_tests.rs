@@ -57,7 +57,7 @@ impl ObservedProjectionSink for StubFeed {
 fn following_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
-        shape: FeedShape::RootIndexed,
+        shape: FeedShape::Flat,
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,

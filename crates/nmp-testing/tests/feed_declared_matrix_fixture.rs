@@ -321,16 +321,22 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
         "targets/profiles must not be acquired as separate feed rows"
     );
 
-    let follow_predicate: nmp_feed::FollowPredicate = Arc::new({
+    // Post-demolition: the follows timeline is the generic flat feed over
+    // `FeedRow`, admission = "authored by the source", identity/merge from the
+    // NIP-18 knobs (#3082). Reposts key by the TARGET id and carry repost
+    // provenance as `FeedRowContext::RepostedBy` — wrapper-local, no store peek.
+    let admission: nmp_feed::FlatFeedPredicate = {
         let source_pubkey = source_author.public_key().to_hex();
-        move |author| author == source_pubkey
-    });
-    let op_feed =
-        nmp_note_feed::register_op_feed("viewer".to_string(), follow_predicate, Arc::new(|_| None));
-    let op_observer = nmp_note_feed::op_feed::op_feed_observer(
-        Arc::clone(&op_feed),
-        Arc::new(|_| None),
-        empty_suppression_lookup(),
+        Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            event.author == source_pubkey
+                && (event.kind == 1 || event.kind == nmp_nip18::KIND_REPOST)
+        })
+    };
+    let op_feed = nmp_feed::FlatFeed::with_merge(
+        admission,
+        nmp_note_feed::feed_row_builder(nmp_note_feed::no_group_context()),
+        None,
+        nmp_note_feed::timeline_merge(),
     );
     let picture_feed = nmp_nip68::PictureFeed::with_event_lookup(
         nmp_nip68::picture_feed_predicate(Arc::new({
@@ -342,28 +348,32 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
     );
 
     for event in &events {
-        op_observer.on_kernel_event(event);
+        nmp_core::ObservedProjectionSink::on_kernel_event(&*op_feed, event);
         picture_feed.on_kernel_event(event);
     }
 
     let op_snapshot = op_feed.snapshot(&FeedRequest::newest(10));
-    assert_eq!(op_snapshot.cards.len(), 2);
-    assert_eq!(op_snapshot.cards[0].card.id, target_note.id.to_hex());
-    assert_eq!(
-        op_snapshot.cards[0].card.author_pubkey,
-        note_target_author.public_key().to_hex()
+    assert_eq!(op_snapshot.cards.len(), 2, "repost dedups onto its target row");
+    let repost_row = op_snapshot
+        .cards
+        .iter()
+        .find(|card| card.card.canonical_row_id == target_note.id.to_hex())
+        .expect("reposted target row keyed by target id");
+    assert!(
+        repost_row.card.context.iter().any(|ctx| matches!(
+            ctx,
+            nmp_feed::FeedRowContext::RepostedBy { author_pubkey, .. }
+                if author_pubkey == &source_author.public_key().to_hex()
+        )),
+        "kind:6 repost provenance carried as wrapper-local context"
     );
-    assert_eq!(op_snapshot.cards[0].card.created_at, NOTE_REPOST_TS);
-    assert_eq!(
-        op_snapshot.cards[0]
-            .card
-            .reposted_by
-            .as_ref()
-            .expect("kind:6 attribution")
-            .author_pubkey,
-        source_author.public_key().to_hex()
+    assert!(
+        op_snapshot
+            .cards
+            .iter()
+            .any(|card| card.card.canonical_row_id == direct_note.id.to_hex()),
+        "direct note is its own row"
     );
-    assert_eq!(op_snapshot.cards[1].card.id, direct_note.id.to_hex());
 
     let picture_snapshot = picture_feed.snapshot(&FeedRequest::newest(10));
     assert_eq!(picture_snapshot.cards.len(), 2);

@@ -4338,6 +4338,7 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip09",
  "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip29",
  "nmp-nip51",
  "nmp-note-feed",
@@ -4451,6 +4452,8 @@ dependencies = [
  "nmp-nip-ad",
  "nmp-nip02",
  "nmp-nip05",
+ "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip23",
  "nmp-nip29",
  "nmp-nip46",
@@ -4598,6 +4601,7 @@ version = "1.0.0-rc.1"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-feed",
  "nmp-kinds",
  "nmp-nip09",
  "nmp-ownership",
@@ -4612,6 +4616,7 @@ name = "nmp-nip22"
 version = "1.0.0-rc.1"
 dependencies = [
  "nmp-core",
+ "nmp-feed",
  "nmp-kinds",
  "nmp-ownership",
  "nmp-signer-iface",
@@ -4928,18 +4933,11 @@ dependencies = [
 name = "nmp-note-feed"
 version = "1.0.0-rc.1"
 dependencies = [
- "flatbuffers",
- "nmp-content",
  "nmp-core",
  "nmp-feed",
- "nmp-nip01",
- "nmp-nip09",
  "nmp-nip18",
  "nmp-ownership",
  "nmp-planner",
- "nmp-threading",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -5164,6 +5162,7 @@ dependencies = [
  "nmp-nip09",
  "nmp-nip17",
  "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip23",
  "nmp-nip29",
  "nmp-nip42",

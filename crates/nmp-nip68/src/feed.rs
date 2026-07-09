@@ -82,12 +82,12 @@ impl PictureFeed {
     }
 
     #[must_use]
-    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<PictureFeedEntry, ()> {
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<PictureFeedEntry> {
         self.inner.snapshot(request)
     }
 
     #[must_use]
-    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<PictureFeedEntry, ()> {
+    pub fn snapshot_current_window(&self) -> RootFeedSnapshot<PictureFeedEntry> {
         self.inner.snapshot_current_window()
     }
 
@@ -178,10 +178,14 @@ pub fn picture_feed_predicate(
 }
 
 fn picture_item_builder(event_lookup: EventLookup) -> FlatFeedItemBuilder<PictureFeedEntry> {
-    Arc::new(move |event| match event.kind {
-        KIND_PICTURE_EVENT => picture_item_from_target(event),
-        nmp_nip18::KIND_GENERIC_REPOST => picture_item_from_repost(event, &event_lookup),
-        _ => None,
+    Arc::new(move |event| {
+        match event.kind {
+            KIND_PICTURE_EVENT => picture_item_from_target(event),
+            nmp_nip18::KIND_GENERIC_REPOST => picture_item_from_repost(event, &event_lookup),
+            _ => None,
+        }
+        .into_iter()
+        .collect()
     })
 }
 

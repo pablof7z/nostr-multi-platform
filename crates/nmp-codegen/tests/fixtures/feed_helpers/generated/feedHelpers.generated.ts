@@ -14,7 +14,7 @@
 
 import type { FeedHandle, WorkerEvent, WorkerRequest } from "./protocol";
 
-export type FeedHelperShape = "RootIndexed" | "Flat";
+export type FeedHelperShape = "Flat";
 
 export type FeedRuntime = {
   handle(request: WorkerRequest): WorkerEvent[];
@@ -68,7 +68,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): string {
     return buildFeedParamsJson(feedKey, primaryKinds, "ActiveUserFollows", visibleLimit, shape);
   },
@@ -78,7 +78,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): WorkerRequest {
     return openFeedRequest(
       GeneratedFeedHelpers.activeUserFollowsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
@@ -92,7 +92,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): FeedHandle | undefined {
     return openFeed(
       runtime,
@@ -106,7 +106,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): string {
     return buildFeedParamsJson(feedKey, primaryKinds, "ActiveUserHostedGroups", visibleLimit, shape);
   },
@@ -116,7 +116,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): WorkerRequest {
     return openFeedRequest(
       GeneratedFeedHelpers.hostedGroupsFeedParamsJson(feedKey, primaryKinds, visibleLimit, shape),
@@ -130,7 +130,7 @@ export const GeneratedFeedHelpers = {
     feedKey: string,
     primaryKinds: number[],
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): FeedHandle | undefined {
     return openFeed(
       runtime,
@@ -145,7 +145,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     listId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): string {
     return buildFeedParamsJson(feedKey, primaryKinds, { ListMembers: { list: listId } }, visibleLimit, shape);
   },
@@ -156,7 +156,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     listId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): WorkerRequest {
     return openFeedRequest(
       GeneratedFeedHelpers.listMembersFeedParamsJson(feedKey, primaryKinds, listId, visibleLimit, shape),
@@ -171,7 +171,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     listId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): FeedHandle | undefined {
     return openFeed(
       runtime,
@@ -186,7 +186,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     relaySetId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): string {
     return buildFeedParamsJson(feedKey, primaryKinds, { RelaySet: { relays: relaySetId } }, visibleLimit, shape);
   },
@@ -197,7 +197,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     relaySetId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): WorkerRequest {
     return openFeedRequest(
       GeneratedFeedHelpers.relaySetFeedParamsJson(feedKey, primaryKinds, relaySetId, visibleLimit, shape),
@@ -212,7 +212,7 @@ export const GeneratedFeedHelpers = {
     primaryKinds: number[],
     relaySetId: string,
     visibleLimit = 80,
-    shape: FeedHelperShape = "RootIndexed",
+    shape: FeedHelperShape = "Flat",
   ): FeedHandle | undefined {
     return openFeed(
       runtime,

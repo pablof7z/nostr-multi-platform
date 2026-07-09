@@ -8,6 +8,7 @@ use nmp_kinds::KIND_SIMPLE_GROUPS;
 use nmp_planner::InterestShape;
 
 use super::nip29_group_context::{group_event_admitted, group_event_context, group_event_shapes};
+use super::resolve::unique_consumer_id;
 use super::source::{
     AcquisitionInterest, ExtraAcquisition, LiveShape, LiveShapes, OpSessionIdentity, ReducedSource,
     RowContextProvider, SessionReactivityHook,
@@ -31,7 +32,7 @@ pub(super) fn resolve_active_simple_groups(
     let resolver_reconciler = ObservedProjectionReconciler::new(
         app.observed_projection_registrar_handle(),
         projection_observer,
-        "nmp.feed.resolver.simple_groups",
+        unique_consumer_id("nmp.feed.resolver.simple_groups"),
         0,
         64,
         resolver_live_shape,

@@ -144,7 +144,7 @@ pub fn starter_home_feed_spec() -> nmp_native_runtime::FeedSpec {
     nmp_native_runtime::feed::events()
         .primary_kinds([STARTER_PRIMARY_NOTE_KIND])
         .from(nmp_native_runtime::source::active_user().follows())
-        .shape(nmp_native_runtime::FeedShape::RootIndexed)
+        .shape(nmp_native_runtime::FeedShape::Flat)
         .order(nmp_native_runtime::FeedOrder::NewestByFeedPosition)
         .window(nmp_native_runtime::FeedWindowPolicy::bounded(80))
         .project(nmp_native_runtime::FeedItemProjection::feed_rows())

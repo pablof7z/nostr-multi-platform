@@ -127,7 +127,7 @@ fn adapter_emits_live_diagnostics_when_sink_is_enabled() {
     let diagnostics = Arc::new(RecordingDiagnostics::default());
     let adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
         "app.feed.synthetic",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender,
         FeedSessionDiagnosticsHandle::new(diagnostics.clone()),
@@ -140,7 +140,7 @@ fn adapter_emits_live_diagnostics_when_sink_is_enabled() {
     assert_eq!(batches.len(), 1);
     let batch = &batches[0];
     assert_eq!(batch.projection_key, "app.feed.synthetic");
-    assert_eq!(batch.view_label, "root-indexed");
+    assert_eq!(batch.view_label, "flat");
     assert_eq!(
         batch.reason.code,
         FeedSessionDiagnosticReasonCode::AcquisitionSync
@@ -201,7 +201,7 @@ fn source_effect_diagnostics_are_marked_separately_from_initial_sync() {
     let diagnostics = Arc::new(RecordingDiagnostics::default());
     let adapter = FeedSessionTrellisAdapter::new_with_diagnostics(
         "app.feed.synthetic",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender,
         FeedSessionDiagnosticsHandle::new(diagnostics.clone()),
@@ -226,7 +226,7 @@ fn adapter_emits_precise_delta_only_for_trellis_resource_transitions() {
     let (sender, rx) = command_receiver();
     let adapter = FeedSessionTrellisAdapter::new(
         "app.feed.synthetic",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         vec![interest("fixed")],
         sender,
     )
@@ -310,13 +310,9 @@ fn close_scope_clears_once_and_late_source_effect_cannot_resurrect_demand() {
 #[test]
 fn adapter_output_lifecycle_frames_drive_rebaseline_and_clear() {
     let (sender, rx) = command_receiver();
-    let adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.synthetic",
-        FeedShape::RootIndexed,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
 
     assert_eq!(
         adapter.output_frame_kinds_for_test(),
@@ -380,13 +376,9 @@ fn adapter_serializes_cross_thread_trellis_mutation() {
 #[test]
 fn source_effect_callbacks_enqueue_actor_command_before_trellis_mutation() {
     let (sender, rx) = command_receiver();
-    let adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.synthetic",
-        FeedShape::RootIndexed,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.synthetic", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
 
     let callback_adapter = adapter.clone();
     let callback_result = thread::spawn(move || {

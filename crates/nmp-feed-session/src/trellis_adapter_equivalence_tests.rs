@@ -17,13 +17,9 @@ use crate::trellis_adapter_trace::{FeedSessionOutputFrameKind, FeedSessionResour
 #[test]
 fn adapter_matches_old_path_and_full_recompute_across_source_prefixes() {
     let (sender, rx) = command_receiver();
-    let adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.equivalence",
-        FeedShape::RootIndexed,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let adapter =
+        FeedSessionTrellisAdapter::new("app.feed.equivalence", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
     let mut old = OldReplacementPath::default();
 
     assert_unchanged_step(&adapter, &rx, &mut old, &[], "initial-empty");
@@ -144,18 +140,14 @@ fn local_source_change_does_not_replan_unrelated_session_adapter() {
     let (sender, rx) = command_receiver();
     let active_adapter = FeedSessionTrellisAdapter::new(
         "app.feed.active",
-        FeedShape::RootIndexed,
+        FeedShape::Flat,
         Vec::new(),
         sender.clone(),
     )
     .unwrap();
-    let static_adapter = FeedSessionTrellisAdapter::new(
-        "app.feed.static",
-        FeedShape::RootIndexed,
-        Vec::new(),
-        sender,
-    )
-    .unwrap();
+    let static_adapter =
+        FeedSessionTrellisAdapter::new("app.feed.static", FeedShape::Flat, Vec::new(), sender)
+            .unwrap();
     let mut active_old = OldReplacementPath::default();
     let mut static_old = OldReplacementPath::default();
 

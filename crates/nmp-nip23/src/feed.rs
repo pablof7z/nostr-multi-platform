@@ -112,7 +112,7 @@ impl LongformFeed {
 
     /// Build a newest-first snapshot over the visible rows.
     #[must_use]
-    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<LongformFeedEntry, ()> {
+    pub fn snapshot(&self, request: &FeedRequest) -> RootFeedSnapshot<LongformFeedEntry> {
         self.inner.snapshot(request)
     }
 
@@ -246,12 +246,16 @@ fn longform_item_builder(
     event_lookup: EventLookup,
     topic: Option<String>,
 ) -> FlatFeedItemBuilder<LongformFeedEntry> {
-    Arc::new(move |event| match event.kind {
-        KIND_LONG_FORM_ARTICLE => article_item_from_target(event, topic.as_deref()),
-        nmp_nip18::KIND_GENERIC_REPOST => {
-            article_item_from_repost(event, &event_lookup, topic.as_deref())
+    Arc::new(move |event| {
+        match event.kind {
+            KIND_LONG_FORM_ARTICLE => article_item_from_target(event, topic.as_deref()),
+            nmp_nip18::KIND_GENERIC_REPOST => {
+                article_item_from_repost(event, &event_lookup, topic.as_deref())
+            }
+            _ => None,
         }
-        _ => None,
+        .into_iter()
+        .collect()
     })
 }
 

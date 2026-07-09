@@ -53,7 +53,7 @@ public enum GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> String {
         try buildFeedParamsJson(
             feedKey: feedKey,
@@ -69,7 +69,7 @@ public enum GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> FeedHandle {
         let paramsJson = try activeUserFollowsFeedParamsJson(
             feedKey: feedKey,
@@ -86,7 +86,7 @@ public enum GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> String {
         try buildFeedParamsJson(
             feedKey: feedKey,
@@ -102,7 +102,7 @@ public enum GeneratedFeedHelpers {
         feedKey: String,
         primaryKinds: [UInt32],
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> FeedHandle {
         let paramsJson = try hostedGroupsFeedParamsJson(
             feedKey: feedKey,
@@ -120,7 +120,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         listId: String,
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> String {
         try buildFeedParamsJson(
             feedKey: feedKey,
@@ -137,7 +137,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         listId: String,
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> FeedHandle {
         let paramsJson = try listMembersFeedParamsJson(
             feedKey: feedKey,
@@ -155,7 +155,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         relaySetId: String,
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> String {
         try buildFeedParamsJson(
             feedKey: feedKey,
@@ -172,7 +172,7 @@ public enum GeneratedFeedHelpers {
         primaryKinds: [UInt32],
         relaySetId: String,
         visibleLimit: UInt32 = 80,
-        shape: FeedHelperShape = .rootIndexed
+        shape: FeedHelperShape = .flat
     ) throws -> FeedHandle {
         let paramsJson = try relaySetFeedParamsJson(
             feedKey: feedKey,
@@ -186,7 +186,6 @@ public enum GeneratedFeedHelpers {
 }
 
 public enum FeedHelperShape: String {
-    case rootIndexed = "RootIndexed"
     case flat = "Flat"
 }
 

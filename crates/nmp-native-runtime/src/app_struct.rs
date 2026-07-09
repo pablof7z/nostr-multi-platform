@@ -232,6 +232,13 @@ pub struct NmpApp {
     pub(crate) feed_sessions: Arc<nmp_feed::FeedSessionRegistry>,
     /// #1740 step 4 — app-registered custom feed policy definitions.
     pub(crate) custom_feed_policies: Arc<nmp_feed::CustomFeedPolicyRegistry>,
+    /// #3082/#3086 — the composition-root [`nmp_feed::LaneMappingRegistry`]
+    /// shared across every `open_composite_feed` call: `feed.authored`
+    /// (pre-installed by `LaneMappingRegistry::new`) plus the protocol-owned
+    /// `nip18.target`/`nip22.root` mappings registered once at app
+    /// construction (see `crate::composite_feed::composite_lane_mappings`).
+    #[cfg(feature = "composite-feed")]
+    pub(crate) lane_mappings: Arc<nmp_feed::LaneMappingRegistry>,
     /// G-S4 — straddle counter for the actor command channel depth.
     pub(crate) queue_depth: Arc<AtomicU64>,
     /// Test-only monotone send counter.

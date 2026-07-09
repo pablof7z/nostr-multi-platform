@@ -27,7 +27,7 @@ nmp-planner = { path = "../nmp-planner", version = "1.0.0-rc.1" }
 # deleted (#1608). The lib src (store_harness.rs) uses these types.
 nmp-store = { path = "../nmp-store", version = "1.0.0-rc.1" }
 nmp-feed = { path = "../nmp-feed", version = "1.0.0-rc.1" }
-nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker", "marmot"], version = "1.0.0-rc.1" }
+nmp-native-runtime = { path = "../nmp-native-runtime", features = ["test-support", "signer-broker", "marmot", "composite-feed"], version = "1.0.0-rc.1" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 paste = "1.0"
 serde = { workspace = true, features = ["derive"] }
@@ -68,6 +68,10 @@ nmp-nip02 = { path = "../nmp-nip02" }
 nmp-wot = { path = "../nmp-wot" }
 nmp-nip17 = { path = "../nmp-nip17", features = ["test-support"] }
 nmp-nip18 = { path = "../nmp-nip18" }
+# composite_feed_driving_example.rs (#3082/#3086) — drives the REAL
+# `nip22.root` lane mapping (nip18.target above is already a dep) end-to-end
+# through `NmpApp::open_composite_feed_with_mappings_for_test`.
+nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip09 = { path = "../nmp-nip09" }
 nmp-nip23 = { path = "../nmp-nip23" }
 nmp-nip68 = { path = "../nmp-nip68" }

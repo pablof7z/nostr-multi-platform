@@ -8,7 +8,7 @@ use super::source::AcquisitionInterest;
 
 pub(super) fn replay_fixed_event_ids(
     app: &impl FeedSessionHost,
-    feed: &Arc<nmp_note_feed::FlatFeed>,
+    feed: &Arc<nmp_feed::FlatFeed<nmp_feed::FeedRow>>,
     interests: &[AcquisitionInterest],
 ) -> bool {
     let store = app.event_store_handle();
@@ -32,10 +32,10 @@ pub(super) fn replay_fixed_event_ids(
     changed
 }
 
-fn flat_visible_ids(feed: &nmp_note_feed::FlatFeed) -> Vec<String> {
+fn flat_visible_ids(feed: &nmp_feed::FlatFeed<nmp_feed::FeedRow>) -> Vec<String> {
     feed.snapshot_current_window()
         .cards
         .into_iter()
-        .map(|card| card.card.id)
+        .map(|card| card.card.canonical_row_id)
         .collect()
 }

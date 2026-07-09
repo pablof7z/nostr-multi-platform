@@ -1,20 +1,37 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
+use crate::delivered_ref::{typed_ref_target_shape, DemandedTargets};
 use crate::{FeedOpenError, FeedSessionHost};
 use nmp_content::{EmbedTarget, PointerSortMode, PointerSourceModel};
 use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::RootAdmission;
-use nmp_nip09::AddressCoordinate;
-use nmp_planner::{InterestShape, NaddrCoord};
+use nmp_feed::{RootAdmission, TypedRefTarget};
 
-use super::resolve::{not_supported, resolve_scope};
+use super::resolve::{not_supported, resolve_scope, unique_consumer_id};
 use super::source::{
     empty_row_context, one_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape,
     ReducedSource, SessionReactivityHook,
 };
 use super::trellis_resources::FeedSessionRouteProvenance;
+
+/// Convert the pointer parser's target shape into the shared
+/// [`nmp_feed::TypedRefTarget`] the delivered-ref admission/shape helpers
+/// operate on (#3082 — one shared mechanism, not two).
+fn as_typed_ref_target(target: &EmbedTarget) -> TypedRefTarget {
+    match target {
+        EmbedTarget::Event(id) => TypedRefTarget::EventId(id.clone()),
+        EmbedTarget::Address {
+            kind,
+            pubkey,
+            identifier,
+        } => TypedRefTarget::Address {
+            kind: *kind,
+            pubkey: pubkey.clone(),
+            d: identifier.clone(),
+        },
+    }
+}
 
 type ResetSlot = Arc<Mutex<Option<Arc<dyn Fn() + Send + Sync>>>>;
 
@@ -45,7 +62,7 @@ pub(super) fn resolve_pointer_target_hydration(
     let pointer_dynamic = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
         pointer_observer,
-        "nmp.feed.resolver.pointer_target_hydration.pointer",
+        unique_consumer_id("nmp.feed.resolver.pointer_target_hydration.pointer"),
         interest_scope_code(pointer_source.observer_scope),
         Arc::clone(&pointer_source.live_shapes),
         512,
@@ -133,13 +150,14 @@ fn pointer_target_extra_acquisition(
     primary_kinds: &BTreeSet<u32>,
 ) -> ExtraAcquisition {
     let model = Arc::clone(model);
-    let primary_kinds = primary_kinds.clone();
+    let render_target_kinds: Vec<u32> = primary_kinds.iter().copied().collect();
     Arc::new(move || {
         let mut interests = pointer_extra();
         interests.extend(
             lock(&model)
                 .target_demand()
-                .filter_map(|target| target_shape(target, &primary_kinds))
+                .map(as_typed_ref_target)
+                .filter_map(|target| typed_ref_target_shape(&target, &render_target_kinds))
                 .map(|shape| {
                     AcquisitionInterest::global_with_provenance(
                         shape,
@@ -151,86 +169,39 @@ fn pointer_target_extra_acquisition(
     })
 }
 
+/// The pointer model's currently demanded targets, converted to
+/// [`nmp_feed::TypedRefTarget`] for the shared delivered-ref helpers.
+fn typed_demand(model: &PointerSourceModel) -> Vec<nmp_feed::TypedRefTarget> {
+    model.target_demand().map(as_typed_ref_target).collect()
+}
+
+/// [`Mutex<PointerSourceModel>`] is the OTHER [`DemandedTargets`] source
+/// (#3082 SHOULD-FIX 5): unlike [`crate::delivered_ref::DeliveredRefDemand`]
+/// (monotonic within a session), the pointer model's `target_demand()`
+/// already retracts a target once no live pointer names it — the union math
+/// over "whatever is currently demanded" below is identical either way, so
+/// [`target_admission`]/[`target_live_shape`] delegate to the SAME
+/// [`crate::delivered_ref::union_admission`]/[`crate::delivered_ref::union_live_shape`]
+/// builders `composite_compiler.rs` uses, rather than re-deriving a second
+/// union loop.
+impl DemandedTargets for Mutex<PointerSourceModel> {
+    fn demanded_targets(&self) -> Vec<TypedRefTarget> {
+        typed_demand(&lock(self))
+    }
+}
+
 fn target_live_shape(
     model: &Arc<Mutex<PointerSourceModel>>,
     primary_kinds: &BTreeSet<u32>,
 ) -> LiveShape {
-    let model = Arc::clone(model);
-    let primary_kinds = primary_kinds.clone();
-    Arc::new(move || target_delivery_shape(&lock(&model), &primary_kinds))
+    crate::delivered_ref::union_live_shape(model, primary_kinds.iter().copied().collect())
 }
 
 fn target_admission(
     model: &Arc<Mutex<PointerSourceModel>>,
     primary_kinds: &BTreeSet<u32>,
 ) -> RootAdmission {
-    let model = Arc::clone(model);
-    let primary_kinds = primary_kinds.clone();
-    Arc::new(move |event: &KernelEvent| {
-        primary_kinds.contains(&event.kind) && target_is_demanded(&lock(&model), event)
-    })
-}
-
-fn target_delivery_shape(
-    model: &PointerSourceModel,
-    primary_kinds: &BTreeSet<u32>,
-) -> Option<InterestShape> {
-    let mut shape = InterestShape::default();
-    for target in model.target_demand() {
-        match target_shape(target, primary_kinds) {
-            Some(target_shape) => {
-                shape.kinds.extend(target_shape.kinds);
-                shape.event_ids.extend(target_shape.event_ids);
-                shape.addresses.extend(target_shape.addresses);
-            }
-            None => continue,
-        }
-    }
-    if shape.event_ids.is_empty() && shape.addresses.is_empty() {
-        None
-    } else {
-        Some(shape)
-    }
-}
-
-fn target_shape(target: &EmbedTarget, primary_kinds: &BTreeSet<u32>) -> Option<InterestShape> {
-    match target {
-        EmbedTarget::Event(id) => Some(InterestShape {
-            event_ids: BTreeSet::from([id.clone()]),
-            kinds: primary_kinds.clone(),
-            ..InterestShape::default()
-        }),
-        EmbedTarget::Address {
-            kind,
-            pubkey,
-            identifier,
-        } => primary_kinds.contains(kind).then(|| InterestShape {
-            kinds: BTreeSet::from([*kind]),
-            addresses: BTreeSet::from([NaddrCoord {
-                pubkey: pubkey.clone(),
-                kind: *kind,
-                d_tag: identifier.clone(),
-            }]),
-            ..InterestShape::default()
-        }),
-    }
-}
-
-fn target_is_demanded(model: &PointerSourceModel, event: &KernelEvent) -> bool {
-    let by_id = EmbedTarget::Event(event.id.clone());
-    if model.pointed_by(&by_id).is_empty() {
-        if let Some(coord) = AddressCoordinate::from_event(event) {
-            let by_addr = EmbedTarget::Address {
-                kind: coord.kind,
-                pubkey: coord.pubkey,
-                identifier: coord.identifier,
-            };
-            return !model.pointed_by(&by_addr).is_empty();
-        }
-        false
-    } else {
-        true
-    }
+    crate::delivered_ref::union_admission(model, primary_kinds.iter().copied().collect())
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -242,6 +213,7 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use nmp_core::substrate::EventId;
+    use nmp_planner::NaddrCoord;
 
     use super::*;
 
@@ -278,14 +250,14 @@ mod tests {
 
     #[test]
     fn target_delivery_shape_filters_address_targets_to_primary_kind() {
-        let mut model = PointerSourceModel::default();
-        model.apply_pointer(&pointer(
+        let model = Arc::new(Mutex::new(PointerSourceModel::default()));
+        lock(&model).apply_pointer(&pointer(
             "p1",
             7,
             vec![vec!["a", "30023:bob:article"], vec!["a", "30024:bob:draft"]],
         ));
 
-        let shape = target_delivery_shape(&model, &BTreeSet::from([30_023])).expect("shape");
+        let shape = target_live_shape(&model, &BTreeSet::from([30_023]))().expect("shape");
         assert_eq!(shape.kinds, BTreeSet::from([30_023]));
         assert_eq!(
             shape.addresses,
@@ -299,9 +271,9 @@ mod tests {
 
     #[test]
     fn event_id_target_hydration_is_primary_kind_gated() {
-        let mut model = PointerSourceModel::default();
-        model.apply_pointer(&pointer("p1", 1111, vec![vec!["E", "root-id"]]));
-        let shape = target_delivery_shape(&model, &BTreeSet::from([30_023])).expect("shape");
+        let model = Arc::new(Mutex::new(PointerSourceModel::default()));
+        lock(&model).apply_pointer(&pointer("p1", 1111, vec![vec!["E", "root-id"]]));
+        let shape = target_live_shape(&model, &BTreeSet::from([30_023]))().expect("shape");
         assert_eq!(shape.event_ids, BTreeSet::from(["root-id".to_string()]));
         assert_eq!(shape.kinds, BTreeSet::from([30_023]));
     }

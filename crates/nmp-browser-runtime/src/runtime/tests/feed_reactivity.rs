@@ -70,7 +70,7 @@ fn active_follow_feed_retargets_on_account_switch_without_app_intervention() {
 
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_one_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_one_id),
         "viewer one's followed note must render before the switch"
     );
 
@@ -86,7 +86,7 @@ fn active_follow_feed_retargets_on_account_switch_without_app_intervention() {
 
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_one_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_one_id),
         "account switch must reset the rendered feed without app-side cleanup"
     );
 
@@ -119,11 +119,11 @@ fn active_follow_feed_retargets_on_account_switch_without_app_intervention() {
 
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_two_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_two_id),
         "viewer two's followed note must render after the switch"
     );
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_one_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_one_id),
         "viewer one's rendered rows must not survive the active-account switch"
     );
 }
@@ -186,7 +186,7 @@ fn active_follow_feed_replaces_follow_list_without_stale_rows() {
     handle.fan_out_outbound(outbound);
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_a_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_a_id),
         "follow A's note must render before the follow list changes"
     );
 
@@ -219,7 +219,7 @@ fn active_follow_feed_replaces_follow_list_without_stale_rows() {
 
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "follow-list replacement must reset rows that belonged to the old source"
     );
 
@@ -234,11 +234,11 @@ fn active_follow_feed_replaces_follow_list_without_stale_rows() {
 
     let feed = decode_feed(&handle.next_frame(true));
     assert!(
-        feed.cards.iter().any(|card| card.card.id == note_b_id),
+        feed.cards.iter().any(|card| card.card.canonical_row_id == note_b_id),
         "newly followed author's note must render after replacement"
     );
     assert!(
-        feed.cards.iter().all(|card| card.card.id != note_a_id),
+        feed.cards.iter().all(|card| card.card.canonical_row_id != note_a_id),
         "old follow rows must stay absent after the replacement source renders"
     );
 }
@@ -294,7 +294,7 @@ fn open_test_feed(handle: &mut crate::BrowserRuntimeHandle) -> nmp_feed::FeedHan
             nmp_feed::feed::events()
                 .primary_kinds([nmp_kinds::KIND_SHORT_TEXT_NOTE])
                 .from(nmp_feed::source::active_user().follows())
-                .shape(nmp_feed::FeedShape::RootIndexed)
+                .shape(nmp_feed::FeedShape::Flat)
                 .order(nmp_feed::FeedOrder::NewestByFeedPosition)
                 .window(nmp_feed::FeedWindowPolicy::bounded(
                     nmp_feed::DEFAULT_FEED_WINDOW_LIMIT,
@@ -359,7 +359,7 @@ fn req_frame_mentions_author(text: &str, author: &str) -> bool {
     })
 }
 
-fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_note_feed::op_feed::OpFeedSnapshot {
+fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_feed::typed_wire::FeedRowSnapshot {
     let crate::runtime::SnapshotOutcome::Frame(bytes) = frame else {
         panic!("expected snapshot frame, got {frame:?}");
     };
@@ -368,5 +368,5 @@ fn decode_feed(frame: &crate::runtime::SnapshotOutcome) -> nmp_note_feed::op_fee
         .into_iter()
         .find(|row| row.key == BROWSER_FEED_KEY)
         .expect("caller-owned feed projection must be present");
-    nmp_note_feed::op_feed::decode_op_feed_snapshot(&row.payload).expect("NNFS payload decodes")
+    nmp_feed::typed_wire::decode_feed_row_snapshot(&row.payload).expect("feed-row payload decodes")
 }

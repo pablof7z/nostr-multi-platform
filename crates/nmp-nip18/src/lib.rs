@@ -8,6 +8,7 @@ use nmp_nip09::AddressCoordinate;
 use serde::Deserialize;
 
 mod action;
+mod lane_mapping;
 mod primary_kind;
 mod repost_projection;
 mod wire;
@@ -15,6 +16,7 @@ mod wire;
 pub use action::{
     build_repost_event, QuoteRepostAction, QuoteRepostModule, RepostAction, RepostModule,
 };
+pub use lane_mapping::{nip18_target_mapping, NIP18_TARGET_MAPPING_ID};
 pub use primary_kind::{
     acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
     PrimaryKindError,

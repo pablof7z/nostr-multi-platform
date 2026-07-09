@@ -250,7 +250,7 @@ fn feed_handle_pairs_projection_key_and_opaque_session_id() {
 fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
     FeedParams {
         primary_kinds,
-        shape: FeedShape::RootIndexed,
+        shape: FeedShape::Flat,
         source: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         order: FeedOrder::NewestByFeedPosition,

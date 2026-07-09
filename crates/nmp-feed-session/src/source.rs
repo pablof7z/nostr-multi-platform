@@ -37,9 +37,12 @@ pub(super) type LiveShapes = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
 /// Extra acquisition shapes a scope must subscribe to beyond the render shape.
 pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
 
-/// Optional source-owned row context attached to emitted note-feed rows.
+/// Optional source-owned typed context attached to emitted feed rows.
+///
+/// Post-demolition this yields a generic [`nmp_feed::FeedRowContext`] (e.g. the
+/// NIP-29 `Group` variant), carried as data — not a note-only `HostedGroupContext`.
 pub(super) type RowContextProvider =
-    Arc<dyn Fn(&KernelEvent) -> Option<nmp_note_feed::HostedGroupContext> + Send + Sync>;
+    Arc<dyn Fn(&KernelEvent) -> Option<nmp_feed::FeedRowContext> + Send + Sync>;
 
 /// Whether a session can be registered before the active-account slot is
 /// populated.
