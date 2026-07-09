@@ -199,7 +199,9 @@ their facts; an app Rust concept composes them into product rows.
 To show the NIP-29 groups the active user belongs to across a relay set, ask
 the NIP-29 owner for a joined-groups read. The relay-set variant of that helper
 materializes one host-pinned demand per relay through `open_read_demand_set` /
-`reconcile_read_demand_set`, folds relay-signed metadata/admin/member facts
+`reconcile_read_demand_set` — shape (a) of the reusable keyed-reconciler
+family, [28a](28a-build-a-keyed-live-read-collection.md) — folds relay-signed
+metadata/admin/member facts
 into `JoinedGroupsProjection`, and emits the joined-groups typed output. The
 app supplies the active pubkey and the relay set that defines its search space;
 `nmp-nip29` owns the per-relay `39000`/`39001`/`39002` acquisition,
@@ -541,4 +543,4 @@ The concept's read should close when…
 - [ ] Per-open/late-joining projections use kernel replay, not app-side hydration.
 - [ ] The typed output reads from concept-owned state; tailing concepts close on the returned handle.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
-See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).
+See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md) · [28a — build a keyed live read-collection](28a-build-a-keyed-live-read-collection.md) (the reusable primitive behind `open_read_demand_set` and every other per-key live-resource need).
