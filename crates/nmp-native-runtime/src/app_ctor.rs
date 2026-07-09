@@ -29,6 +29,7 @@ use crate::app_struct::{
     notify_configured_relays_change_observers, notify_identity_change_observers, NmpApp,
 };
 use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
+use crate::update_frame_observer::{new_update_frame_observer_slot, notify_update_frame_observers};
 
 pub fn new_app() -> NmpApp {
     // ADR-0072 / ADR-0072 §D3a — one bounded waking inbox of `ActorMail`.
@@ -96,6 +97,9 @@ pub fn new_app() -> NmpApp {
         Arc::clone(&configured_relays_change_observers);
     let listener_configured_relays = Arc::clone(&configured_relays);
     let listener_last_configured_relays = Arc::new(Mutex::new(Vec::new()));
+    // #3127 — additive multicast update-frame observer registry.
+    let update_frame_observers = new_update_frame_observer_slot();
+    let listener_update_frame_observers = Arc::clone(&update_frame_observers);
     // V-83 — event-store publish-back slot.
     let event_store_handle = new_event_store_slot();
     let actor_event_store = Arc::clone(&event_store_handle);
@@ -291,6 +295,11 @@ pub fn new_app() -> NmpApp {
                 &listener_last_configured_relays,
                 &listener_configured_relays_change_observers,
             );
+            // #3127 — fire every registered multicast update-frame observer,
+            // unconditionally, on the SAME off-actor-thread this whole loop
+            // body already runs on. Additive: does not consume or gate the
+            // single-owner `listener` invocation below.
+            notify_update_frame_observers(&listener_update_frame_observers);
             // Quiescence-safe callback invocation (option b — Condvar drain).
             let listener = {
                 // D6 fail-loud: recover from poisoned lock rather than silently
@@ -327,6 +336,8 @@ pub fn new_app() -> NmpApp {
         identity_change_observers,
         next_identity_change_observer_id: AtomicU64::new(1),
         configured_relays_change_observers,
+        update_frame_observers,
+        next_update_frame_observer_id: AtomicU64::new(1),
         capability_callback,
         lifecycle_observer,
         event_observers,

@@ -204,6 +204,12 @@ pub struct NmpApp {
     pub(crate) identity_change_observers: IdentityChangeObserverSlot,
     pub(crate) next_identity_change_observer_id: AtomicU64,
     pub(crate) configured_relays_change_observers: ConfiguredRelaysChangeObserverSlot,
+    /// #3127 — additive multicast update-frame observer registry. Fires
+    /// unconditionally on every emitted update frame, alongside (never
+    /// instead of) the single-owner [`Self::update_listener`] slot. See
+    /// `update_frame_observer.rs`.
+    pub(crate) update_frame_observers: crate::update_frame_observer::UpdateFrameObserverSlot,
+    pub(crate) next_update_frame_observer_id: AtomicU64,
     pub(crate) capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot.
     pub(crate) lifecycle_observer: LifecycleObserverSlot,
