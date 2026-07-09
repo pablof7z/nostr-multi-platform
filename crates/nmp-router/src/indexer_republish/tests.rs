@@ -160,6 +160,67 @@ fn skips_ephemeral_and_regular_non_replaceable_kinds() {
 }
 
 #[test]
+fn forwards_kind41_channel_metadata_to_indexer() {
+    // Regression for #3097: the hand-rolled replaceable set used to be
+    // {0,3} ∪ [10000,20000) ∪ [30000,40000), silently dropping kind:41
+    // (NIP-28 channel metadata) — the one special case `nostr::Kind::is_replaceable`
+    // (and `nmp_kinds::is_replaceable`) adds beyond the NIP-01 range text.
+    let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[
+        "wss://indexer-a/",
+        "wss://indexer-b/",
+    ]));
+    let frame = make_frame(make_raw(41, 0x50), Some("wss://content-relay/"));
+
+    let dests = policy.destinations(&frame);
+
+    assert_eq!(dests.len(), 2, "kind:41 must forward to all indexers");
+    let urls = relay_urls(&dests);
+    assert!(urls.contains(&"wss://indexer-a/".to_string()));
+    assert!(urls.contains(&"wss://indexer-b/".to_string()));
+    assert!(all_indexer_role(&dests));
+}
+
+#[test]
+fn replaceable_kind_filter_matches_canonical_predicate_union() {
+    // The filter must be exactly nmp_kinds::is_replaceable(k) || nmp_kinds::is_addressable(k)
+    // across the full range — no hand-rolled drift. Spot-check both members and a
+    // non-member, plus a brute-force scan over the whole u32 kind space NIP-01 defines
+    // ranges over (0..40_000; nothing outside that range is replaceable/addressable).
+    let filter = IndexerRepublishPolicy::replaceable_kind_filter();
+
+    for kind in [0u32, 3, 41, 10_000, 30_023] {
+        assert!(
+            filter.matches(kind),
+            "kind {kind} is replaceable/addressable and must match the filter"
+        );
+    }
+    assert!(
+        !filter.matches(1),
+        "kind 1 is neither replaceable nor addressable"
+    );
+
+    for kind in 0u32..40_000 {
+        let canonical = nmp_kinds::is_replaceable(kind) || nmp_kinds::is_addressable(kind);
+        assert_eq!(
+            filter.matches(kind),
+            canonical,
+            "kind {kind}: filter.matches() must equal the canonical predicate union"
+        );
+    }
+    // Outside the NIP-01 replaceable/addressable ranges, KindFilter::matches must
+    // also disagree (false) since the filter is a finite explicit-kind set, not
+    // match-everything (guarded by kinds_vec() being non-empty).
+    assert!(
+        !filter.is_all(),
+        "filter must be an explicit kind set, not match-all"
+    );
+    assert!(
+        !filter.matches(40_000),
+        "kind 40_000 is above the addressable range"
+    );
+}
+
+#[test]
 fn forwards_addressable_kind_to_indexer() {
     // kind:30023 = NIP-23 long-form; addressable / parameterized replaceable.
     let policy = IndexerRepublishPolicy::enabled(context_with_indexers(&[
