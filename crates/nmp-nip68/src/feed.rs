@@ -240,23 +240,11 @@ fn picture_record_from_repost_target(
     event: &KernelEvent,
     event_lookup: &EventLookup,
 ) -> Option<PictureEventRecord> {
-    if let Some(embedded) = record.embedded_event.clone() {
-        let target_event = KernelEvent {
-            id: embedded.id,
-            author: embedded.author,
-            kind: embedded.kind,
-            created_at: embedded.created_at,
-            tags: embedded.tags,
-            content: embedded.content,
-            relay_provenance: event.relay_provenance.clone(),
-        };
-        return try_from_kernel_event(&target_event);
-    }
-    record
-        .target_event_id
-        .as_ref()
-        .and_then(|target_id| (event_lookup)(target_id))
-        .and_then(|target| try_from_kernel_event(&target))
+    // Generic "embedded else local lookup else drop" target resolution lives
+    // in nmp-nip18 (#3100, the owner of repost mechanics); this feed only
+    // supplies its own kind-specific mapping on top of the resolved event.
+    let target_event = nmp_nip18::resolve_repost_target(record, event, event_lookup)?;
+    try_from_kernel_event(&target_event)
 }
 
 fn picture_merge() -> FlatFeedMerge<PictureFeedEntry> {

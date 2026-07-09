@@ -338,32 +338,15 @@ fn article_from_repost_target(
     event_lookup: &EventLookup,
     topic: Option<&str>,
 ) -> Option<ArticleFeedItem> {
-    if let Some(embedded) = record.embedded_event.clone() {
-        let target_event = KernelEvent {
-            id: embedded.id,
-            author: embedded.author,
-            kind: embedded.kind,
-            created_at: embedded.created_at,
-            tags: embedded.tags,
-            content: embedded.content,
-            relay_provenance: event.relay_provenance.clone(),
-        };
-        if topic.is_some_and(|topic| !event_has_topic(&target_event, topic)) {
-            return None;
-        }
-        return article_summary_from_event(&target_event);
+    // Generic "embedded else local lookup else drop" target resolution lives
+    // in nmp-nip18 (#3100, the owner of repost mechanics); this feed only
+    // supplies its kind-specific mapping and topic admission on top of the
+    // resolved target event.
+    let target_event = nmp_nip18::resolve_repost_target(record, event, event_lookup)?;
+    if topic.is_some_and(|topic| !event_has_topic(&target_event, topic)) {
+        return None;
     }
-    record
-        .target_event_id
-        .as_ref()
-        .and_then(|target_id| (event_lookup)(target_id))
-        .and_then(|target| {
-            if topic.is_some_and(|topic| !event_has_topic(&target, topic)) {
-                None
-            } else {
-                article_summary_from_event(&target)
-            }
-        })
+    article_summary_from_event(&target_event)
 }
 
 fn article_summary_from_event(event: &KernelEvent) -> Option<ArticleFeedItem> {
