@@ -287,7 +287,6 @@ impl Kernel {
             #[cfg(test)]
             test_profile_lookup,
             timeline_authors: BTreeSet::new(),
-            dependent_interest_sets: BTreeMap::new(),
             profile_claims: HashMap::new(),
             live_profile_claims: HashMap::new(),
             live_event_claims: HashMap::new(),

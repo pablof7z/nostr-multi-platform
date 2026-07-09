@@ -396,10 +396,16 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
 
         let key = "test.feed.following";
         let clear_acquisition: TeardownAction = Box::new(move || {
+            let child = nmp_core::DependentInterestChild::tailing(
+                nmp_planner::InterestShape::default(),
+                nmp_planner::InterestScope::Global,
+            );
             let _ = clear_sender.send(ActorCommand::Interests(
-                InterestsCommand::ReplaceDependentInterestSet {
+                InterestsCommand::ApplyDependentInterestDelta {
                     owner: nmp_core::subs::SubOwnerKey::new("test.feed.session"),
-                    children: Vec::new(),
+                    delta: nmp_core::DependentInterestDelta {
+                        commands: vec![nmp_core::DependentInterestDeltaCommand::Close(child)],
+                    },
                     reason: "test-feed-session-close".to_string(),
                 },
             ));
@@ -455,12 +461,12 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
             matches!(
                 cmds.as_slice(),
                 [
-                    ActorCommand::Interests(InterestsCommand::ReplaceDependentInterestSet {
-                        children,
+                    ActorCommand::Interests(InterestsCommand::ApplyDependentInterestDelta {
+                        delta,
                         ..
                     }),
                     ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)
-                ] if children.is_empty()
+                ] if !delta.commands.is_empty()
             ),
             "acquisition clear must be sent BEFORE the final MarkChangedSinceEmit, got {cmds:?}"
         );

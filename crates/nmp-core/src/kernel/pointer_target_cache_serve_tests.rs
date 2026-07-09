@@ -4,7 +4,7 @@
 //! The pointer-source read model (`nmp_content::PointerSourceModel`, driven by
 //! `explicit_composition::op_pointer_source`) materializes each demanded target as a
 //! `DependentInterestChild`. This test proves the kernel half of that path: an
-//! address target child registered via `replace_dependent_interest_set` is
+//! address target child opened via `apply_dependent_interest_delta` is
 //! served from the warm store with ZERO relay connectivity — the same cache-first
 //! guarantee every other interest gets, never an out-of-band fetch.
 //!
@@ -15,7 +15,7 @@
 //! falsifies.
 
 use super::cache_serve_tests::{drain_cache_serves, simulate_cold_restart};
-use super::{DependentInterestChild, Kernel};
+use super::{DependentInterestChild, DependentInterestDelta, DependentInterestDeltaCommand, Kernel};
 use crate::planner::{InterestScope, InterestShape, NaddrCoord};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::SubOwnerKey;
@@ -83,7 +83,13 @@ fn address_target_child_serves_from_warm_store_zero_relay() {
         ..InterestShape::default()
     };
     let child = DependentInterestChild::tailing(shape, InterestScope::Global);
-    kernel.replace_dependent_interest_set(owner, vec![child], "pointer-source-2113-cache-first");
+    kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(child)],
+        },
+        "pointer-source-2113-cache-first",
+    );
     drain_cache_serves(&mut kernel, 10);
 
     assert!(

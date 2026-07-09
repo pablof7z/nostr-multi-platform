@@ -1,6 +1,4 @@
-//! Kernel-owned replacement of a source owner's complete derived interest set.
-
-use std::collections::{BTreeMap, BTreeSet};
+//! Kernel-owned application of a source owner's derived interest deltas.
 
 use super::Kernel;
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
@@ -90,80 +88,6 @@ pub(crate) struct DependentInterestSetOutcome {
 }
 
 impl Kernel {
-    /// Replace every child interest owned by `owner`.
-    ///
-    /// The caller supplies the freshly-reduced set. The kernel withdraws child
-    /// identities that disappeared, upserts current children through the same
-    /// sealed `register_interest` machinery as `open_interest`, and emits at
-    /// most one compile invalidation for the whole replacement.
-    #[allow(dead_code)] // Retained for the full-set command/API while Trellis callers use deltas.
-    pub(crate) fn replace_dependent_interest_set(
-        &mut self,
-        owner: SubOwnerKey,
-        children: Vec<DependentInterestChild>,
-        reason: &str,
-    ) -> DependentInterestSetOutcome {
-        let mut next = BTreeMap::<SubIdentity, LogicalInterest>::new();
-        for child in children {
-            next.insert(child.identity(owner), child.interest);
-        }
-        let next_identities = next.keys().cloned().collect::<BTreeSet<_>>();
-        let previous: BTreeMap<SubIdentity, LogicalInterest> = self
-            .dependent_interest_sets
-            .get(&owner)
-            .cloned()
-            .unwrap_or_default();
-
-        let mut outcome = DependentInterestSetOutcome {
-            registered_children: next_identities.len(),
-            ..Default::default()
-        };
-
-        for identity in previous
-            .keys()
-            .filter(|identity| !next_identities.contains(*identity))
-        {
-            outcome.withdrawn_children += 1;
-            if self.lifecycle.registry_mut().drop_owner(identity) {
-                outcome.closed_slots += 1;
-                if let Some(old) = previous.get(identity) {
-                    self.cancel_pending_interest_cache_serve(&identity.key, &old.shape);
-                }
-            }
-        }
-
-        let registrations = next
-            .iter()
-            .map(|(identity, interest)| InterestRegistration {
-                identity: identity.clone(),
-                interest: interest.clone(),
-                policy: InterestWrite::Replace,
-            })
-            .collect::<Vec<_>>();
-        let outcomes = self.apply_interest_registrations(&registrations);
-        outcome.changed_registrations = outcomes
-            .iter()
-            .filter(|registration| registration.changed)
-            .count();
-
-        if outcome.changed_registrations > 0 {
-            self.run_cache_serve_step();
-        }
-        if outcome.closed_slots > 0 || outcome.changed_registrations > 0 {
-            self.lifecycle
-                .enqueue_trigger(CompileTrigger::InvalidateCompile {
-                    reason: InvalidateReason::External(reason.to_string()),
-                });
-        }
-        if next.is_empty() {
-            self.dependent_interest_sets.remove(&owner);
-        } else {
-            self.dependent_interest_sets.insert(owner, next);
-        }
-
-        outcome
-    }
-
     /// Apply an ordered dependent-interest delta for one source owner.
     ///
     /// This is the authoritative path for private reconcilers such as Trellis:
