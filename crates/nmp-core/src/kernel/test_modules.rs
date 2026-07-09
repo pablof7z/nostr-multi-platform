@@ -86,6 +86,8 @@ mod interest_install_profile_cache_serve_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod negentropy_test_support;
 #[cfg(test)]
+mod observer_replay_activation_tests;
+#[cfg(test)]
 mod observer_replay_store_tests;
 #[cfg(test)]
 mod observer_replay_tests;
