@@ -72,6 +72,54 @@ fn canonical_identity_dedups_and_keeps_newer_sort_source() {
 }
 
 #[test]
+fn reversed_arrival_order_wrapper_before_target_still_surfaces_the_row() {
+    // #3099 Bug B (the `RootIndexedFeed`/`pending_attributions` cache-luck
+    // class this engine replaced — see `docs/perf/composite-feed-architecture.md`
+    // §2 and `crates/nmp-note-feed/src/flat_feed.rs`'s module docs). The old
+    // engine buffered a reply/repost's contribution under the WRAPPER's own
+    // id in a side table that only ever drained by the TARGET id once a root
+    // arrived — so a wrapper/reply arriving before its target was silently
+    // orphaned and never surfaced. `FlatFeed` has no side table: every source
+    // maps directly onto the same canonical `row_id` via `st.rows`, so ingest
+    // order cannot matter. Prove the reversed order (wrapper FIRST, target
+    // SECOND) surfaces identically to the target-first case already proven by
+    // `canonical_identity_dedups_and_keeps_newer_sort_source`.
+    let feed = FlatFeed::new(
+        Arc::new(|_| true),
+        Arc::new(|event| {
+            vec![sourced_item(
+                "target",
+                &event.id,
+                event.created_at,
+                &event.content,
+            )]
+        }),
+    );
+
+    // The wrapper arrives BEFORE the target it points at is ever ingested.
+    feed.on_kernel_event(&event("wrapper", 6, 20, "repost"));
+    let mid_snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(
+        mid_snap.cards.len(),
+        1,
+        "the wrapper's contribution must surface immediately — never buffered \
+         under an id nothing ever drains"
+    );
+    assert_eq!(mid_snap.cards[0].card, "repost");
+
+    // The target arrives later.
+    feed.on_kernel_event(&event("target", 1, 10, "original"));
+    let snap = feed.snapshot(&FeedRequest::default());
+    assert_eq!(snap.cards.len(), 1, "still ONE row — same canonical id");
+    assert_eq!(
+        snap.cards[0].card, "repost",
+        "merge outcome must match the target-first ordering — the newer \
+         sort_created_at source wins regardless of arrival order"
+    );
+    assert_eq!(snap.page.unwrap().total_blocks, 1);
+}
+
+#[test]
 fn equal_timestamp_sources_keep_deterministic_first_source() {
     let feed = FlatFeed::new(
         Arc::new(|_| true),

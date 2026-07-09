@@ -87,12 +87,12 @@ impl ReplyBuilder {
                 Ok(builder.reply_to(&parent).build(author, created_at)?)
             }
             ReplyTarget::Event(event) if event.kind == KIND_SHORT_TEXT_NOTE => {
-                let parent = ReplyTarget::note_record_for_event(&event)?;
-                let mut builder = Note::new(self.content);
-                if let Some(relay) = self.relay_hint {
-                    builder = builder.relay_hint(relay);
-                }
-                Ok(builder.reply_to(&parent).build(author, created_at)?)
+                // #3099: a kind:1 `Event` target only ever reaches here when the
+                // parent was NOT read from the local cache (a cache hit returns
+                // `ReplyTarget::Note` with the parent's real NIP-10 refs — see
+                // `crate::action::resolve_event_target`). Never fabricate a
+                // root/reply shape from that cache miss; fail closed.
+                Err(ReplyTarget::reject_uncached_note_parent(&event).into())
             }
             ReplyTarget::Comment(parent) => {
                 let input = CommentBuildInput::reply_to_comment(&parent, self.content)?;

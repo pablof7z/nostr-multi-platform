@@ -48,6 +48,30 @@ fn note_target_builds_kind1_nip10_reply() {
 }
 
 #[test]
+fn kind1_event_target_without_cached_parent_refs_fails_closed() {
+    // #3099 Bug A: a `ReplyTarget::Event` for a kind:1 parent only ever arises
+    // when the parent was NOT read from the local cache (a cache hit builds
+    // `ReplyTarget::Note` with the parent's real NIP-10 refs instead — see
+    // `crate::action::resolve_event_target`). Previously this silently
+    // fabricated `Nip10Refs::default()`, which nip01 treats as "the parent IS
+    // the root" — corrupting the published root marker whenever the true
+    // parent was actually mid-thread. It must now fail closed instead of
+    // ever emitting a root marker for a parent whose thread position is
+    // unknown.
+    let target = ReplyTarget::event(
+        PARENT,
+        KIND_SHORT_TEXT_NOTE,
+        Some(PARENT_AUTHOR.to_string()),
+    )
+    .unwrap();
+    let err = Reply::to(target, "hello").build(AUTHOR, 1).unwrap_err();
+    assert_eq!(
+        err,
+        ReplyBuildError::Target(ReplyTargetError::ParentNotLocallyKnown)
+    );
+}
+
+#[test]
 fn non_note_event_builds_nip22_comment() {
     let target = ReplyTarget::event(PARENT, 30023, Some(PARENT_AUTHOR.to_string())).unwrap();
     let event = Reply::to(target, "comment").build(AUTHOR, 1).unwrap();

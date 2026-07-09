@@ -1,6 +1,6 @@
 use nmp_core::substrate::KernelEvent;
 use nmp_kinds::{KIND_NIP22_COMMENT, KIND_SHORT_TEXT_NOTE};
-use nmp_nip01::{try_from_kernel_event as note_from_kernel_event, Nip10Refs, NoteRecord};
+use nmp_nip01::{try_from_kernel_event as note_from_kernel_event, NoteRecord};
 use nmp_nip22::{try_from_kernel_event as comment_from_kernel_event, CommentRecord};
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +41,17 @@ pub enum ReplyTargetError {
     InvalidAuthorPubkey,
     MissingTargetAuthor,
     CommentEventRequiresRecord,
+    /// #3099: a kind:1 reply target whose parent was **not** read from the
+    /// local cache (`ReplyTarget::Event`, populated from a bare
+    /// `event_id`/`kind`/`author_pubkey` scalar — contrast
+    /// `ReplyTarget::from_kernel_event`/`ReplyTarget::note`, which carry the
+    /// parent's real, decoded NIP-10 refs whenever it IS locally known).
+    /// Building a NIP-10 marked-form reply requires knowing whether the
+    /// parent is itself a reply (and if so, to what root) — data this bare
+    /// scalar never carries. Never fabricate that shape from a cache miss:
+    /// fail closed instead of silently tagging the reply as replying to a
+    /// fresh root.
+    ParentNotLocallyKnown,
 }
 
 impl core::fmt::Display for ReplyTargetError {
@@ -55,6 +66,11 @@ impl core::fmt::Display for ReplyTargetError {
             Self::CommentEventRequiresRecord => {
                 write!(f, "kind:1111 reply target requires a decoded CommentRecord")
             }
+            Self::ParentNotLocallyKnown => write!(
+                f,
+                "kind:1 reply target requires the parent note's real NIP-10 refs; \
+                 it was not read from the local cache and its thread position is unknown"
+            ),
         }
     }
 }
@@ -72,6 +88,7 @@ impl ReplyTargetError {
             Self::InvalidAuthorPubkey => "invalid_author_pubkey",
             Self::MissingTargetAuthor => "missing_target_author",
             Self::CommentEventRequiresRecord => "comment_event_requires_record",
+            Self::ParentNotLocallyKnown => "parent_not_locally_known",
         }
     }
 }
@@ -156,28 +173,27 @@ impl ReplyTarget {
         })
     }
 
-    pub(crate) fn note_record_for_event(
-        target: &ReplyEventTarget,
-    ) -> Result<NoteRecord, ReplyTargetError> {
-        if target.kind == KIND_NIP22_COMMENT {
-            return Err(ReplyTargetError::CommentEventRequiresRecord);
+    /// Reached only when replying to a kind:1 parent that was **not** read
+    /// from the local cache — see [`Self::Event`], populated from a bare
+    /// `event_id`/`kind`/`author_pubkey` scalar with no decoded NIP-10 refs
+    /// (contrast [`Self::from_kernel_event`]/[`Self::note`], which carry the
+    /// parent's real refs whenever it IS locally known).
+    ///
+    /// This never returns a target that can be published: it validates the
+    /// scalar's shape (a `MissingTargetAuthor` reject stays distinguishable
+    /// from the terminal reject) and then always fails closed with
+    /// [`ReplyTargetError::ParentNotLocallyKnown`] — #3099. Building a NIP-10
+    /// marked-form reply requires knowing whether the parent is itself a
+    /// reply (and if so, to what root); a bare scalar never carries that, so
+    /// there is no shape this function could safely construct. Previously
+    /// this fabricated `Nip10Refs::default()`, which nip01 treats as "the
+    /// parent IS the root" — silently corrupting the published root marker
+    /// whenever the true parent was mid-thread and merely uncached.
+    pub(crate) fn reject_uncached_note_parent(target: &ReplyEventTarget) -> ReplyTargetError {
+        if target.author_pubkey.is_none() {
+            return ReplyTargetError::MissingTargetAuthor;
         }
-        let Some(author) = target.author_pubkey.clone() else {
-            return Err(ReplyTargetError::MissingTargetAuthor);
-        };
-        if !is_hex64(&target.event_id) {
-            return Err(ReplyTargetError::InvalidEventId);
-        }
-        if !is_hex64(&author) {
-            return Err(ReplyTargetError::InvalidAuthorPubkey);
-        }
-        Ok(NoteRecord {
-            event_id: target.event_id.clone(),
-            author,
-            created_at: 0,
-            content: String::new(),
-            refs: Nip10Refs::default(),
-        })
+        ReplyTargetError::ParentNotLocallyKnown
     }
 
     /// The raw identifier this target's reply summary is keyed by: the event id
