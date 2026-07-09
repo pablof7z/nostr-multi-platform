@@ -175,10 +175,21 @@ it is bounded, app/concept-owned work on the refs lane.
 
 ## 7. What's stubbed (as of #3086)
 
-- `open_composite_feed` is implemented, registered, and proven in
-  `nmp-feed-session`/Rust, but **not yet wired through
-  `nmp-native-runtime`/UniFFI** — Swift/Kotlin/TS shells cannot open a
-  composite feed session yet.
+- `NmpApp::open_composite_feed`
+  (`crates/nmp-native-runtime/src/composite_feed.rs`) is implemented,
+  registered, and host-tested end to end (`composite_feed_tests.rs`,
+  `crates/nmp-testing/tests/composite_feed_driving_example.rs`) — the
+  native-runtime composition root is fully wired, not stubbed.
+- A UniFFI-support open path exists
+  (`open_composite_feed(app, params_json) -> OpenedFeed`,
+  `crates/nmp-uniffi-support/src/composite_sessions.rs`, re-exported at
+  `lib.rs`) behind the `composite-feed` Cargo feature; it reuses the existing
+  `close_feed`/`load_older_feed` lifecycle rather than adding a parallel one.
+  Live end-to-end hydration through this surface is no longer blocked — the
+  #3088 observed-projection kernel gap is fixed and merged (#3090). The
+  remaining genuine gaps are that the `composite-feed` feature is not enabled
+  by default in shipping builds, and `nmp gen feed-helpers` codegen does not
+  yet emit composite-feed bindings.
 - `DeliveredRefDemand` is monotonic within one session's lifetime — a
   declaring row's removal does not yet retract its demand (matches the
   pre-existing `PointerTargetHydration` limitation).

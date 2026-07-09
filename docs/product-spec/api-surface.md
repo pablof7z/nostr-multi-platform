@@ -130,9 +130,11 @@ source, a kind/tag match, and an opaque `LaneMappingId` resolved to a
 composition-root closure. This is the mechanism for a union-of-sources row
 (authored + commented + reposted collapsing onto one article row) and for
 curated-list fan-out (one list event expanding into many member rows); it is
-not a `FeedShape` variant. As of #3086 this surface is Rust/`nmp-feed-session`
--only and not yet exposed through `nmp gen feed-helpers` or a binding
-surface. See
+not a `FeedShape` variant. As of #3086 `NmpApp::open_composite_feed` is fully
+wired through `nmp-native-runtime`, and a UniFFI-support open path exists
+(`nmp_uniffi_support::open_composite_feed`) behind the `composite-feed`
+Cargo feature (not enabled by default); it is not yet exposed through
+`nmp gen feed-helpers` codegen or the wasm binding surface. See
 [docs/perf/composite-feed-architecture.md](../perf/composite-feed-architecture.md).
 
 Current permanent concepts:

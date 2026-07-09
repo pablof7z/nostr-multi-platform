@@ -365,8 +365,11 @@ onto one row) are declared through the composite lane surface
 (`CompositeFeedParams`/`FeedLane`, `NmpApp::open_composite_feed`), not through
 `FeedShape` — see
 [07a — Build a composite feed](07a-build-a-composite-feed.md). As of #3086
-`open_composite_feed` is Rust/`nmp-feed-session`-only; it is not yet exposed
-through `nmp gen feed-helpers` or the UniFFI/wasm binding surface.
+`NmpApp::open_composite_feed` is fully wired through `nmp-native-runtime`,
+and a UniFFI-support open path
+(`nmp_uniffi_support::open_composite_feed(app, params_json)`) exists behind
+the `composite-feed` Cargo feature (not enabled by default). It is not yet
+exposed through `nmp gen feed-helpers` codegen or the wasm binding surface.
 
 ### Account-change and account-scoped feeds (#2516)
 

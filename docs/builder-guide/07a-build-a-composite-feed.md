@@ -5,10 +5,19 @@
 > `crates/nmp-feed/src/composite.rs`, `crates/nmp-feed/src/lane_mapping.rs`,
 > `crates/nmp-feed-session/src/composite_compiler.rs`, and
 > `crates/nmp-native-runtime/src/composite_feed.rs` (#3082/#3086), proven end
-> to end by `crates/nmp-feed-session/src/composite_compiler_tests.rs`. It is
-> **not yet exposed through UniFFI/wasm** — Swift/Kotlin/TypeScript shells
-> cannot open a composite feed session yet; only Rust app/composition-root
-> code can call `NmpApp::open_composite_feed` today.
+> to end through a real `NmpApp` and a real relay by
+> `crates/nmp-testing/tests/composite_feed_driving_example.rs` (the row-build/
+> merge/dedupe logic itself is unit-proven directly in
+> `crates/nmp-feed-session/src/composite_compiler_tests.rs`). A UniFFI-support
+> open path exists (`open_composite_feed(app, params_json) -> OpenedFeed`,
+> `crates/nmp-uniffi-support/src/composite_sessions.rs`) behind the
+> `composite-feed` Cargo feature, reusing the existing `close_feed`/
+> `load_older_feed` lifecycle; live end-to-end hydration through it is no
+> longer blocked (the #3088 kernel gap is fixed and merged, #3090). It is
+> **not yet exposed through wasm**, and the `composite-feed` feature is not
+> enabled by default in shipping builds, so Swift/Kotlin shells only gain
+> this surface once their app opts the feature in; TypeScript/browser shells
+> cannot open a composite feed session yet.
 
 ## The problem a single-lane feed can't express
 
@@ -31,9 +40,10 @@ None of these are a new engine. They are additive **lanes** over the same
 
 ## The driving example: a 30023 article composite feed
 
-`crates/nmp-feed-session/src/composite_compiler_tests.rs` proves this exact
-scenario: a composite feed of kind:30023 articles, scoped to the active
-user's follows, assembled from three lanes:
+`crates/nmp-testing/tests/composite_feed_driving_example.rs` proves this
+exact scenario end to end, through a real `NmpApp` and a real (fixture)
+relay: a composite feed of kind:30023 articles, scoped to the active user's
+follows, assembled from three lanes:
 
 | Lane | Acquired kind | Mapping | Provenance added |
 |---|---|---|---|
@@ -45,15 +55,17 @@ All three lanes collapse onto **one row per article**, keyed by the article's
 own `kind:pubkey:d` coordinate, with `context` accumulating
 `{Authored, CommentedBy, RepostedBy}` as a provenance **set** — never a count,
 never a single "who did this" field — and the article's real `created_at`
-becoming available once it is delivered.
+becoming available once it is delivered. The dedup/provenance-accumulation
+logic itself is also unit-proven directly (bypassing `FeedSessionHost`/
+acquisition) in `crates/nmp-feed-session/src/composite_compiler_tests.rs`.
 
 ## The declaration
 
 ```rust
-use nmp_feed::{CompositeFeedParams, FeedLane, SortPolicy, LaneMappingId, TagKey};
+use nmp_feed::{CompositeFeedParams, FeedLane, ProjectionKey, SortPolicy, LaneMappingId, TagKey};
 
 let params = CompositeFeedParams {
-    key: FeedKey::app("myapp.feed.articles")?,
+    key: ProjectionKey::app("myapp.feed.articles")?,
     lanes: vec![
         // Direct lane: renders the source itself. Zero-config default.
         FeedLane::direct(FeedScope::ActiveUserFollows, vec![30_023]),
