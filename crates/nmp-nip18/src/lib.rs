@@ -11,6 +11,7 @@ mod action;
 mod lane_mapping;
 mod primary_kind;
 mod repost_projection;
+mod repost_target;
 mod wire;
 
 pub use action::{
@@ -27,6 +28,7 @@ pub use repost_projection::{
     repost_activity_interest_shape, RepostActivity, RepostActivityProjection, RepostObservation,
     RepostTarget,
 };
+pub use repost_target::resolve_repost_target;
 
 /// NIP-18 repost event kind for kind:1 short-text notes.
 pub const KIND_REPOST: u32 = 6;
