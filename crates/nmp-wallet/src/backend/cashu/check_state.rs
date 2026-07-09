@@ -31,11 +31,11 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_nip60::cashu::types::ProofSpendState;
-use nmp_nip60::cashu::MintClient;
+use nmp_nip60::cashu::{canonicalize_mint_url, MintClient};
 
 use crate::journal::{ProofRef, ProofVerdict, WalletFact};
 
-use super::state::{canonicalize_mint_url, lock_state, CashuWalletState, StoredProof};
+use super::state::{lock_state, CashuWalletState, StoredProof};
 
 /// Coalescing entry point for the PASSIVE trigger (`ingest.rs`'s
 /// `build_passive_ingest_command`) — cold-start replay can fold fresh

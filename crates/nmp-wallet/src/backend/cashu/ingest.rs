@@ -63,14 +63,14 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::build_nip44_decrypt_for_account;
-use nmp_nip60::cashu::types::Proof;
+use nmp_nip60::cashu::{canonicalize_mint_url, types::Proof};
 
 use crate::journal::{
     DeleteCause, MintUrl, ProofAtom, ProofRef, Provenance, RelayRef, WalletEventId, WalletFact,
     WalletUnit,
 };
 
-use super::state::{canonicalize_mint_url, lock_state, CashuP2pkSecret, CashuWalletState};
+use super::state::{lock_state, CashuP2pkSecret, CashuWalletState};
 
 /// Decoded kind:7375 plaintext — mirrors `nmp_nip60::token_event::TokenRecord`'s
 /// wire shape, decoded here from a signer-transparent plaintext `String`

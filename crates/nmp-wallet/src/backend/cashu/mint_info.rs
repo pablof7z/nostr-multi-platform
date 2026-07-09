@@ -51,9 +51,9 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_nip60::cashu::MintClient;
+use nmp_nip60::cashu::{canonicalize_mint_url, MintClient};
 
-use super::state::{canonicalize_mint_url, lock_state, CachedMintInfo, CashuWalletState};
+use super::state::{lock_state, CachedMintInfo, CashuWalletState};
 
 /// Coalescing entry point — mirrors `check_state::spawn_debounced` exactly,
 /// except the "batch" carries the specific mint URLs to (re)fetch rather than

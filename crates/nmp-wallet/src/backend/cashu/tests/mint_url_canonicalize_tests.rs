@@ -4,7 +4,7 @@
 //! string equality: a deposit's stored proof `mint` and a send's resolved
 //! `mint` can name the same real mint while differing by scheme/host case or
 //! a trailing slash. These tests:
-//! - pin down [`state::canonicalize_mint_url`]'s exact normalization rule
+//! - pin down [`nmp_nip60::cashu::canonicalize_mint_url`]'s exact normalization rule
 //!   (case/slash collapse, path preserved byte-for-byte);
 //! - reproduce the red->green regression directly against
 //!   `CashuWalletState::add_proofs`/`select_proofs` (no real mint needed);
@@ -16,7 +16,7 @@ use super::*;
 use nmp_core::actor::SignCommand;
 
 mod canonicalize_mint_url_table {
-    use super::state::canonicalize_mint_url as c;
+    use nmp_nip60::cashu::canonicalize_mint_url as c;
 
     #[test]
     fn trailing_slash_is_stripped() {
@@ -319,7 +319,7 @@ fn dispatch_token_event_canonicalizes_the_ledger_facts_mint_key_too() {
     }));
 
     let state = state::lock_state(&backend.state);
-    let canonical = state::canonicalize_mint_url(RAW_MINT);
+    let canonical = nmp_nip60::cashu::canonicalize_mint_url(RAW_MINT);
     assert_ne!(
         canonical, RAW_MINT,
         "test fixture must actually exercise a non-canonical raw string"

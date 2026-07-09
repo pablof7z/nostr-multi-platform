@@ -29,7 +29,7 @@ use nmp_core::substrate::build_record_action_failure;
 use nmp_core::ui_token::UiToken;
 use nmp_core::CommandSender;
 use nmp_nip60::cashu::types::Proof;
-use nmp_nip60::cashu::{split_amount, MintClient};
+use nmp_nip60::cashu::{canonicalize_mint_url, split_amount, MintClient};
 use nmp_nip60::kinds::{KIND_NIP60_HISTORY, KIND_NIP60_TOKEN};
 use nmp_nip60::nutzap::{sign_p2pk_proof, ReceivedNutZap};
 use nmp_signer_iface::SignedEvent;
@@ -41,7 +41,7 @@ use crate::journal::{
 
 use super::chain::launch_self_encrypted_publish;
 use super::deposit::token_event_plaintext;
-use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
+use super::state::{lock_state, CashuWalletState};
 use super::ui_codes;
 
 pub(super) struct RedeemWorkerArgs {

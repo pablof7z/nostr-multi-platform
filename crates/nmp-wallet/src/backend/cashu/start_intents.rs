@@ -14,6 +14,7 @@
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
+use nmp_nip60::cashu::canonicalize_mint_url;
 
 use crate::backend::WalletBackendContext;
 use crate::fail_closed::fail_closed;
@@ -24,7 +25,7 @@ use super::cross_mint_worker::SendRetry;
 use super::deposit::{CashuCompleteDepositCommand, CashuDepositQuoteCommand};
 use super::recover::RecoverCashuWalletCommand;
 use super::set_mints::SetCashuMintsCommand;
-use super::state::{canonicalize_mint_url, is_well_formed_mint_url, lock_state};
+use super::state::{is_well_formed_mint_url, lock_state};
 use super::{operation_id_for, ui_codes, CashuWalletBackend};
 
 impl CashuWalletBackend {

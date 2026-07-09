@@ -24,12 +24,14 @@
 
 use std::collections::BTreeSet;
 
+use nmp_nip60::cashu::canonicalize_mint_url;
+
 use crate::journal::{WalletOperation, WalletOperationKind, WalletOperationState};
 use crate::projection::{
     WalletBalanceRow, WalletHistoryKind, WalletHistoryRow, WalletMintInfoRow, WalletReceiveRow,
 };
 
-use super::state::{canonicalize_mint_url, CashuWalletState};
+use super::state::CashuWalletState;
 
 /// `receive_rows`: every terminal `RedeemNutzap` operation, verified
 /// (`accepted: true`, reached `Settled`) or rejected (`accepted: false`,

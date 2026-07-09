@@ -46,7 +46,7 @@ use nmp_core::substrate::build_record_action_failure;
 use nmp_core::ui_token::UiToken;
 use nmp_core::CommandSender;
 use nmp_nip60::cashu::types::Proof;
-use nmp_nip60::cashu::{split_amount, MintClient};
+use nmp_nip60::cashu::{canonicalize_mint_url, split_amount, MintClient};
 use nmp_nip60::kinds::KIND_NIP61_NUTZAP;
 use nmp_nip60::nutzap::{nutzap_event_tags, p2pk_secret, NutZapProof};
 
@@ -56,7 +56,7 @@ use crate::journal::{
 };
 
 use super::chain::launch_plain_publish;
-use super::state::{canonicalize_mint_url, lock_state, CashuWalletState, StoredProof};
+use super::state::{lock_state, CashuWalletState, StoredProof};
 use super::ui_codes;
 
 pub(super) struct SendWorkerArgs {

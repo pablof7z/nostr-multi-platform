@@ -11,7 +11,7 @@ use nmp_network::role::RelayRole;
 use nmp_nwc::decode::{try_decode_relay_message_with_id, try_decode_response_for_request};
 use nmp_nwc::parse::NwcUri;
 use nmp_nwc::types::PayInvoiceParams;
-use nmp_nwc::NwcMethod;
+use nmp_nwc::{NwcMethod, KIND_NWC_RESPONSE};
 use nmp_signer_iface::UnsignedEvent;
 use nostr::{Keys, SecretKey};
 use serde_json::json;
@@ -121,7 +121,7 @@ pub(crate) fn wallet_connect(
 
     let mut out = Vec::new();
     let req_filter = json!({
-        "kinds": [23195u32],
+        "kinds": [KIND_NWC_RESPONSE],
         "authors": [&nwc_uri.wallet_pubkey_hex],
         "#p": [&client_pubkey_hex],
     });
