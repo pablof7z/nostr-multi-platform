@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use super::{
     new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
     new_signer_state_slot, ActorChannels, ActorConfigSources, ActorMail, ActorRuntimeSlots,
-    CommandSender,
+    CommandSender, ObservedProjectionSinkSlot,
 };
 use crate::capability_socket::new_capability_callback_slot;
 
@@ -27,13 +27,35 @@ pub fn spawn_test_actor(
     command_tx_self: CommandSender,
     update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
 ) {
+    spawn_test_actor_with_event_observers(
+        inbox_rx,
+        command_tx_self,
+        update_tx,
+        new_event_observer_slot(),
+    );
+}
+
+/// Like [`spawn_test_actor`], but wires in a caller-supplied event-observer
+/// slot instead of allocating a fresh one.
+///
+/// A test that drives observed-projection registration through the real
+/// `ObservedProjectionCommandHandle` (as production hosts do) needs to
+/// register/unregister `ObservedProjectionSink`s on the SAME slot the spawned
+/// kernel activates live delivery against — that slot is otherwise private to
+/// this function. Used by the #3088 real-actor-thread regression coverage.
+pub(crate) fn spawn_test_actor_with_event_observers(
+    inbox_rx: Receiver<ActorMail>,
+    command_tx_self: CommandSender,
+    update_tx: Sender<crate::update_envelope::UpdateFrameBytes>,
+    event_observers: ObservedProjectionSinkSlot,
+) {
     let profile_lookup = Arc::new(crate::substrate::TestProfileLookup::new());
     let dispatcher = crate::substrate::EventIngestDispatcher::new();
     let profile_lookup: Arc<dyn crate::substrate::ProfileLookup> = profile_lookup;
 
     let runtime = ActorRuntimeSlots {
         lifecycle_observer: new_lifecycle_observer_slot(),
-        event_observers: new_event_observer_slot(),
+        event_observers,
         snapshot_projections: crate::kernel::new_snapshot_projection_slot(),
         bunker_handshake: new_bunker_handshake_slot(),
         signer_state: new_signer_state_slot(),
