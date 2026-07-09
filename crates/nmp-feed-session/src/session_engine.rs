@@ -19,10 +19,18 @@
 //! derived into the acquisition set (see `flat_lane_set`). `nmp-note-feed` is
 //! DELETED; there is no second lane-mapping/merge implementation.
 //!
-//! TODO(#3082): mute/delete SUPPRESSION is no longer applied inside the feed
-//! (the old `OpFeedObserver` did a synchronous store peek — the cache-luck bug
-//! #3083). Suppression must be re-driven by DELIVERED mute/delete events; that
-//! wiring is not in this PR. The `suppression` argument is currently unused.
+//! # #3117 — suppression re-driven from delivered events
+//!
+//! Mute/delete SUPPRESSION is no longer applied via a synchronous store peek
+//! (the old `OpFeedObserver` cache-luck bug, #3083). `suppression_ingest`
+//! re-drives it purely from events the engine has ALREADY been delivered, at
+//! both ingest choke points `flat_session` owns. The single-lane `FeedParams`
+//! path (this module's `Flat` arm) threads the caller's real
+//! `Arc<dyn SuppressionLookup>` through. The composite-lane path
+//! (`composite_compiler::open_composite_feed`) does not yet have a caller
+//! that supplies one and still passes `empty_suppression_lookup()` — tracked
+//! as a #3117 follow-up, not a regression (it matches this path's prior,
+//! always-unsuppressed behaviour).
 //!
 //! Doctrine map:
 //! - D0: this names no app product — it consumes a compiled admission predicate
@@ -42,6 +50,7 @@ use super::source::ReducedSource;
 
 mod flat_lane_set;
 mod flat_session;
+mod suppression_ingest;
 
 pub use flat_lane_set::compile_default_lanes;
 
@@ -61,9 +70,7 @@ pub(super) fn build_scope_session_with_artifacts(
     resolved: ReducedSource,
     primary_kinds: &BTreeSet<u32>,
     acquisition_kinds: &BTreeSet<u32>,
-    // TODO(#3082): suppression must be driven by delivered mute/delete events,
-    // not a synchronous store lookup. Unused until that lane is rewired.
-    _suppression: Arc<dyn SuppressionLookup>,
+    suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
     match shape {
         FeedShape::Flat => {
@@ -83,7 +90,14 @@ pub(super) fn build_scope_session_with_artifacts(
             // has no `DeliveredRefDemand` to retract (#3087 is a composite-lane
             // concern only).
             flat_session::build_flat_scope_session(
-                app, key, window, resolved, item_builder, merge, None,
+                app,
+                key,
+                window,
+                resolved,
+                item_builder,
+                merge,
+                None,
+                suppression,
             )
             .map(|build| ScopeSessionBuild { build })
         }
@@ -107,6 +121,10 @@ pub(crate) fn build_flat_scope_session(
     // composite-lane compiler passes its `DeliveredRefDemand::retract_source`
     // closure.
     source_removed: Option<nmp_feed::SourceRemovedHook>,
+    // #3117: re-drives mute/delete suppression from delivered events at both
+    // ingest choke points `flat_session` owns. See this module's doc comment
+    // for why the composite-lane caller still passes an empty lookup.
+    suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     flat_session::build_flat_scope_session(
         app,
@@ -116,6 +134,7 @@ pub(crate) fn build_flat_scope_session(
         item_builder,
         merge,
         source_removed,
+        suppression,
     )
 }
 

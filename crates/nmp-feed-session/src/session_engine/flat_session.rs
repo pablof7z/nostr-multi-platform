@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{FeedOpenError, FeedSessionHost};
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     ClosureInterestShapes, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
@@ -33,6 +33,11 @@ pub(super) fn build_flat_scope_session(
     // declaring event's demand in lockstep. `None` on the single-lane
     // `FeedParams` path.
     source_removed: Option<nmp_feed::SourceRemovedHook>,
+    // #3117: consulted at BOTH ingest choke points below (`ResyncingObserver`
+    // and `apply`) via `suppression_ingest::ingest_with_suppression`, so a
+    // muted author's post — or a kind:5 delete from a delivered event's own
+    // tags — is re-driven purely from delivery, never a by-id store peek.
+    suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let ReducedSource {
         op_session_identity: _,
@@ -107,6 +112,7 @@ pub(super) fn build_flat_scope_session(
         acquisition_adapter: acquisition_adapter.clone(),
         extra_acquisition: extra_acquisition.clone(),
         engine_observer: Arc::clone(&engine_observer_slot),
+        suppression: Arc::clone(&suppression),
     });
     let engine_observer = crate::dynamic_observer::DynamicObservedProjectionSet::new(
         app.observed_projection_handle(),
@@ -131,9 +137,16 @@ pub(super) fn build_flat_scope_session(
         let engine_observer = engine_observer.clone();
         let acquisition_adapter = acquisition_adapter.clone();
         let extra_acquisition = extra_acquisition.clone();
+        let suppression = Arc::clone(&suppression);
         Arc::new(move |event: &KernelEvent| {
             let before = visible_flat_payload(&feed);
-            feed.on_kernel_event(event);
+            // #3117: same suppression-aware ingest `ResyncingObserver` (below)
+            // applies to LIVE delivery — this is the PULL/backfill path's own
+            // ingest entry point, so a reset-then-refill actually re-applies
+            // the current mute/delete state instead of re-admitting muted
+            // content from cache-serve (see `open_active_follows_op_feed_with_mute`'s
+            // mute-change window reset).
+            super::suppression_ingest::ingest_with_suppression(&feed, suppression.as_ref(), event);
             // Mirrors `ResyncingObserver` (above) for the PULL/backfill
             // ingestion path (#3082/#3086) — a drained page can ALSO register
             // new `Delivered`-ref demand, and `apply` is this path's own
@@ -245,11 +258,19 @@ struct ResyncingObserver {
     /// so the self-reference is deferred through this slot rather than
     /// requiring a second construction pass.
     engine_observer: Arc<Mutex<Option<crate::dynamic_observer::DynamicObservedProjectionSet>>>,
+    /// #3117: re-drives mute/delete suppression from delivered events (see
+    /// `suppression_ingest`) — the LIVE-delivery counterpart to `apply`'s own
+    /// suppression-aware ingest below.
+    suppression: Arc<dyn SuppressionLookup>,
 }
 
 impl ObservedProjectionSink for ResyncingObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        self.feed.on_kernel_event(event);
+        super::suppression_ingest::ingest_with_suppression(
+            &self.feed,
+            self.suppression.as_ref(),
+            event,
+        );
         let engine_observer = self
             .engine_observer
             .lock()
