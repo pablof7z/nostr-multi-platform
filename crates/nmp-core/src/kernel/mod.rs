@@ -323,6 +323,12 @@ pub struct Kernel {
     /// ADR-0070 primary_id → per-consumer demanded `EventShape`.
     ref_event_shapes: HashMap<String, BTreeMap<String, refs::EventShape>>,
     auto_profile_refs_by_consumer: BTreeMap<String, BTreeSet<String>>, // ADR-0070 D7 (Lane H)
+    /// Trellis-backed keyed reconciler for feed-author auto-resolve (#3116):
+    /// diffs the `(consumer_id, author_key)` desired set every tick and
+    /// returns the ordered open/close plan `reconcile_feed_author_refs`
+    /// applies. Persists for the kernel's lifetime — see
+    /// `kernel::feed_author_refs` module docs.
+    feed_author_reconciler: crate::trellis_reconciler::KeyedReconciler<(String, String), ()>,
     /// primary_id → consumer-id refcount (event claims, F-CR-06 / ADR-0072).
     event_claims: HashMap<String, BTreeSet<String>>,
     /// primary_ids with an in-flight `OneshotApi` interest.

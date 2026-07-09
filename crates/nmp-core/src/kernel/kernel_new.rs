@@ -293,6 +293,11 @@ impl Kernel {
             ref_profile_shapes: HashMap::new(),
             ref_event_shapes: HashMap::new(),
             auto_profile_refs_by_consumer: BTreeMap::new(),
+            feed_author_reconciler: crate::trellis_reconciler::KeyedReconciler::new(
+                feed_author_refs::FEED_AUTHOR_RECONCILER_SCOPE,
+                feed_author_refs::feed_author_resource_key,
+            )
+            .expect("fresh KeyedReconciler construction over an empty graph cannot fail"), // doctrine-allow: D6 — construction over a brand-new empty graph before any transaction runs; `KeyedReconciler::new` can only fail on a Trellis-internal graph-build error, which is unreachable here (mirrors `nmp-read-session::open_read_demand_set`'s identical precedent, outside D6's enforced-crate scope)
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
             event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),
