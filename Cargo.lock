@@ -5204,6 +5204,7 @@ dependencies = [
  "nmp-core",
  "nmp-ownership",
  "nmp-planner",
+ "nmp-read-session",
  "serde",
  "serde_json",
 ]
