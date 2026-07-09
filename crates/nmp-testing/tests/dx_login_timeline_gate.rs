@@ -24,11 +24,11 @@
 //! | G1   | After login + follow, ≥1 following-timeline row renders (the followed   |
 //! |      | author's note), decoded from the Rust-owned typed projection            |
 //! | G2   | A live event from the followed author surfaces as a NEW row, no refresh |
-//! | G3   | Follow set is load-bearing for ATTRIBUTION: a followed (self) reply     |
-//! |      | attributes to a root; a non-followed stranger's reply does NOT           |
-//! |      | attribute and does NOT surface as its own row. A feed that ignored the   |
-//! |      | follow set (treated every author as followed — the "global feed"         |
-//! |      | regression) would attribute the stranger, so this assertion FAILS on it  |
+//! | G3   | Follow set is load-bearing for ADMISSION: a followed author's note      |
+//! |      | renders as its own row; a non-followed stranger's note (root-shaped OR  |
+//! |      | reply-shaped) does NOT render at all. A feed that ignored the follow    |
+//! |      | set (treated every author as followed — the "global feed" regression)   |
+//! |      | would render the stranger's note, so this assertion FAILS on it         |
 //! | G6   | The example's shell (`lib.rs`) has zero relay/cache/sub/replaceable LOC  |
 //!
 //! # Invocation
@@ -106,112 +106,118 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
 // G3: the follow set is load-bearing — this is a FOLLOWING timeline
 // ---------------------------------------------------------------------------
 
-/// Proves the follow set is load-bearing for the engine's root-indexed
-/// attribution — the one "is this a *following* timeline?" axis this synthetic
-/// harness can observe.
+/// Proves the follow set is load-bearing for feed ADMISSION — the one "is this
+/// a *following* timeline?" axis this synthetic harness can observe.
 ///
-/// A reply from a FOLLOWED author (here the signed-in account itself, which is
-/// self-included in its own follow set) attributes to the root; a reply from a
-/// NON-followed stranger does NOT attribute at all, and does NOT surface as its
-/// own row. These are the decisive, FALSIFIABLE assertions: if the feed ignored
-/// the follow set and treated every author as followed (the "global feed"
-/// regression), the stranger's reply WOULD attribute and this gate would FAIL.
+/// The reply-rollup "attribution" concept (a non-followed root surfacing
+/// because a FOLLOWED reply pointed at it, `Vec<attribution_pubkeys>` on the
+/// row) was deleted along with the `RootIndexed` engine (#3082/#3086). Under
+/// the current `FlatFeed` engine every admitted event is its own top-level
+/// row (`nmp-note-feed`'s doc: "reply-rollup is no longer a framework
+/// behavior") and admission for `source::active_user().follows()` is gated on
+/// author-set membership: only an event from a followed author is delivered
+/// to this session at all (the harness's injection seam still routes through
+/// the session's live-shape-scoped observer — it bypasses the kernel's OUTER
+/// `timeline_authors` relay-relevance gate, not this session's OWN author-set
+/// admission).
 ///
-/// ## Why NOT a "standalone non-followed root is absent" assertion
-///
-/// Root-AUTHOR following (a standalone note from someone you don't follow never
-/// appearing) is NOT enforced in the feed engine — by design. `RootIndexedFeed`
-/// admits every root it observes; the follow gate for root admission is the
-/// kernel's ingest-layer relevance filter (the active account's
-/// `timeline_authors`), and a non-followed root only reaches the engine at all
-/// via explicit event-ref hydration when a FOLLOWED reply references it
-/// (see `docs/perf/op-centric-feed-architecture.md` §B and the engine's
-/// `crates/nmp-feed/src/root_indexed/engine/ingest.rs::ingest_root`).
-///
-/// This harness seeds events through the synthetic-injection seam
-/// (`nmp_app_inject_signed_event_json` → `IngestPreVerifiedEvents`), which fans
-/// every injected event out to observers UNCONDITIONALLY — it deliberately
-/// bypasses the kernel `timeline_authors` relevance gate (that is its whole
-/// purpose: a stand-in for "events arriving from relays"). So a standalone
-/// non-followed root injected here DOES render — exactly as the intentional
-/// `standalone_note_renders_as_root_card` test in `nmp-app-chirp` asserts. An
-/// "absent" assertion would therefore be UNSATISFIABLE through this seam and
-/// would be testing the kernel acquisition/relevance layer, not the OP-feed
-/// following contract this gate exists to prove. Root-relevance following is a
-/// kernel-ingest / subscription concern, proved by its own kernel tests.
+/// So the decisive, FALSIFIABLE proof now is direct: a FOLLOWED author's note
+/// (root-shaped or reply-shaped — shape no longer matters to admission)
+/// renders as its own row; a NON-followed stranger's note (root-shaped or
+/// reply-shaped) does not render AT ALL. A feed that ignored the follow set
+/// (treated every author as followed — the "global feed" regression) would
+/// render the stranger's notes too, so this assertion FAILS on it.
 #[test]
-fn g3_follow_set_is_load_bearing_for_attribution() {
+fn g3_follow_set_is_load_bearing_for_admission() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
 
     let demo = DemoApp::login(DEMO_NSEC);
-    let viewer_hex = demo.viewer().to_string();
-
-    let root_author = Keys::generate(); // the root note's author
-    let stranger = Keys::generate(); // a NON-followed replier
-
-    // A root note surfaces as a card.
-    let root = note(&root_author, 2_000, "root of a thread");
-    let root_id = root.id.to_hex();
-    assert!(demo.ingest(&root), "root must verify");
-
-    // The signed-in account (self-included follow) replies to the root.
     let viewer_keys = Keys::parse(DEMO_NSEC).expect("valid demo nsec");
-    let followed_reply = reply(&viewer_keys, 2_100, &root_id, "I follow this thread");
+
+    let followed = Keys::generate(); // a FOLLOWED author
+    let stranger = Keys::generate(); // a NON-followed author
+
+    // Declare the follow set: the signed-in account follows `followed` (and,
+    // via self-inclusion, itself) but never `stranger`.
+    assert!(
+        demo.ingest(&contact_list(&viewer_keys, 2_000, &[followed.public_key()])),
+        "follow list must verify"
+    );
+
+    // A root-shaped note from the FOLLOWED author.
+    let followed_root = note(&followed, 2_100, "a followed root note");
+    let followed_root_id = followed_root.id.to_hex();
+    assert!(demo.ingest(&followed_root), "followed root must verify");
+
+    // A reply-shaped note from the SAME followed author. Shape no longer
+    // matters to admission — this must render as its OWN row too, not fold
+    // into any parent (there is no reply-rollup anymore).
+    let followed_reply = reply(&followed, 2_200, &followed_root_id, "a followed reply");
+    let followed_reply_id = followed_reply.id.to_hex();
     assert!(demo.ingest(&followed_reply), "followed reply must verify");
 
-    // A non-followed stranger replies to the same root.
-    let stranger_reply = reply(&stranger, 2_200, &root_id, "I am not followed");
+    // A root-shaped note from the NON-followed stranger.
+    let stranger_root = note(&stranger, 2_300, "a stranger's root note");
+    assert!(demo.ingest(&stranger_root), "stranger root must verify");
+
+    // A reply-shaped note from the same NON-followed stranger, replying to
+    // the followed author's root.
+    let stranger_reply = reply(
+        &stranger,
+        2_400,
+        &followed_root_id,
+        "a stranger's reply, not followed",
+    );
     assert!(demo.ingest(&stranger_reply), "stranger reply must verify");
 
-    // Wait until the root card carries the followed-author attribution.
+    // Wait until BOTH followed rows have rendered.
     let rows = demo.rows_when(Duration::from_secs(5), |rows| {
         rows.iter().any(|r| {
-            r.author_pubkey == root_author.public_key().to_hex()
-                && !r.attribution_pubkeys.is_empty()
+            r.author_pubkey == followed.public_key().to_hex()
+                && r.content.contains("a followed root note")
+        }) && rows.iter().any(|r| {
+            r.author_pubkey == followed.public_key().to_hex()
+                && r.content.contains("a followed reply")
         })
     });
 
-    let root_row = rows
-        .iter()
-        .find(|r| r.author_pubkey == root_author.public_key().to_hex())
-        .expect("G3 DX GAP: the root note must render as a card");
-
     assert!(
-        root_row.attribution_pubkeys.contains(&viewer_hex),
-        "G3 DX GAP: a followed author's reply must attribute to the root \
-         (attribution={:?}, expected to contain viewer {viewer_hex})",
-        root_row.attribution_pubkeys
+        rows.iter()
+            .any(|r| r.author_pubkey == followed.public_key().to_hex()
+                && r.content.contains("a followed root note")),
+        "G3 DX GAP: a followed author's root-shaped note must render as its \
+         own row. Rendered rows: {:?}",
+        rows.iter()
+            .map(|r| (r.author_pubkey.as_str(), r.content.as_str()))
+            .collect::<Vec<_>>()
     );
-    // The decisive, FALSIFIABLE proof that the follow set is load-bearing: the
-    // NON-followed stranger's reply must NOT attribute to the root. A feed that
-    // ignored the follow set (treated every author as followed — i.e. a global
-    // feed) would run the same attribution path for the stranger and this would
-    // contain the stranger's pubkey, FAILING the gate. (Verified by reasoning:
-    // attribution is gated in `RootIndexedFeed::ingest` on `follow(author)`;
-    // forcing that predicate to `true` for all authors makes the stranger
-    // attribute and trips this assertion.)
     assert!(
-        !root_row
-            .attribution_pubkeys
-            .contains(&stranger.public_key().to_hex()),
-        "G3 DX GAP: a NON-followed reply must NOT attribute — this would mean the \
-         feed ignores the follow set (a GLOBAL feed), not a following timeline \
-         (attribution={:?})",
-        root_row.attribution_pubkeys
+        rows.iter()
+            .any(|r| r.author_pubkey == followed.public_key().to_hex()
+                && r.content.contains("a followed reply")),
+        "G3 DX GAP: a followed author's reply-shaped note must ALSO render as \
+         its own row — there is no reply-rollup in the current model. \
+         Rendered rows: {:?}",
+        rows.iter()
+            .map(|r| (r.author_pubkey.as_str(), r.content.as_str()))
+            .collect::<Vec<_>>()
     );
+    // Sanity: the two followed rows are genuinely distinct rows (own event
+    // ids), not one row folding the other.
+    assert_ne!(followed_root_id, followed_reply_id);
 
-    // Reinforcing assertion on the SAME axis: a non-followed reply is dropped by
-    // the engine, so it never surfaces as its own row either. Neither the
-    // stranger's pubkey nor the stranger's reply body may appear as a rendered
-    // card. (Belt-and-suspenders against a regression that rendered dropped
-    // replies as standalone rows.)
+    // The decisive, FALSIFIABLE proof that the follow set is load-bearing:
+    // NEITHER of the non-followed stranger's notes (root-shaped or
+    // reply-shaped) may render, in any form. A feed that ignored the follow
+    // set (a GLOBAL feed) would admit both.
     assert!(
         !rows
             .iter()
             .any(|r| r.author_pubkey == stranger.public_key().to_hex()
-                || r.content.contains("I am not followed")),
-        "G3 DX GAP: a NON-followed reply surfaced as its own timeline row — the \
-         follow set is not gating the engine. Rendered rows: {:?}",
+                || r.content.contains("stranger")),
+        "G3 DX GAP: a NON-followed author's note surfaced as a timeline row — \
+         the follow set is not gating admission (this would be a GLOBAL feed, \
+         not a following timeline). Rendered rows: {:?}",
         rows.iter()
             .map(|r| (r.author_pubkey.as_str(), r.content.as_str()))
             .collect::<Vec<_>>()

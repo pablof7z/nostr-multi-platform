@@ -238,7 +238,8 @@ fn composite_feed_dedupes_three_lanes_to_one_row_with_accumulated_provenance() {
     assert!(
         example
             .demand
-            .is_demanded(&nmp_feed::TypedRefTarget::Address {
+            .targets()
+            .contains(&nmp_feed::TypedRefTarget::Address {
                 kind: KIND_ARTICLE,
                 pubkey: author.clone(),
                 d: d_tag.to_string(),

@@ -99,14 +99,6 @@ impl DeliveredRefDemand {
     }
 
     #[must_use]
-    pub(crate) fn is_demanded(&self, target: &TypedRefTarget) -> bool {
-        self.demand
-            .lock()
-            .map(|demand| demand.contains_key(target))
-            .unwrap_or(false)
-    }
-
-    #[must_use]
     pub(crate) fn targets(&self) -> Vec<TypedRefTarget> {
         self.demand
             .lock()

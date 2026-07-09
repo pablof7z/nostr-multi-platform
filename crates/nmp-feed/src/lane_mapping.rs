@@ -4,16 +4,17 @@
 //! closure it names is a [`LaneMapping`] — a pure function of the delivered
 //! event, constructed in Rust at the composition root and never crossing FFI
 //! (same discipline as `CustomAdmissionId`/`CustomSourceId`). Protocol crates
-//! register extraction mappings under framework-owned ids (`nip18.target`,
-//! `nip22.root`); `nmp-feed` registers only the kind-blind identity mapping
+//! register extraction mappings under framework-owned ids of their own
+//! choosing (e.g. a repost-target extractor, a comment-root extractor);
+//! `nmp-feed` registers only the kind-blind identity mapping
 //! (`feed.authored`). The engine never learns a kind — this registry is the
 //! ONLY place kind-specific extraction logic lives, and it lives in the
 //! PROTOCOL crate that owns the kind, not in the compiler.
 //!
 //! This lives in `nmp-feed` (not the higher `nmp-feed-session` compiler layer)
-//! so protocol crates (`nmp-nip18`, `nmp-nip22`, ...) — which sit BELOW
-//! `nmp-feed-session` in the dependency graph — can depend on it without a
-//! cycle. Registration is register-once (immutable), the same fail-open-drift
+//! so protocol crates — which sit BELOW `nmp-feed-session` in the dependency
+//! graph — can depend on it without a cycle. Registration is register-once
+//! (immutable), the same fail-open-drift
 //! protection [`crate::CustomFeedPolicyRegistry`] uses.
 
 use std::collections::BTreeMap;
@@ -54,9 +55,9 @@ pub struct MappedRow {
 pub type LaneMapping = Arc<dyn Fn(&KernelEvent) -> Vec<MappedRow> + Send + Sync>;
 
 /// Register-once lane-mapping registry. Composition roots register protocol
-/// extractors (`nip18.target`, `nip22.root`, ...) plus `nmp-feed`'s own
-/// `feed.authored` identity mapping into one instance shared across composite
-/// feed opens.
+/// extractors (a repost-target extractor, a comment-root extractor, ...) plus
+/// `nmp-feed`'s own `feed.authored` identity mapping into one instance shared
+/// across composite feed opens.
 #[derive(Default)]
 pub struct LaneMappingRegistry {
     mappings: Mutex<BTreeMap<LaneMappingId, LaneMapping>>,

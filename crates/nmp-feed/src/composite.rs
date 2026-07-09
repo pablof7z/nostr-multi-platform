@@ -26,10 +26,11 @@ pub struct TagKey(pub String);
 /// `KernelEvent -> Vec<MappedRow>` closure with the SAME determinism contract
 /// as [`crate::FlatFeedItemBuilder`]: a function of the delivered event only,
 /// no store peek. Protocol crates register extraction mappings under
-/// framework-owned ids (`nip18.target`, `nip22.root`); `nmp-feed` registers
-/// only the kind-blind identity mapping (`feed.authored`,
-/// [`DIRECT_MAPPING_ID`]). The engine never learns a kind — mapping selection
-/// is entirely the app/protocol composition root's responsibility.
+/// framework-owned ids of their own choosing (e.g. a repost-target extractor,
+/// a comment-root extractor); `nmp-feed` registers only the kind-blind
+/// identity mapping (`feed.authored`, [`DIRECT_MAPPING_ID`]). The engine never
+/// learns a kind — mapping selection is entirely the app/protocol composition
+/// root's responsibility.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
 pub struct LaneMappingId(pub String);
 
