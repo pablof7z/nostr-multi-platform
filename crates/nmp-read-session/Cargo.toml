@@ -13,6 +13,11 @@ crate-type = ["rlib"]
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 nmp-planner = { path = "../nmp-planner", default-features = false, version = "1.0.0-rc.1" }
 nmp-ownership = { workspace = true }
+# #3116 — the demand-set engine applies `nmp_core::trellis_reconciler`'s
+# ordered `ResourceCommand<ReadDemand>` plan directly (`demand_set.rs`).
+# External leaf crate (no NMP-graph edge); the ADR-level tradeoff (transitive
+# compile weight) mirrors the one already accepted for `nmp-core` itself.
+trellis-core = "0.2.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

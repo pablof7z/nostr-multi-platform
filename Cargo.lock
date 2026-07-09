@@ -4259,6 +4259,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+ "trellis-core",
  "tungstenite",
  "web-time",
  "zeroize",
@@ -4975,6 +4976,7 @@ dependencies = [
  "nmp-core",
  "nmp-ownership",
  "nmp-planner",
+ "trellis-core",
 ]
 
 [[package]]

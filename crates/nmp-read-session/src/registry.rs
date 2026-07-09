@@ -26,6 +26,8 @@ use std::sync::{
     Arc, Mutex,
 };
 
+use crate::host::DemandSetReconciler;
+
 /// A single teardown step recorded when a read opens.
 ///
 /// Boxed `FnOnce` so each action runs exactly once on close. `Send` so the
@@ -56,6 +58,12 @@ pub struct DemandSetState {
     /// `Arc<dyn ObservedProjectionSink>` for a newly-added member costs
     /// nothing extra.
     pub reducer: Arc<dyn Any + Send + Sync>,
+    /// The PERSISTENT Trellis-backed reconciler (#3116) this session's
+    /// [`crate::demand_set::reconcile_read_demand_set`] calls diff against.
+    /// Cloneable (`Arc`) for the same reason `reducer` is: a later call
+    /// addressed only by projection key must reuse the SAME graph, not
+    /// rebuild one and lose its committed desired-set state.
+    pub reconciler: Arc<DemandSetReconciler>,
 }
 
 /// An opaque, monotonically-minted read-session identifier.
@@ -257,6 +265,20 @@ impl ReadSessionRegistry {
                 .find(|s| s.projection_key == projection_key)
                 .and_then(|s| s.demand_set.as_ref())
                 .map(|d| Arc::clone(&d.reducer))
+        })
+    }
+
+    /// The persistent [`DemandSetReconciler`] of the demand-set session
+    /// registered under `projection_key`, or `None` under the same
+    /// conditions as [`Self::demand_set_members`].
+    #[must_use]
+    pub fn demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+        self.sessions.lock().ok().and_then(|sessions| {
+            sessions
+                .values()
+                .find(|s| s.projection_key == projection_key)
+                .and_then(|s| s.demand_set.as_ref())
+                .map(|d| Arc::clone(&d.reconciler))
         })
     }
 }
