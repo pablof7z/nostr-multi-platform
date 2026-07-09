@@ -33,6 +33,8 @@
 //! - [`account`]/[`sessions`]/[`composite_sessions`]: stateful-flow helpers
 //!   (#2516/#3086) — feed-session open/close/reopen and active-account-change
 //!   observation.
+//! - [`keyed_read_collection`]: `KeyedReadCollection` constructors (#3115) —
+//!   one per host open/close flavor.
 //! - [`ownership`]: compiled ownership descriptor for crate-ownership reports.
 
 /// Shared Arc-sink + panic-containment mechanics for UniFFI callback shapes.
@@ -79,6 +81,14 @@ pub use composite_sessions::open_composite_feed;
 pub use sessions::{
     close_feed, load_older_feed, load_older_feed_status, open_feed, reopen_feed, FeedError,
     OpenedFeed,
+};
+
+/// Facade-composable constructors for `nmp_read_session::KeyedReadCollection`
+/// against a live `NmpApp` (#3115): one per host open/close flavor
+/// (read-session-backed, observed-projection-backed).
+pub mod keyed_read_collection;
+pub use keyed_read_collection::{
+    keyed_observed_projection_collection, keyed_read_session_collection,
 };
 
 /// Compiled ownership descriptor for crate-ownership reports.

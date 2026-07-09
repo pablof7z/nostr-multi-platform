@@ -51,6 +51,7 @@ mod demand_set;
 mod dependent;
 mod engine;
 mod host;
+mod keyed_collection;
 pub mod ownership;
 mod registry;
 
@@ -61,6 +62,7 @@ pub use host::{
     ReadDependentDemandProvider, ReadHandle, ReadHost, ReadInterestController, ReadOutputEncoder,
     ReadReplayPolicy, ReadSpec,
 };
+pub use keyed_collection::{KeyedCollectionOpen, KeyedReadCollection, MemberKey};
 // #2948 — `ReadDemand.lifecycle` is public API; re-export the type so concept
 // crates naming a demand's close semantics don't take a direct nmp-planner dep.
 pub use nmp_planner::InterestLifecycle;
