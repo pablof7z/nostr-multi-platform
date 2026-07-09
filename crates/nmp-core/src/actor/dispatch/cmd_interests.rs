@@ -1,6 +1,6 @@
 //! Interest, pull-cursor, and test-support dispatch arms.
 //!
-//! Covers: `EnsureInterest`, `ReplaceDependentInterestSet`,
+//! Covers: `EnsureInterest`,
 //! `ApplyDependentInterestDelta`, `DropInterestOwner`, `OpenPullCursor`,
 //! `AdvancePullCursor`, `UnregisterPullCursor`,
 //! `OpenInterest`, `OpenObservedInterest`, `CloseInterest`, and the
@@ -28,26 +28,6 @@ pub(super) fn ensure_interest(
     // Delegates to the shared Kernel::ensure_interest helper (#2045 PR-A)
     // so the headless `apply_actor_command` interpreter uses the same path.
     ports.kernel.ensure_interest(identity, interest);
-    Some(Vec::new())
-}
-
-/// Dispatch `InterestsCommand::ReplaceDependentInterestSet`.
-pub(super) fn replace_dependent_interest_set(
-    owner: crate::subs::SubOwnerKey,
-    children: Vec<crate::kernel::DependentInterestChild>,
-    reason: String,
-    ports: &mut InterestsPorts<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    use crate::actor::tick::maybe_emit_after_dispatch;
-    ports
-        .kernel
-        .replace_dependent_interest_set(owner, children, &reason);
-    maybe_emit_after_dispatch(
-        ports.kernel,
-        ports.running,
-        ports.update_tx,
-        ports.last_emit,
-    );
     Some(Vec::new())
 }
 
@@ -328,11 +308,6 @@ pub(super) fn dispatch(
         InterestsCommand::EnsureInterest { identity, interest } => {
             ensure_interest(identity, interest, ports)
         }
-        InterestsCommand::ReplaceDependentInterestSet {
-            owner,
-            children,
-            reason,
-        } => replace_dependent_interest_set(owner, children, reason, ports),
         InterestsCommand::ApplyDependentInterestDelta {
             owner,
             delta,

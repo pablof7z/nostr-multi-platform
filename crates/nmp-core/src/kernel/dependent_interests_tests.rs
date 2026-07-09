@@ -78,9 +78,14 @@ fn replace_add_shrink_replace_and_empty_fail_closed() {
     let child_b = child("child-b", 2, std::slice::from_ref(&author_b));
 
     let before = pending_triggers(&kernel);
-    let outcome = kernel.replace_dependent_interest_set(
+    let outcome = kernel.apply_dependent_interest_delta(
         owner,
-        vec![child_a.clone(), child_b.clone()],
+        DependentInterestDelta {
+            commands: vec![
+                DependentInterestDeltaCommand::Open(child_a.clone()),
+                DependentInterestDeltaCommand::Open(child_b.clone()),
+            ],
+        },
         "test-dependent-add",
     );
     assert_eq!(outcome.registered_children, 2);
@@ -91,9 +96,14 @@ fn replace_add_shrink_replace_and_empty_fail_closed() {
 
     let child_a_reduced = child("child-a", 3, std::slice::from_ref(&author_c));
     let before = pending_triggers(&kernel);
-    let outcome = kernel.replace_dependent_interest_set(
+    let outcome = kernel.apply_dependent_interest_delta(
         owner,
-        vec![child_a_reduced.clone()],
+        DependentInterestDelta {
+            commands: vec![
+                DependentInterestDeltaCommand::Replace(child_a_reduced.clone()),
+                DependentInterestDeltaCommand::Close(child_b.clone()),
+            ],
+        },
         "test-dependent-shrink",
     );
     assert_eq!(outcome.registered_children, 1);
@@ -106,13 +116,18 @@ fn replace_add_shrink_replace_and_empty_fail_closed() {
     assert_eq!(pending_triggers(&kernel) - before, 1);
 
     let before = pending_triggers(&kernel);
-    let outcome = kernel.replace_dependent_interest_set(owner, Vec::new(), "test-dependent-empty");
+    let outcome = kernel.apply_dependent_interest_delta(
+        owner,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Close(child_a_reduced)],
+        },
+        "test-dependent-empty",
+    );
     assert_eq!(outcome.registered_children, 0);
     assert_eq!(outcome.withdrawn_children, 1);
     assert_eq!(outcome.closed_slots, 1);
     assert_eq!(outcome.changed_registrations, 0);
     assert!(kernel.lifecycle.registry().is_empty());
-    assert!(!kernel.dependent_interest_sets.contains_key(&owner));
     assert_eq!(pending_triggers(&kernel) - before, 1);
 }
 
@@ -125,17 +140,24 @@ fn shared_child_dedups_until_last_source_owner_closes() {
     let shared = child_with_key(shared_key, 10, &[hex(10)]);
 
     let before = pending_triggers(&kernel);
-    let first = kernel.replace_dependent_interest_set(
+    let first = kernel.apply_dependent_interest_delta(
         owner_a,
-        vec![shared.clone()],
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(shared.clone())],
+        },
         "test-dependent-first-owner",
     );
     assert_eq!(first.changed_registrations, 1);
     assert_eq!(pending_triggers(&kernel) - before, 1);
 
     let before = pending_triggers(&kernel);
-    let second =
-        kernel.replace_dependent_interest_set(owner_b, vec![shared], "test-dependent-second-owner");
+    let second = kernel.apply_dependent_interest_delta(
+        owner_b,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(shared.clone())],
+        },
+        "test-dependent-second-owner",
+    );
     assert_eq!(second.changed_registrations, 0);
     assert_eq!(kernel.lifecycle.registry().len(), 1);
     assert_eq!(
@@ -148,8 +170,13 @@ fn shared_child_dedups_until_last_source_owner_closes() {
     assert_eq!(pending_triggers(&kernel) - before, 0);
 
     let before = pending_triggers(&kernel);
-    let first_close =
-        kernel.replace_dependent_interest_set(owner_a, Vec::new(), "test-dependent-first-close");
+    let first_close = kernel.apply_dependent_interest_delta(
+        owner_a,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Close(shared.clone())],
+        },
+        "test-dependent-first-close",
+    );
     assert_eq!(first_close.withdrawn_children, 1);
     assert_eq!(first_close.closed_slots, 0);
     assert_eq!(kernel.lifecycle.registry().len(), 1);
@@ -163,8 +190,13 @@ fn shared_child_dedups_until_last_source_owner_closes() {
     assert_eq!(pending_triggers(&kernel) - before, 0);
 
     let before = pending_triggers(&kernel);
-    let last_close =
-        kernel.replace_dependent_interest_set(owner_b, Vec::new(), "test-dependent-last-close");
+    let last_close = kernel.apply_dependent_interest_delta(
+        owner_b,
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Close(shared)],
+        },
+        "test-dependent-last-close",
+    );
     assert_eq!(last_close.withdrawn_children, 1);
     assert_eq!(last_close.closed_slots, 1);
     assert!(kernel.lifecycle.registry().is_empty());
@@ -183,9 +215,11 @@ fn delta_opens_replaces_and_closes_without_full_owner_replacement() {
     let child_b = child_with_key(shared_key, 2, std::slice::from_ref(&author_b));
     let unrelated = child("unrelated", 3, &[hex(3)]);
 
-    kernel.replace_dependent_interest_set(
+    kernel.apply_dependent_interest_delta(
         other_owner,
-        vec![unrelated.clone()],
+        DependentInterestDelta {
+            commands: vec![DependentInterestDeltaCommand::Open(unrelated.clone())],
+        },
         "test-unrelated-owner",
     );
     let before = pending_triggers(&kernel);

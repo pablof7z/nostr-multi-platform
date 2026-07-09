@@ -312,11 +312,6 @@ pub struct Kernel {
     #[cfg(test)]
     test_profile_lookup: Arc<crate::substrate::TestProfileLookup>,
     pub(crate) timeline_authors: BTreeSet<String>,
-    /// Source owner -> complete current set of child interests it produced.
-    dependent_interest_sets: BTreeMap<
-        crate::subs::SubOwnerKey,
-        BTreeMap<crate::subs::SubIdentity, crate::planner::LogicalInterest>,
-    >,
     /// pubkey → consumer-id refcount (profile claims).
     profile_claims: HashMap<String, BTreeSet<String>>,
     /// ADR-0070 pubkey → Live-liveness consumer-id set.
