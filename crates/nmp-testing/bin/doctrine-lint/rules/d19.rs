@@ -9,30 +9,38 @@
 //! error producers must also emit `UiToken`s, not direct English-only
 //! `set_last_error_toast(Some(...))` calls.
 //!
-//! ### Codec vs. presentation (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
+//! ### Codec vs. presentation, by allowlist (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
 //!
 //! `crate::display::` mixes two different things under one module:
-//! - **Canonical codec** — `to_npub` (and any future `to_bech32`/`to_note`/
-//!   `to_nevent`/`to_nprofile`/`to_naddr`): deterministic, lossless,
-//!   context-free hex↔bech32 conversion. This is TYPE conversion, not
-//!   display, and calling it from a projection builder is legitimate —
-//!   banning it would force every shell (native, wasm, TS) to reimplement
-//!   the same codec, the exact SSOT violation this rule's siblings exist to
-//!   prevent. **Not banned.**
+//! - **Canonical codec** — `to_npub`/`to_bech32`/`to_note`/`to_nevent`/
+//!   `to_nprofile`/`to_naddr`: deterministic, lossless, context-free hex↔
+//!   bech32/NIP-19 conversion. This is TYPE conversion, not display, and
+//!   calling it from a projection builder is legitimate — banning it would
+//!   force every shell (native, wasm, TS) to reimplement the same codec, the
+//!   exact SSOT violation this rule's siblings exist to prevent. **Exempt.**
 //! - **Presentation formatting** — `short_npub` (truncation), `short_hex`,
 //!   `avatar_initials`, `display_name_initials`, `avatar_color_hex`,
-//!   `format_ago_secs`: lossy, context-dependent presentation decisions that
-//!   belong to the shell. **Banned.**
+//!   `format_ago_secs`, and anything added to the module tomorrow: lossy,
+//!   context-dependent presentation decisions that belong to the shell.
+//!   **Banned.**
+//!
+//! The gate enumerates the EXEMPT side, not the banned side. Codecs are the
+//! small, slow-growing, well-defined set (lossless id/pointer encoders);
+//! presentation helpers are open-ended. So D19 keeps the whole-module
+//! `crate::display::` catch-all and skips only the [`CODEC_ALLOWLIST`]
+//! identifiers — every other `crate::display::` helper is banned BY DEFAULT.
+//! A NEW presentation helper (e.g. `crate::display::avatar_shape(`) is caught
+//! without a rule edit; only a genuinely-new codec needs an allowlist add,
+//! which is a deliberate, reviewable event. This is the S12-fragility trap
+//! ADR-0077 exists to prevent: an enumerate-the-banned gate silently misses
+//! the next helper.
 //!
 //! ## What this catches
 //!
-//! - `crate::display::short_npub(`, `crate::display::short_hex(`,
-//!   `crate::display::avatar_initials(`,
-//!   `crate::display::display_name_initials(`,
-//!   `crate::display::avatar_color_hex(`, `crate::display::format_ago_secs(`
-//!   — the presentation-formatting entry points of the display module.
-//!   Calling them in projection code bakes locale-specific English into the
-//!   wire format, violating ADR-0072.
+//! - `crate::display::<helper>(` on a data path, for any `<helper>` NOT in
+//!   [`CODEC_ALLOWLIST`] — the presentation-formatting entry points of the
+//!   display module (current and future). Calling them in projection code
+//!   bakes locale-specific English into the wire format, violating ADR-0072.
 //! - `format_timestamp(` — the same violation via a direct call to the
 //!   `format_timestamp` helper (which lives in `kernel/nostr.rs` and
 //!   historically leaked into `publish_outbox.rs`).
@@ -74,63 +82,34 @@ use std::path::Path;
 
 pub const ID: &str = "D19";
 
-/// Presentation-formatting entry points of `crate::display::` banned in
-/// projection/error producer files. Canonical bech32 codec helpers
-/// (`to_npub`, and any future `to_bech32`/`to_note`/`to_nevent`/
-/// `to_nprofile`/`to_naddr`) are deliberately absent from this list — hex↔
-/// bech32 conversion is deterministic, lossless, context-free TYPE
-/// conversion, not display formatting (#3113, ADR-0077). Each entry is
-/// `(token, message, suggested)`.
-const BANNED_DISPLAY_HELPERS: &[(&str, &str, &str)] = &[
-    (
-        "crate::display::short_npub(",
-        "`crate::display::short_npub(` (truncation) called in a kernel projection \
-         builder violates ADR-0072 (V-115): projections must send raw data; \
-         shells format for display. This is presentation formatting, not the \
-         canonical `to_npub` bech32 codec — the codec is exempt, the truncation \
-         is not (#3113, ADR-0077)",
-        "send the raw `pubkey: String` (hex); the shell converts to bech32 and \
-         truncates on the host side",
-    ),
-    (
-        "crate::display::short_hex(",
-        "`crate::display::short_hex(` (truncation) called in a kernel projection \
-         builder violates ADR-0072 (V-115): projections must send raw data; \
-         shells format for display",
-        "send the raw hex `String`; the shell abbreviates on the host side",
-    ),
-    (
-        "crate::display::avatar_initials(",
-        "`crate::display::avatar_initials(` called in a kernel projection builder \
-         violates ADR-0072 (V-115): projections must send raw data; shells derive \
-         presentation initials themselves",
-        "send the raw `pubkey: String` (hex); the shell derives initials on the \
-         host side",
-    ),
-    (
-        "crate::display::display_name_initials(",
-        "`crate::display::display_name_initials(` called in a kernel projection \
-         builder violates ADR-0072 (V-115): projections must send raw data; \
-         shells derive presentation initials themselves",
-        "send the raw display-name `String`; the shell derives initials on the \
-         host side",
-    ),
-    (
-        "crate::display::avatar_color_hex(",
-        "`crate::display::avatar_color_hex(` called in a kernel projection builder \
-         violates ADR-0072 (V-115): projections must send raw data; shells derive \
-         presentation tint themselves",
-        "send the raw `pubkey: String` (hex); the shell derives avatar tint on the \
-         host side",
-    ),
-    (
-        "crate::display::format_ago_secs(",
-        "`crate::display::format_ago_secs(` called in a kernel projection builder \
-         violates ADR-0072 (V-115): projections must send raw data; shells format \
-         relative time themselves",
-        "send the raw Unix-seconds `u64`; the shell formats relative time on the \
-         host side",
-    ),
+/// The `crate::display::` module prefix. D19 matches this whole-module
+/// catch-all on data-path files and flags every following helper EXCEPT the
+/// canonical codecs in [`CODEC_ALLOWLIST`].
+const DISPLAY_MODULE_PREFIX: &str = "crate::display::";
+
+/// Canonical bech32/NIP-19 codec helpers under `crate::display::` that are
+/// EXEMPT from D19 on the data path (#3113, ADR-0077).
+///
+/// These are deterministic, lossless, context-free id/pointer encoders
+/// (hex↔bech32) — TYPE conversion, not display formatting. Shipping their
+/// output from ONE reusable Rust codec is legitimate; banning it would force
+/// native/wasm/TS shells to each reimplement the same codec, the exact SSOT
+/// violation this rule exists to prevent.
+///
+/// This is the small, slow-growing, well-defined side — so D19 allowlists it
+/// and bans everything else under `crate::display::` by default. Adding a new
+/// entry here is a deliberate, reviewable event (a genuinely-new codec); a
+/// new PRESENTATION helper needs no edit — it is caught by default.
+///
+/// SSOT: this is the one place that names the codec set. D27's bare-token
+/// list points here rather than re-deriving which display helpers are codecs.
+pub const CODEC_ALLOWLIST: &[&str] = &[
+    "to_npub",
+    "to_bech32",
+    "to_note",
+    "to_nevent",
+    "to_nprofile",
+    "to_naddr",
 ];
 
 /// Banned tokens in projection/error producer files unrelated to
@@ -193,23 +172,64 @@ pub fn file_in_scope(path: &Path) -> bool {
 }
 
 /// Returns `(col, message, suggested)` for each banned token on `line`.
-/// `is_comment` and `in_test_cfg` suppress the scan. Canonical bech32 codec
-/// calls (`crate::display::to_npub(` and friends) are never in either banned
-/// list — see [`BANNED_DISPLAY_HELPERS`]'s doc comment (#3113, ADR-0077).
+/// `is_comment` and `in_test_cfg` suppress the scan.
+///
+/// The `crate::display::` scan is a whole-module catch-all minus the
+/// [`CODEC_ALLOWLIST`]: any `crate::display::<helper>` whose `<helper>` is
+/// NOT a canonical codec is flagged, so new presentation helpers are caught
+/// by default (#3113, ADR-0077).
 pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, String, String)> {
     if is_comment || in_test_cfg {
         return Vec::new();
     }
     let mut hits = Vec::new();
-    for (token, message, suggested) in BANNED_DISPLAY_HELPERS.iter().chain(BANNED) {
-        let mut start = 0;
-        while let Some(rel) = line[start..].find(token) {
-            let col = start + rel + 1; // 1-indexed
+
+    // ── crate::display::<helper> — catch-all minus the codec allowlist ────
+    let mut start = 0;
+    while let Some(rel) = line[start..].find(DISPLAY_MODULE_PREFIX) {
+        let prefix_at = start + rel;
+        let ident_at = prefix_at + DISPLAY_MODULE_PREFIX.len();
+        let ident = leading_identifier(&line[ident_at..]);
+        // Advance past this occurrence regardless of verdict (min 1 to avoid
+        // an infinite loop on a bare/partial `crate::display::`).
+        start = ident_at + ident.len().max(1);
+        if ident.is_empty() || CODEC_ALLOWLIST.contains(&ident) {
+            continue; // codec (or malformed) — exempt
+        }
+        hits.push((
+            prefix_at + 1, // 1-indexed column of `crate::display::`
+            format!(
+                "`crate::display::{ident}` called on a projection / snapshot / \
+                 error-producer / FFI data path violates ADR-0072 (V-115): only \
+                 canonical bech32/NIP-19 codecs \
+                 (to_npub/to_bech32/to_note/to_nevent/to_nprofile/to_naddr) are \
+                 exempt — every other `crate::display::` helper is presentation \
+                 formatting and belongs in the shell (#3113, ADR-0077)"
+            ),
+            "send raw protocol data (hex pubkey, Unix-second u64, machine token); \
+             the shell formats for display with its own locale/TZ/bech32 helpers"
+                .to_string(),
+        ));
+    }
+
+    // ── Non-display banned tokens (format_timestamp, legacy error toast) ──
+    for (token, message, suggested) in BANNED {
+        let mut s = 0;
+        while let Some(rel) = line[s..].find(token) {
+            let col = s + rel + 1; // 1-indexed
             hits.push((col, message.to_string(), suggested.to_string()));
-            start += rel + token.len();
+            s += rel + token.len();
         }
     }
     hits
+}
+
+/// The leading Rust-identifier run (`[A-Za-z0-9_]*`) of `s`.
+fn leading_identifier(s: &str) -> &str {
+    let end = s
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .unwrap_or(s.len());
+    &s[..end]
 }
 
 #[cfg(test)]

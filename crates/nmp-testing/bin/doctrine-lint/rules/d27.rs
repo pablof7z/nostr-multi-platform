@@ -8,19 +8,13 @@
 //!
 //! ### Codec vs. presentation (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
 //!
-//! Two different things were originally conflated under one "display leak"
-//! category:
-//! - **Canonical codec** — `to_npub` (and any future `to_bech32`/`to_note`/
-//!   `to_nevent`/`to_nprofile`/`to_naddr`): deterministic, lossless,
-//!   context-free hex↔bech32 conversion, the same class of operation as
-//!   hex↔base64. Shipping this from ONE reusable Rust codec is legitimate;
-//!   banning it would force native/wasm/TS shells to each reimplement the
-//!   same codec — the exact SSOT violation this rule exists to prevent.
-//!   **Not banned.**
-//! - **Presentation formatting** — `short_npub` (truncation), `short_hex`,
-//!   `avatar_initials`, `display_name_initials`, `avatar_color_hex`,
-//!   `format_ago_secs`: lossy, context-dependent presentation decisions.
-//!   **Banned.**
+//! Canonical bech32/NIP-19 codecs (lossless hex↔bech32 id/pointer encoders)
+//! are TYPE conversion, not display, and are exempt; lossy presentation
+//! helpers (truncation, initials, avatar tint, relative time) are banned. The
+//! codec set is owned in ONE place — [`super::d19::CODEC_ALLOWLIST`] (SSOT);
+//! D27 enumerates the presentation side because it matches bare (imported)
+//! calls rather than a module prefix, but must never list a name that
+//! allowlist declares a codec.
 //!
 //! ## What this catches
 //!
@@ -34,8 +28,7 @@
 //! - `avatar_color_hex(` — DJB2-derived avatar background colour
 //! - `format_ago_secs(` — relative-time "5m ago" string
 //!
-//! `to_npub(` — the canonical hex→bech32 codec — is deliberately absent from
-//! this list; see "Codec vs. presentation" above.
+//! (`to_npub(` and the other codecs are absent by design — see above.)
 //!
 //! **Part B — precomputed `*_label` / `*_display` String struct fields** in
 //! the same paths. These bake English display strings into the projection wire
@@ -81,10 +74,12 @@ use std::path::Path;
 
 pub const ID: &str = "D27";
 
-/// Part A — banned presentation-formatting call tokens. Canonical bech32
-/// codec calls (`to_npub(`, and any future `to_bech32(`/`to_note(`/
-/// `to_nevent(`/`to_nprofile(`/`to_naddr(`) are deliberately absent — see the
-/// "Codec vs. presentation" doc section above (#3113, ADR-0077).
+/// Part A — banned presentation-formatting call tokens. D27 matches bare
+/// (imported) calls, so it enumerates the presentation helpers directly
+/// rather than running a module-wide catch-all like D19. The canonical bech32
+/// codecs are deliberately absent — the codec set is owned in ONE place,
+/// [`super::d19::CODEC_ALLOWLIST`] (SSOT); a helper named there must never
+/// appear in this list (#3113, ADR-0077).
 /// Each entry: (token, short violation tag for the message).
 const BANNED_CALLS: &[(&str, &str)] = &[
     ("short_npub(", "short_npub"),

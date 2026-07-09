@@ -47,6 +47,47 @@ fn does_not_flag_to_npub_codec_call() {
     );
 }
 
+/// Every entry of the codec allowlist is exempt — proven here for a second
+/// codec (`to_bech32`) so the allowlist, not a single hard-coded name, is
+/// what grants the exemption.
+#[test]
+fn does_not_flag_to_bech32_codec_call() {
+    let hits = check("    let s = crate::display::to_bech32(id);", false, false);
+    assert!(
+        hits.is_empty(),
+        "to_bech32 is an allowlisted canonical codec — must not be flagged; \
+         got: {:?}",
+        hits
+    );
+}
+
+/// THE DURABILITY POINT (ADR-0077, S12 fragility): a NEW `crate::display::`
+/// helper that nobody has added to any banned list — invented here as
+/// `avatar_shape` — must be caught BY DEFAULT because D19 allowlists only the
+/// codecs and bans the open-ended presentation side. If this ever stops
+/// firing, the gate has regressed to enumerate-the-banned and the next
+/// presentation helper will leak silently.
+#[test]
+fn flags_new_display_helper_by_default() {
+    let hits = check("    let x = crate::display::avatar_shape(pk);", false, false);
+    assert_eq!(
+        hits.len(),
+        1,
+        "a NEW crate::display:: helper not in the codec allowlist must be \
+         flagged by default (catch-by-default; #3113, ADR-0077)"
+    );
+    assert!(
+        hits[0].1.contains("avatar_shape"),
+        "message must name the offending helper; got: {}",
+        hits[0].1
+    );
+    assert!(
+        hits[0].1.contains("ADR-0072"),
+        "message must reference ADR-0072; got: {}",
+        hits[0].1
+    );
+}
+
 #[test]
 fn flags_format_timestamp_in_prod() {
     let hits = check(

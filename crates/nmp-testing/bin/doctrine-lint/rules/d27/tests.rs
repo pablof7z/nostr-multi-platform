@@ -38,6 +38,22 @@ fn still_flags_short_npub_truncation_call() {
     assert!(hits[0].1.contains("short_npub"));
 }
 
+/// SSOT guard (#3113, ADR-0077): the codec set is owned by
+/// `d19::CODEC_ALLOWLIST`. D27's bare-token banned list must never name a
+/// helper that the allowlist declares a codec — otherwise the two rules would
+/// disagree about what is a codec vs. presentation.
+#[test]
+fn banned_calls_never_overlap_the_codec_allowlist() {
+    for (token, _tag) in BANNED_CALLS {
+        let name = token.trim_end_matches('(');
+        assert!(
+            !crate::rules::d19::CODEC_ALLOWLIST.contains(&name),
+            "`{name}` is a canonical codec (d19::CODEC_ALLOWLIST) and must not \
+             appear in D27's BANNED_CALLS"
+        );
+    }
+}
+
 #[test]
 fn flags_avatar_color_hex_call() {
     let hits = check("    color: avatar_color_hex(&pk),", false, false);
