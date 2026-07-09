@@ -267,10 +267,12 @@ impl<S> KernelReaderRegistrar for BrowserAppBuilder<S> {
         g.profile_lookup = Some(lookup);
     }
 
-    fn set_mailbox_cache_reader(&self, cache: Arc<dyn nmp_core::substrate::MailboxCache>) {
-        let Ok(mut g) = self.inner.lock() else { return };
-        g.mailbox_cache_reader = Some(cache);
-    }
+    // No-op: the browser runtime does not (yet) drive a NIP-19 identity
+    // encoder off a `MailboxCache` reader — nothing in this crate reads the
+    // registered cache back out. The trait method is still implemented
+    // because `nmp_substrate::install` calls it generically across every
+    // `KernelReaderRegistrar` composition root.
+    fn set_mailbox_cache_reader(&self, _cache: Arc<dyn nmp_core::substrate::MailboxCache>) {}
 
     fn set_contact_list_reader(&self, reader: Arc<dyn nmp_core::slots::ContactListReader>) {
         let Ok(mut g) = self.inner.lock() else { return };
@@ -360,28 +362,18 @@ impl<S> RoutingFactoryRegistrar for BrowserAppBuilder<S> {
         g.relay_list_publish_support = Some(support);
     }
 
-    fn set_external_event_sink_policy_factory<F>(&self, factory: F)
-    where
-        F: Fn(
-                nmp_core::substrate::RawEventForwardPolicyContext,
-            ) -> Vec<Arc<dyn nmp_core::substrate::ExternalEventSinkPolicy>>
-            + Send
-            + Sync
-            + 'static,
-    {
-        let Ok(mut g) = self.inner.lock() else { return };
-        g.external_event_sink_policy_factory = Some(Box::new(factory));
-    }
+    // `set_external_event_sink_policy_factory` is intentionally NOT overridden
+    // here — the browser relay transport has no outbound-forward path that
+    // reads a registered factory, so the trait's built-in no-op default
+    // applies.
 
-    fn set_nostrconnect_bootstrap_relay(&self, url: String) {
-        let Ok(mut g) = self.inner.lock() else { return };
-        g.nostrconnect_bootstrap_relay = Some(url);
-    }
+    // No-op: nothing in this crate reads the NIP-46 bootstrap relay / perms
+    // back out of the builder (the browser NIP-46 signer provider does not
+    // consume them). The trait methods are still implemented because
+    // `RoutingFactoryRegistrar` requires them of every composition root.
+    fn set_nostrconnect_bootstrap_relay(&self, _url: String) {}
 
-    fn set_nostrconnect_perms(&self, perms: String) {
-        let Ok(mut g) = self.inner.lock() else { return };
-        g.nostrconnect_perms = Some(perms);
-    }
+    fn set_nostrconnect_perms(&self, _perms: String) {}
 
     fn set_relay_user_agent(&self, user_agent: String) {
         let Ok(mut g) = self.inner.lock() else { return };

@@ -5,9 +5,11 @@
 //! ADR-0070 reference-resolution routing helpers for `NmpRuntimeCore` (#2038).
 //!
 //! Defined here so `nmp-browser-runtime` can handle `resolve_ref` /
-//! `release_ref` without depending on the retired `nmp-wasm` protocol crate. The
-//! discriminant encoding is identical to the native FFI (namespace 0=profile,
-//! 1=event; shape per-namespace; liveness 0=CacheOk, 1=Live).
+//! `release_ref` without depending on the retired `nmp-wasm` protocol crate.
+//! The `u32` discriminant encoding below (namespace 0=profile, 1=event; shape
+//! per-namespace; liveness 0=CacheOk, 1=Live) is unique to this browser wasm
+//! JSON wire — native passes typed `RefNamespace`/`RefShape`/`RefLiveness`
+//! enums directly over UniFFI, with no discriminant encoding to mirror.
 //!
 //! Always-compiled: `NmpRuntimeCore` exercises this logic on native CI.
 

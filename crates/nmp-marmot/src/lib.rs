@@ -7,10 +7,10 @@
 //!
 //! - `nmp-core` gains zero MLS types. All MLS / MDK types stay inside this
 //!   crate. `nmp-marmot` is the SOLE importer of `mdk-core` / `openmls`.
-//! - No other NMP crate depends on MLS types. The substrate module impls
-//!   (`domain` / `view` / `action`) expose only NMP-native record / payload /
-//!   plan shapes; MDK types appear only in [`service`], which is consumed
-//!   in-crate by tests and protocol projection code.
+//! - No other NMP crate depends on MLS types. [`projection`] exposes only
+//!   NMP-native record / payload shapes; MDK types appear only in
+//!   [`service`], which is consumed in-crate by tests and protocol
+//!   projection code.
 //!
 //! ## Storage seam — D4 (one writer per fact)
 //!
@@ -28,17 +28,16 @@
 //! not incidental. The invariant: **no fact is written to both stores.** A
 //! kind:445 group message exists once in LMDB as an opaque ciphertext event
 //! (kernel-owned) and its *decrypted* plaintext exists once in MDK SQLite
-//! (service-owned) — different facts, one writer each. The
-//! `domain` records ([`domain::MarmotGroupRecord`] et al.) are pure
-//! read-projections derived from MDK SQLite; they are never the write path
-//! and hold no ratchet state (see [`domain`] rustdoc). This crate is the
+//! (service-owned) — different facts, one writer each. The [`projection`]
+//! records are pure read-projections derived from MDK SQLite; they are
+//! never the write path and hold no ratchet state. This crate is the
 //! only code that opens the SQLite file, so D4's "one writer" holds by
 //! construction — no other crate can write MLS state.
 //!
 //! ## Two-layer architecture
 //!
-//! 1. **Substrate module layer** ([`domain`], [`view`]) — mirrors `nmp-nip29`.
-//!    Plain record + view types, exported as public types. These shapes carry
+//! 1. **Projection layer** ([`projection`]) — the live read path. Plain
+//!    record + view types, exported as public types. These shapes carry
 //!    NO MDK types — they satisfy the kernel-boundary grep.
 //!    Marmot write capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
@@ -67,14 +66,12 @@
 //! KeyPackage events (kind:30443) use standard author-write outbox
 //! routing. Interest helpers live in [`interest`].
 
-pub mod domain;
 pub mod interest;
 pub mod projection;
 mod runtime;
 pub mod service;
 /// `impl MarmotService` read-projection methods, split out of `service.rs`.
 mod service_reads;
-pub mod view;
 pub mod wire;
 
 pub use runtime::{install, MarmotConfig, MarmotInstallError, MarmotLocalCredentialSlot};
@@ -93,13 +90,11 @@ pub mod mls_types {
     pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
 }
 
-// `nmp-marmot` exposes its 4 record types and 4 view types as public types
-// under `domain` and `view`. View types are plain types reached via static
-// dispatch; the live extension path is `ObservedProjectionSink` (the Marmot
-// projection registers one in `projection/`). Write capabilities dispatch
-// through the `"nmp.marmot"` namespace installed by `nmp_marmot::install`.
-// Explicit Rust composition installs Marmot; there is no Marmot-specific
-// native lifecycle shell.
+// `nmp-marmot`'s live read path is `projection/`; the extension seam is
+// `ObservedProjectionSink` (the Marmot projection registers one there).
+// Write capabilities dispatch through the `"nmp.marmot"` namespace
+// installed by `nmp_marmot::install`. Explicit Rust composition installs
+// Marmot; there is no Marmot-specific native lifecycle shell.
 
 #[cfg(test)]
 mod tests;
