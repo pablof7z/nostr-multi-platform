@@ -27,6 +27,11 @@ const ALLOWED_TRELLIS_MANIFEST_DEPS: &[(&str, &str)] = &[
     // deps, no NMP-graph cycle — see `docs/architecture/crate-boundaries.md`.
     ("crates/nmp-core/Cargo.toml", "trellis-core"),
     ("crates/nmp-read-session/Cargo.toml", "trellis-core"),
+    // #3116 settle-gate finding 1 — nmp-nip17's peer relay-list reconciler
+    // was the last surviving hand-rolled family-shape reconciler the sweep
+    // missed; it applies `ResourceCommand<()>` directly, same shape as the
+    // two entries above.
+    ("crates/nmp-nip17/Cargo.toml", "trellis-core"),
 ];
 
 #[test]
