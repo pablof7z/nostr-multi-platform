@@ -22,6 +22,8 @@ For the developer-facing overview, see
   capability, and shell boundary.
 - [ADR-0073](0073-adr-reset-and-rolling-ratchets.md) - ADR directory governance
   and rolling ratchets.
+- [ADR-0077](0077-doctrines-are-guardrails-not-dogma.md) - Doctrines are
+  advisory guardrails, not dogma, and may never block their own improvement.
 
 - [ADR-0067](0067-browser-runtime-ownership-split.md) - Browser runtime
   ownership split (nmp-wasm is ABI glue).

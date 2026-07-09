@@ -1,5 +1,8 @@
-// D27 positive fixture — banned display helpers and precomputed label/display
-// fields in projection code. Each marked section must fire a D27 finding.
+// D27 positive fixture — banned presentation-formatting helpers and
+// precomputed label/display fields in projection code. Each marked section
+// must fire a D27 finding. Canonical bech32 codec use (`to_npub`) is
+// deliberately NOT in this fixture — see neg.rs, where it is proven
+// compliant (#3113, ADR-0077).
 //
 // Placed under fixtures/ so the walker never scans it during a real nmp-core
 // or nmp-nip* sweep. Opted into D27 scope via --d27-extra-scope in the smoke
@@ -11,7 +14,6 @@ fn build_wallet_status(pk: &str, npub: &str, now: u64, then: u64) -> WalletStatu
     WalletStatus {
         // Each call below must fire a D27 finding.
         wallet_npub_short: short_npub(pk),          // D27: short_npub banned
-        npub_full: to_npub(pk),                     // D27: to_npub banned
         short_id: short_hex(pk),                    // D27: short_hex banned
         initials: avatar_initials(npub),            // D27: avatar_initials banned
         name_initials: display_name_initials("Alice Smith"), // D27: display_name_initials banned

@@ -1,21 +1,34 @@
-//! D27 — banned display helpers in projection / snapshot / FFI serialization.
+//! D27 — banned presentation-formatting helpers in projection / snapshot /
+//! FFI serialization; canonical bech32 codecs are exempt.
 //!
 //! ADR-0072 §3 deferred this lint (see §"What this ADR does *not* do").
-//! Regression history: pubkey-to-npub and "ago" formatting leaked into the
-//! snapshot wire format twice (#1099 signer-label, #623 wallet-status).
+//! Regression history: pubkey-to-npub abbreviation and "ago" formatting
+//! leaked into the snapshot wire format twice (#1099 signer-label, #623
+//! wallet-status).
+//!
+//! ### Codec vs. presentation (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
+//!
+//! Canonical bech32/NIP-19 codecs (lossless hex↔bech32 id/pointer encoders)
+//! are TYPE conversion, not display, and are exempt; lossy presentation
+//! helpers (truncation, initials, avatar tint, relative time) are banned. The
+//! codec set is owned in ONE place — [`super::d19::CODEC_ALLOWLIST`] (SSOT);
+//! D27 enumerates the presentation side because it matches bare (imported)
+//! calls rather than a module prefix, but must never list a name that
+//! allowlist declares a codec.
 //!
 //! ## What this catches
 //!
-//! **Part A — banned display-helper calls** in projection / snapshot / FFI
-//! serialization code in `nmp-core` (projection paths only), `nmp-nip*`, and
-//! `nmp-marmot`:
-//! - `short_npub(` — bech32 abbreviation of a pubkey
-//! - `to_npub(` — full bech32 encoding of a pubkey
+//! **Part A — banned presentation-formatting calls** in projection / snapshot
+//! / FFI serialization code in `nmp-core` (projection paths only), `nmp-nip*`,
+//! and `nmp-marmot`:
+//! - `short_npub(` — bech32 abbreviation of a pubkey (truncation)
 //! - `short_hex(` — hex abbreviation (first8…last8)
 //! - `avatar_initials(` — 2-char avatar seed derived from an npub
 //! - `display_name_initials(` — 2-char initials from a display name
 //! - `avatar_color_hex(` — DJB2-derived avatar background colour
 //! - `format_ago_secs(` — relative-time "5m ago" string
+//!
+//! (`to_npub(` and the other codecs are absent by design — see above.)
 //!
 //! **Part B — precomputed `*_label` / `*_display` String struct fields** in
 //! the same paths. These bake English display strings into the projection wire
@@ -61,11 +74,15 @@ use std::path::Path;
 
 pub const ID: &str = "D27";
 
-/// Part A — banned display-helper call tokens.
+/// Part A — banned presentation-formatting call tokens. D27 matches bare
+/// (imported) calls, so it enumerates the presentation helpers directly
+/// rather than running a module-wide catch-all like D19. The canonical bech32
+/// codecs are deliberately absent — the codec set is owned in ONE place,
+/// [`super::d19::CODEC_ALLOWLIST`] (SSOT); a helper named there must never
+/// appear in this list (#3113, ADR-0077).
 /// Each entry: (token, short violation tag for the message).
 const BANNED_CALLS: &[(&str, &str)] = &[
     ("short_npub(", "short_npub"),
-    ("to_npub(", "to_npub"),
     ("short_hex(", "short_hex"),
     ("avatar_initials(", "avatar_initials"),
     ("display_name_initials(", "display_name_initials"),

@@ -10,7 +10,9 @@ use super::{fixture_path, run_lint, workspace_root};
 // ─── D27 positive fixture ─────────────────────────────────────────────────────
 
 /// The positive fixture (`fixtures/d27/pos.rs`) plants:
-///   Part A — 7 banned display-helper calls (one per helper).
+///   Part A — 6 banned presentation-formatting helper calls (one per helper;
+///     the canonical `to_npub` bech32 codec is deliberately absent — #3113,
+///     ADR-0077).
 ///   Part B — 3 precomputed `*_label` / `*_display` String struct fields.
 ///
 /// All 10 sites must be flagged. The fixture is staged under
@@ -47,7 +49,6 @@ fn d27_positive_fixture_fires() {
     // All Part-A banned-call tokens must be named in the output.
     for token in [
         "short_npub",
-        "to_npub",
         "short_hex",
         "avatar_initials",
         "display_name_initials",
@@ -60,6 +61,14 @@ fn d27_positive_fixture_fires() {
             stdout
         );
     }
+    // The canonical bech32 codec is NOT part of the positive fixture and must
+    // never appear as a D27 finding (#3113, ADR-0077).
+    assert!(
+        !stdout.contains("`to_npub("),
+        "to_npub is a canonical codec, not display formatting — must not be \
+         flagged; stdout:\n{}",
+        stdout
+    );
     // Part-B precomputed field names must appear in the output.
     for field in ["signer_label", "status_label", "wallet_npub_display"] {
         assert!(
@@ -120,7 +129,7 @@ fn d27_negative_fixture_clean() {
 ///     silent).
 ///
 /// Exactly one D27 finding must result, and it must name the stale marker — not
-/// the legitimately-suppressed `to_npub` call.
+/// the legitimately-suppressed `short_npub` call.
 #[test]
 fn d27_stale_allow_fixture_fires() {
     let workspace = workspace_root();
@@ -149,8 +158,9 @@ fn d27_stale_allow_fixture_fires() {
         "stale-allow fixture must emit a D27 `stale` finding; stdout:\n{}",
         stdout
     );
-    // The legitimately-allowed `to_npub` call must remain suppressed: the only
-    // finding is the stale marker, so the suggestion text must not name to_npub.
+    // The legitimately-allowed `short_npub` call must remain suppressed: the
+    // only finding is the stale marker, so the suggestion text must not name
+    // short_npub.
     assert_eq!(
         stdout.matches("error[D27]").count(),
         1,

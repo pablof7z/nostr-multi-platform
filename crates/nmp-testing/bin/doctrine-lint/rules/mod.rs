@@ -1,6 +1,16 @@
 //! Per-rule lint modules. Each rule exposes a `check(line) -> Vec<(col, msg,
 //! suggested)>` function that the driver calls per scanned line, and an
 //! `ID: &'static str` constant for `// doctrine-allow:` matching.
+//!
+//! These rules are refinable by design: a rule is a strong default, not
+//! untouchable law. When a rule is too strict, too narrow, miscategorized, or
+//! superseded, the correct fix is to change the rule (relax, harden,
+//! re-scope, or remove it) — not to contort product code around it, and not
+//! to sprinkle `doctrine-allow:` markers over a pattern the rule
+//! misclassifies. See
+//! [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md)
+//! (D19/D27's codec-vs-presentation refinement, #3113, is the canonical
+//! example).
 
 pub mod a6;
 pub mod action_namespace;

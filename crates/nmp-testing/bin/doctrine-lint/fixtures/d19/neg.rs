@@ -10,6 +10,13 @@ fn build_profile_card(pubkey: &str, created_at: u64) -> ProfileCard {
     }
 }
 
+/// #3113 / ADR-0077 — `to_npub` is a canonical, lossless hex<->bech32 codec,
+/// not display formatting. Calling it directly in projection-builder prod
+/// code (outside `#[cfg(test)]`) must NOT fire D19.
+fn build_npub_for_wire(pubkey: &str) -> String {
+    crate::display::to_npub(pubkey)
+}
+
 fn publish_error(kernel: &mut Kernel) {
     kernel.set_last_error_token(&crate::ui_token::UiToken::error(
         crate::ui_token::codes::PUBLISH_SIGN_FAILED,

@@ -14,9 +14,30 @@
 //! bech32 encoding, npub abbreviation, hex abbreviation, initials, avatar tint,
 //! and relative-time bucketing.
 //!
-//! Do not call these helpers from projection builders, snapshot structs, or
-//! FFI serialization paths. Those paths must emit raw pubkeys, timestamps,
-//! counts, and optional metadata so each host can choose its own presentation.
+//! # Codec vs. presentation (#3113, ADR-0077)
+//!
+//! This module mixes two different kinds of helper, and the doctrine-lint
+//! D19/D27 gates that guard projection/snapshot/FFI paths draw the line
+//! between them by helper name, not by module:
+//!
+//! - **Canonical codec** — [`to_npub`]: deterministic, lossless, context-free
+//!   hex↔bech32 conversion (the same class of operation as hex↔base64). This
+//!   is TYPE conversion, not display, and calling it from a projection
+//!   builder or FFI serialization path is legitimate — it is how a single
+//!   Rust codec avoids being reimplemented per shell (native/wasm/TS).
+//!   **Not banned on the data path.**
+//! - **Presentation formatting** — [`short_npub`], [`short_hex`],
+//!   [`avatar_initials`], [`display_name_initials`], [`avatar_color_hex`],
+//!   [`format_ago_secs`]: lossy, context-dependent presentation decisions
+//!   (truncation, initials, colour, relative time). **Banned on the data
+//!   path** — do not call these from projection builders, snapshot structs,
+//!   or FFI serialization paths. Those paths must emit raw pubkeys,
+//!   timestamps, counts, and optional metadata so each host derives its own
+//!   presentation.
+//!
+//! A future codec addition (`to_bech32`/`to_note`/`to_nevent`/`to_nprofile`/
+//! `to_naddr`) follows the same rule as [`to_npub`]: lossless encoding of an
+//! id/pointer is a codec, not a display leak.
 //!
 //! V-33 — replaced duplicate helpers previously scattered across
 //! `nmp-nip17`, `nmp-nip02`, `nmp-nip29`, `nmp-nip01`, `nmp-app-marmot`,

@@ -45,6 +45,16 @@ fn d19_positive_fixture_fires() {
         "d19 finding must name crate::display::; stdout:\n{}",
         stdout
     );
+    // Catch-by-default (#3113, ADR-0077): the fixture plants a NEW
+    // `crate::display::avatar_shape` helper that is in no banned list; the
+    // allowlist-inverted gate must flag it. This is the durability point —
+    // if it stops firing, D19 has regressed to enumerate-the-banned.
+    assert!(
+        stdout.contains("avatar_shape"),
+        "d19 must catch a new (non-codec) crate::display:: helper by default; \
+         stdout:\n{}",
+        stdout
+    );
     assert!(
         stdout.contains("ADR-0072"),
         "d19 finding message must reference ADR-0072; stdout:\n{}",

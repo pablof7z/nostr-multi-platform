@@ -16,9 +16,11 @@ pub struct StaleAllowRow {
 
 /// A genuine banned call that is LEGITIMATELY allowed must NOT be reported as
 /// stale: the marker silences a real finding, so the line is compliant and the
-/// stale path must never trigger here.
+/// stale path must never trigger here. Uses `short_npub` (presentation
+/// truncation, still banned) rather than `to_npub` (canonical codec, exempt
+/// per #3113/ADR-0077) so this fixture keeps testing legit-suppression.
 fn build(pk: &str) -> String {
-    to_npub(pk) // doctrine-allow: D27 — exercises the legit-suppression path
+    short_npub(pk) // doctrine-allow: D27 — exercises the legit-suppression path
 }
 
 // A comment-only line that merely QUOTES the marker text is documentation, not
