@@ -46,6 +46,12 @@ serde_json = { workspace = true }
 # send blocked on missing kind:10050, etc.) — D6 surfaces these as toasts
 # but the structured warn also helps a host's diagnostics screen.
 tracing = "0.1"
+# #3116 — the peer relay-list reconciler in `dm_runtime.rs` applies
+# `nmp_core::trellis_reconciler`'s ordered `ResourceCommand<()>` plan
+# directly (last hand-rolled family-shape reconciler the #3115/#3116 sweep
+# missed). External leaf crate (no NMP-graph edge); mirrors the dependency
+# already accepted for `nmp-core` and `nmp-read-session`.
+trellis-core = "0.2.1"
 
 [dev-dependencies]
 # `native` enables `ActionRegistry` (via `__ffi_internal`) for registry-level

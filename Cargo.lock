@@ -4590,6 +4590,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "trellis-core",
 ]
 
 [[package]]

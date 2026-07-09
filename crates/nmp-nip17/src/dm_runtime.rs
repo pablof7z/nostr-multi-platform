@@ -18,12 +18,32 @@
 //! [`ActorCommand`](nmp_core::actor::ActorCommand) translation, the snapshot
 //! projection wiring, and the lock that owns `DmRuntimeState` across ticks.
 //! This crate just decides *what should happen* given the inputs.
+//!
+//! # Trellis-backed peer diff (#3116)
+//!
+//! The peer relay-list interest set's added/removed diff is NOT hand-rolled:
+//! [`DmRuntimeState`] owns one session-persistent
+//! [`nmp_core::trellis_reconciler::KeyedReconciler`]`<String, ()>` keyed by
+//! peer pubkey (the last surviving hand-rolled family-shape reconciler the
+//! #3115/#3116 sweep missed). [`DmRuntimeState::reconcile`] feeds it the
+//! full desired peer set every call; Trellis returns an ORDERED
+//! `Vec<ResourceCommand<()>>` — `Open` for a newly-desired peer, `Close` for
+//! a peer no longer desired — which [`apply_peer_commands`] turns into
+//! `PushPeerRelayListInterest` / `WithdrawPeerRelayListInterest` effects
+//! **in Vec order** (never sorted). An empty desired map (account cleared or
+//! switched) closes every currently-open peer in one call — the drain-on-close
+//! semantics the pre-migration `mem::take` loop implemented.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
+use nmp_core::trellis_reconciler::KeyedReconciler;
 use nmp_signer_iface::UnsignedEvent;
+use trellis_core::{ResourceCommand, ResourceKey};
 
 use crate::dm_relay_list::build_dm_relay_list_event;
+
+/// Trellis-internal diagnostic scope label — never surfaced to a concept.
+const PEER_RELAY_LIST_RECONCILER_SCOPE: &str = "nmp.nip17.dm-runtime.peer-relay-list.v1";
 
 /// Reconciler state for a host-driven NIP-17 DM runtime.
 ///
@@ -32,11 +52,28 @@ use crate::dm_relay_list::build_dm_relay_list_event;
 /// emits effects only on real change.
 ///
 /// [`reconcile`]: DmRuntimeState::reconcile
-#[derive(Default)]
 pub struct DmRuntimeState {
     last_inbox_pubkey: Option<String>,
     last_published: Option<(String, BTreeSet<String>)>,
-    last_peer_relay_list_pubkeys: BTreeSet<String>,
+    /// Trellis-backed keyed reconciler over the live peer relay-list
+    /// interest set (#3116) — see module docs. Owns the incremental
+    /// desired-vs-live diff that used to be the hand-rolled
+    /// `last_peer_relay_list_pubkeys: BTreeSet<String>` field.
+    peer_reconciler: KeyedReconciler<String, ()>,
+}
+
+impl Default for DmRuntimeState {
+    fn default() -> Self {
+        Self {
+            last_inbox_pubkey: None,
+            last_published: None,
+            peer_reconciler: KeyedReconciler::<String, ()>::new(
+                PEER_RELAY_LIST_RECONCILER_SCOPE,
+                peer_resource_key,
+            )
+            .expect("fresh KeyedReconciler construction over an empty graph cannot fail"), // doctrine-allow: D6 — construction over a brand-new empty graph before any transaction runs; `KeyedReconciler::new` can only fail on a Trellis-internal graph-build error, which is unreachable here (mirrors `nmp-core::kernel::kernel_new`'s identical precedent for `feed_author_reconciler`)
+        }
+    }
 }
 
 impl DmRuntimeState {
@@ -69,9 +106,7 @@ impl DmRuntimeState {
         let mut effects = Vec::new();
         let active_pubkey = active_pubkey.filter(|pk| !pk.is_empty());
         let Some(account) = active_pubkey else {
-            for peer in std::mem::take(&mut self.last_peer_relay_list_pubkeys) {
-                effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
-            }
+            apply_peer_commands(&mut effects, self.peer_reconciler.reconcile(BTreeMap::new()));
             if let Some(previous_account) = self.last_inbox_pubkey.take() {
                 effects.push(DmRuntimeEffect::WithdrawOwnRelayListInterest(
                     previous_account,
@@ -88,9 +123,7 @@ impl DmRuntimeState {
                     previous_account.clone(),
                 ));
             }
-            for peer in std::mem::take(&mut self.last_peer_relay_list_pubkeys) {
-                effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
-            }
+            apply_peer_commands(&mut effects, self.peer_reconciler.reconcile(BTreeMap::new()));
             self.last_inbox_pubkey = Some(account.to_string());
             effects.push(DmRuntimeEffect::PushInboxInterest(account.to_string()));
             effects.push(DmRuntimeEffect::PushOwnRelayListInterest(
@@ -111,22 +144,10 @@ impl DmRuntimeState {
             .filter(|peer| !peer.is_empty() && peer.as_str() != account)
             .cloned()
             .collect::<BTreeSet<_>>();
-        for peer in self
-            .last_peer_relay_list_pubkeys
-            .difference(&next_peers)
-            .cloned()
-            .collect::<Vec<_>>()
-        {
-            effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(peer));
-        }
-        for peer in next_peers
-            .difference(&self.last_peer_relay_list_pubkeys)
-            .cloned()
-            .collect::<Vec<_>>()
-        {
-            effects.push(DmRuntimeEffect::PushPeerRelayListInterest(peer));
-        }
-        self.last_peer_relay_list_pubkeys = next_peers;
+        let peer_commands = self
+            .peer_reconciler
+            .reconcile(next_peers.into_iter().map(|peer| (peer, ())).collect());
+        apply_peer_commands(&mut effects, peer_commands);
 
         let event = build_dm_relay_list_event(read_relay_urls);
         let relay_urls = relay_urls_from_event(&event);
@@ -199,6 +220,41 @@ fn relay_urls_from_event(event: &UnsignedEvent) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+/// Derives a peer pubkey's single-segment `ResourceKey`. Single-segment
+/// means [`ResourceKey::as_str`] recovers the ORIGINAL peer pubkey unchanged,
+/// so [`apply_peer_commands`] never needs a separate translation table.
+fn peer_resource_key(peer: &String) -> ResourceKey {
+    ResourceKey::new(peer.clone())
+}
+
+/// Applies a Trellis resource plan **in `Vec` order** — never sort or
+/// parallelize; LIFO close-vs-close correctness on scope teardown lives in
+/// this order (#3116 VERIFY-FIRST note). `Open` maps to
+/// [`DmRuntimeEffect::PushPeerRelayListInterest`], `Close` to
+/// [`DmRuntimeEffect::WithdrawPeerRelayListInterest`].
+fn apply_peer_commands(effects: &mut Vec<DmRuntimeEffect>, commands: Vec<ResourceCommand<()>>) {
+    for command in commands {
+        match command {
+            ResourceCommand::Open { key, .. } => {
+                effects.push(DmRuntimeEffect::PushPeerRelayListInterest(
+                    key.as_str().to_string(),
+                ));
+            }
+            ResourceCommand::Close { key, .. } => {
+                effects.push(DmRuntimeEffect::WithdrawPeerRelayListInterest(
+                    key.as_str().to_string(),
+                ));
+            }
+            ResourceCommand::Replace { .. } | ResourceCommand::Refresh { .. } => {
+                // Never emitted: the payload is `()`, so a same-key join can
+                // never carry a changed payload (`KeyedReconciler::new`'s
+                // planner only opens added / closes removed) — exhaustive
+                // match, not a reachable branch.
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -315,5 +371,108 @@ mod tests {
                 "bob".to_string()
             ))
         );
+    }
+
+    // #3116 equivalence: `peer_reconciler`'s Trellis `full_recompute_matches`
+    // oracle (the leak-audit guarantee #3115/#3116 wires into every migrated
+    // reconciler) plus a grow/shrink/drain-on-close parity pass mirroring
+    // `feed_author_refs_tests_equivalence.rs`.
+
+    #[test]
+    fn peer_reconciler_full_recompute_oracle_across_grow_shrink_and_drain_on_close() {
+        let mut state = DmRuntimeState::default();
+
+        // Grow: alice opens with peer bob.
+        let effects = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        assert!(effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
+            "bob".to_string()
+        )));
+        assert!(state.peer_reconciler.full_recompute_matches());
+
+        // Grow further: bob stays, carol joins — only carol pushes.
+        let effects = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string(), "carol".to_string()],
+        );
+        assert_eq!(
+            effects,
+            vec![DmRuntimeEffect::PushPeerRelayListInterest(
+                "carol".to_string()
+            )],
+            "only the newly-desired peer pushes; bob is untouched"
+        );
+        assert!(state.peer_reconciler.full_recompute_matches());
+
+        // Shrink: bob drops, carol stays — only bob withdraws.
+        let effects = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["carol".to_string()],
+        );
+        assert_eq!(
+            effects,
+            vec![DmRuntimeEffect::WithdrawPeerRelayListInterest(
+                "bob".to_string()
+            )],
+            "only the dropped peer withdraws; carol is untouched"
+        );
+        assert!(state.peer_reconciler.full_recompute_matches());
+
+        // Drain-on-close: account clears — carol (the last live peer)
+        // withdraws alongside the own-relay-list and inbox interests.
+        let effects = state.reconcile(None, &relays(&["wss://a.example"]), &[]);
+        assert_eq!(
+            effects,
+            vec![
+                DmRuntimeEffect::WithdrawPeerRelayListInterest("carol".to_string()),
+                DmRuntimeEffect::WithdrawOwnRelayListInterest("alice".to_string()),
+                DmRuntimeEffect::WithdrawInboxInterest,
+            ]
+        );
+        assert!(state.peer_reconciler.full_recompute_matches());
+
+        // A second clear is a no-op — nothing left to drain.
+        assert!(state
+            .reconcile(None, &relays(&["wss://a.example"]), &[])
+            .is_empty());
+        assert!(state.peer_reconciler.full_recompute_matches());
+    }
+
+    #[test]
+    fn account_switch_drains_all_peers_via_reconciler_even_when_pubkey_recurs() {
+        let mut state = DmRuntimeState::default();
+        let _ = state.reconcile(
+            Some("alice"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        assert!(state.peer_reconciler.full_recompute_matches());
+
+        // bob is desired again under the NEW account — the pre-migration
+        // hand-rolled diff unconditionally withdrew every prior-account peer
+        // on switch, then re-pushed the new account's desired set from
+        // scratch; the migrated reconciler preserves this via an explicit
+        // close-all before the fresh diff, so bob withdraws AND re-pushes
+        // even though the pubkey recurs.
+        let effects = state.reconcile(
+            Some("carol"),
+            &relays(&["wss://a.example"]),
+            &["bob".to_string()],
+        );
+        assert!(effects.contains(&DmRuntimeEffect::WithdrawPeerRelayListInterest(
+            "bob".to_string()
+        )));
+        assert!(
+            effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
+                "bob".to_string()
+            )),
+            "bob re-pushes fresh under the new account even though the pubkey recurs"
+        );
+        assert!(state.peer_reconciler.full_recompute_matches());
     }
 }
