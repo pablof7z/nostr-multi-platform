@@ -57,7 +57,7 @@ mod registry;
 pub use demand_set::{open_read_demand_set, reconcile_read_demand_set};
 pub use engine::{close_read, open_read, replay_shapes_for};
 pub use host::{
-    KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadDependentDemand,
+    DemandSetReconciler, KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadDependentDemand,
     ReadDependentDemandProvider, ReadHandle, ReadHost, ReadInterestController, ReadOutputEncoder,
     ReadReplayPolicy, ReadSpec,
 };

@@ -93,6 +93,12 @@ flatbuffers = { workspace = true }
 # transitively-resolved `indexmap 2.14` already in the lockfile (no new
 # dependency tree branch).
 indexmap = "2.14"
+# Reusable resource-reconciliation substrate (#3115/#3116 — see
+# `trellis_reconciler.rs`). External leaf crate (no NMP-graph edge), already
+# a dep of nmp-feed-session/nmp-nip02/nmp-nip51/nmp-devtools; the ADR-level
+# tradeoff (transitive compile weight for nmp-core and its consumers) is
+# accepted, not an exception.
+trellis-core = "0.2.1"
 # Zero-dependency Layer-0 kind-integer registry. `nmp-core::kinds` re-exports
 # from here so every existing `nmp_core::kinds::KIND_*` call site is unchanged,
 # while NIP crates (e.g. nmp-nip59) can also depend on nmp-kinds without

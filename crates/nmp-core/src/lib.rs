@@ -159,6 +159,12 @@ pub mod tags;
 // from here so `performance.now()` / `Date.now()` back them on wasm32
 // (where the `std` implementations abort). See `time.rs` for rationale.
 pub mod time;
+// The reusable Trellis-backed keyed-reconciler core (#3115/#3116): the
+// desired-set-in/ordered-resource-plan-out mechanics every "N independent
+// per-key live resources" reconciler shares. `nmp-read-session::demand_set`
+// is the first migrated consumer; `kernel::feed_author_refs` and the #3115
+// primitive build on it next.
+pub mod trellis_reconciler;
 pub mod ui_token;
 mod update_envelope;
 pub mod util;

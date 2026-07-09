@@ -19,6 +19,14 @@ const ALLOWED_TRELLIS_MANIFEST_DEPS: &[(&str, &str)] = &[
     ("crates/nmp-nip51/Cargo.toml", "trellis-core"),
     ("crates/nmp-testing/Cargo.toml", "trellis-core"),
     ("crates/nmp-testing/Cargo.toml", "trellis-testing"),
+    // #3115/#3116 — owner-directed widening of the Phase A ratchet: "default
+    // = migrate every hand-rolled reconciler onto Trellis" is now the
+    // posture, and the reusable keyed-reconciler core the migrations share
+    // colocates in `nmp-core` (consumed directly by `nmp-read-session`,
+    // which applies its `ResourceCommand<C>` output). Both are external-leaf
+    // deps, no NMP-graph cycle — see `docs/architecture/crate-boundaries.md`.
+    ("crates/nmp-core/Cargo.toml", "trellis-core"),
+    ("crates/nmp-read-session/Cargo.toml", "trellis-core"),
 ];
 
 #[test]

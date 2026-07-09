@@ -4,6 +4,7 @@
 //! whatever remains regardless of intervening reconciles.
 
 use std::any::Any;
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -12,7 +13,7 @@ use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_ownership::{DynamicProjectionKey, ProjectionRegistrationKey};
 
 use super::*;
-use crate::host::{KeyedReadDemand, ReadDemand, ReadDemandSetSpec};
+use crate::host::{DemandSetReconciler, KeyedReadDemand, ReadDemand, ReadDemandSetSpec};
 use crate::registry::{DemandSetMembers, ReadSessionId, ReadSessionRegistry};
 use crate::{close_read, ReadHost, ReadOutputEncoder, ReadReplayPolicy, TeardownAction};
 
@@ -94,6 +95,9 @@ impl ReadHost for FakeHost {
     }
     fn read_demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reducer(projection_key)
+    }
+    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+        self.registry.demand_set_reconciler(projection_key)
     }
 }
 
@@ -282,5 +286,99 @@ fn a_demand_set_may_open_with_zero_members_and_stays_tracked() {
         host.registry.live_count(),
         1,
         "an empty demand set is still a live, closeable session"
+    );
+}
+
+// --- #3116 equivalence proof -----------------------------------------------
+//
+// `reconcile_read_demand_set` used to hand-roll its own `HashSet` diff; #3116
+// replaced it with `nmp_core::trellis_reconciler::KeyedReconciler`. Rather
+// than retaining the hand-rolled path as a second, temporary implementation
+// only to delete it a few lines later in this same PR, this proves
+// equivalence directly against the ONE implementation that ships: at every
+// step of a reconcile script, (a) Trellis's own `FullRecomputeCheck` oracle
+// must agree the incremental state equals a full recompute from canonical
+// inputs (the leak-audit oracle #3115/#3116 call for), and (b) the converged
+// member-teardown-map membership must equal the desired set EXACTLY — no
+// more, no fewer entries — which is the order-independent trace-set parity
+// the design asked for (Open/Close per key, not command order).
+
+fn live_member_keys(host: &FakeHost, projection_key: &str) -> BTreeSet<String> {
+    host.read_demand_set_members(projection_key)
+        .map(|members| members.lock().unwrap().keys().cloned().collect())
+        .unwrap_or_default()
+}
+
+fn relay_set(relays: &[&str]) -> BTreeSet<String> {
+    relays.iter().map(|relay| (*relay).to_string()).collect()
+}
+
+#[test]
+fn full_recompute_oracle_and_converged_membership_across_a_reconcile_script() {
+    let host = FakeHost::new();
+    let sink = Arc::new(RecordingSink::default());
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&sink) as _;
+    let reducer: Arc<dyn Any + Send + Sync> = Arc::clone(&sink) as _;
+    let projection_key = "app.test.script";
+    let handle = open_read_demand_set(
+        &host,
+        ReadDemandSetSpec {
+            projection_key: key(projection_key),
+            members: vec![member("wss://a.example"), member("wss://b.example")],
+            observer: Arc::clone(&observer),
+            reducer,
+            output_encoder: Box::new(|| None),
+        },
+    );
+
+    let reconciler = host
+        .read_demand_set_reconciler(projection_key)
+        .expect("a demand-set session registers its Trellis reconciler");
+    assert!(reconciler.full_recompute_matches());
+    assert_eq!(
+        live_member_keys(&host, projection_key),
+        relay_set(&["wss://a.example", "wss://b.example"])
+    );
+
+    // Grow, shrink, grow again, then reconcile with the SAME desired set
+    // (a genuine no-op — must not touch any live member's interest).
+    let script: [&[&str]; 4] = [
+        &["wss://a.example", "wss://b.example", "wss://c.example"],
+        &["wss://b.example"],
+        &["wss://b.example", "wss://d.example"],
+        &["wss://b.example", "wss://d.example"],
+    ];
+    for (step, desired_relays) in script.iter().enumerate() {
+        let log_len_before = host.log().len();
+        let desired: Vec<KeyedReadDemand> =
+            desired_relays.iter().map(|relay| member(relay)).collect();
+        assert!(reconcile_read_demand_set(
+            &host,
+            projection_key,
+            &observer,
+            desired
+        ));
+        assert!(
+            reconciler.full_recompute_matches(),
+            "step {step}: incremental state must equal a full recompute"
+        );
+        assert_eq!(
+            live_member_keys(&host, projection_key),
+            relay_set(desired_relays),
+            "step {step}: converged membership must equal the desired set exactly"
+        );
+        if step == 3 {
+            let churn = host.log().len() - log_len_before;
+            assert_eq!(
+                churn, 1, // the unconditional `mark_changed` teardown call
+                "step {step}: reconciling to an unchanged desired set must not open or close anything"
+            );
+        }
+    }
+
+    assert!(close_read(&host, &handle));
+    assert!(
+        live_member_keys(&host, projection_key).is_empty(),
+        "close must drain every remaining member"
     );
 }

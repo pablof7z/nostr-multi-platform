@@ -18,6 +18,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use nmp_core::substrate::ObservedProjection;
+use nmp_core::trellis_reconciler::KeyedReconciler;
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink, TypedProjectionData};
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_planner::{InterestLifecycle, InterestShape};
@@ -101,6 +102,12 @@ impl ReadInterestController {
 /// read composes a NIP-10 kind:1 demand and a NIP-22 kind:1111 demand), all
 /// feeding the read's single reducer; the engine opens each with
 /// replay-before-live and records the exact withdrawal for each.
+///
+/// `Clone + PartialEq` (#3116): a demand-set member's `ReadDemand` is the
+/// Trellis resource-payload `C` the [`crate::demand_set`] keyed reconciler
+/// diffs — trellis-core's own resource-reconcile payload-identity rule,
+/// never derived for any other reason.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ReadDemand {
     /// NIP-01 `REQ` filter JSON selecting this demand's events.
     pub filter_json: String,
@@ -147,6 +154,15 @@ pub struct ReadSpec {
     /// opens. Used by seed-only reads such as cache-only NIP-50 search.
     pub keep_open_without_live_demand: bool,
 }
+
+/// The Trellis-backed keyed reconciler every demand-set session owns (#3116):
+/// desired member map (`String` key → [`ReadDemand`] payload) in, ordered
+/// `trellis_core::ResourceCommand<ReadDemand>` plan out. Stored in the
+/// registry alongside a session's member-teardown map and type-erased
+/// reducer ([`crate::registry::DemandSetState`]) so every
+/// `reconcile_read_demand_set` call against the SAME projection key reuses
+/// the SAME persistent graph rather than re-diffing from a fresh one.
+pub type DemandSetReconciler = KeyedReconciler<String, ReadDemand>;
 
 /// One member of a [`ReadDemandSetSpec`] — a [`ReadDemand`] plus the
 /// concept-chosen identity that names it (e.g. a relay URL for NIP-29
@@ -299,6 +315,20 @@ pub trait ReadHost {
     /// `projection_key`. See [`Self::read_session_id_for_projection_key`] for
     /// the degrade-gracefully contract when a host returns `None`.
     fn read_demand_set_reducer(&self, _projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+        None
+    }
+
+    /// The persistent [`DemandSetReconciler`] of the demand-set session
+    /// registered under `projection_key` (#3116). See
+    /// [`Self::read_session_id_for_projection_key`] for the
+    /// degrade-gracefully contract when a host returns `None` — a host that
+    /// cannot introspect its own registry degrades `reconcile_read_demand_set`
+    /// to "no live session found", the same fallback an unknown projection
+    /// key already produces.
+    fn read_demand_set_reconciler(
+        &self,
+        _projection_key: &str,
+    ) -> Option<Arc<DemandSetReconciler>> {
         None
     }
 }

@@ -18,6 +18,11 @@ const CORE_ROOT_EXPORTS: &[&str] = &[
     "pub mod substrate;",
     "pub mod tags;",
     "pub mod time;",
+    // doctrine-allow: #3116 — the reusable Trellis-backed keyed-reconciler
+    // core (#3115/#3116): `nmp-read-session::demand_set` and (a follow-up
+    // migration) `kernel::feed_author_refs` both consume it, so it must sit
+    // above `nmp-core`'s own private `kernel` module, not inside it.
+    "pub mod trellis_reconciler;",
     "pub mod ui_token;",
     "pub mod util;",
     "pub use app::{ resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD, };",

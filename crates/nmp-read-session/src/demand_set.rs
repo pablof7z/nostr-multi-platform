@@ -28,17 +28,33 @@
 //! reconcile calls are still torn down exactly once, in the same reverse
 //! order as every other read (interests first, then output, then the change
 //! flag).
+//!
+//! # Trellis-backed diff (#3116)
+//!
+//! The desired-vs-live diff itself is NOT hand-rolled here: every session
+//! owns a persistent [`nmp_core::trellis_reconciler::KeyedReconciler`] (the
+//! reusable core factored for #3115/#3116) that `reconcile_read_demand_set`
+//! feeds the full desired member map on every call. Trellis returns an
+//! ORDERED resource plan (open added / replace a changed payload / close
+//! removed); [`apply_demand_set_commands`] is the only place that plan turns
+//! into real `ReadHost` calls. The hand-rolled `HashSet` diff this module
+//! used before #3116 is gone — Trellis IS the diff.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::ObservedProjection;
+use nmp_core::trellis_reconciler::KeyedReconciler;
 use nmp_core::ObservedProjectionSink;
+use trellis_core::{ResourceCommand, ResourceKey};
 
 use crate::engine::replay_shapes_for;
 use crate::host::{KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHost, ReadReplayPolicy};
 use crate::registry::{DemandSetMembers, DemandSetState, ReadSessionBuild};
 use crate::ReadHandle;
+
+/// Trellis-internal diagnostic scope label — never surfaced to a concept.
+const DEMAND_SET_SCOPE: &str = "nmp.read-session.demand-set.v1";
 
 /// Open a dynamic read-demand-set session and return its typed close handle.
 ///
@@ -46,8 +62,9 @@ use crate::ReadHandle;
 /// replay-before-live (same ordering guarantee as [`crate::open_read`]), and
 /// registers ONE session whose close teardown drains and withdraws whatever
 /// members are live at close time — so later `reconcile_read_demand_set`
-/// calls need no engine-side bookkeeping beyond the shared member map already
-/// recorded in the registry.
+/// calls need no engine-side bookkeeping beyond the shared member map and
+/// [`nmp_core::trellis_reconciler::KeyedReconciler`] already recorded in the
+/// registry.
 ///
 /// Unlike [`crate::open_read`], a demand set with zero live members is not
 /// torn down immediately: a demand set may legitimately start (or end up,
@@ -66,17 +83,21 @@ pub fn open_read_demand_set(host: &dyn ReadHost, spec: ReadDemandSetSpec) -> Rea
     host.install_read_output(projection_key, output_encoder);
 
     let members: DemandSetMembers = Arc::new(Mutex::new(HashMap::new()));
-    for KeyedReadDemand { key, demand } in initial_members {
-        open_one_member(host, &observer, &members, key, demand);
-    }
+    let reconciler = Arc::new(
+        KeyedReconciler::<String, ReadDemand>::new(DEMAND_SET_SCOPE, demand_set_resource_key)
+            .expect("fresh KeyedReconciler construction over an empty graph cannot fail"),
+    );
+
+    let commands = reconciler.reconcile(desired_map(initial_members));
+    apply_demand_set_commands(host, &observer, &members, commands);
 
     let members_for_close = Arc::clone(&members);
+    let reconciler_for_close = Arc::clone(&reconciler);
     let close_all_members: crate::registry::TeardownAction = Box::new(move || {
-        let Ok(mut map) = members_for_close.lock() else {
-            return;
-        };
-        for (_, action) in map.drain() {
-            action();
+        for command in reconciler_for_close.close() {
+            if let ResourceCommand::Close { key, .. } = command {
+                withdraw_member(&members_for_close, key.as_str());
+            }
         }
     });
 
@@ -89,7 +110,11 @@ pub fn open_read_demand_set(host: &dyn ReadHost, spec: ReadDemandSetSpec) -> Rea
     let session_id = host.store_read_session(ReadSessionBuild {
         projection_key: key_str.clone(),
         teardown,
-        demand_set: Some(DemandSetState { members, reducer }),
+        demand_set: Some(DemandSetState {
+            members,
+            reducer,
+            reconciler,
+        }),
     });
     ReadHandle {
         projection_key: key_str,
@@ -102,8 +127,9 @@ pub fn open_read_demand_set(host: &dyn ReadHost, spec: ReadDemandSetSpec) -> Rea
 /// opened (replay-before-live, sharing `observer` — normally the SAME
 /// instance [`crate::registry::ReadSessionRegistry::demand_set_reducer`]
 /// handed back to the caller); members open but absent from `desired` are
-/// withdrawn. Members whose key appears in both are left untouched — no REQ
-/// for an already-live, still-desired member is ever closed and reopened.
+/// withdrawn. Members whose key appears in both, with an unchanged demand,
+/// are left untouched — no REQ for an already-live, still-desired member is
+/// ever closed and reopened.
 ///
 /// Returns `false` when no live demand-set session is registered under
 /// `projection_key` (the caller should [`open_read_demand_set`] instead).
@@ -117,39 +143,83 @@ pub fn reconcile_read_demand_set(
     let Some(members) = host.read_demand_set_members(projection_key) else {
         return false;
     };
-
-    let desired_keys: HashSet<&str> = desired.iter().map(|m| m.key.as_str()).collect();
-    let stale_actions: Vec<crate::registry::TeardownAction> = {
-        let Ok(mut map) = members.lock() else {
-            return false;
-        };
-        let stale_keys: Vec<String> = map
-            .keys()
-            .filter(|k| !desired_keys.contains(k.as_str()))
-            .cloned()
-            .collect();
-        stale_keys
-            .into_iter()
-            .filter_map(|k| map.remove(&k))
-            .collect()
+    let Some(reconciler) = host.read_demand_set_reconciler(projection_key) else {
+        return false;
     };
-    for action in stale_actions {
-        action();
-    }
 
-    let already_open: HashSet<String> = members
-        .lock()
-        .map(|map| map.keys().cloned().collect())
-        .unwrap_or_default();
-    for KeyedReadDemand { key, demand } in desired {
-        if already_open.contains(&key) {
-            continue;
-        }
-        open_one_member(host, observer, &members, key, demand);
-    }
+    let commands = reconciler.reconcile(desired_map(desired));
+    apply_demand_set_commands(host, observer, &members, commands);
 
     (host.teardown_mark_changed())();
     true
+}
+
+/// The single-segment `ResourceKey` a demand-set member's `String` identity
+/// encodes to. Single-segment means [`ResourceKey::as_str`] recovers the
+/// ORIGINAL member key unchanged, so [`apply_demand_set_commands`] never
+/// needs a separate `ResourceKey → String` translation table — the
+/// member-teardown map stays keyed by the concept's own identity exactly as
+/// it was before #3116.
+fn demand_set_resource_key(key: &String) -> ResourceKey {
+    ResourceKey::new(key.clone())
+}
+
+fn desired_map(members: Vec<KeyedReadDemand>) -> BTreeMap<String, ReadDemand> {
+    members
+        .into_iter()
+        .map(|KeyedReadDemand { key, demand }| (key, demand))
+        .collect()
+}
+
+/// Applies a Trellis resource plan **in `Vec` order** — never sort or
+/// parallelize; LIFO close correctness on scope teardown lives in this order
+/// (#3116 VERIFY-FIRST note; trellis-core guarantees Close-vs-Close
+/// ordering, the host must preserve it by applying in order).
+fn apply_demand_set_commands(
+    host: &dyn ReadHost,
+    observer: &Arc<dyn ObservedProjectionSink>,
+    members: &DemandSetMembers,
+    commands: Vec<ResourceCommand<ReadDemand>>,
+) {
+    for command in commands {
+        match command {
+            ResourceCommand::Open { key, command, .. } => {
+                open_one_member(host, observer, members, key.as_str().to_string(), command);
+            }
+            ResourceCommand::Replace { key, command, .. } => {
+                // A live member's demand payload changed under an unchanged
+                // key. `ReadHost` has no in-place "replace a REQ" primitive,
+                // so this withdraws then reopens under the SAME member key —
+                // functionally what a correct hand-rolled diff would have
+                // done had it detected the change (the pre-#3116 diff
+                // silently ignored a same-key payload change; production
+                // callers never trigger this in practice because a member's
+                // key deterministically derives its demand, e.g.
+                // `discovery_member_for_relay` in `nmp-nip29`).
+                withdraw_member(members, key.as_str());
+                open_one_member(host, observer, members, key.as_str().to_string(), command);
+            }
+            ResourceCommand::Close { key, .. } => {
+                withdraw_member(members, key.as_str());
+            }
+            ResourceCommand::Refresh { .. } => {
+                // Never emitted by this reconciler's planner
+                // (`KeyedReconciler::new`'s `map_resource_planner` only
+                // opens added / replaces updated / closes removed) —
+                // exhaustive match, not a reachable branch.
+            }
+        }
+    }
+}
+
+/// Removes and runs `key`'s recorded teardown action, if the member is
+/// currently live. A poisoned lock or an already-withdrawn key is a safe
+/// no-op (D6).
+fn withdraw_member(members: &DemandSetMembers, key: &str) {
+    let action = members.lock().ok().and_then(|mut map| map.remove(key));
+    if let Some(action) = action {
+        action();
+    }
 }
 
 fn open_one_member(
