@@ -120,10 +120,14 @@ impl IndexerRepublishPolicy {
 
     #[must_use]
     pub fn replaceable_kind_filter() -> KindFilter {
-        let kinds = std::iter::once(0u32)
-            .chain(std::iter::once(3u32))
-            .chain(10_000u32..20_000u32)
-            .chain(30_000u32..40_000u32); // NIP-33 addressable / parameterized replaceable
+        // Delegate to the canonical NIP-01 replaceable/addressable predicates
+        // (`nmp-kinds` is the bit-for-bit SSOT) instead of hand-rolling the kind
+        // ranges here. The previous hand-rolled {0,3} ∪ [10000,20000) ∪
+        // [30000,40000) set silently dropped kind:41 (NIP-28 channel metadata),
+        // the one special case `nostr::Kind::is_replaceable` adds beyond the
+        // NIP-01 range text — see #3097.
+        let kinds = (0u32..40_000)
+            .filter(|kind| nmp_kinds::is_replaceable(*kind) || nmp_kinds::is_addressable(*kind));
         KindFilter::from_kinds(kinds)
     }
 
