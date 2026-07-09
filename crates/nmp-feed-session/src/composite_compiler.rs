@@ -142,6 +142,18 @@ pub fn open_composite_feed(
         row_context: folded.row_context,
     };
 
+    // Retraction wiring (#3087): fires the instant `FlatFeed` drops a source
+    // contribution (delete/mute/eventual eviction, via `remove_item`/
+    // `remove_source`/`remove_sources_if`), releasing exactly that declaring
+    // event's contribution to `demand`. Without this, `demand` only ever grew
+    // for the life of the session.
+    let source_removed: nmp_feed::SourceRemovedHook = {
+        let demand = Arc::clone(&demand);
+        Arc::new(move |source_id: &str| {
+            demand.retract_source(source_id);
+        })
+    };
+
     build_flat_scope_session(
         app,
         params.key.as_str(),
@@ -149,6 +161,7 @@ pub fn open_composite_feed(
         combined,
         item_builder,
         merge,
+        Some(source_removed),
     )
 }
 
@@ -196,7 +209,18 @@ fn build_composite_rows(
         for mapped in (lane.mapping)(event) {
             for typed_ref in &mapped.refs {
                 if typed_ref.delivery_mode == nmp_feed::DeliveryMode::Delivered {
-                    demand.demand(typed_ref.target.clone());
+                    // Keyed by the DECLARING EVENT's own id (#3087), i.e. the
+                    // `FlatFeedItem::source_id` `build_row` below hands
+                    // `FlatFeed` — NOT `mapped.canonical_row_id`. A lane
+                    // mapping (e.g. `nip22_root_mapping`) can key its row by
+                    // the TARGET's own coordinate (merging the declaring
+                    // comment/repost onto the same row as the article it
+                    // points at), so the row id is not a stable proxy for
+                    // "this one declaring event" — only `event.id` is.
+                    // `retract_source` (wired as the engine's
+                    // `SourceRemovedHook`) fires with exactly this key once
+                    // this event's own source contribution is removed.
+                    demand.demand(&event.id, typed_ref.target.clone());
                 }
             }
             rows.push(build_row(event, mapped));

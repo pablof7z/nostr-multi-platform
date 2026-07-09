@@ -176,10 +176,11 @@ fn typed_demand(model: &PointerSourceModel) -> Vec<nmp_feed::TypedRefTarget> {
 }
 
 /// [`Mutex<PointerSourceModel>`] is the OTHER [`DemandedTargets`] source
-/// (#3082 SHOULD-FIX 5): unlike [`crate::delivered_ref::DeliveredRefDemand`]
-/// (monotonic within a session), the pointer model's `target_demand()`
-/// already retracts a target once no live pointer names it — the union math
-/// over "whatever is currently demanded" below is identical either way, so
+/// (#3082 SHOULD-FIX 5): the pointer model's `target_demand()` retracts a
+/// target once no live pointer names it, the same contract
+/// [`crate::delivered_ref::DeliveredRefDemand::retract_source`] gives composite-lane
+/// `Delivered` refs (#3087) — the union math over "whatever is currently
+/// demanded" below is identical either way, so
 /// [`target_admission`]/[`target_live_shape`] delegate to the SAME
 /// [`crate::delivered_ref::union_admission`]/[`crate::delivered_ref::union_live_shape`]
 /// builders `composite_compiler.rs` uses, rather than re-deriving a second

@@ -12,10 +12,11 @@
 //! Alongside the action modules and the [`FollowListProjection`] read model,
 //! this crate hosts [`ActiveFollowSet`] — the active-follow feed's (V-80)
 //! follow-set *producer*. It exposes the active account's follows as a live
-//! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic `RootIndexedFeed`
-//! engine in `nmp-feed` consumes, with follow → planner-interest expansion done
-//! at the composition root (`explicit composition`) — no `FollowSetLookup` trait, no
-//! planner `SocialTimeline` seam. See
+//! closure predicate (`Arc<dyn Fn(&str) -> bool>`) the generic
+//! `nmp_feed::FlatFeed<FeedRow>` engine consumes as an admission predicate,
+//! with follow → planner-interest expansion done at the composition root
+//! (`explicit composition`) — no `FollowSetLookup` trait, no planner
+//! `SocialTimeline` seam. See
 //! [`active_follow_set`] and ADR-0076.
 //!
 //! # Why this exists

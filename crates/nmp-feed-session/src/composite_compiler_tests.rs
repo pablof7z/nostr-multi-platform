@@ -406,14 +406,24 @@ fn tags_match_requires_every_declared_tag_to_have_a_matching_value() {
 #[test]
 fn demand_live_shape_and_admission_agree_on_the_same_demanded_target() {
     let demand = DeliveredRefDemand::new();
-    demand.demand(nmp_feed::TypedRefTarget::Address {
-        kind: KIND_ARTICLE,
-        pubkey: "bob".to_string(),
-        d: "d1".to_string(),
-    });
+    demand.demand(
+        "row-1",
+        nmp_feed::TypedRefTarget::Address {
+            kind: KIND_ARTICLE,
+            pubkey: "bob".to_string(),
+            d: "d1".to_string(),
+        },
+    );
     let admit = union_admission(&demand, vec![KIND_ARTICLE]);
     let shape = union_live_shape(&demand, vec![KIND_ARTICLE])().expect("shape");
     assert_eq!(shape.addresses.len(), 1);
     assert!(admit(&article("bob", "d1", 1, "x", "")));
     assert!(!admit(&article("bob", "other-d", 1, "y", "")));
 }
+
+// #3087 `DeliveredRefDemand` retraction proofs live in
+// `composite_compiler_retraction_tests.rs` (split out to stay under the
+// file-size gate; a child module of `tests` reuses these same fixtures via
+// `use super::*;`).
+#[path = "composite_compiler_retraction_tests.rs"]
+mod retraction_tests;

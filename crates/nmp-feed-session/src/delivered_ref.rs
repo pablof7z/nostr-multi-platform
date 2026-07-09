@@ -17,7 +17,7 @@
 //! target, admit it, expand acquisition" (#3085's sibling concern: one
 //! mechanism, not two).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
@@ -67,22 +67,39 @@ pub(crate) fn typed_ref_target_matches(target: &TypedRefTarget, event: &KernelEv
     }
 }
 
+/// Reverse-indexed demand state, mirroring [`nmp_content::PointerSourceModel`]'s
+/// `pointers` / `pointed_by` pair (#3087): `by_source` lets a declaring
+/// event's removal find exactly the targets it contributed without a scan,
+/// and `demanded_by` is the live materialization demand — a target with an
+/// empty declarer set is removed entirely, so its key set IS the demand.
+#[derive(Default)]
+struct DeliveredRefDemandState {
+    /// Declaring event's own id (`FlatFeedItem::source_id`) -> targets that
+    /// event currently demands.
+    by_source: BTreeMap<String, BTreeSet<TypedRefTarget>>,
+    /// Target -> declaring event ids currently demanding it.
+    demanded_by: BTreeMap<TypedRefTarget, BTreeSet<String>>,
+}
+
 /// A demand-refcounted set of [`TypedRefTarget`]s a feed session must fold
-/// into its own delivery. Multiple declaring rows can demand the SAME target
-/// (e.g. a comment lane and a repost lane both pointing at the same article);
-/// the demand persists while at least one declarer holds it.
-///
-/// TODO(#3082 follow-up): demand is currently monotonic within a session's
-/// lifetime — a declaring row's removal does not yet retract its demand. This
-/// matches the pre-existing `pointer_target_hydration` behavior (its
-/// `PointerSourceModel` is keyed by pointer event id and DOES retract on
-/// pointer removal; the NEW composite-lane demand tracked here does not yet).
-/// Acceptable for this PR's scope (proven by the driving-example test); a
-/// full refcount-by-declaring-row-id retraction is a follow-up.
+/// into its own delivery. Multiple declaring events can demand the SAME
+/// target (e.g. a comment and a repost both pointing at the same article);
+/// the demand persists while at least one declaring event's source
+/// contribution is still live, and RETRACTS the instant the last one is
+/// removed (#3087) — the same contract
+/// [`nmp_content::PointerSourceModel::drop_pointer`] gives pointer targets,
+/// keyed here by the declaring event's own id (its
+/// [`nmp_feed::FlatFeedItem::source_id`]) rather than a canonical row id: a
+/// composite row's id can equal one of its OWN contributing sources' target
+/// (`nip22_root_mapping` keys a comment's row by the article it points at),
+/// so the row id is not a stable proxy for "this one declaring event" — only
+/// the event's own id is. Before #3087 this was monotonic — `demand()` only
+/// ever incremented a bare counter, so a declaring event's removal
+/// (delete/mute/eviction) never released its target's subscription, growing
+/// acquisition unboundedly over a long session.
 #[derive(Default)]
 pub(crate) struct DeliveredRefDemand {
-    // target -> number of distinct declaring rows currently demanding it.
-    demand: Mutex<BTreeMap<TypedRefTarget, usize>>,
+    state: Mutex<DeliveredRefDemandState>,
 }
 
 impl DeliveredRefDemand {
@@ -91,18 +108,64 @@ impl DeliveredRefDemand {
         Arc::new(Self::default())
     }
 
-    /// Register one more declarer for `target`.
-    pub(crate) fn demand(&self, target: TypedRefTarget) {
-        if let Ok(mut demand) = self.demand.lock() {
-            *demand.entry(target).or_insert(0) += 1;
+    /// Register `source_id` (a declaring event's own id) as one more declarer
+    /// of `target`. Idempotent: re-registering the same `(source_id, target)`
+    /// pair (e.g. a re-delivered wrapper event on reconnect) does not
+    /// double-count, so a single [`Self::retract_source`] fully withdraws it
+    /// regardless of how many times `demand` ran.
+    pub(crate) fn demand(&self, source_id: &str, target: TypedRefTarget) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state
+            .by_source
+            .entry(source_id.to_string())
+            .or_default()
+            .insert(target.clone());
+        state
+            .demanded_by
+            .entry(target)
+            .or_default()
+            .insert(source_id.to_string());
+    }
+
+    /// Retract every target `source_id` declared demand for — that declaring
+    /// event's own source contribution was removed (deleted, muted, or
+    /// otherwise dropped from the feed). A target's demand is withdrawn only
+    /// once NO declaring event still names it (another event may still hold
+    /// the same target). Returns whether the demanded target SET shrank (a
+    /// target's subscription was actually released), mirroring
+    /// [`nmp_content::PointerSourceModel::drop_pointer`]'s return contract.
+    ///
+    /// Named to match [`nmp_feed::SourceRemovedHook`]'s call site in
+    /// `composite_compiler.rs` (`retract_source` there wires this as the
+    /// engine's per-source removal hook) — the parameter is a source id, not
+    /// a row id; see the struct docs above for why those differ here.
+    pub(crate) fn retract_source(&self, source_id: &str) -> bool {
+        let Ok(mut state) = self.state.lock() else {
+            return false;
+        };
+        let Some(targets) = state.by_source.remove(source_id) else {
+            return false;
+        };
+        let mut shrank = false;
+        for target in targets {
+            if let Some(declarers) = state.demanded_by.get_mut(&target) {
+                declarers.remove(source_id);
+                if declarers.is_empty() {
+                    state.demanded_by.remove(&target);
+                    shrank = true;
+                }
+            }
         }
+        shrank
     }
 
     #[must_use]
     pub(crate) fn targets(&self) -> Vec<TypedRefTarget> {
-        self.demand
+        self.state
             .lock()
-            .map(|demand| demand.keys().cloned().collect())
+            .map(|state| state.demanded_by.keys().cloned().collect())
             .unwrap_or_default()
     }
 
@@ -119,13 +182,15 @@ impl DeliveredRefDemand {
 /// Anything that can report its CURRENT set of demanded [`TypedRefTarget`]s.
 ///
 /// Implemented once by both demand sources this crate has — [`DeliveredRefDemand`]
-/// (composite-lane `Delivered` refs, monotonic within a session's lifetime) and
-/// [`nmp_content::PointerSourceModel`] (`pointer_target_hydration`'s pointer
-/// model, which DOES retract a target once no live pointer still names it) —
-/// so [`union_admission`]/[`union_live_shape`] are the ONE union builder over
-/// "whatever is currently demanded", not two disjoint copies of the same
-/// union loop (#3082 SHOULD-FIX 5, the sibling of #3085's `resolve_ref` unification:
-/// the demand SOURCE differs, the union math over it must not).
+/// (composite-lane `Delivered` refs, refcounted by declaring event id and
+/// retracted via [`DeliveredRefDemand::retract_source`] once no declaring event
+/// still names a target, #3087) and [`nmp_content::PointerSourceModel`]
+/// (`pointer_target_hydration`'s pointer model, which retracts a target once
+/// no live pointer still names it) — so [`union_admission`]/[`union_live_shape`]
+/// are the ONE union builder over "whatever is currently demanded", not two
+/// disjoint copies of the same union loop (#3082 SHOULD-FIX 5, the sibling of
+/// #3085's `resolve_ref` unification: the demand SOURCE differs, the union
+/// math over it must not).
 pub(crate) trait DemandedTargets {
     fn demanded_targets(&self) -> Vec<TypedRefTarget>;
 }
@@ -197,12 +262,109 @@ mod tests {
     #[test]
     fn event_id_target_admits_only_the_matching_id_and_kind() {
         let demand = DeliveredRefDemand::new();
-        demand.demand(TypedRefTarget::EventId("root".to_string()));
+        demand.demand("comment-1", TypedRefTarget::EventId("root".to_string()));
         let admit = union_admission(&demand, vec![30_023]);
 
         assert!(admit(&event("root", 30_023)));
         assert!(!admit(&event("root", 1)), "wrong kind ⇒ not admitted");
         assert!(!admit(&event("other", 30_023)), "wrong id ⇒ not admitted");
+    }
+
+    /// #3087 regression: before the refcounted keying, `demand()` only ever
+    /// incremented a bare counter and nothing could ever retract it — a
+    /// declaring event's removal left its target's subscription live
+    /// forever. This proves the OLD shape of the bug is gone: retracting the
+    /// ONLY declaring event withdraws the target from both admission and
+    /// live shape.
+    #[test]
+    fn retracting_the_only_declaring_event_withdraws_the_target() {
+        let demand = DeliveredRefDemand::new();
+        demand.demand("comment-1", TypedRefTarget::EventId("root".to_string()));
+        assert_eq!(
+            demand.targets().len(),
+            1,
+            "target demanded while declaring event lives"
+        );
+
+        let shrank = demand.retract_source("comment-1");
+        assert!(shrank, "removing the last declarer must shrink demand");
+        assert!(
+            demand.targets().is_empty(),
+            "target must be undemanded once its only declaring event is removed"
+        );
+
+        let admit = union_admission(&demand, vec![30_023]);
+        assert!(
+            !admit(&event("root", 30_023)),
+            "a retracted target must no longer be admitted (subscription released)"
+        );
+        assert!(
+            union_live_shape(&demand, vec![30_023])().is_none(),
+            "a retracted target must not appear in the live acquisition shape"
+        );
+    }
+
+    /// Two declaring events (e.g. a comment and a repost) can demand the SAME
+    /// target; removing one must not drop the other's live demand — only the
+    /// last declarer's removal releases the subscription.
+    #[test]
+    fn target_demanded_by_two_events_survives_removal_of_one() {
+        let demand = DeliveredRefDemand::new();
+        let target = TypedRefTarget::EventId("shared-target".to_string());
+        demand.demand("comment-1", target.clone());
+        demand.demand("repost-1", target.clone());
+
+        let shrank = demand.retract_source("comment-1");
+        assert!(
+            !shrank,
+            "another declaring event still holds the target ⇒ demand must not shrink"
+        );
+        assert_eq!(
+            demand.targets(),
+            vec![target.clone()],
+            "target stays demanded while repost-1 still declares it"
+        );
+
+        let shrank = demand.retract_source("repost-1");
+        assert!(shrank, "the LAST declarer's removal must retract the target");
+        assert!(demand.targets().is_empty());
+    }
+
+    /// Re-registering the same (event, target) pair (a re-delivered wrapper
+    /// event on reconnect) must not require a matching number of
+    /// retractions — one `retract_source` fully withdraws that event's demand
+    /// regardless of how many times `demand()` ran for it.
+    #[test]
+    fn re_demanding_the_same_event_and_target_is_idempotent_for_retraction() {
+        let demand = DeliveredRefDemand::new();
+        let target = TypedRefTarget::EventId("root".to_string());
+        demand.demand("comment-1", target.clone());
+        demand.demand("comment-1", target.clone());
+        demand.demand("comment-1", target);
+
+        assert!(demand.retract_source("comment-1"));
+        assert!(demand.targets().is_empty());
+        assert!(
+            !demand.retract_source("comment-1"),
+            "retracting an already-retracted event is a no-op, not a re-shrink"
+        );
+    }
+
+    /// Retracting an event that never declared any demand must be a harmless
+    /// no-op — e.g. the delivered target's own event, or a lane row with no
+    /// `Delivered` refs, both of which are legitimately removed without ever
+    /// having called `demand()`.
+    #[test]
+    fn retracting_an_undemanding_event_is_a_no_op() {
+        let demand = DeliveredRefDemand::new();
+        demand.demand("comment-1", TypedRefTarget::EventId("root".to_string()));
+
+        assert!(!demand.retract_source("never-demanded-event"));
+        assert_eq!(
+            demand.targets().len(),
+            1,
+            "unrelated retraction must not touch other demand"
+        );
     }
 
     #[test]
@@ -222,12 +384,15 @@ mod tests {
     #[test]
     fn live_shape_unions_every_demanded_target() {
         let demand = DeliveredRefDemand::new();
-        demand.demand(TypedRefTarget::EventId("a".to_string()));
-        demand.demand(TypedRefTarget::Address {
-            kind: 30_023,
-            pubkey: "bob".to_string(),
-            d: "d1".to_string(),
-        });
+        demand.demand("comment-1", TypedRefTarget::EventId("a".to_string()));
+        demand.demand(
+            "repost-1",
+            TypedRefTarget::Address {
+                kind: 30_023,
+                pubkey: "bob".to_string(),
+                d: "d1".to_string(),
+            },
+        );
         let shape = union_live_shape(&demand, vec![30_023])().expect("shape");
         assert!(shape.event_ids.contains("a"));
         assert_eq!(shape.addresses.len(), 1);

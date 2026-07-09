@@ -27,6 +27,11 @@ pub(super) fn build_flat_scope_session(
     resolved: ReducedSource,
     item_builder: nmp_feed::FlatFeedItemBuilder<nmp_feed::FeedRow>,
     merge: nmp_feed::FlatFeedMerge<nmp_feed::FeedRow>,
+    // #3087: fired the instant the engine drops a source contribution, so
+    // the composite compiler's `DeliveredRefDemand` can retract that
+    // declaring event's demand in lockstep. `None` on the single-lane
+    // `FeedParams` path.
+    source_removed: Option<nmp_feed::SourceRemovedHook>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let ReducedSource {
         op_session_identity: _,
@@ -53,12 +58,13 @@ pub(super) fn build_flat_scope_session(
     //   admission  = the compiled perspective predicate (`admission`);
     //   identity   = caller-supplied `item_builder` (arity-`Vec`, #3082);
     //   sort/merge = caller-supplied `merge`.
-    let feed = nmp_feed::FlatFeed::with_merge_and_window_policy(
+    let feed = nmp_feed::FlatFeed::with_merge_window_policy_and_source_removed_hook(
         admission,
         item_builder,
         None,
         merge,
         window,
+        source_removed,
     );
     // Built here (before `observer_for_registry`/`apply`) so BOTH ingestion
     // paths below can re-sync it per event — nothing below depends on

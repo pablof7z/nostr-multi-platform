@@ -56,8 +56,13 @@ pub(super) fn build_scope_session_with_artifacts(
             // `build_flat_scope_session` entry point instead.
             let item_builder = nmp_note_feed::feed_row_builder(resolved.row_context.clone());
             let merge = nmp_note_feed::timeline_merge();
-            flat_session::build_flat_scope_session(app, key, window, resolved, item_builder, merge)
-                .map(|build| ScopeSessionBuild { build })
+            // No `Delivered`-ref demand source on the single-lane path — it
+            // has no `DeliveredRefDemand` to retract (#3087 is a composite-lane
+            // concern only).
+            flat_session::build_flat_scope_session(
+                app, key, window, resolved, item_builder, merge, None,
+            )
+            .map(|build| ScopeSessionBuild { build })
         }
     }
 }
@@ -74,8 +79,21 @@ pub(crate) fn build_flat_scope_session(
     resolved: ReducedSource,
     item_builder: nmp_feed::FlatFeedItemBuilder<nmp_feed::FeedRow>,
     merge: nmp_feed::FlatFeedMerge<nmp_feed::FeedRow>,
+    // Fired when the engine drops a source contribution (#3087). `None` for
+    // the single-lane `FeedParams` path (no demand source to retract); the
+    // composite-lane compiler passes its `DeliveredRefDemand::retract_source`
+    // closure.
+    source_removed: Option<nmp_feed::SourceRemovedHook>,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    flat_session::build_flat_scope_session(app, key, window, resolved, item_builder, merge)
+    flat_session::build_flat_scope_session(
+        app,
+        key,
+        window,
+        resolved,
+        item_builder,
+        merge,
+        source_removed,
+    )
 }
 
 pub(super) fn visible_flat_payload(feed: &nmp_feed::FlatFeed<nmp_feed::FeedRow>) -> Vec<u8> {

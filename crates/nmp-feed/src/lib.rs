@@ -44,7 +44,10 @@ pub use custom_policy::{
     CustomAdmissionDef, CustomFeedPolicyRegistry, CustomOrderDef, CustomSourceDef,
 };
 pub use feed_row::{merge_context, FeedRow, FeedRowContext};
-pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
+pub use flat::{
+    FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate,
+    SourceRemovedHook,
+};
 pub use lane_mapping::{LaneMapping, LaneMappingRegistry, MappedPayload, MappedRow};
 pub use load_status::{FeedLoadStatus, FeedLoadStopReason};
 pub use pager::{
