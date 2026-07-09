@@ -53,7 +53,6 @@ ownership rule).
 ```rust
 use nmp_uniffi_support::keyed_observed_projection_collection;
 use nmp_read_session::MemberKey;
-use nmp_core::substrate::ObservedProjection;
 use std::sync::Arc;
 
 #[derive(Clone, PartialEq)]
@@ -62,24 +61,16 @@ struct GroupFeedDescriptor {
     host_relay_url: String,
 }
 
+// `group_last_message_projection` is your app-owned helper that returns the
+// per-key observed read descriptor — a kind:9 read scoped to the group and
+// pinned to its host relay. Its concrete substrate type and fields live in
+// builder-guide/05a-substrate-traits.md; the collection constructor takes it
+// opaquely and owns its open/close, so you never build or reconcile it by hand.
 let last_message_collection = keyed_observed_projection_collection::<String, GroupFeedDescriptor>(
     Arc::clone(&app),
     "twentynineer.group-tree.last-message",
     |group_id| MemberKey::new(group_id.clone()),
-    |member_key, descriptor| ObservedProjection {
-        observer: last_message_sink(), // app-owned ObservedProjectionSink
-        filter_json: format!(
-            r##"{{"kinds":[9],"#h":["{}"]}}"##,
-            member_key.as_str()
-        ),
-        consumer_id: format!("group-last-message::{}", member_key.as_str()),
-        scope: 1,
-        relay_pin: Some(descriptor.host_relay_url.clone()),
-        is_indexer_discovery: false,
-        lifecycle: InterestLifecycle::Tailing,
-        replay_shapes: Vec::new(),
-        replay_limit: 1,
-    },
+    |member_key, descriptor| group_last_message_projection(member_key, descriptor),
 );
 ```
 
