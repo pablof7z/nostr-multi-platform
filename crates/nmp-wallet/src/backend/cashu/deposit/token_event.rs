@@ -9,7 +9,7 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::CommandSender;
-use nmp_nip60::cashu::types::Proof;
+use nmp_nip60::cashu::{canonicalize_mint_url, types::Proof};
 use nmp_nip60::KIND_NIP60_TOKEN;
 use nmp_signer_iface::SignedEvent;
 
@@ -19,7 +19,7 @@ use crate::journal::{
 };
 
 use super::super::chain::launch_self_encrypted_publish;
-use super::super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
+use super::super::state::{lock_state, CashuWalletState};
 
 /// Build the kind:7375 self-encrypted token event for freshly minted `proofs`
 /// and launch the encrypt -> sign -> publish chain. Factored out of `run`'s

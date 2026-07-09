@@ -40,16 +40,16 @@ pub use types::Proof;
 /// Normalize a Cashu mint HTTP URL for equality comparisons (#2975, mirroring
 /// #2972's `nmp-wallet` fix) — two strings that name the same real mint (a
 /// trailing slash, a differently-cased scheme/host) must compare equal
-/// wherever this crate matches a caller-resolved mint URL against a stored
+/// wherever a caller matches a caller-resolved mint URL against a stored
 /// token record's mint.
 ///
-/// This is a deliberate duplicate of
-/// `nmp_wallet::backend::cashu::state::canonicalize_mint_url`, not a shared
-/// import: `nmp-nip60` is a dependency OF `nmp-wallet` (never the reverse),
-/// so `nmp-wallet` cannot be a new dependency here, and standing up a shared
-/// crate for one ~15-line pure string helper is more architecture than this
-/// fix warrants. Keep both copies in sync if the normalization rule ever
-/// changes.
+/// `nmp-nip60` is the canonical (and only) owner of this normalization rule
+/// (#3101): `nmp-nip60` is a dependency OF `nmp-wallet` (never the reverse),
+/// so `nmp-wallet` — which needs the exact same gate for its own proof/token
+/// mint matching — calls this function directly rather than carrying its
+/// own byte-identical copy. `nmp-nip60` owns the Cashu mint types this rule
+/// governs, which makes it the right layer for the rule itself, not just an
+/// accident of dependency direction.
 ///
 /// Deliberately narrower than a general URL-canonicalization routine: a Cashu
 /// mint URL's PATH is semantically load-bearing (e.g. minibits serves a
@@ -59,12 +59,7 @@ pub use types::Proof;
 /// are preserved untouched. Falls back to the trimmed, unmodified input when
 /// the string has no `scheme://` separator — never panics, never invents a
 /// canonical form for a non-URL.
-///
-/// Only called from `nip60_wallet::nutzap_send` (`native`-only, since every
-/// caller round-trips to a mint over HTTP); the `allow` keeps a
-/// `--no-default-features` build warning-free.
-#[cfg_attr(not(feature = "native"), allow(dead_code))]
-pub(crate) fn canonicalize_mint_url(mint: &str) -> String {
+pub fn canonicalize_mint_url(mint: &str) -> String {
     let trimmed = mint.trim();
     let Some((scheme, rest)) = trimmed.split_once("://") else {
         return trimmed.to_string();

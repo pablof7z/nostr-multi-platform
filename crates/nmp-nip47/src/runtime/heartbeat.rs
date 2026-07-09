@@ -5,7 +5,7 @@ use super::*;
 use nmp_core::substrate::WalletKernelAccess;
 use nmp_core::OutboundMessage;
 use nmp_network::role::RelayRole;
-use nmp_nwc::NwcMethod;
+use nmp_nwc::{NwcMethod, KIND_NWC_RESPONSE};
 use serde_json::json;
 
 use super::runtime_utils::encode_frame;
@@ -145,7 +145,7 @@ impl WalletRuntime {
         if resubscribe_needed {
             // Re-send REQ so the relay forwards kind:23195 again.
             let req_filter = json!({
-                "kinds": [23195u32],
+                "kinds": [KIND_NWC_RESPONSE],
                 "authors": [&wallet_pubkey_hex],
                 "#p": [&client_pubkey_hex],
             });

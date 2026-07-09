@@ -2,6 +2,7 @@
 //! keep that file under the 500-LOC ceiling. Pure crypto / JSON shaping —
 //! no kernel state.
 
+use nmp_nwc::KIND_NWC_REQUEST;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
@@ -22,7 +23,7 @@ pub(crate) fn sign_nwc_request(
     let keys = Keys::new(sk);
     let p_tag = Tag::public_key(wallet_pk);
     let created_at = Timestamp::from(created_at_secs);
-    let event = EventBuilder::new(Kind::from_u16(23194), encrypted_content)
+    let event = EventBuilder::new(Kind::from_u16(KIND_NWC_REQUEST as u16), encrypted_content)
         .tags([p_tag])
         .custom_created_at(created_at)
         .sign_with_keys(&keys)
@@ -32,7 +33,7 @@ pub(crate) fn sign_nwc_request(
         sig: event.sig.to_string(),
         unsigned: UnsignedEvent {
             pubkey: event.pubkey.to_hex(),
-            kind: 23194u32,
+            kind: KIND_NWC_REQUEST,
             tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
             content: event.content.clone(),
             created_at: event.created_at.as_secs(),

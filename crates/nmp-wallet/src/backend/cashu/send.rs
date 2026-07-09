@@ -57,13 +57,14 @@ use std::fmt;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+use nmp_nip60::cashu::canonicalize_mint_url;
 use nmp_nip60::kinds::KIND_NIP61_NUTZAP_INFO;
 use nmp_nip60::nutzap::decode_nutzap_info_fields;
 
 use crate::journal::{WalletConsumedInput, WalletOperationId, WalletOperationState};
 
 use super::send_worker::{run_send_worker, SendWorkerArgs};
-use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
+use super::state::{lock_state, CashuWalletState};
 use super::ui_codes;
 
 // Re-exported so callers (and this module's own tests, via `send::`) reach

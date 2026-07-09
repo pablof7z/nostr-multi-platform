@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use nmp_nip60::cashu::types::Proof;
+use nmp_nip60::cashu::{canonicalize_mint_url, types::Proof};
 
 use crate::journal::{
     WalletConsumedInput, WalletFact, WalletJournalError, WalletLedger, WalletOperation,
@@ -429,49 +429,11 @@ pub(crate) fn is_well_formed_mint_url(mint: &str) -> bool {
     !trimmed.is_empty() && (trimmed.starts_with("https://") || trimmed.starts_with("http://"))
 }
 
-/// Normalize a Cashu mint HTTP URL for equality comparisons (#2972) — two
-/// strings that name the same real mint (a trailing slash, a differently-
-/// cased scheme/host) must compare equal wherever this wallet matches a
-/// caller-resolved mint (a recipient's kind:10019 `u` tag, a deposit's typed
-/// mint) against its own stored proofs' mint.
-///
-/// Deliberately narrower than `nmp_relay_url::canonicalize` (which owns a
-/// relay WebSocket URL end-to-end, including its path): a Cashu mint URL's
-/// PATH is semantically load-bearing (e.g. minibits serves a distinct
-/// endpoint per unit at `/Bitcoin`), so only the scheme and host are
-/// lowercased and only a trailing `/` is stripped — the path's case and
-/// interior segments are preserved untouched. Two URLs that differ by path
-/// (even just by case) name *different* mints and must never collapse to
-/// the same canonical string.
-///
-/// Falls back to the trimmed, unmodified input when the string has no
-/// `scheme://` separator — never panics, and never invents a canonical form
-/// for something that isn't a well-formed URL to begin with (see
-/// `is_well_formed_mint_url`, which gates malformed input earlier in the
-/// pipeline).
-///
-/// Only the authority (host[:port]) is case-folded — the split point is the
-/// first of `/`, `?`, or `#`, so a query string or fragment (unlikely for a
-/// mint URL, but not this function's business to rewrite) is left completely
-/// untouched rather than accidentally lowercased along with the host. And
-/// only ONE trailing `/` is ever stripped, from the end of the path
-/// specifically (before any `?`/`#`): `/Bitcoin//` and `/Bitcoin/` still
-/// compare distinct from each other (only from `/Bitcoin`'s own
-/// single-trailing-slash form) — this function corrects exactly the
-/// single-trailing-slash case #2972 hit, not a general "collapse repeated
-/// slashes" rule.
-pub(super) fn canonicalize_mint_url(mint: &str) -> String {
-    let trimmed = mint.trim();
-    let Some((scheme, rest)) = trimmed.split_once("://") else {
-        return trimmed.to_string();
-    };
-    let scheme = scheme.to_ascii_lowercase();
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let authority = rest[..authority_end].to_ascii_lowercase();
-    let mut remainder = rest[authority_end..].to_string();
-    let path_end = remainder.find(['?', '#']).unwrap_or(remainder.len());
-    if path_end > 0 && remainder.as_bytes()[path_end - 1] == b'/' {
-        remainder.remove(path_end - 1);
-    }
-    format!("{scheme}://{authority}{remainder}")
-}
+// `canonicalize_mint_url` (#2972) used to live here as this wallet's own
+// copy; #3101 deleted it in favor of the byte-identical canonical impl this
+// crate now imports from `nmp_nip60::cashu` — nip60 owns the Cashu mint
+// types this normalization rule governs, and (being a dependency OF this
+// crate, never the reverse) is the layer that can be shared without an
+// inversion. See that function's doc comment for the exact normalization
+// rule (path is load-bearing, only scheme/host are case-folded, only a
+// single trailing `/` is stripped).

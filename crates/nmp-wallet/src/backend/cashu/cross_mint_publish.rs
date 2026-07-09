@@ -11,7 +11,7 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{build_record_action_failure, build_record_action_success};
 use nmp_core::CommandSender;
 use nmp_nip60::cashu::types::{MintQuoteState, Proof};
-use nmp_nip60::cashu::MintClient;
+use nmp_nip60::cashu::{canonicalize_mint_url, MintClient};
 use nmp_nip60::KIND_NIP60_TOKEN;
 
 use crate::journal::{
@@ -23,7 +23,7 @@ use super::chain::{enqueue_signed_publish, launch_self_encrypted_publish};
 use super::cross_mint_worker::SendRetry;
 use super::deposit::token_event_plaintext;
 use super::send::SendNutzapCommand;
-use super::state::{canonicalize_mint_url, lock_state, CashuWalletState};
+use super::state::{lock_state, CashuWalletState};
 
 /// Resume (or, from the fresh flow, continue) the target-mint leg once the
 /// melt is known to have settled — mint the target's tokens (retry-safe:
