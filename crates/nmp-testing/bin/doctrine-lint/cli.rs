@@ -341,22 +341,94 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
             if !app_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
             }
-            let crate_entries = std::fs::read_dir(app_entry.path())
-                .map_err(|e| format!("failed to read {}: {}", app_entry.path().display(), e))?;
-            for crate_entry in crate_entries {
-                let crate_entry =
-                    crate_entry.map_err(|e| format!("failed to read app crate entry: {}", e))?;
-                if !crate_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-                    continue;
-                }
-                let src = crate_entry.path().join("src");
-                if src.is_dir() {
-                    roots.push(src);
-                }
-            }
+            find_crate_src_roots(&app_entry.path(), &mut roots)?;
         }
     }
 
     roots.sort();
     Ok(roots)
+}
+
+/// Directory names that are never part of an app's Rust crate tree — either
+/// non-Rust platform shells (`android`, `ios`) or build/tooling output that
+/// would be wasteful (and potentially wrong) to walk into looking for
+/// `Cargo.toml`+`src/` pairs.
+const APP_WALK_SKIP_DIRS: &[&str] = &[
+    "android",
+    "ios",
+    "generated",
+    "target",
+    "node_modules",
+    ".git",
+    ".gradle",
+    "build",
+    "Pods",
+    "DerivedData",
+];
+
+/// Recursively finds crate roots (any directory containing both a
+/// `Cargo.toml` and a `src/` directory) under `dir`, appending their `src/`
+/// paths to `roots`. Unlike the flat `crates/*/src` discovery above, app
+/// crates do not sit at a fixed depth under `apps/<app>/` — e.g.
+/// `apps/nmp-gallery/desktop/src` is one level down but
+/// `apps/nmp-gallery/crates/nmp-app-gallery/src` is two — so this walks
+/// until it finds a crate root, then stops descending into it (a crate's
+/// `src/` never itself contains a nested Cargo.toml crate root in this repo).
+fn find_crate_src_roots(dir: &Path, roots: &mut Vec<PathBuf>) -> Result<(), String> {
+    let src = dir.join("src");
+    if dir.join("Cargo.toml").is_file() && src.is_dir() {
+        roots.push(src);
+        return Ok(());
+    }
+
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| format!("failed to read {}: {}", dir.display(), e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read {} entry: {}", dir.display(), e))?;
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        if APP_WALK_SKIP_DIRS.contains(&name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        find_crate_src_roots(&entry.path(), roots)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for #3095: `workspace_crate_src_roots` must discover
+    /// app crates at whatever depth they actually live under `apps/<app>/`,
+    /// not just one level down. Before the fix, this silently skipped
+    /// `apps/nmp-gallery/crates/nmp-app-gallery/src` — the only in-repo
+    /// application crate — which meant every `--workspace-full`/
+    /// `--workspace-d8` doctrine rule never ran on it.
+    #[test]
+    fn workspace_crate_src_roots_finds_app_crates_at_any_depth() {
+        let workspace_root = default_workspace_root();
+        let roots = workspace_crate_src_roots(&workspace_root)
+            .expect("workspace_crate_src_roots should succeed against the real workspace");
+
+        let expect_root = |suffix: &str| {
+            let want = workspace_root.join(suffix);
+            assert!(
+                roots.contains(&want),
+                "expected {} to be in the discovered root set, got: {:#?}",
+                want.display(),
+                roots
+            );
+        };
+
+        // Flat `crates/*/src` discovery must keep working.
+        expect_root("crates/nmp-core/src");
+        // App crates one level down under apps/<app>/ must keep working.
+        expect_root("apps/nmp-gallery/desktop/src");
+        // The regression: app crates nested under apps/<app>/crates/<name>/
+        // — two levels down — must now be discovered too.
+        expect_root("apps/nmp-gallery/crates/nmp-app-gallery/src");
+    }
 }
