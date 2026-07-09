@@ -34,7 +34,6 @@ object NmpComponentHostConformanceFixture {
         pictureUrl = "https://example.invalid/alice.png",
         nip05 = "alice@example.invalid",
         npub = "npub1componenthostfixture",
-        npubShort = "npub1component...fixture",
     )
 
     val eventEnvelope = EmbeddedEventEnvelope(

@@ -147,10 +147,10 @@ struct UserNip05Page: View {
 
 /// Renders the npub-chip component using the best-effort profile.
 ///
-/// `npub` and `npubShort` are always Rust-formatted (fallback values
-/// pinned in `GalleryModel.swift` match `nmp_core::display::short_npub`
-/// before kind:0 arrives; replaced by the kernel-supplied values once
-/// the real profile lands).
+/// `npub` is always Rust-formatted (the fallback value pinned in
+/// `GalleryModel.swift` before kind:0 arrives; replaced by the
+/// kernel-supplied value once the real profile lands). `npubShort` is
+/// `ProfileWire`'s own local truncation of `npub` (#3098).
 struct UserNpubPage: View {
     let profile: ProfileWire
 

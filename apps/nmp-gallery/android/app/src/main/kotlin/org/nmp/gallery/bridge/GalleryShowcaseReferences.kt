@@ -30,7 +30,6 @@ data class GalleryShowcaseReferences(
 data class GalleryShowcaseProfile(
     @SerialName("pubkey_hex") val pubkeyHex: String,
     @SerialName("npub") val npub: String,
-    @SerialName("npub_short") val npubShort: String,
 )
 
 @Serializable

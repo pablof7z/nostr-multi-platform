@@ -33,11 +33,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Tappable chip that shows the Rust-truncated npub and copies the full
+ * Tappable chip that shows the truncated npub and copies the full
  * bech32 `npub1…` to the clipboard on tap.
  *
- * `npub` and `npubShort` must come from the kernel projection —
- * never reformat them in Kotlin.
+ * `npub` must come from the kernel projection (the canonical Rust bech32
+ * NIP-19 encoder) — never re-derive the encoding in Kotlin (aim.md §6.9).
+ * `npubShort` is a pure string truncation of `npub` — a display decision the
+ * host owns (#3098) — see [ProfileWire.npubShort].
  *
  * Depends on `compose/user-avatar` for [ProfileWire].
  */

@@ -26,8 +26,11 @@ type NmpWasmRuntime = {
   prepare_store?(appId: string, databaseName: string): Promise<void>;
 };
 
-/** Free function exported by the wasm module: hex pubkey → JSON `{npub, npubShort}`
- *  (canonical Rust NIP-19 encoder), or undefined/null on invalid input. */
+/** Free function exported by the wasm module: hex pubkey → JSON `{npub}`
+ *  (canonical Rust NIP-19 encoder), or undefined/null on invalid input.
+ *  #3098 — `npubShort` is no longer part of this shape; callers derive it
+ *  locally (pure string truncation of `npub`, a display decision the host
+ *  owns). */
 type EncodeNpubFn = (hex: string) => string | undefined | null;
 
 type NmpWasmModule = {
@@ -72,13 +75,14 @@ export class WasmBridge {
   }
 
   /** Encode a hex pubkey via the Rust NIP-19 encoder. Returns `{}` when the
-   *  encoder is absent or the pubkey is invalid (D6 — honest empty, no throw). */
-  encodeNpub(pubkey: string): { npub?: string; npubShort?: string } {
+   *  encoder is absent or the pubkey is invalid (D6 — honest empty, no throw).
+   *  #3098 — no `npubShort`: callers truncate the returned `npub` locally. */
+  encodeNpub(pubkey: string): { npub?: string } {
     const json = this.encodeNpubFn?.(pubkey);
     if (!json) return {};
     try {
-      const parsed = JSON.parse(json) as { npub?: string; npubShort?: string };
-      return { npub: parsed.npub, npubShort: parsed.npubShort };
+      const parsed = JSON.parse(json) as { npub?: string };
+      return { npub: parsed.npub };
     } catch {
       return {};
     }

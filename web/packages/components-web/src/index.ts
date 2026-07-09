@@ -79,6 +79,7 @@ export {
   avatarUrl,
   displayLabel,
   shortHex,
+  truncateNpub,
   type ProfileWire,
 } from "./user-avatar";
 export { NostrUserCard } from "./user-card";

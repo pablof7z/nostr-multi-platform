@@ -20,8 +20,7 @@ class NmpUpdateFrameDecoderTest {
                   "abc": {
                     "pubkey": "abc",
                     "display_name": "Alice",
-                    "npub": "npub1abc",
-                    "npub_short": "npub1abc"
+                    "npub": "npub1abc"
                   }
                 }
               }

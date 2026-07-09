@@ -26,11 +26,12 @@ import java.util.UUID
  *     reactively, and releases on disposal. This mirrors [NostrAvatar]'s
  *     resolve/release lifecycle exactly.
  *
- * Display always comes from a Rust-formatted source — `displayName` when the
- * kind:0 has resolved, else the Rust-truncated `npubShort` (never reformat in
- * Kotlin, never raw hex). In the self-resolving mode, until the host has any
- * profile for the pubkey the component renders nothing rather than synthesize a
- * Kotlin-side abbreviation.
+ * Display always comes from a Rust-sourced field — `displayName` when the
+ * kind:0 has resolved, else `npubShort` (a local string truncation of the
+ * Rust-encoded `npub`; #3098 — see [ProfileWire.npubShort]). In the
+ * self-resolving mode, until the host has any profile for the pubkey the
+ * component renders nothing rather than synthesize a partial display from an
+ * unresolved pubkey.
  *
  * Depends on `compose/user-avatar` for [ProfileWire] and [NostrProfileHost].
  */
@@ -61,8 +62,8 @@ fun NostrProfileName(
  * no event triggers a kernel kind:0 fetch of the author.
  *
  * Renders nothing until the host resolves a profile for `pubkey`, so the
- * fallback is always the Rust-formatted `npubShort`, never a Kotlin-side hex
- * abbreviation.
+ * fallback is always [ProfileWire.npubShort] (truncated locally from the
+ * Rust-encoded `npub`), never a Kotlin-side hex abbreviation.
  */
 @Composable
 fun NostrProfileName(

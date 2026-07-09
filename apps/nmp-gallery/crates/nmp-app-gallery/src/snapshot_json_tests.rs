@@ -381,10 +381,26 @@ fn profile_card_json_adds_gallery_display_fields() {
     assert_eq!(value["pubkey"], card.pubkey);
     assert_eq!(value["display_name"], "Alice");
     assert!(value["npub"].as_str().unwrap_or("").starts_with("npub1"));
-    assert!(value["npub_short"]
-        .as_str()
-        .unwrap_or("")
-        .starts_with("npub1"));
     assert!(value["about"].is_null());
     assert!(value["nip05"].is_null());
+}
+
+/// #3098 — `npub_short` is a pure-truncation display artifact of the already
+/// -known `npub` and must never be baked into the UniFFI snapshot wire; the
+/// shells (Swift/Kotlin) derive it locally. Regression guard for the leak
+/// fixed in this issue.
+#[test]
+fn profile_card_json_never_bakes_npub_short() {
+    let card = ProfileCardModel {
+        pubkey: "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+        ..Default::default()
+    };
+
+    let value = profile_card_json(&card, &card.pubkey);
+
+    assert!(
+        value.get("npub_short").is_none(),
+        "npub_short must not be present on the wire; shells truncate npub \
+         locally (aim.md §2), got: {value:?}"
+    );
 }

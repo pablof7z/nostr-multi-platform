@@ -356,25 +356,28 @@ mod wasm_impl {
     // ── Free function: nmp_encode_npub ────────────────────────────────────────
 
     /// Encode a 32-byte secp256k1 public key (64 hex chars) as a JSON object
-    /// `{"npub":"npub1…","npubShort":"npub1abc…xyz"}`.
+    /// `{"npub":"npub1…"}`.
     ///
     /// Returns the JSON string on success, or an empty string if `hex` is not
     /// valid 64-char hex (D6: total on JS boundary — never throws).
     ///
-    /// The bridge (`wasmBridge.ts` line 74) calls `JSON.parse(json)` expecting
-    /// exactly the `{npub, npubShort}` shape (#2139 BLOCKER 3 — was returning
-    /// a bare `npub1…` string which caused `JSON.parse` to throw on the object
-    /// destructure).
+    /// The bridge (`wasmBridge.ts`) calls `JSON.parse(json)` expecting the
+    /// `{npub}` shape (#2139 BLOCKER 3 — was returning a bare `npub1…` string
+    /// which caused `JSON.parse` to throw on the object destructure). #3098 —
+    /// the abbreviated `npubShort` field was removed: it is pure string
+    /// truncation of the `npub` this function already returns, so the JS host
+    /// derives it locally instead of the kernel baking a display artifact
+    /// into the wire (aim.md §2). This function's job is bech32 encoding
+    /// only, which legitimately stays in Rust (the canonical NIP-19 encoder).
     ///
     /// Exported to JS as `nmp_encode_npub(hex: string): string`.
     #[wasm_bindgen]
     pub fn nmp_encode_npub(hex: &str) -> String {
         match nmp_nostr_id::encode_npub(hex) {
             Ok(npub) => {
-                let npub_short = nmp_core::display::short_npub(hex);
                 // serde_json::to_string cannot fail on a simple object literal;
                 // unwrap_or_default is a belt-and-suspenders guard only.
-                serde_json::json!({ "npub": npub, "npubShort": npub_short }).to_string()
+                serde_json::json!({ "npub": npub }).to_string()
             }
             Err(_) => String::new(),
         }
@@ -387,20 +390,19 @@ pub use wasm_impl::{nmp_encode_npub, NmpWasmRuntime};
 // ── Non-wasm stubs (native CI / doc builds) ───────────────────────────────────
 
 /// Encode a 32-byte secp256k1 public key hex as a JSON object
-/// `{"npub":"npub1…","npubShort":"npub1abc…xyz"}`.
+/// `{"npub":"npub1…"}`.
 ///
 /// On native this is a plain Rust function (no `#[wasm_bindgen]`); the wasm
 /// target exports it via `nmp_encode_npub` above. Returns an empty string on
 /// invalid input (D6: total — no panic, no error value on the JS boundary).
 ///
-/// (#2139 BLOCKER 3 — was returning a bare `npub1…` string).
+/// (#2139 BLOCKER 3 — was returning a bare `npub1…` string). #3098 — the
+/// abbreviated `npubShort` field was removed (pure string truncation the JS
+/// host derives locally from `npub`, never baked into the wire).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn nmp_encode_npub(hex: &str) -> String {
     match nmp_nostr_id::encode_npub(hex) {
-        Ok(npub) => {
-            let npub_short = nmp_core::display::short_npub(hex);
-            serde_json::json!({ "npub": npub, "npubShort": npub_short }).to_string()
-        }
+        Ok(npub) => serde_json::json!({ "npub": npub }).to_string(),
         Err(_) => String::new(),
     }
 }
@@ -418,9 +420,18 @@ mod tests {
             parsed["npub"].as_str().unwrap_or("").starts_with("npub1"),
             "npub field must start with npub1"
         );
+    }
+
+    /// #3098 — `npubShort` must never be baked into the wire; the JS host
+    /// truncates the `npub` this function returns.
+    #[test]
+    fn encode_npub_never_bakes_npub_short() {
+        let hex = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let json = nmp_encode_npub(hex);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("must be valid JSON");
         assert!(
-            !parsed["npubShort"].as_str().unwrap_or("").is_empty(),
-            "npubShort field must be non-empty"
+            parsed.get("npubShort").is_none(),
+            "npubShort must not be present on the wire, got: {parsed:?}"
         );
     }
 

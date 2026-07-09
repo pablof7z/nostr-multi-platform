@@ -27,8 +27,7 @@ public enum NmpComponentHostConformanceFixture {
         about: "Profile row supplied by refs.profile.",
         pictureUrl: "https://example.invalid/alice.png",
         nip05: "alice@example.invalid",
-        npub: "npub1componenthostfixture",
-        npubShort: "npub1component...fixture"
+        npub: "npub1componenthostfixture"
     )
 
     public static let eventEnvelope = EmbeddedEventEnvelope(

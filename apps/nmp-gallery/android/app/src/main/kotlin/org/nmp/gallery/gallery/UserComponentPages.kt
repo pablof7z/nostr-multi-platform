@@ -40,7 +40,6 @@ fun UserComponentPage(
     val profile = profiles[pubkey] ?: ProfileWire(
         pubkey = pubkey,
         npub = showcase.profile.npub,
-        npubShort = showcase.profile.npubShort,
     )
 
     Column(

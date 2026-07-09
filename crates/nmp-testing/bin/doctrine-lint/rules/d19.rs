@@ -108,7 +108,16 @@ pub fn file_in_scope(path: &Path) -> bool {
         || s.contains("/crates/nmp-core/src/kernel/publish_")
         || s.contains("crates/nmp-core/src/kernel/publish_");
 
-    is_projection_file || is_error_producer_file
+    // Gallery app crate's UniFFI snapshot JSON adapter (#3098): the #3095
+    // scanner fix (#3104) widened doctrine-lint's walk to `apps/*`, but this
+    // allowlist still excluded `apps/*` entirely, so `snapshot_json.rs`
+    // baking display fields into the UniFFI wire went uncaught. Any file
+    // under an `apps/nmp-gallery/crates/*/src/` tree is a projection/wire
+    // adapter in the same sense as the nmp-core paths above.
+    let is_gallery_app_crate_file =
+        s.contains("apps/nmp-gallery/crates/") && s.contains("/src/");
+
+    is_projection_file || is_error_producer_file || is_gallery_app_crate_file
 }
 
 /// Returns `(col, message, suggested)` for each banned display token on `line`.
@@ -267,6 +276,19 @@ mod tests {
     fn doctrine_lint_source_is_out_of_scope() {
         assert!(!file_in_scope(Path::new(
             "crates/nmp-testing/bin/doctrine-lint/rules/d19.rs"
+        )));
+    }
+
+    /// #3098 — the gallery app crate's UniFFI snapshot adapter must be in
+    /// scope so a re-introduced `crate::display::`/`format_timestamp(` bake
+    /// into that wire red-fails CI going forward.
+    #[test]
+    fn gallery_app_crate_is_in_scope() {
+        assert!(file_in_scope(Path::new(
+            "apps/nmp-gallery/crates/nmp-app-gallery/src/snapshot_json.rs"
+        )));
+        assert!(file_in_scope(Path::new(
+            "/abs/path/apps/nmp-gallery/crates/nmp-app-gallery/src/snapshot_json.rs"
         )));
     }
 }

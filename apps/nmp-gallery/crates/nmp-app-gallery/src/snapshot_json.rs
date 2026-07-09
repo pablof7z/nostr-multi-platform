@@ -7,7 +7,7 @@ use nmp_content::{derive_ref_event_envelopes, EmbeddedEventEnvelope};
 use nmp_core::refs::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 use nmp_core::{
     decode_snapshot_envelope, decode_snapshot_typed_projections,
-    display::{short_npub, to_npub},
+    display::to_npub,
     typed_projections::{
         decode_accounts, decode_relay_role_options, decode_signer_state, AccountsModel,
         ClaimedEventRow, ProfileCardModel, RelayRoleOptionsModel, SignerStateModel,
@@ -106,8 +106,21 @@ fn refs_profiles_json(profiles: &BTreeMap<String, ProfileCardModel>) -> Value {
     Value::Object(out)
 }
 
+/// #3098 — `npub_short` (the bech32 abbreviation) is REMOVED from this wire:
+/// truncation is pure string manipulation over an already-known `npub`, so
+/// the shells (Swift/Kotlin) derive it locally rather than have the kernel
+/// bake a display artifact into the projection (aim.md §2).
+///
+/// The full `npub` field itself is a narrower case: neither `ProfileWire.swift`
+/// nor `ProfileWire.kt` has a local NIP-19 bech32 encoder (unlike the wasm/web
+/// path, which calls the standalone `nmp_encode_npub` free function on demand —
+/// see `crates/nmp-browser-runtime/src/wasm/mod.rs`), so dropping it here would
+/// break the npub-copy / full-npub display surfaces on both native shells.
+/// Tracked by nmp#3110 — once the gallery UniFFI facade exposes an on-demand
+/// encoder mirroring `nmp_encode_npub`, this `to_npub` call and the `npub`
+/// field are removed and the shells derive it themselves.
 fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
-    let npub = to_npub(pubkey);
+    let npub = to_npub(pubkey); // doctrine-allow: D27 — full npub kept until gallery shells gain local bech32 encoding (nmp#3110); npub_short removed, shells truncate locally
     json!({
         "pubkey": pubkey,
         "display_name": card.display_name,
@@ -116,7 +129,6 @@ fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
         "nip05": empty_string_as_null(&card.nip05),
         "lnurl": card.lnurl,
         "npub": npub,
-        "npub_short": short_npub(pubkey),
     })
 }
 

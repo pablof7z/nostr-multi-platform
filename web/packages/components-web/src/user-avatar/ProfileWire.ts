@@ -4,10 +4,13 @@
 // is 64-char lowercase hex (ADR-0072). The host app owns fetching and
 // persistence; these components only render the snapshot they are given.
 //
-// `npubShort` is intentionally optional and Rust-formatted when present — never
-// reformat or bech32-encode it in the browser (aim.md §6.9). The web kernel
-// boundary does not yet emit it; until it does the components fall back to the
-// raw pubkey rather than deriving an npub locally.
+// #3098 — the kernel/wasm boundary must NEVER bake a bech32 npub or its
+// abbreviation into this wire (ADR-0072, aim.md §6.9): bech32 ENCODING stays
+// Rust-owned (see `nmp_encode_npub` in `@nmpis/runtime-web`, called on demand
+// — never reimplemented in JS), but the `npubShort` ABBREVIATION is pure
+// string truncation of an already-known npub and the host derives it locally
+// via `truncateNpub` below. `npubShort` on this interface is populated by the
+// host from that on-demand call, not by the kernel snapshot itself.
 export interface ProfileWire {
   /** 64-char lowercase hex pubkey. */
   pubkey: string;
@@ -21,8 +24,9 @@ export interface ProfileWire {
   nip05?: string;
   /** Lightning address / LNURL from kind:0. */
   lnurl?: string;
-  /** Rust-truncated npub (e.g. `npub1abcd…wxyz`). Display only. Optional until
-   *  the web kernel boundary emits it. */
+  /** Locally-truncated npub (e.g. `npub1abcd…wxyz`), derived by the host via
+   *  `truncateNpub` from a Rust-encoded npub obtained on demand. Display
+   *  only. Absent until the host has resolved an npub for this pubkey. */
   npubShort?: string;
 }
 
@@ -47,4 +51,15 @@ export function displayLabel(profile: ProfileWire | undefined, pubkey: string): 
 export function shortHex(pubkey: string): string {
   if (pubkey.length <= 12) return pubkey;
   return `${pubkey.slice(0, 6)}…${pubkey.slice(-4)}`;
+}
+
+/** Truncate a bech32 npub for display: first 10 chars + `"…"` + last 6
+ *  chars, unchanged when already short enough to fit (17 chars or fewer).
+ *  Pure string truncation — never re-derives the bech32 encoding itself
+ *  (that stays Rust-owned via `nmp_encode_npub`); mirrors the shape
+ *  `nmp_core::display::short_npub` used to bake into kernel wires before
+ *  #3098 removed that bake. */
+export function truncateNpub(npub: string): string {
+  if (npub.length <= 17) return npub;
+  return `${npub.slice(0, 10)}…${npub.slice(-6)}`;
 }
