@@ -133,9 +133,46 @@ fn every_reply_target_error_has_a_distinct_stable_code() {
         ReplyTargetError::InvalidAuthorPubkey.code(),
         ReplyTargetError::MissingTargetAuthor.code(),
         ReplyTargetError::CommentEventRequiresRecord.code(),
+        ReplyTargetError::ParentNotLocallyKnown.code(),
     ];
     let mut sorted = codes.to_vec();
     sorted.sort_unstable();
     sorted.dedup();
     assert_eq!(sorted.len(), codes.len(), "codes must be pairwise distinct");
+}
+
+// ── #3099 Bug A: never fabricate a root/reply shape from a cache miss ──────
+
+#[test]
+fn reject_uncached_note_parent_requires_author_before_failing_closed() {
+    // No author at all is a distinct, more specific reject than "parent
+    // unknown" — it fires even before thread-shape knowledge would matter.
+    let target = ReplyEventTarget {
+        event_id: EVENT_ID.to_string(),
+        kind: 1,
+        author_pubkey: None,
+    };
+    assert_eq!(
+        ReplyTarget::reject_uncached_note_parent(&target),
+        ReplyTargetError::MissingTargetAuthor
+    );
+}
+
+#[test]
+fn reject_uncached_note_parent_fails_closed_even_with_a_valid_author() {
+    // #3099: this is the load-bearing proof. A well-formed kind:1 `Event`
+    // target — valid event id, valid author — must STILL be rejected rather
+    // than silently built into a reply that fabricates a root marker. The
+    // ONLY way to build a valid published reply to a kind:1 parent is via
+    // `ReplyTarget::Note`/`ReplyTarget::Comment`, carrying the parent's real
+    // decoded refs.
+    let target = ReplyEventTarget {
+        event_id: EVENT_ID.to_string(),
+        kind: 1,
+        author_pubkey: Some(AUTHOR.to_string()),
+    };
+    assert_eq!(
+        ReplyTarget::reject_uncached_note_parent(&target),
+        ReplyTargetError::ParentNotLocallyKnown
+    );
 }
