@@ -3,14 +3,15 @@
 //! # Overview
 //!
 //! The active-follow feed (V-59) needs to know, for any pubkey, whether the
-//! active account follows that pubkey. The generic `RootIndexedFeed` engine in
-//! `nmp-feed` (rung 3) consumes that knowledge as a closure predicate
-//! (`Arc<dyn Fn(&str) -> bool + Send + Sync>`) — **not** a trait. v4 of the
-//! design (see `docs/perf/op-centric-feed-architecture.md` §3-D) deleted the
-//! `FollowSetLookup` trait and the `LogicalInterest::SocialTimeline` planner
-//! variant in favour of a closure produced here and wired at the composition
-//! root (`explicit composition`, rung 6). The rationale is recorded in
-//! [ADR-0076](../../docs/decisions/0076-app-facing-feed-helpers.md).
+//! active account follows that pubkey. The generic `nmp_feed::FlatFeed<FeedRow>`
+//! engine in `nmp-feed` (rung 3) consumes that knowledge as an admission
+//! predicate (`Arc<dyn Fn(&str) -> bool + Send + Sync>`) — **not** a trait.
+//! v4 of the design (see `docs/perf/op-centric-feed-architecture.md` §3-D,
+//! now retired in favour of `docs/perf/composite-feed-architecture.md`)
+//! deleted the `FollowSetLookup` trait and the `LogicalInterest::SocialTimeline`
+//! planner variant in favour of a closure produced here and wired at the
+//! composition root (`explicit composition`, rung 6). The rationale is
+//! recorded in [ADR-0076](../../docs/decisions/0076-app-facing-feed-helpers.md).
 //!
 //! `ActiveFollowSet` is the **producer** of that closure. Internally it uses
 //! Trellis as a private source graph: the graph takes the active account and

@@ -19,6 +19,8 @@ use crate::{
     RootCard, RootFeedSnapshot,
 };
 
+mod removal;
+
 /// Admission predicate: `true` when an event belongs in this feed.
 pub type FlatFeedPredicate = Arc<dyn Fn(&KernelEvent) -> bool + Send + Sync>;
 
@@ -46,6 +48,25 @@ pub type FlatFeedItemBuilder<C> = Arc<dyn Fn(&KernelEvent) -> Vec<FlatFeedItem<C
 /// Merge policy when two source events surface the same canonical item id.
 pub type FlatFeedMerge<C> =
     Arc<dyn Fn(Option<&FlatFeedItem<C>>, FlatFeedItem<C>) -> FlatFeedItem<C> + Send + Sync>;
+
+/// Fired with a [`FlatFeedItem::source_id`] the instant that source's
+/// contribution is dropped from a `FlatFeed` — via `remove_source`/
+/// `remove_sources_if` (one source among possibly several sharing a row), or
+/// because the whole row containing it was removed outright (`remove_item`/
+/// `remove_item_if`, which fires this once per source the removed row held).
+///
+/// Source granularity, not row granularity, is deliberate: a composite row's
+/// canonical id can be the SAME as one of its contributing sources' own
+/// declared target (e.g. a comment row-merges onto the article it points at,
+/// #3082's `ByTargetCreatedAt` policy), so "the row" is not a stable proxy for
+/// "the one declaring event" — the source id is. Composite sessions with
+/// `Delivered`-ref demand (#3087) register a hook here so a demand keyed by
+/// the declaring event's own id retracts in lockstep with that event's source
+/// contribution being removed, instead of growing monotonically for the life
+/// of the session. Optional — most feeds have no removal lifecycle observer.
+/// Generic and D0-clean — it names no protocol concept, only a source id
+/// string.
+pub type SourceRemovedHook = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// A renderable flat-feed row keyed by canonical item id.
 #[derive(Clone, Debug, PartialEq)]
@@ -93,6 +114,7 @@ pub struct FlatFeed<C> {
     state: Mutex<FlatFeedState<C>>,
     window_policy: FeedWindowPolicy,
     visible_limit: AtomicUsize,
+    source_removed: Option<SourceRemovedHook>,
 }
 
 impl<C> FlatFeed<C>
@@ -161,6 +183,30 @@ where
         merge: FlatFeedMerge<C>,
         window_policy: FeedWindowPolicy,
     ) -> Arc<Self> {
+        Self::with_merge_window_policy_and_source_removed_hook(
+            predicate,
+            item_builder,
+            interest,
+            merge,
+            window_policy,
+            None,
+        )
+    }
+
+    /// Construct a flat feed with explicit same-identity merge semantics,
+    /// app-declared window policy, and an optional [`SourceRemovedHook`] fired
+    /// once per source contribution dropped (#3087 — the composite-lane
+    /// compiler's `DeliveredRefDemand` retraction wiring is the one caller
+    /// that needs this; every other constructor defaults to no hook).
+    #[must_use]
+    pub fn with_merge_window_policy_and_source_removed_hook(
+        predicate: FlatFeedPredicate,
+        item_builder: FlatFeedItemBuilder<C>,
+        interest: Option<InterestShape>,
+        merge: FlatFeedMerge<C>,
+        window_policy: FeedWindowPolicy,
+        source_removed: Option<SourceRemovedHook>,
+    ) -> Arc<Self> {
         let initial_limit = window_policy.initial_visible_limit();
         Arc::new(Self {
             predicate,
@@ -170,6 +216,7 @@ where
             state: Mutex::new(FlatFeedState::default()),
             window_policy,
             visible_limit: AtomicUsize::new(initial_limit),
+            source_removed,
         })
     }
 
@@ -272,81 +319,10 @@ where
             })
     }
 
-    /// Remove an entire canonical row by id.
-    ///
-    /// Protocol adapters use this for deletes, mutes, blocks, and other
-    /// externally-owned suppression facts that apply to the target event. The
-    /// generic feed does not interpret those policies; it only owns row-index
-    /// mutation.
-    pub fn remove_item(&self, id: &str) -> bool {
-        self.state
-            .lock()
-            .ok()
-            .and_then(|mut st| st.rows.remove(id))
-            .is_some()
-    }
-
-    /// Remove an entire canonical row when the current best card satisfies
-    /// `predicate`.
-    pub fn remove_item_if(&self, id: &str, predicate: impl FnOnce(&C) -> bool) -> bool {
-        let Ok(mut st) = self.state.lock() else {
-            return false;
-        };
-        let should_remove = st.rows.get(id).is_some_and(|row| predicate(&row.best.card));
-        if should_remove {
-            st.rows.remove(id);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Remove one source contribution from a canonical row and recompute the
-    /// row from remaining sources.
-    pub fn remove_source(&self, id: &str, source_id: &str) -> bool {
-        let Ok(mut st) = self.state.lock() else {
-            return false;
-        };
-        let Some(row) = st.rows.get_mut(id) else {
-            return false;
-        };
-        if row.sources.remove(source_id).is_none() {
-            return false;
-        }
-        if let Some(best) = merge_sources(&self.merge, &row.sources) {
-            row.best = best;
-        } else {
-            st.rows.remove(id);
-        }
-        true
-    }
-
-    /// Remove all source contributions matching `predicate`.
-    ///
-    /// Returns the number of removed sources. Canonical rows with remaining
-    /// sources are recomputed; rows with no sources left are removed.
-    pub fn remove_sources_if(&self, predicate: impl Fn(&FlatFeedItem<C>) -> bool) -> usize {
-        let Ok(mut st) = self.state.lock() else {
-            return 0;
-        };
-
-        let mut removed = 0usize;
-        let mut empty_rows = Vec::new();
-        for (id, row) in &mut st.rows {
-            let before = row.sources.len();
-            row.sources.retain(|_, item| !predicate(item));
-            removed += before.saturating_sub(row.sources.len());
-            if let Some(best) = merge_sources(&self.merge, &row.sources) {
-                row.best = best;
-            } else {
-                empty_rows.push(id.clone());
-            }
-        }
-        for id in empty_rows {
-            st.rows.remove(&id);
-        }
-        removed
-    }
+    // `remove_item`/`remove_item_if`/`remove_source`/`remove_sources_if` and
+    // their shared `notify_source_removed` helper live in `flat/removal.rs`
+    // (split out to stay under the file-size gate; a child module of `flat`
+    // reaches these same private fields).
 
     /// Clear all rows and return the visible window to the first page.
     ///
