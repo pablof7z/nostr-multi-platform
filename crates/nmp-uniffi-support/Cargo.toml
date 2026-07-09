@@ -21,4 +21,5 @@ composite-feed = ["nmp-native-runtime/composite-feed"]
 nmp-ownership = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false, version = "1.0.0-rc.1" }
 nmp-native-runtime = { path = "../nmp-native-runtime", version = "1.0.0-rc.1" }
+nmp-read-session = { path = "../nmp-read-session", version = "1.0.0-rc.1" }
 serde_json = { workspace = true }
