@@ -339,7 +339,7 @@ pub fn encode_reply_summary_snapshot(snapshot: &ReplySummarySnapshot) -> Vec<u8>
 /// TUI/desktop shell) uses this to turn the
 /// `TypedProjectionData::payload` bytes the read-lifecycle engine emits back
 /// into the typed snapshot, mirroring `nmp_core::typed_projections::
-/// decode_relay_diagnostics` / `nmp_nip01::decode_op_feed_snapshot`'s
+/// decode_relay_diagnostics` / `nmp_feed::decode_feed_row_snapshot`'s
 /// symmetric encode+decode convention.
 ///
 /// # Errors

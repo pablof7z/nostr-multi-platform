@@ -1,6 +1,6 @@
 //! OP-feed engine doctrine gate (V-80 rung 3).
 //!
-//! `nmp-feed` is substrate-generic: the `RootIndexedFeed` engine must name
+//! `nmp-feed` is substrate-generic: the `FlatFeed` engine must name
 //! ZERO protocol conventions (D0). A leaked `nip01`, `marmot`, or
 //! `ProfileDisplay` token would mean a protocol instance bled into the engine.
 //! This grep gate fails the build if any `.rs` under `crates/nmp-feed/src/`

@@ -150,11 +150,6 @@ pub struct TimelineRow {
     pub created_at: u64,
     /// Verbatim note body.
     pub content: String,
-    /// Hex pubkeys of followed authors who replied in this root's thread
-    /// (NIP-10 attribution). Empty for a plain note. This list is populated by
-    /// the kernel's follow-set predicate — its contents are the proof that this
-    /// is a *following* timeline, not a global one.
-    pub attribution_pubkeys: Vec<String>,
 }
 
 impl TimelineRow {
@@ -165,16 +160,7 @@ impl TimelineRow {
     #[must_use]
     pub fn render_line(&self) -> String {
         let who = short_pubkey(&self.author_pubkey);
-        let mut line = format!("{who}  {}", self.content);
-        if !self.attribution_pubkeys.is_empty() {
-            let names: Vec<String> = self
-                .attribution_pubkeys
-                .iter()
-                .map(|p| short_pubkey(p))
-                .collect();
-            line.push_str(&format!("   [reply in thread by {}]", names.join(", ")));
-        }
-        line
+        format!("{who}  {}", self.content)
     }
 }
 
@@ -208,9 +194,6 @@ pub fn render_home_rows(app: &NmpApp) -> Vec<TimelineRow> {
             author_pubkey: root.card.author_pubkey.clone(),
             created_at: root.card.created_at,
             content: root.card.content.clone(),
-            // Reply-rollup attribution was deleted from the feed model (#3082).
-            // An app that wants a reply digest rebuilds it from delivered rows.
-            attribution_pubkeys: Vec::new(),
         })
         .collect()
 }
