@@ -48,7 +48,7 @@ pub use flat::{
     FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate,
     SourceRemovedHook,
 };
-pub use lane_mapping::{LaneMapping, LaneMappingRegistry, MappedPayload, MappedRow};
+pub use lane_mapping::{LaneMapping, LaneMappingRegistry, MappedFields, MappedPayload, MappedRow};
 pub use load_status::{FeedLoadStatus, FeedLoadStopReason};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,

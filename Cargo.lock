@@ -4116,7 +4116,6 @@ dependencies = [
  "nmp-nip51",
  "nmp-nip84",
  "nmp-nostr-id",
- "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-read-session",
@@ -4302,7 +4301,6 @@ dependencies = [
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip84",
- "nmp-note-feed",
  "nmp-ownership",
  "nmp-replies",
  "nmp-signer-iface",
@@ -4341,7 +4339,6 @@ dependencies = [
  "nmp-nip22",
  "nmp-nip29",
  "nmp-nip51",
- "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-store",
@@ -4462,7 +4459,6 @@ dependencies = [
  "nmp-nip50",
  "nmp-nip51",
  "nmp-nip57",
- "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-read-session",
@@ -4930,17 +4926,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-note-feed"
-version = "1.0.0-rc.1"
-dependencies = [
- "nmp-core",
- "nmp-feed",
- "nmp-nip18",
- "nmp-ownership",
- "nmp-planner",
-]
-
-[[package]]
 name = "nmp-nwc"
 version = "1.0.0-rc.1"
 dependencies = [
@@ -5154,6 +5139,7 @@ dependencies = [
  "nmp-core",
  "nmp-example-login-timeline",
  "nmp-feed",
+ "nmp-feed-session",
  "nmp-marmot",
  "nmp-native-runtime",
  "nmp-network",
@@ -5174,7 +5160,6 @@ dependencies = [
  "nmp-nip68",
  "nmp-nip84",
  "nmp-nostr-id",
- "nmp-note-feed",
  "nmp-ownership",
  "nmp-planner",
  "nmp-router",

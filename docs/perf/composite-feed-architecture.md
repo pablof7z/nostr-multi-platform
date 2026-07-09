@@ -57,10 +57,12 @@ The baked note/reply engine is gone, not renamed:
   an app wants one, is a **concept-owned read** grouping delivered rows — never
   a feed shape.
 
-`nmp-note-feed` is not deleted; it shrank to a thin protocol-composition
-adapter supplying knobs (identity/merge/predicates) for the generic
-`nmp_feed::FlatFeed<nmp_feed::FeedRow>` engine — see
-`crates/nmp-note-feed/src/lib.rs` and
+`nmp-note-feed` is DELETED (#3092, follow-up to #3082/#3086): the single-lane
+`FeedParams` path (the ordinary follows timeline) was the last consumer of its
+knobs, and it now compiles onto this SAME composite lane-mapping engine
+instead — `nmp-feed-session`'s `compile_default_lanes` builds a fixed
+`feed.authored` + `nip18.target`-style (`nmp_nip18::nip18_target_render_only_mapping`)
+lane pair over the app's declared primary/derived-repost kinds. See
 [`docs/architecture/crate-boundaries.md`](../architecture/crate-boundaries.md) §8.
 
 ## 3. The composite surface
@@ -203,7 +205,7 @@ it is bounded, app/concept-owned work on the refs lane.
 - [ADR-0070](../decisions/0070-typed-read-sessions.md) — typed read sessions;
   refs now carry a delivery mode.
 - [`docs/architecture/crate-boundaries.md`](../architecture/crate-boundaries.md)
-  §8 — `nmp-feed`/`nmp-note-feed` ownership.
+  §8 — `nmp-feed` ownership (`nmp-note-feed` deleted, #3092).
 - [`docs/builder-guide/07a-build-a-composite-feed.md`](../builder-guide/07a-build-a-composite-feed.md)
   — the builder-facing walkthrough.
 - #3082 (design), #3086 (implementation), #3083 (cache-luck reads — deleted by

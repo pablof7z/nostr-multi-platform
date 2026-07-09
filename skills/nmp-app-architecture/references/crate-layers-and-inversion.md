@@ -93,8 +93,9 @@ Fifteen confirmed violations across five crates; issues are the canonical tracke
 The `#2510` family had a root cause in `crate-boundaries.md` §8, which previously sanctioned a
 "note timeline/OP-feed surface" in `nmp-nip01` — a loophole pending a §8 amendment. That
 amendment landed via #3082/#3086: `crate-boundaries.md` §8 now names `nmp-feed` as the owner of
-the generic feed engine/row/wire (including the composite multi-lane surface below) and
-`nmp-note-feed` as a thin protocol-composition adapter with no engine, row, or wire of its own.
+the generic feed engine/row/wire (including the composite multi-lane surface below); the
+single-lane `FeedParams` path (formerly `nmp-note-feed`'s thin protocol-composition adapter) was
+collapsed onto that SAME composite lane-mapping engine and the crate deleted (#3092).
 #2508 settled the relation/read side: global social summaries are rejected; reads belong to the
 concept crate that defines them.
 

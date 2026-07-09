@@ -244,8 +244,9 @@ See [`docs/perf/composite-feed-architecture.md`](../perf/composite-feed-architec
 for the full design record, and
 [`docs/architecture/crate-boundaries.md`](../architecture/crate-boundaries.md)
 §8 for crate ownership (`nmp-feed` owns the engine/row/registry; `nmp-nip18`/
-`nmp-nip22` own their lane mappings; `nmp-note-feed` is a thin adapter with no
-engine of its own).
+`nmp-nip22` own their lane mappings; the single-lane `FeedParams` path
+compiles onto this SAME engine via `nmp-feed-session`'s
+`compile_default_lanes` — `nmp-note-feed` is deleted, #3092).
 
 See also: [07 — Subscription planner](07-subscription-planner.md) ·
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) ·

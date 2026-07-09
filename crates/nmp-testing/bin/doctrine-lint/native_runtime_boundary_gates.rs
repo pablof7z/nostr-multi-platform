@@ -357,17 +357,14 @@ fn nmp_native_runtime_search_concept_is_feature_gated() {
 
 #[test]
 fn nmp_native_runtime_op_feed_concepts_are_feature_gated() {
-    let findings = native_runtime_non_optional_dependency_findings(&[
-        "nmp-nip02",
-        "nmp-nip51",
-        "nmp-note-feed",
-    ]);
+    let findings = native_runtime_non_optional_dependency_findings(&["nmp-nip02", "nmp-nip51"]);
 
     assert!(
         findings.is_empty(),
-        "#2797: OP-centric active-follows feed composition names NIP-02, \
-         NIP-51, and nmp-note-feed; keep those direct native-runtime edges \
-         behind the nmp-native-runtime `op-feed` feature:\n{}",
+        "#2797: OP-centric active-follows feed composition names NIP-02 and \
+         NIP-51 (repost/merge knobs are compiled inside nmp-feed-session \
+         itself post-#3092); keep those direct native-runtime edges behind \
+         the nmp-native-runtime `op-feed` feature:\n{}",
         findings.join("\n")
     );
 }

@@ -27,9 +27,9 @@ use crate::feed_row::FeedRowContext;
 use crate::typed_ref::TypedRef;
 
 /// Whether a [`MappedRow`]'s payload should reflect the triggering event's own
-/// raw fields, or stay an un-hydrated placeholder pending its `Delivered` ref
-/// target.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// raw fields, stay an un-hydrated placeholder pending its `Delivered` ref
+/// target, or carry EXPLICIT fields the mapping itself derived.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum MappedPayload {
     /// Use the triggering event's own raw fields (a `Direct`/authored-style
     /// mapping, or a delivered-target admission).
@@ -37,6 +37,23 @@ pub enum MappedPayload {
     /// Placeholder (kind `0`, empty fields) — provenance-only until the
     /// `Delivered` ref target arrives.
     Placeholder,
+    /// Explicit field values the mapping computed itself — e.g. parsed from a
+    /// payload EMBEDDED in the declaring event's own content (a NIP-18 repost
+    /// wrapper that embeds its target's JSON) — rather than the triggering
+    /// event's own raw fields. Lets a `RenderOnly`-ref mapping (never absorbed
+    /// into this session's own acquisition, so it has no OTHER way to learn the
+    /// target's real fields) hydrate immediately from wrapper-local data.
+    Explicit(MappedFields),
+}
+
+/// Explicit row field values a [`MappedPayload::Explicit`] mapping supplies.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MappedFields {
+    pub author_pubkey: String,
+    pub kind: u32,
+    pub content: String,
+    pub tags: Vec<Vec<String>>,
+    pub created_at: u64,
 }
 
 /// One row a [`LaneMapping`] produces for a matched event.

@@ -82,6 +82,7 @@ mod wot_graph;
 mod wot_graph_tests;
 pub(crate) use active_shape::read_active;
 pub use composite_compiler::open_composite_feed;
+pub use session_engine::compile_default_lanes;
 pub use diagnostics::{
     FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
     FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReason, FeedSessionDiagnosticReasonCode,
@@ -235,12 +236,15 @@ pub fn compile_feed_params_with_suppression_and_artifacts<H: FeedSessionHost>(
         resolved = custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;
     }
 
+    let primary_kinds: BTreeSet<u32> = params.primary_kinds.iter().copied().collect();
     session_engine::build_scope_session_with_artifacts(
         app,
         params.key.as_str(),
         &params.shape,
         params.window,
         resolved,
+        &primary_kinds,
+        acquisition_kinds,
         suppression,
     )
 }

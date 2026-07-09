@@ -60,7 +60,10 @@ nmp-example-login-timeline = { path = "../nmp-example-login-timeline", features 
 nmp-nostr-id = { path = "../nmp-nostr-id" }
 zeroize = { workspace = true }
 nmp-feed = { path = "../nmp-feed" }
-nmp-note-feed = { path = "../nmp-note-feed" }
+# feed_declared_matrix_fixture.rs (#3092): the collapsed single-lane default
+# lane set (`compile_default_lanes`) — the SAME knob pair `open_feed`'s `Flat`
+# shape branch compiles to.
+nmp-feed-session = { path = "../nmp-feed-session" }
 nmp-nip01 = { path = "../nmp-nip01" }
 # #1740 step 3 perspective-compiler fixture: prove per-scope admission with the
 # real resolution projections (no duplicated graph/list parsing — D4).

@@ -57,9 +57,10 @@ an app/runtime installer that wires the substrate and protocol crates a
 running app needs (`nmp-substrate`, app/runtime builders, and the
 `nmp-browser-runtime` platform-adapter exception) — not a Layer-4
 protocol/product crate. `nmp-wallet` is a Layer-4 composition crate that
-assembles lower-level protocol crates, the same way `nmp-note-feed` composes
-`nmp-nip01`, `nmp-nip18`, `nmp-content`, and `nmp-feed` into one reusable feed
-surface (crate-boundaries §8). Its scope is bounded to wallet backend
+assembles lower-level protocol crates, the same way `nmp-feed-session`
+composes `nmp-nip18`, `nmp-nip22`, and `nmp-feed` (its lane-mapping registry
+and default single-lane compiler) into one reusable feed-session surface
+(crate-boundaries §8). Its scope is bounded to wallet backend
 selection and journaling, not an open-ended "everything wallet" bucket — the
 same distinction crate-boundaries §8 draws between a legitimate composition
 crate and the forbidden central-relations "reusable framework bucket".

@@ -33,7 +33,7 @@ nmp_ownership::declare_crate_ownership! {
     notes: [
         {
             claim: "schema.nmp.feed.feed_row",
-            text: "FROZEN (#3082 settled design). The generic FeedRow, TypedRef/DeliveryMode, composite-feed declaration surface, and the FlatBuffers wire all live in this crate. nmp-note-feed only composes NIP facts into row knobs; it owns no wire.",
+            text: "FROZEN (#3082 settled design). The generic FeedRow, TypedRef/DeliveryMode, composite-feed declaration surface, and the FlatBuffers wire all live in this crate. Protocol crates only compose NIP facts into row/lane-mapping knobs; none owns a wire (#3092 deleted the last thin adapter crate that used to make this claim).",
         },
     ],
 }

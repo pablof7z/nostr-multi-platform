@@ -6,6 +6,19 @@
 //! and the op-scope "artifacts" (engine/controller/follow_set diagnostic
 //! handles) are DELETED (#3082). There is no second feed engine.
 //!
+//! # #3092 — one row-building/merge path
+//!
+//! The `Flat` branch used to build rows via the bespoke
+//! `nmp_note_feed::feed_row_builder`/`timeline_merge` pair — a SECOND
+//! row-building/merge implementation over the same `FeedRow`, parallel to the
+//! composite lane-mapping compiler (`composite_compiler.rs`). It now compiles
+//! to the SAME composite mechanism (`composite_compiler::build_composite_rows`/
+//! `composite_merge`) via a fixed two-lane default set: `feed.authored` over
+//! the app's declared primary kinds, plus a `nip18.target`-style RenderOnly
+//! lane over whatever repost-wrapper kind(s) the primary-kind validator
+//! derived into the acquisition set (see `flat_lane_set`). `nmp-note-feed` is
+//! DELETED; there is no second lane-mapping/merge implementation.
+//!
 //! TODO(#3082): mute/delete SUPPRESSION is no longer applied inside the feed
 //! (the old `OpFeedObserver` did a synchronous store peek — the cache-luck bug
 //! #3083). Suppression must be re-driven by DELIVERED mute/delete events; that
@@ -17,6 +30,7 @@
 //! - D8: each session's interests are withdrawn on close (symmetric teardown,
 //!   in `flat_session`).
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use crate::{FeedOpenError, FeedSessionHost};
@@ -26,7 +40,10 @@ use nmp_planner::InterestScope;
 
 use super::source::ReducedSource;
 
+mod flat_lane_set;
 mod flat_session;
+
+pub use flat_lane_set::compile_default_lanes;
 
 /// The compiled session build. (The former `artifacts` field carried the deleted
 /// `OpFeedEngine`; there are no engine artifacts to hand back anymore.)
@@ -42,20 +59,26 @@ pub(super) fn build_scope_session_with_artifacts(
     shape: &FeedShape,
     window: FeedWindowPolicy,
     resolved: ReducedSource,
+    primary_kinds: &BTreeSet<u32>,
+    acquisition_kinds: &BTreeSet<u32>,
     // TODO(#3082): suppression must be driven by delivered mute/delete events,
     // not a synchronous store lookup. Unused until that lane is rewired.
     _suppression: Arc<dyn SuppressionLookup>,
 ) -> Result<ScopeSessionBuild, FeedOpenError> {
     match shape {
         FeedShape::Flat => {
-            // The single-scope `FeedParams` path's identity/merge knobs:
-            // NIP-18 repost → target id + repost/target hydration merge
-            // (unchanged behavior). The composite-lane compiler
-            // (`crate::composite_compiler`) supplies its own combined
-            // lane-dispatching builder/merge over the SAME
-            // `build_flat_scope_session` entry point instead.
-            let item_builder = nmp_note_feed::feed_row_builder(resolved.row_context.clone());
-            let merge = nmp_note_feed::timeline_merge();
+            // The single-scope `FeedParams` path's identity/merge knobs (#3092):
+            // compiled onto the SAME composite lane-mapping engine
+            // (`crate::composite_compiler`) the multi-lane `open_composite_feed`
+            // path uses, via a fixed default two-lane set — see
+            // `flat_lane_set::compile_default_lanes`. There is no second
+            // row-building/merge implementation.
+            let (item_builder, merge) = compile_default_lanes(
+                resolved.admission.clone(),
+                resolved.row_context.clone(),
+                primary_kinds,
+                acquisition_kinds,
+            );
             // No `Delivered`-ref demand source on the single-lane path — it
             // has no `DeliveredRefDemand` to retract (#3087 is a composite-lane
             // concern only).

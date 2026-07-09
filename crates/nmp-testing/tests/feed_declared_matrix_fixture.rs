@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
+use nmp_core::substrate::KernelEvent;
 use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
 use nostr::{Event, EventBuilder, JsonUtil as _, Keys, Kind, Tag, Timestamp};
@@ -322,22 +322,29 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
     );
 
     // Post-demolition: the follows timeline is the generic flat feed over
-    // `FeedRow`, admission = "authored by the source", identity/merge from the
-    // NIP-18 knobs (#3082). Reposts key by the TARGET id and carry repost
+    // `FeedRow`, admission = "authored by the source", identity/merge compiled
+    // onto the composite lane-mapping engine via `compile_default_lanes`
+    // (#3092 — the collapsed single-lane path, same knobs `open_feed`'s `Flat`
+    // shape branch uses). Reposts key by the TARGET id and carry repost
     // provenance as `FeedRowContext::RepostedBy` — wrapper-local, no store peek.
-    let admission: nmp_feed::FlatFeedPredicate = {
+    let admission: nmp_feed::RootAdmission = {
         let source_pubkey = source_author.public_key().to_hex();
         Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
             event.author == source_pubkey
                 && (event.kind == 1 || event.kind == nmp_nip18::KIND_REPOST)
         })
     };
-    let op_feed = nmp_feed::FlatFeed::with_merge(
-        admission,
-        nmp_note_feed::feed_row_builder(nmp_note_feed::no_group_context()),
-        None,
-        nmp_note_feed::timeline_merge(),
+    let (item_builder, merge) = nmp_feed_session::compile_default_lanes(
+        admission.clone(),
+        Arc::new(|_| None),
+        &BTreeSet::from([nmp_nip01::KIND_SHORT_TEXT_NOTE]),
+        &BTreeSet::from([
+            nmp_nip01::KIND_SHORT_TEXT_NOTE,
+            nmp_nip18::KIND_REPOST,
+            nmp_nip18::KIND_DELETE,
+        ]),
     );
+    let op_feed = nmp_feed::FlatFeed::with_merge(admission, item_builder, None, merge);
     let picture_feed = nmp_nip68::PictureFeed::with_event_lookup(
         nmp_nip68::picture_feed_predicate(Arc::new({
             let source_pubkey = source_author.public_key().to_hex();
