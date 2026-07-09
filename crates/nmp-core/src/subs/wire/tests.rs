@@ -1,10 +1,20 @@
 use super::*;
 use crate::planner::{
-    InMemoryMailboxCache, InterestId, InterestScope, MailboxSnapshot, SubscriptionCompiler,
+    InMemoryMailboxCache, InterestId, InterestScope, MailboxSnapshot, NaddrCoord,
+    SubscriptionCompiler,
 };
 
 fn pubkey(s: &str) -> String {
     format!("{s:0>64}").chars().take(64).collect()
+}
+
+/// A syntactically valid 64-char hex pubkey (unlike `pubkey()` above, whose
+/// zero-padded fixtures are NOT valid hex whenever `s` contains non-hex
+/// letters). `filter_json_for`'s `addresses` serialisation round-trips a
+/// coordinate through `nostr::PublicKey::from_hex`, so tests that need the
+/// coordinate to actually survive onto the wire need a real hex string.
+fn hex_pubkey(byte: &str) -> String {
+    byte.repeat(32)
 }
 
 fn ti(id: u64, authors: &[&str], lc: InterestLifecycle) -> LogicalInterest {
@@ -46,6 +56,61 @@ fn filter_json_preserves_search_field() {
         json.get("search").and_then(|v| v.as_str()),
         Some("nostr rust")
     );
+}
+
+// ── #3091: `addresses` round-trips through `filter_json_for` → `from_filter_json` ──
+
+/// A non-empty `shape.addresses` must survive the wire round-trip losslessly,
+/// landing back in `shape.addresses` — NOT the opaque `tags["a"]` bucket the
+/// generic single-letter-tag branch used to swallow it into (#3091). This is
+/// the exact inverse pairing `filter_json_for` (serialize) exercises against
+/// `InterestShape::from_filter_json` (parse).
+#[test]
+fn addresses_round_trip_filter_json_for_and_from_filter_json() {
+    let coord = NaddrCoord {
+        pubkey: hex_pubkey("aa"),
+        kind: 30_023,
+        d_tag: "my-article".to_string(),
+    };
+    let shape = InterestShape {
+        addresses: [coord.clone()].into_iter().collect(),
+        ..Default::default()
+    };
+
+    let json = filter_json_for(&shape);
+    let round_tripped = InterestShape::from_filter_json(&json).expect("valid filter json");
+
+    assert_eq!(
+        round_tripped.addresses,
+        [coord].into_iter().collect(),
+        "the coordinate must land back in `addresses`, byte-identical"
+    );
+    assert!(
+        round_tripped.tags.is_empty(),
+        "the #a tag must NOT fall through into the generic `tags` bucket"
+    );
+}
+
+/// Same round-trip, but for a non-parameterized-replaceable coordinate (empty
+/// `d_tag`, e.g. kind:10002 NIP-65 relay list) — `Coordinate::Display` still
+/// emits the trailing empty identifier segment (`"10002:<pubkey>:"`), and the
+/// parser must decode that back into `d_tag: ""`, not drop the coordinate.
+#[test]
+fn addresses_round_trip_preserves_empty_d_tag() {
+    let coord = NaddrCoord {
+        pubkey: hex_pubkey("bb"),
+        kind: 10_002,
+        d_tag: String::new(),
+    };
+    let shape = InterestShape {
+        addresses: [coord.clone()].into_iter().collect(),
+        ..Default::default()
+    };
+
+    let json = filter_json_for(&shape);
+    let round_tripped = InterestShape::from_filter_json(&json).expect("valid filter json");
+
+    assert_eq!(round_tripped.addresses, [coord].into_iter().collect());
 }
 
 fn req_relays(frames: &[WireFrame]) -> std::collections::BTreeSet<String> {
