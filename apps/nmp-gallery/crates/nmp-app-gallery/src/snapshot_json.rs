@@ -111,16 +111,16 @@ fn refs_profiles_json(profiles: &BTreeMap<String, ProfileCardModel>) -> Value {
 /// the shells (Swift/Kotlin) derive it locally rather than have the kernel
 /// bake a display artifact into the projection (aim.md §2).
 ///
-/// The full `npub` field itself is a narrower case: neither `ProfileWire.swift`
-/// nor `ProfileWire.kt` has a local NIP-19 bech32 encoder (unlike the wasm/web
-/// path, which calls the standalone `nmp_encode_npub` free function on demand —
-/// see `crates/nmp-browser-runtime/src/wasm/mod.rs`), so dropping it here would
-/// break the npub-copy / full-npub display surfaces on both native shells.
-/// Tracked by nmp#3110 — once the gallery UniFFI facade exposes an on-demand
-/// encoder mirroring `nmp_encode_npub`, this `to_npub` call and the `npub`
-/// field are removed and the shells derive it themselves.
+/// The full `npub` field is a different case: `to_npub` is the canonical,
+/// lossless hex↔bech32 codec, not display formatting (#3113, ADR-0077) —
+/// shipping it from this one Rust codec is legitimate and correctly does
+/// NOT need a `doctrine-allow` marker (the transient marker #3112 added here
+/// is removed by #3110 now that D19/D27 exempt canonical codec calls). The
+/// alternative — every shell reimplementing hex↔bech32 locally — is the
+/// exact SSOT duplication the display-separation doctrine's sibling rules
+/// exist to prevent.
 fn profile_card_json(card: &ProfileCardModel, pubkey: &str) -> Value {
-    let npub = to_npub(pubkey); // doctrine-allow: D27 — full npub kept until gallery shells gain local bech32 encoding (nmp#3110); npub_short removed, shells truncate locally
+    let npub = to_npub(pubkey);
     json!({
         "pubkey": pubkey,
         "display_name": card.display_name,

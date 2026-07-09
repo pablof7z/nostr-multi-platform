@@ -24,6 +24,7 @@ Authoritative contributor guide — agents and humans equally. Everything here i
 - **Correct docs in place** — never add a superseding ADR to contradict a wrong doc; edit it directly.
 - **Never commit code reviews** — promote findings to issues or durable docs; discard the review.
 - **Edit existing issues in place** — don't open a parallel issue for the same work.
+- **Doctrines are advisory guardrails, not dogma** — a doctrine (incl. a `doctrine-lint` D-rule) may never block its own improvement; a wrong or miscategorized rule gets fixed, not worked around. See [ADR-0077](docs/decisions/0077-doctrines-are-guardrails-not-dogma.md).
 
 ## File size
 

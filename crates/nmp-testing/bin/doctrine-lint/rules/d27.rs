@@ -1,21 +1,41 @@
-//! D27 — banned display helpers in projection / snapshot / FFI serialization.
+//! D27 — banned presentation-formatting helpers in projection / snapshot /
+//! FFI serialization; canonical bech32 codecs are exempt.
 //!
 //! ADR-0072 §3 deferred this lint (see §"What this ADR does *not* do").
-//! Regression history: pubkey-to-npub and "ago" formatting leaked into the
-//! snapshot wire format twice (#1099 signer-label, #623 wallet-status).
+//! Regression history: pubkey-to-npub abbreviation and "ago" formatting
+//! leaked into the snapshot wire format twice (#1099 signer-label, #623
+//! wallet-status).
+//!
+//! ### Codec vs. presentation (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
+//!
+//! Two different things were originally conflated under one "display leak"
+//! category:
+//! - **Canonical codec** — `to_npub` (and any future `to_bech32`/`to_note`/
+//!   `to_nevent`/`to_nprofile`/`to_naddr`): deterministic, lossless,
+//!   context-free hex↔bech32 conversion, the same class of operation as
+//!   hex↔base64. Shipping this from ONE reusable Rust codec is legitimate;
+//!   banning it would force native/wasm/TS shells to each reimplement the
+//!   same codec — the exact SSOT violation this rule exists to prevent.
+//!   **Not banned.**
+//! - **Presentation formatting** — `short_npub` (truncation), `short_hex`,
+//!   `avatar_initials`, `display_name_initials`, `avatar_color_hex`,
+//!   `format_ago_secs`: lossy, context-dependent presentation decisions.
+//!   **Banned.**
 //!
 //! ## What this catches
 //!
-//! **Part A — banned display-helper calls** in projection / snapshot / FFI
-//! serialization code in `nmp-core` (projection paths only), `nmp-nip*`, and
-//! `nmp-marmot`:
-//! - `short_npub(` — bech32 abbreviation of a pubkey
-//! - `to_npub(` — full bech32 encoding of a pubkey
+//! **Part A — banned presentation-formatting calls** in projection / snapshot
+//! / FFI serialization code in `nmp-core` (projection paths only), `nmp-nip*`,
+//! and `nmp-marmot`:
+//! - `short_npub(` — bech32 abbreviation of a pubkey (truncation)
 //! - `short_hex(` — hex abbreviation (first8…last8)
 //! - `avatar_initials(` — 2-char avatar seed derived from an npub
 //! - `display_name_initials(` — 2-char initials from a display name
 //! - `avatar_color_hex(` — DJB2-derived avatar background colour
 //! - `format_ago_secs(` — relative-time "5m ago" string
+//!
+//! `to_npub(` — the canonical hex→bech32 codec — is deliberately absent from
+//! this list; see "Codec vs. presentation" above.
 //!
 //! **Part B — precomputed `*_label` / `*_display` String struct fields** in
 //! the same paths. These bake English display strings into the projection wire
@@ -61,11 +81,13 @@ use std::path::Path;
 
 pub const ID: &str = "D27";
 
-/// Part A — banned display-helper call tokens.
+/// Part A — banned presentation-formatting call tokens. Canonical bech32
+/// codec calls (`to_npub(`, and any future `to_bech32(`/`to_note(`/
+/// `to_nevent(`/`to_nprofile(`/`to_naddr(`) are deliberately absent — see the
+/// "Codec vs. presentation" doc section above (#3113, ADR-0077).
 /// Each entry: (token, short violation tag for the message).
 const BANNED_CALLS: &[(&str, &str)] = &[
     ("short_npub(", "short_npub"),
-    ("to_npub(", "to_npub"),
     ("short_hex(", "short_hex"),
     ("avatar_initials(", "avatar_initials"),
     ("display_name_initials(", "display_name_initials"),

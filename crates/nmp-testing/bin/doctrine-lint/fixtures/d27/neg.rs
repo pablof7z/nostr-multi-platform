@@ -48,3 +48,10 @@ fn other_fn(x: &str) -> &str {
 
 // Inline doc mentioning short_npub or to_npub in comments is fine.
 // format_ago_secs is documented here too.
+
+/// #3113 / ADR-0077 — `to_npub` is the canonical, lossless hex<->bech32
+/// codec, not display formatting. Calling it in projection/wire code must
+/// NOT fire D27 (only its truncated sibling `short_npub` is banned).
+fn build_wire_npub(pk: &str) -> String {
+    to_npub(pk)
+}

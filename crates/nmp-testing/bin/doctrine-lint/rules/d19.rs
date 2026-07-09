@@ -1,18 +1,38 @@
-//! D19 — display formatting banned from kernel projection/error producers.
+//! D19 — presentation-formatting banned from kernel projection/error
+//! producers; canonical bech32 codecs are exempt.
 //!
 //! ADR-0072 (raw-data projection doctrine, V-115): projection builders in
 //! `kernel/update/`, `kernel/types.rs`, and `kernel/publish_outbox.rs` must
-//! send raw protocol data to shells. Display-formatting helpers —
-//! `crate::display::` and `format_timestamp` — are banned in those files.
-//! Kernel/core error producers must also emit `UiToken`s, not direct
-//! English-only `set_last_error_toast(Some(...))` calls.
+//! send raw protocol data to shells. Presentation-formatting helpers in
+//! `crate::display::` — truncation, initials, avatar tint, relative-time
+//! strings — and `format_timestamp` are banned in those files. Kernel/core
+//! error producers must also emit `UiToken`s, not direct English-only
+//! `set_last_error_toast(Some(...))` calls.
+//!
+//! ### Codec vs. presentation (#3113, [ADR-0077](../../../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md))
+//!
+//! `crate::display::` mixes two different things under one module:
+//! - **Canonical codec** — `to_npub` (and any future `to_bech32`/`to_note`/
+//!   `to_nevent`/`to_nprofile`/`to_naddr`): deterministic, lossless,
+//!   context-free hex↔bech32 conversion. This is TYPE conversion, not
+//!   display, and calling it from a projection builder is legitimate —
+//!   banning it would force every shell (native, wasm, TS) to reimplement
+//!   the same codec, the exact SSOT violation this rule's siblings exist to
+//!   prevent. **Not banned.**
+//! - **Presentation formatting** — `short_npub` (truncation), `short_hex`,
+//!   `avatar_initials`, `display_name_initials`, `avatar_color_hex`,
+//!   `format_ago_secs`: lossy, context-dependent presentation decisions that
+//!   belong to the shell. **Banned.**
 //!
 //! ## What this catches
 //!
-//! - `crate::display::` — the display-formatting module inside `nmp-core`.
-//!   Its entry points encode bech32 npubs, abbreviate hex, format timestamps,
-//!   etc. Calling them in projection code bakes locale-specific English into
-//!   the wire format, violating ADR-0072.
+//! - `crate::display::short_npub(`, `crate::display::short_hex(`,
+//!   `crate::display::avatar_initials(`,
+//!   `crate::display::display_name_initials(`,
+//!   `crate::display::avatar_color_hex(`, `crate::display::format_ago_secs(`
+//!   — the presentation-formatting entry points of the display module.
+//!   Calling them in projection code bakes locale-specific English into the
+//!   wire format, violating ADR-0072.
 //! - `format_timestamp(` — the same violation via a direct call to the
 //!   `format_timestamp` helper (which lives in `kernel/nostr.rs` and
 //!   historically leaked into `publish_outbox.rs`).
@@ -54,16 +74,68 @@ use std::path::Path;
 
 pub const ID: &str = "D19";
 
-/// Banned tokens in projection/error producer files. Each entry is
+/// Presentation-formatting entry points of `crate::display::` banned in
+/// projection/error producer files. Canonical bech32 codec helpers
+/// (`to_npub`, and any future `to_bech32`/`to_note`/`to_nevent`/
+/// `to_nprofile`/`to_naddr`) are deliberately absent from this list — hex↔
+/// bech32 conversion is deterministic, lossless, context-free TYPE
+/// conversion, not display formatting (#3113, ADR-0077). Each entry is
 /// `(token, message, suggested)`.
-const BANNED: &[(&str, &str, &str)] = &[
+const BANNED_DISPLAY_HELPERS: &[(&str, &str, &str)] = &[
     (
-        "crate::display::",
-        "`crate::display::*` called in a kernel projection builder violates \
-         ADR-0072 (V-115): projections must send raw data; shells format for display",
-        "send raw `pubkey: String` (hex) and `created_at: u64` (Unix secs); \
-         shell converts to bech32 / locale-formatted time on the host side",
+        "crate::display::short_npub(",
+        "`crate::display::short_npub(` (truncation) called in a kernel projection \
+         builder violates ADR-0072 (V-115): projections must send raw data; \
+         shells format for display. This is presentation formatting, not the \
+         canonical `to_npub` bech32 codec — the codec is exempt, the truncation \
+         is not (#3113, ADR-0077)",
+        "send the raw `pubkey: String` (hex); the shell converts to bech32 and \
+         truncates on the host side",
     ),
+    (
+        "crate::display::short_hex(",
+        "`crate::display::short_hex(` (truncation) called in a kernel projection \
+         builder violates ADR-0072 (V-115): projections must send raw data; \
+         shells format for display",
+        "send the raw hex `String`; the shell abbreviates on the host side",
+    ),
+    (
+        "crate::display::avatar_initials(",
+        "`crate::display::avatar_initials(` called in a kernel projection builder \
+         violates ADR-0072 (V-115): projections must send raw data; shells derive \
+         presentation initials themselves",
+        "send the raw `pubkey: String` (hex); the shell derives initials on the \
+         host side",
+    ),
+    (
+        "crate::display::display_name_initials(",
+        "`crate::display::display_name_initials(` called in a kernel projection \
+         builder violates ADR-0072 (V-115): projections must send raw data; \
+         shells derive presentation initials themselves",
+        "send the raw display-name `String`; the shell derives initials on the \
+         host side",
+    ),
+    (
+        "crate::display::avatar_color_hex(",
+        "`crate::display::avatar_color_hex(` called in a kernel projection builder \
+         violates ADR-0072 (V-115): projections must send raw data; shells derive \
+         presentation tint themselves",
+        "send the raw `pubkey: String` (hex); the shell derives avatar tint on the \
+         host side",
+    ),
+    (
+        "crate::display::format_ago_secs(",
+        "`crate::display::format_ago_secs(` called in a kernel projection builder \
+         violates ADR-0072 (V-115): projections must send raw data; shells format \
+         relative time themselves",
+        "send the raw Unix-seconds `u64`; the shell formats relative time on the \
+         host side",
+    ),
+];
+
+/// Banned tokens in projection/error producer files unrelated to
+/// `crate::display::`. Each entry is `(token, message, suggested)`.
+const BANNED: &[(&str, &str, &str)] = &[
     (
         "format_timestamp(",
         "`format_timestamp` called in a kernel projection builder violates \
@@ -120,14 +192,16 @@ pub fn file_in_scope(path: &Path) -> bool {
     is_projection_file || is_error_producer_file || is_gallery_app_crate_file
 }
 
-/// Returns `(col, message, suggested)` for each banned display token on `line`.
-/// `is_comment` and `in_test_cfg` suppress the scan.
+/// Returns `(col, message, suggested)` for each banned token on `line`.
+/// `is_comment` and `in_test_cfg` suppress the scan. Canonical bech32 codec
+/// calls (`crate::display::to_npub(` and friends) are never in either banned
+/// list — see [`BANNED_DISPLAY_HELPERS`]'s doc comment (#3113, ADR-0077).
 pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, String, String)> {
     if is_comment || in_test_cfg {
         return Vec::new();
     }
     let mut hits = Vec::new();
-    for (token, message, suggested) in BANNED {
+    for (token, message, suggested) in BANNED_DISPLAY_HELPERS.iter().chain(BANNED) {
         let mut start = 0;
         while let Some(rel) = line[start..].find(token) {
             let col = start + rel + 1; // 1-indexed
@@ -139,156 +213,5 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    // -- check() unit tests ---------------------------------------------------
-
-    #[test]
-    fn flags_crate_display_in_prod() {
-        let hits = check("    let npub = crate::display::to_npub(pk);", false, false);
-        assert_eq!(hits.len(), 1, "must flag crate::display:: in prod code");
-        assert!(
-            hits[0].1.contains("ADR-0072"),
-            "message must reference ADR-0072; got: {}",
-            hits[0].1
-        );
-    }
-
-    #[test]
-    fn flags_format_timestamp_in_prod() {
-        let hits = check(
-            "    let ts = format_timestamp(row.created_at);",
-            false,
-            false,
-        );
-        assert_eq!(hits.len(), 1, "must flag format_timestamp in prod code");
-        assert!(
-            hits[0].1.contains("ADR-0072"),
-            "message must reference ADR-0072"
-        );
-    }
-
-    #[test]
-    fn does_not_flag_comment_lines() {
-        let hits = check("// crate::display:: is banned here", true, false);
-        assert!(hits.is_empty(), "comment lines must not be flagged");
-    }
-
-    #[test]
-    fn does_not_flag_in_test_cfg() {
-        let hits = check("    let npub = crate::display::to_npub(pk);", false, true);
-        assert!(
-            hits.is_empty(),
-            "#[cfg(test)] bodies must not be flagged by D19"
-        );
-    }
-
-    #[test]
-    fn col_is_1_indexed() {
-        let line = "let x = crate::display::to_npub(pk);";
-        let hits = check(line, false, false);
-        assert_eq!(hits.len(), 1);
-        // "crate::display::" starts at byte offset 8 (0-indexed).
-        assert_eq!(hits[0].0, 9, "column must be 1-indexed");
-    }
-
-    #[test]
-    fn flags_two_occurrences_same_line() {
-        let hits = check(
-            "a(crate::display::to_npub(x), crate::display::short(y))",
-            false,
-            false,
-        );
-        assert_eq!(
-            hits.len(),
-            2,
-            "both occurrences on same line must be flagged"
-        );
-    }
-
-    #[test]
-    fn flags_legacy_error_toast_in_prod() {
-        let hits = check(
-            "    kernel.set_last_error_toast(Some(\"boom\".to_string()));",
-            false,
-            false,
-        );
-        assert_eq!(hits.len(), 1, "must flag English-only error toasts");
-        assert!(
-            hits[0].1.contains("UiToken"),
-            "message must point to UiToken; got: {}",
-            hits[0].1
-        );
-    }
-
-    // -- file_in_scope unit tests ---------------------------------------------
-
-    #[test]
-    fn projection_files_are_in_scope() {
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/update/projections.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/update/views.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/types.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/publish_outbox.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/actor/commands/identity/account_ops.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "crates/nmp-core/src/actor/dispatch/cmd_publish.rs"
-        )));
-        // Absolute path variant.
-        assert!(file_in_scope(Path::new(
-            "/abs/path/crates/nmp-core/src/kernel/update/projections.rs"
-        )));
-    }
-
-    #[test]
-    fn non_projection_files_are_out_of_scope() {
-        // nostr.rs (where format_timestamp lives) is NOT a projection builder.
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/nostr.rs"
-        )));
-        // display module itself is out of scope.
-        assert!(!file_in_scope(Path::new("crates/nmp-core/src/display.rs")));
-        // Other kernel files.
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-core/src/kernel/mod.rs"
-        )));
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-core/src/actor/dispatch/mod.rs"
-        )));
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-core/src/substrate/protocol/capabilities.rs"
-        )));
-        // Protocol crates.
-        assert!(!file_in_scope(Path::new("crates/nmp-nip17/src/lib.rs")));
-    }
-
-    #[test]
-    fn doctrine_lint_source_is_out_of_scope() {
-        assert!(!file_in_scope(Path::new(
-            "crates/nmp-testing/bin/doctrine-lint/rules/d19.rs"
-        )));
-    }
-
-    /// #3098 — the gallery app crate's UniFFI snapshot adapter must be in
-    /// scope so a re-introduced `crate::display::`/`format_timestamp(` bake
-    /// into that wire red-fails CI going forward.
-    #[test]
-    fn gallery_app_crate_is_in_scope() {
-        assert!(file_in_scope(Path::new(
-            "apps/nmp-gallery/crates/nmp-app-gallery/src/snapshot_json.rs"
-        )));
-        assert!(file_in_scope(Path::new(
-            "/abs/path/apps/nmp-gallery/crates/nmp-app-gallery/src/snapshot_json.rs"
-        )));
-    }
-}
+#[path = "d19/tests.rs"]
+mod tests;
