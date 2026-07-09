@@ -5203,6 +5203,7 @@ dependencies = [
  "nmp-core",
  "nmp-native-runtime",
  "nmp-ownership",
+ "nmp-read-session",
  "serde_json",
 ]
 
