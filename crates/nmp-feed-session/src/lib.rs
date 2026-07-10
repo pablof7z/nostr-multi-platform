@@ -62,6 +62,9 @@ mod source;
 mod source_replay;
 mod trellis_adapter;
 mod trellis_adapter_command;
+mod trellis_adapter_delivery;
+#[cfg(test)]
+mod trellis_adapter_delivery_tests;
 mod trellis_adapter_delta;
 mod trellis_adapter_diagnostics;
 #[cfg(test)]
@@ -82,7 +85,6 @@ mod wot_graph;
 mod wot_graph_tests;
 pub(crate) use active_shape::read_active;
 pub use composite_compiler::open_composite_feed;
-pub use session_engine::compile_default_lanes;
 pub use diagnostics::{
     FeedSessionDiagnosticBatch, FeedSessionDiagnosticEventKind, FeedSessionDiagnosticInterest,
     FeedSessionDiagnosticOwnerCounts, FeedSessionDiagnosticReason, FeedSessionDiagnosticReasonCode,
@@ -93,6 +95,7 @@ pub use nmp_feed::{LaneMapping, LaneMappingRegistry, MappedPayload, MappedRow};
 pub use nmp_nip18::PrimaryKindError;
 pub use observed_source::{compile_observed_feed_source, ObservedFeedSourceOptions};
 pub use params::validate_feed_params;
+pub use session_engine::compile_default_lanes;
 pub use session_engine::ScopeSessionBuild;
 
 /// Compiled ownership descriptor for crate-ownership reports.
