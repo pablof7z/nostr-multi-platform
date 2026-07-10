@@ -18,11 +18,13 @@ use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use std::fmt;
 
 // Submodules keep this file under the LOC ceiling; re-exported below.
+mod changed_projection_keys;
 mod projection_merge_cache;
 mod projection_state;
 mod relay_status;
 mod tier3_frame;
 mod typed_projection_decode;
+pub use changed_projection_keys::{decode_snapshot_changed_projection_keys, ChangedProjectionKey};
 pub use projection_merge_cache::ProjectionMergeCache;
 pub use projection_state::WireProjectionState;
 pub use relay_status::{RelayStatusEntry, WireSubscriptionEntry};

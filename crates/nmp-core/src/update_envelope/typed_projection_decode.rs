@@ -6,7 +6,7 @@
 //! owned [`TypedProjectionData`] rows that Rust consumers and the
 //! ProjectionCache merge operate on.
 
-use super::{TypedProjectionData, UpdateFrameDecodeError};
+use super::{ChangedProjectionKey, TypedProjectionData, UpdateFrameDecodeError};
 use crate::transport::wire as fb;
 
 /// Decode the typed-projection sidecar rows from a snapshot frame.
@@ -56,4 +56,34 @@ pub(super) fn decode_typed_projections(
         });
     }
     Ok(out)
+}
+
+/// Decode only the `key` / `state` pair for each typed-projection sidecar
+/// entry — #3131. Deliberately skips `projection.payload()` (the nested
+/// `TypedPayload` table and its byte vector) entirely, so this is cheap
+/// enough to run unconditionally on every emitted frame: no payload-byte
+/// clone, no `schema_id` / `file_identifier` string allocation.
+///
+/// Because ADR-0070 Rung 3 already omits unchanged keys from the wire frame
+/// (see `rung3_baseline_tests.rs`), the returned list IS the set of
+/// projection keys that changed (or cleared) on this frame — not a filtered
+/// view of a larger "all projections" list.
+pub(super) fn decode_typed_projection_keys(
+    snapshot: &fb::SnapshotFrame<'_>,
+) -> Vec<ChangedProjectionKey> {
+    let Some(projections) = snapshot.typed_projections() else {
+        return Vec::new();
+    };
+    let mut out = Vec::with_capacity(projections.len());
+    for index in 0..projections.len() {
+        let projection = projections.get(index);
+        let Some(key) = projection.key() else {
+            continue;
+        };
+        out.push(ChangedProjectionKey {
+            key: key.to_string(),
+            state: projection.state().into(),
+        });
+    }
+    out
 }

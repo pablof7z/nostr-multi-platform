@@ -298,8 +298,10 @@ pub fn new_app() -> NmpApp {
             // #3127 — fire every registered multicast update-frame observer,
             // unconditionally, on the SAME off-actor-thread this whole loop
             // body already runs on. Additive: does not consume or gate the
-            // single-owner `listener` invocation below.
-            notify_update_frame_observers(&listener_update_frame_observers);
+            // single-owner `listener` invocation below. #3131 — pass the raw
+            // frame bytes so each callback receives a changed-projection-keys
+            // payload to filter by.
+            notify_update_frame_observers(&listener_update_frame_observers, &update);
             // Quiescence-safe callback invocation (option b — Condvar drain).
             let listener = {
                 // D6 fail-loud: recover from poisoned lock rather than silently

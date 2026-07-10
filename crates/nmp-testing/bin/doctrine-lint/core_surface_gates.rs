@@ -51,7 +51,12 @@ const CORE_ROOT_EXPORTS: &[&str] = &[
     "pub use kernel_reducer::{ KernelReducer, SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest, };",
     "pub use relay::canonical_relay_url;",
     "pub use relay::OutboundMessage;",
-    "pub use update_envelope::{ decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic, encode_snapshot_frame, panic_message, PanicFrame, ProjectionMergeCache, RelayStatusEntry, SnapshotEnvelope, TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError, WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION, };",
+    // doctrine-allow: #3131 — `decode_snapshot_changed_projection_keys` /
+    // `ChangedProjectionKey` are the cheap key-only (no payload clone) decode
+    // pair the off-actor-thread update-frame observer (#3127) uses to build
+    // its `UpdateFrameInfo` payload; consumers filter by changed key instead
+    // of blindly re-deriving their desired set on every frame.
+    "pub use update_envelope::{ decode_snapshot_changed_projection_keys, decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic, encode_snapshot_frame, panic_message, ChangedProjectionKey, PanicFrame, ProjectionMergeCache, RelayStatusEntry, SnapshotEnvelope, TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError, WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION, };",
     "pub mod typed_projections { ... }",
     "pub use actor::typed_projections::{ decode_signer_state, encode_signer_state, SignerStateModel, SIGNER_STATE_FILE_IDENTIFIER, SIGNER_STATE_SCHEMA_ID, SIGNER_STATE_SCHEMA_VERSION, };",
     "pub use signer_state_codec::{ decode_signer_state, encode_signer_state, SignerStateModel, SIGNER_STATE_FILE_IDENTIFIER, SIGNER_STATE_SCHEMA_ID, SIGNER_STATE_SCHEMA_VERSION, };",
