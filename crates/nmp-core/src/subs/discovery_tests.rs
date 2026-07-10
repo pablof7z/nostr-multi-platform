@@ -131,6 +131,77 @@ fn cached_author_never_probed() {
     assert!(l.probed_mailboxes().is_empty());
 }
 
+/// An interest that carries kind:10002 directly for its author (e.g. the
+/// bootstrap self-kinds tailing interest, `startup.rs::SELF_KINDS_TAILING`)
+/// already fetches that author's mailbox through its own compiled REQ, so
+/// the auxiliary probe must NOT duplicate it (#3132: the same author
+/// otherwise got both `{kinds:[10002],limit:1}` from this probe AND
+/// `{kinds:[0,3,10002,...]}` from the tailing interest).
+#[test]
+fn author_with_direct_kind10002_interest_is_not_probed() {
+    let mut l = SubscriptionLifecycle::new();
+    let empty = InMemoryMailboxCache::new();
+    let self_kinds = LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey("se01")].into_iter().collect(),
+            kinds: [0u32, 3, 10002, 10006, 10007].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: true,
+    };
+    push_legacy(l.registry_mut(), self_kinds);
+
+    let frames = l.recompile_and_diff(&empty).expect("compile");
+    assert_eq!(
+        probe_reqs(&frames).len(),
+        0,
+        "author already targeted by a direct kind:10002 interest must not \
+         also get an auxiliary mailbox-probe REQ"
+    );
+    assert!(
+        l.probed_mailboxes().is_empty(),
+        "no probe emitted → nothing marked probed"
+    );
+}
+
+/// Mixed case: one author is covered by a direct kind:10002 interest (must
+/// not be probed), a second author is not (must still be probed) — proves
+/// the skip is per-author, not a blanket "any kind:10002 interest exists"
+/// short-circuit.
+#[test]
+fn kind10002_coverage_skip_is_per_author() {
+    let mut l = SubscriptionLifecycle::new();
+    let empty = InMemoryMailboxCache::new();
+    let covered = LogicalInterest {
+        id: InterestId(1),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [pubkey("cv01")].into_iter().collect(),
+            kinds: [0u32, 3, 10002].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+        is_indexer_discovery: true,
+    };
+    push_legacy(l.registry_mut(), covered);
+    push_legacy(l.registry_mut(), follow(2, "un01"));
+
+    let frames = l.recompile_and_diff(&empty).expect("compile");
+    let probes = probe_reqs(&frames);
+    assert_eq!(probes.len(), 1, "only the uncovered author is probed");
+    if let WireFrame::Req { filter_json, .. } = probes[0] {
+        assert!(filter_json.contains(&pubkey("un01")));
+        assert!(!filter_json.contains(&pubkey("cv01")));
+    } else {
+        panic!("expected a Req frame");
+    }
+}
+
 /// Unknown authors split into `ceil(n / MAILBOX_PROBE_BATCH)` probe
 /// REQs. Batch-size-aware so it survives tuning the constant.
 #[test]
