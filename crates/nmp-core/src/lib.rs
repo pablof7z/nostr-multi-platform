@@ -268,8 +268,9 @@ pub use relay::canonical_relay_url;
 // callers read via accessors.
 pub use relay::OutboundMessage;
 pub use update_envelope::{
-    decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic,
-    encode_snapshot_frame, panic_message, PanicFrame, ProjectionMergeCache, RelayStatusEntry,
+    decode_snapshot_changed_projection_keys, decode_snapshot_envelope,
+    decode_snapshot_typed_projections, decode_update_frame, encode_panic, encode_snapshot_frame,
+    panic_message, ChangedProjectionKey, PanicFrame, ProjectionMergeCache, RelayStatusEntry,
     SnapshotEnvelope, TypedProjectionData, UpdateEnvelope, UpdateFrameBytes,
     UpdateFrameDecodeError, WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
 };

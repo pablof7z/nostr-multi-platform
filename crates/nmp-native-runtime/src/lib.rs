@@ -70,7 +70,7 @@ pub mod op_feed_session;
 pub use action_dispatch::{dispatch_action_bytes_typed, DispatchOutcome};
 pub use app_ctor::new_app;
 pub use app_struct::{IdentityChangeObserverId, NmpApp, UpdateListener};
-pub use update_frame_observer::UpdateFrameObserverId;
+pub use update_frame_observer::{UpdateFrameInfo, UpdateFrameObserverId};
 pub use builder::{
     NmpAppBuilder, ProjectionsDeclared, RelaysDeclared, RunConfig, StorageSet, Unstarted,
 };

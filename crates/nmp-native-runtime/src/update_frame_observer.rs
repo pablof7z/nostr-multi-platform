@@ -8,6 +8,11 @@
 //! to the UI. A logic-layer library that needs a reactive "re-check" signal
 //! (e.g. `nmp-app-29er` driving a `KeyedReadCollection` reconcile, #3115)
 //! registers here instead of stealing the shell's slot.
+//!
+//! #3131 — callbacks receive an [`UpdateFrameInfo`] payload naming the
+//! projection keys that changed on this frame, so a consumer can filter
+//! instead of blindly re-deriving its desired set on every frame regardless
+//! of kind.
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -18,7 +23,44 @@ use crate::app_struct::NmpApp;
 /// to [`NmpApp::unregister_update_frame_observer`] to revoke a registration.
 pub type UpdateFrameObserverId = u64;
 
-type UpdateFrameObserverCallback = Arc<dyn Fn() + Send + Sync>;
+/// Payload passed to every [`NmpApp::register_update_frame_observer`]
+/// callback for one emitted frame — #3131.
+///
+/// Carries the set of projection keys that changed (or cleared) on this
+/// frame, decoded via [`nmp_core::decode_snapshot_changed_projection_keys`].
+/// Cheap by construction on two counts: the decoder skips every sidecar
+/// entry's payload bytes, and ADR-0070 Rung 3 already omits unchanged keys
+/// from the wire frame — so this list IS the changed set, not a filtered
+/// view of a larger "all projections" list. Empty for non-`Snapshot` frames
+/// (e.g. `Panic`) or a snapshot with no sidecar entries.
+///
+/// This is a "what changed" signal, not event bodies: consumers that need
+/// the actual payload still read it via `set_update_listener` /
+/// `decode_snapshot_typed_projections`, same as before. A callback filters
+/// by checking whether a key it cares about appears here, and skips its
+/// reconcile when it doesn't.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct UpdateFrameInfo {
+    pub changed_projection_keys: Vec<nmp_core::ChangedProjectionKey>,
+}
+
+impl UpdateFrameInfo {
+    fn decode(frame_bytes: &[u8]) -> Self {
+        Self {
+            changed_projection_keys: nmp_core::decode_snapshot_changed_projection_keys(frame_bytes),
+        }
+    }
+
+    /// Convenience for the common case: did `key` change (or clear) on this
+    /// frame? Most filtering callbacks only need this yes/no answer.
+    pub fn changed(&self, key: &str) -> bool {
+        self.changed_projection_keys
+            .iter()
+            .any(|entry| entry.key == key)
+    }
+}
+
+type UpdateFrameObserverCallback = Arc<dyn Fn(&UpdateFrameInfo) + Send + Sync>;
 
 #[derive(Clone)]
 pub(crate) struct UpdateFrameObserverRegistration {
@@ -47,7 +89,9 @@ pub(crate) fn unregister_update_frame_observer(
 /// / `notify_configured_relays_change_observers`, there is no diffing against
 /// a previous value; see the doc comment on
 /// [`NmpApp::register_update_frame_observer`] for the "re-check" contract
-/// this implies for callers.
+/// this implies for callers. `frame_bytes` is decoded ONCE into an
+/// [`UpdateFrameInfo`] here (#3131) and the same value is shared (by
+/// reference) across every callback, rather than re-decoded per observer.
 ///
 /// Snapshots the callback list and releases the registry lock BEFORE invoking
 /// any callback, so a callback that calls back into `NmpApp` (e.g. to open a
@@ -55,7 +99,10 @@ pub(crate) fn unregister_update_frame_observer(
 /// `register_update_frame_observer` / `unregister_update_frame_observer`)
 /// cannot deadlock against this registry's own lock — the same re-entrancy
 /// discipline #3078/#3080 established for the snapshot-projection registry.
-pub(crate) fn notify_update_frame_observers(observers: &UpdateFrameObserverSlot) {
+pub(crate) fn notify_update_frame_observers(
+    observers: &UpdateFrameObserverSlot,
+    frame_bytes: &[u8],
+) {
     let callbacks: Vec<UpdateFrameObserverCallback> = observers
         .lock()
         .map(|guard| {
@@ -65,8 +112,12 @@ pub(crate) fn notify_update_frame_observers(observers: &UpdateFrameObserverSlot)
                 .collect()
         })
         .unwrap_or_default();
+    if callbacks.is_empty() {
+        return;
+    }
+    let info = UpdateFrameInfo::decode(frame_bytes);
     for callback in callbacks {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback()));
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| callback(&info)));
     }
 }
 
@@ -87,16 +138,21 @@ impl NmpApp {
     /// executing synchronously, so no deadlock is possible (#3078/#3080).
     ///
     /// Fires unconditionally on every emitted frame — there is no diffing
-    /// against a previous value. Treat this as a "something may have
-    /// changed, re-check" signal: the downstream reconcile a callback drives
-    /// is expected to be idempotent and a no-op when nothing actually
-    /// changed.
+    /// against a previous value. The callback receives an
+    /// [`UpdateFrameInfo`] naming the projection keys that changed on this
+    /// frame (#3131): a callback that only cares about specific keys should
+    /// check `info.changed(key)` and skip its reconcile when none of its
+    /// keys appear, instead of unconditionally re-deriving its desired set.
+    /// A callback that genuinely needs a "something may have changed,
+    /// re-check everything" signal may still ignore the payload — the
+    /// downstream reconcile it drives is expected to be idempotent and a
+    /// no-op when nothing actually changed.
     ///
     /// Returns an [`UpdateFrameObserverId`] for
     /// [`Self::unregister_update_frame_observer`].
     pub fn register_update_frame_observer<F>(&self, callback: F) -> UpdateFrameObserverId
     where
-        F: Fn() + Send + Sync + 'static,
+        F: Fn(&UpdateFrameInfo) + Send + Sync + 'static,
     {
         let id = self
             .next_update_frame_observer_id
@@ -124,6 +180,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
+    use nmp_core::TypedProjectionData;
     use nmp_ownership::DynamicProjectionKey;
     use nmp_read_session::ReadHost;
 
@@ -136,10 +193,10 @@ mod tests {
 
         let (tx1, rx1) = mpsc::channel::<()>();
         let (tx2, rx2) = mpsc::channel::<()>();
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             let _ = tx1.send(());
         });
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             let _ = tx2.send(());
         });
 
@@ -167,7 +224,7 @@ mod tests {
 
         let fired = Arc::new(AtomicBool::new(false));
         let fired_in_closure = Arc::clone(&fired);
-        let id = app.register_update_frame_observer(move || {
+        let id = app.register_update_frame_observer(move |_info| {
             fired_in_closure.store(true, Ordering::SeqCst);
         });
         app.unregister_update_frame_observer(id);
@@ -178,7 +235,7 @@ mod tests {
         // `notify_update_frame_observers` call, so by the time this fires
         // the unregistered one has already been skipped (or not).
         let (tx, rx) = mpsc::channel::<()>();
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             let _ = tx.send(());
         });
 
@@ -208,7 +265,7 @@ mod tests {
         })));
 
         let (obs_tx, obs_rx) = mpsc::channel::<()>();
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             let _ = obs_tx.send(());
         });
 
@@ -243,7 +300,7 @@ mod tests {
         const INNER_KEY: &str = "app.test.frame_observer_reentrant_inner";
         let opened = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel::<()>();
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             if !opened.swap(true, Ordering::SeqCst) {
                 read_host.install_read_output(
                     DynamicProjectionKey::app_owned(INNER_KEY).unwrap().into(),
@@ -285,7 +342,7 @@ mod tests {
             .id();
 
         let (tx, rx) = mpsc::channel::<std::thread::ThreadId>();
-        app.register_update_frame_observer(move || {
+        app.register_update_frame_observer(move |_info| {
             let _ = tx.send(std::thread::current().id());
         });
 
@@ -297,6 +354,55 @@ mod tests {
         assert_ne!(
             observer_thread_id, actor_thread_id,
             "the update-frame observer must not run on the actor thread"
+        );
+
+        app.stop_runtime();
+    }
+
+    /// (f) — #3131: the payload names a projection key that actually
+    /// changed on the wire frame, not just an opaque "a frame happened"
+    /// signal. Installs a real (non-`None`-encoding) read output from
+    /// inside the observer itself and waits for a LATER frame's payload to
+    /// report that key via `UpdateFrameInfo::changed`.
+    #[test]
+    fn observer_payload_names_a_projection_key_that_changed() {
+        let app = crate::new_app();
+        app.start_runtime(50, 30);
+        assert!(app.wait_barrier_for_test(Duration::from_secs(5)));
+
+        let read_host = app.read_host();
+        const KEY: &str = "app.test.frame_observer_payload_key";
+        let installed = Arc::new(AtomicBool::new(false));
+        let installed_in_closure = Arc::clone(&installed);
+        let (tx, rx) = mpsc::channel::<()>();
+        app.register_update_frame_observer(move |info| {
+            if !installed_in_closure.swap(true, Ordering::SeqCst) {
+                read_host.install_read_output(
+                    DynamicProjectionKey::app_owned(KEY).unwrap().into(),
+                    Box::new(|| {
+                        Some(TypedProjectionData {
+                            key: KEY.to_string(),
+                            schema_id: KEY.to_string(),
+                            schema_version: 1,
+                            file_identifier: "TEST".to_string(),
+                            payload: b"v1".to_vec(),
+                            ..Default::default()
+                        })
+                    }),
+                );
+            }
+            if info.changed(KEY) {
+                let _ = tx.send(());
+            }
+        });
+
+        app.add_relay("wss://frameobs-f.example".to_string(), "read".to_string());
+
+        assert!(
+            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "UpdateFrameInfo must name the installed key as changed on some \
+             subsequent frame — a payload-carrying observer that never \
+             actually reports a changed key is useless for filtering"
         );
 
         app.stop_runtime();
