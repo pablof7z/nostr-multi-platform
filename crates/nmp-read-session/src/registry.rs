@@ -270,15 +270,18 @@ impl ReadSessionRegistry {
 
     /// The persistent [`DemandSetReconciler`] of the demand-set session
     /// registered under `projection_key`, or `None` under the same
-    /// conditions as [`Self::demand_set_members`].
+    /// conditions as [`Self::demand_set_members`]. Returned type-erased
+    /// ([`Any`]), mirroring [`Self::demand_set_reducer`] — see
+    /// [`crate::host::ReadHost::read_demand_set_reconciler`] for why
+    /// (#3130).
     #[must_use]
-    pub fn demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+    pub fn demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.sessions.lock().ok().and_then(|sessions| {
             sessions
                 .values()
                 .find(|s| s.projection_key == projection_key)
                 .and_then(|s| s.demand_set.as_ref())
-                .map(|d| Arc::clone(&d.reconciler))
+                .map(|d| Arc::clone(&d.reconciler) as Arc<dyn Any + Send + Sync>)
         })
     }
 }
