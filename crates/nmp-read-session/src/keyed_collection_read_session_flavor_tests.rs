@@ -125,8 +125,7 @@ fn each_key_mounts_its_own_independent_read_session() {
                 let _ = close_read(host_for_close.as_ref(), &handle);
             }) as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     let mut desired = BTreeMap::new();
     desired.insert("group-1".to_string(), "group-1".to_string());

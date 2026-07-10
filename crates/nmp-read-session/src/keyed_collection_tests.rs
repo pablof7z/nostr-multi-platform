@@ -22,7 +22,6 @@ fn collection_of_u32() -> KeyedReadCollection<String, u32> {
         |key: &String| MemberKey::new(key.clone()),
         |_key, _command| Box::new(|| {}) as crate::registry::TeardownAction,
     )
-    .expect("fresh collection")
 }
 
 fn desired(pairs: &[(&str, u32)]) -> BTreeMap<String, u32> {
@@ -56,8 +55,7 @@ fn reconcile_adds_a_member_without_touching_the_existing_one() {
                 .push(key.as_str().to_string());
             Box::new(|| {}) as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     collection.reconcile(desired(&[("a", 1), ("b", 2)]));
     mounted.lock().unwrap().clear();
@@ -101,8 +99,7 @@ fn reconcile_replaces_a_live_member_whose_descriptor_changed() {
                 *withdrawn.lock().unwrap() += 1;
             }) as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     collection.reconcile(desired(&[("a", 1)]));
     assert_eq!(*mounted.lock().unwrap(), vec![1]);
@@ -133,8 +130,7 @@ fn reconcile_leaves_an_unchanged_member_untouched() {
             *mounted_in_closure.lock().unwrap() += 1;
             Box::new(|| {}) as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     collection.reconcile(desired(&[("a", 1)]));
     collection.reconcile(desired(&[("a", 1)]));
@@ -157,8 +153,7 @@ fn close_withdraws_every_member_exactly_once_and_is_idempotent() {
             let key = key.as_str().to_string();
             Box::new(move || withdrawn.lock().unwrap().push(key)) as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     collection.reconcile(desired(&[("a", 1), ("b", 2)]));
     collection.close();
@@ -203,8 +198,7 @@ fn members_can_mount_over_a_bare_host_closure_not_a_read_session() {
             Box::new(move || ids_for_close.lock().unwrap().retain(|&x| x != id))
                 as crate::registry::TeardownAction
         },
-    )
-    .expect("fresh collection");
+    );
 
     collection.reconcile(desired(&[("group-1", 0)]));
     assert_eq!(*live_projection_ids.lock().unwrap(), vec![1]);
@@ -238,31 +232,28 @@ fn host_open_closure_can_call_back_into_the_collection_without_deadlocking() {
     let self_ref: Arc<Mutex<Option<std::sync::Weak<KeyedReadCollection<String, u32>>>>> =
         Arc::new(Mutex::new(None));
     let self_ref_in_closure = Arc::clone(&self_ref);
-    let collection = Arc::new(
-        KeyedReadCollection::new(
-            "test-scope",
-            |key: &String| MemberKey::new(key.clone()),
-            move |_key, _command: u32| {
-                if let Some(collection) = self_ref_in_closure
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .and_then(std::sync::Weak::upgrade)
-                {
-                    // Reentrant calls from inside the host's own open
-                    // closure — proves no lock this type owns is held here.
-                    assert_eq!(
-                        collection.live_count(),
-                        0,
-                        "no member has been recorded yet"
-                    );
-                    assert!(collection.full_recompute_matches());
-                }
-                Box::new(|| {}) as crate::registry::TeardownAction
-            },
-        )
-        .expect("fresh collection"),
-    );
+    let collection = Arc::new(KeyedReadCollection::new(
+        "test-scope",
+        |key: &String| MemberKey::new(key.clone()),
+        move |_key, _command: u32| {
+            if let Some(collection) = self_ref_in_closure
+                .lock()
+                .unwrap()
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+            {
+                // Reentrant calls from inside the host's own open
+                // closure — proves no lock this type owns is held here.
+                assert_eq!(
+                    collection.live_count(),
+                    0,
+                    "no member has been recorded yet"
+                );
+                assert!(collection.full_recompute_matches());
+            }
+            Box::new(|| {}) as crate::registry::TeardownAction
+        },
+    ));
     *self_ref.lock().unwrap() = Some(Arc::downgrade(&collection));
 
     collection.reconcile(desired(&[("a", 1)]));

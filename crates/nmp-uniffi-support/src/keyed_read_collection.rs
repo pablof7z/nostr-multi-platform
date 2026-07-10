@@ -65,12 +65,6 @@ use nmp_read_session::{
 /// descriptor `C`. This is the facade's own concern (its reducer, its
 /// output encoder, its projection key derivation); this constructor owns
 /// only the repeated `open_read`/`close_read` teardown wiring.
-///
-/// # Panics
-///
-/// Never in practice: a fresh [`KeyedReadCollection`] construction over an
-/// empty graph cannot fail (same invariant `nmp_read_session::demand_set`
-/// documents at its own construction site).
 #[must_use]
 pub fn keyed_read_session_collection<K, C>(
     app: Arc<NmpApp>,
@@ -90,7 +84,6 @@ where
             let _ = close_read(app_for_close.as_ref(), &handle);
         }) as TeardownAction
     })
-    .expect("fresh KeyedReadCollection construction over an empty graph cannot fail")
 }
 
 /// Builds a [`KeyedReadCollection`] whose members are each a raw
@@ -103,10 +96,6 @@ where
 /// `projection_for` builds one key's [`ObservedProjection`] declaration
 /// (including its own `observer` sink) from the derived [`MemberKey`] and
 /// the committed descriptor `C`.
-///
-/// # Panics
-///
-/// Never in practice — see [`keyed_read_session_collection`]'s panics note.
 #[must_use]
 pub fn keyed_observed_projection_collection<K, C>(
     app: Arc<NmpApp>,
@@ -126,7 +115,6 @@ where
             app_for_close.close_observed_projection(id);
         }) as TeardownAction
     })
-    .expect("fresh KeyedReadCollection construction over an empty graph cannot fail")
 }
 
 #[cfg(test)]

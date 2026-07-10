@@ -145,16 +145,30 @@ where
     /// — see the module docs' ResourceKey rule for why it must be injective
     /// over `K`. `open` is the host-supplied mount/unmount applier — see
     /// [`KeyedCollectionOpen`].
+    ///
+    /// Infallible: [`MemberKey`] exists precisely so a `KeyedReadCollection`
+    /// consumer never needs to import `trellis_core` vocabulary (#3129), and
+    /// the underlying [`KeyedReconciler::new`] call below can only fail on a
+    /// Trellis-internal graph-build error that is unreachable for a fresh,
+    /// single-sequence construction over a brand-new empty graph — the same
+    /// invariant [`crate::demand_set::open_read_demand_set`] already
+    /// documents at its own `KeyedReconciler::new` call site.
+    ///
+    /// # Panics
+    ///
+    /// Never in practice — see above.
+    #[must_use]
     pub fn new(
         scope_debug_name: impl Into<String>,
         key_fn: impl Fn(&K) -> MemberKey + Send + Sync + 'static,
         open: impl Fn(&MemberKey, C) -> TeardownAction + Send + Sync + 'static,
-    ) -> trellis_core::GraphResult<Self> {
-        Ok(Self {
-            reconciler: KeyedReconciler::new(scope_debug_name, move |k| key_fn(k).0)?,
+    ) -> Self {
+        Self {
+            reconciler: KeyedReconciler::new(scope_debug_name, move |k| key_fn(k).0)
+                .expect("fresh KeyedReconciler construction over an empty graph cannot fail"),
             live: Mutex::new(HashMap::new()),
             open: Arc::new(open),
-        })
+        }
     }
 
     /// Reconciles the live member set to exactly `desired`: mounts every
