@@ -112,12 +112,20 @@ baseline/delta/rebaseline/clear, and replay.
 
 ## Read-layer reconciler adoption (#3115/#3116)
 
-The owner posture on #3116 was explicit: **default = migrate every
-hand-rolled open-added/close-removed/drain-on-close reconciler onto Trellis**,
-with staying off the seam requiring a structural, ADR-recorded justification
-(dependency-direction or bootstrap-ordering only — "runs in-tick" and tempo
-are not valid grounds, since Trellis's diff is pure/data-only and composes
-with an in-tick apply). That sweep is now complete for the read layer:
+> **Superseded posture, per [ADR-0077](0077-doctrines-are-guardrails-not-dogma.md):**
+> #3116 ran under a "default = migrate every hand-rolled reconciler onto
+> Trellis" posture, recorded below as the historical record of that sweep.
+> That default no longer applies going forward: Trellis remains a supported,
+> often-good substrate for a keyed set-difference reconciler, but using it is
+> a per-case engineering choice, not a blanket requirement. Hand-rolling a
+> keyed open-added/close-removed diff is allowed again when it's the better
+> fit for the case at hand. The migrations this section describes
+> (`demand_set`, `feed_author_refs`, `nmp-nip17`'s peer-set) are unaffected —
+> they stay on Trellis because that's still the right call for them, not
+> because a rule compels it.
+
+#3116 audited the read layer under that now-superseded default. That sweep is
+recorded here for history:
 
 - **`replace_dependent_interest_set` — deleted, not migrated** (#3119). It was
   `#[allow(dead_code)]` with no production sender; its Trellis-fed twin
@@ -157,11 +165,14 @@ exception): both crates' consumers now carry `trellis-core`'s transitive
 compile weight — seen and accepted, consistent with the original feed-session
 adoption.
 
-**Family unified.** Zero hand-rolled open-added/close-removed reconcilers
-remain in the read layer. Every such reconciler — `demand_set`,
-`feed_author_refs`, `nmp-nip17`'s `dm_runtime` peer-set, and the new
-`KeyedReadCollection` primitive — now shares one Trellis-backed core, one
+**Family unified (as of the #3116 sweep).** At the close of that sweep, zero
+hand-rolled open-added/close-removed reconcilers remained in the read layer:
+`demand_set`, `feed_author_refs`, `nmp-nip17`'s `dm_runtime` peer-set, and the
+new `KeyedReadCollection` primitive all shared one Trellis-backed core, one
 `FullRecomputeCheck` leak oracle, and one apply-in-order executor contract.
+That snapshot is not a standing requirement — see the superseded-posture note
+above — but nothing here was reverted; a new hand-rolled reconciler
+introduced later is a normal engineering choice, not a regression.
 
 **Recorded exception: feed-session's adapter stays off the shared core.**
 `nmp-feed-session::FeedSessionTrellisAdapter` (`trellis_adapter.rs`)

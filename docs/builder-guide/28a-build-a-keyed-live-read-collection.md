@@ -186,10 +186,13 @@ OUTPUT, not about how membership is diffed.
 
 ## Anti-patterns
 
-1. **Hand-rolling a `HashSet`/`HashMap` diff for a new per-key live-resource
-   need.** This is the exact pattern #3116 consolidated three separate
-   implementations of. Use `KeyedReconciler` (private) or
-   `KeyedReadCollection` (public) instead.
+1. **Reaching for a fresh `HashSet`/`HashMap` diff without considering
+   `KeyedReconciler`/`KeyedReadCollection` first.** #3116 consolidated three
+   separate hand-rolled implementations onto this core, and it's usually the
+   less work to reuse than to rebuild — but per
+   [ADR-0077](../decisions/0077-doctrines-are-guardrails-not-dogma.md),
+   hand-rolling the diff is a legitimate choice when it's the better fit for
+   the case at hand, not a mistake in itself.
 2. **Force-close+reopen the whole collection on an exogenous-scalar change.**
    Embed the scalar in `C` and let `Replace` do the narrow withdraw+remount.
 3. **An under-specified `key_fn`.** Omitting a parameter that distinguishes

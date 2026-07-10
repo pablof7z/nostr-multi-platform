@@ -50,16 +50,20 @@ reconciler**, not an ordinary fixed-demand session. #3116 audited every such
 reconciler in the read layer and consolidated all of them onto one reusable
 core:
 
-- **Never hand-roll an open-added/close-removed diff.** Use
+- **`KeyedReconciler`/`KeyedReadCollection` are available when a
+  Trellis-backed reconcile fits.** Use
   `nmp_core::trellis_reconciler::KeyedReconciler<K, C>` for a private,
   substrate-internal reconciler, or `nmp_read_session::KeyedReadCollection<K,
   C>` for the public per-key-live-resource primitive
   (`nmp-uniffi-support::keyed_read_session_collection` /
-  `keyed_observed_projection_collection` for the facade-composable form). A
-  new `HashSet`/`HashMap` diff for this shape is a regression of the exact
-  pattern #3116 consolidated three separate implementations of
+  `keyed_observed_projection_collection` for the facade-composable form).
+  #3116 consolidated three prior hand-rolled implementations onto this core
   (`demand_set`, `feed_author_refs`, the deleted
-  `replace_dependent_interest_set`).
+  `replace_dependent_interest_set`), and it remains the natural default for a
+  new open-added/close-removed reconciler — but per
+  [ADR-0077](../../../docs/decisions/0077-doctrines-are-guardrails-not-dogma.md),
+  hand-rolling a `HashSet`/`HashMap` diff is also fine when it's the better
+  fit for the case at hand; it is a per-case choice, not a mandate.
 - **The reconcile runs on the read/actor lane, never a render/snapshot
   closure.** Calling `.sync()`/`reconcile()` from inside a snapshot-tick or
   render closure that itself may re-enter the registry is the #60 deadlock
