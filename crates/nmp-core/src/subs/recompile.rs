@@ -298,6 +298,23 @@ impl SubscriptionLifecycle {
         //
         // v1 scope: `shape.authors` only — `#p` tag values and address-pointer
         // pubkeys are a documented follow-up.
+        //
+        // #3132 — an author already targeted by a registered interest that
+        // directly carries `kinds:[10002, ...]` (e.g. the bootstrap self-kinds
+        // tailing interest, `startup.rs::SELF_KINDS_TAILING`) is already
+        // getting its own kind:10002 fetch through the compiled plan; probing
+        // it again here duplicates that REQ (the exact symptom filed in
+        // #3132: `{kinds:[10002],authors:[X],limit:1}` alongside
+        // `{kinds:[0,3,10002,...],authors:[X]}` for the same author). Skip
+        // those authors — the compiled interest's own REQ is the mailbox
+        // discovery.
+        let mut kind10002_covered: BTreeSet<String> = BTreeSet::new();
+        for interest in &interests {
+            if interest.shape.kinds.contains(&crate::kinds::KIND_RELAY_LIST) {
+                kind10002_covered.extend(interest.shape.authors.iter().cloned());
+            }
+        }
+
         let mut probe_relays: BTreeSet<String> = BTreeSet::new();
         probe_relays.extend(self.indexer_relays.iter().cloned());
         probe_relays.extend(self.app_relays.iter().cloned());
@@ -309,6 +326,9 @@ impl SubscriptionLifecycle {
                         continue;
                     }
                     if mailbox_cache.get(author).is_some() {
+                        continue;
+                    }
+                    if kind10002_covered.contains(author) {
                         continue;
                     }
                     to_probe.insert(author.clone());
