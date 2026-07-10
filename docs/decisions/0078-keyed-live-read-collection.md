@@ -2,14 +2,18 @@
 
 ## Decision
 
-NMP has exactly one reusable shape for "a caller-controlled, unbounded set of
+NMP has a reusable shape for "a caller-controlled, unbounded set of
 independent per-key live resources that grows and shrinks over a session's
 lifetime, where opening a new key must never touch an already-live key and
-closing a key must run its withdrawal exactly once." Every reconciler in this
+closing a key must run its withdrawal exactly once." A reconciler in this
 category — a relay's discovery read, a followed author's profile-ref, a
-per-group presence session — builds on the SAME Trellis-backed core rather
-than hand-rolling its own added/removed diff. Per [ADR-0075](0075-trellis-private-reconciliation-substrate.md),
-Trellis stays private reconciliation machinery below this primitive; nothing
+per-group presence session — can build on the SAME Trellis-backed core
+instead of hand-rolling its own added/removed diff. Using the shared core is
+a per-case engineering choice made on the merits, not a requirement (per
+[ADR-0077](0077-doctrines-are-guardrails-not-dogma.md)): a hand-rolled keyed
+diff is a legitimate option too when it's the better fit. Per
+[ADR-0075](0075-trellis-private-reconciliation-substrate.md), when Trellis is
+used it stays private reconciliation machinery below this primitive; nothing
 here exposes Trellis vocabulary to app/native/web-facing callers.
 
 ```text
@@ -258,13 +262,14 @@ is, underneath, the same reconciliation problem every time.
 
 ## Consequences
 
-NMP now has one reconciliation core for this entire problem family instead of
-N bespoke `HashSet`/`BTreeMap` diffs, each with its own teardown-ordering and
-leak-audit story. New per-key live-resource needs (a new protocol module's
-per-group session, a new app's per-topic read) compose `KeyedReconciler`
-directly if they need a private reconciler, or `KeyedReadCollection` /
-`nmp-uniffi-support`'s two facade constructors if they need a public
-per-key-live-resource primitive — never a hand-rolled diff.
+NMP has a reusable reconciliation core available for this problem family,
+instead of every caller writing its own bespoke `HashSet`/`BTreeMap` diff with
+its own teardown-ordering and leak-audit story. New per-key live-resource
+needs (a new protocol module's per-group session, a new app's per-topic read)
+can compose `KeyedReconciler` directly if they need a private reconciler, or
+`KeyedReadCollection` / `nmp-uniffi-support`'s two facade constructors if they
+need a public per-key-live-resource primitive — or hand-roll a diff, when
+that's the better fit for the case at hand.
 
 The cost is the same one recorded in ADR-0075's Phase-A ratchet: both
 `nmp-core` and `nmp-read-session` (and therefore every consumer that links
@@ -283,13 +288,13 @@ Permitted:
 - host open/close closures that mount a read-session, an observed projection,
   or any other host-owned resource;
 - embedding an exogenous scalar directly in the payload `C` so a value change
-  diffs to `Replace`.
+  diffs to `Replace`;
+- a hand-rolled open-added/close-removed diff for a new keyed-set reconciler,
+  chosen on the merits case-by-case — Trellis is an available option, not a
+  mandatory one (per [ADR-0077](0077-doctrines-are-guardrails-not-dogma.md)).
 
 Forbidden:
 
-- a new hand-rolled open-added/close-removed diff anywhere in the read layer
-  without a structural (dependency-direction or bootstrap-ordering)
-  justification recorded as its own ADR amendment, per #3116's posture;
 - a `key_fn`/`MemberKey` derivation that omits any parameter that
   distinguishes one live member from another (the collision/coalesce/abort
   hazard above);
