@@ -97,6 +97,17 @@ impl Kernel {
         }
 
         // (3) D9-clamped app-observer notify.
+        self.notify_observers_for_verified_event(verified);
+    }
+
+    /// Deliver a verified wire event to app observers without feeding
+    /// parser-owned caches. Used for events that are valid and observable on
+    /// the wire but intentionally not stored, such as NIP-40 expired-on-arrival
+    /// status rows.
+    pub(in crate::kernel) fn notify_observers_for_verified_event(
+        &self,
+        verified: &crate::store::VerifiedEvent,
+    ) {
         let now_secs = self.now_secs();
         let mut kernel_event = helpers::kernel_event_from_verified(verified);
         kernel_event.created_at = kernel_event.created_at.min(now_secs);

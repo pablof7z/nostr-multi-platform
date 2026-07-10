@@ -106,6 +106,14 @@ impl Kernel {
                 &raw.tags,
                 store_log_advanced,
             );
+        } else if matches!(
+            outcome,
+            InsertOutcome::Rejected {
+                reason: crate::store::RejectReason::ExpiredOnArrival,
+                ..
+            }
+        ) {
+            self.notify_observers_for_verified_event(&verified);
         }
 
         // Timeline read-cache projection — live diagnostic/test path specific.

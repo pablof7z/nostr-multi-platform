@@ -75,6 +75,29 @@ fn signed_event_value(kind: u32, content: &str) -> serde_json::Value {
     })
 }
 
+fn signed_expired_event_value(kind: u32, content: &str) -> serde_json::Value {
+    use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+    let keys = Keys::generate();
+    let nostr_event = EventBuilder::new(Kind::from(kind as u16), content)
+        .tag(Tag::expiration(Timestamp::from_secs(1)))
+        .sign_with_keys(&keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    let tags: Vec<Vec<String>> = nostr_event
+        .tags
+        .iter()
+        .map(|t| t.as_slice().to_vec())
+        .collect();
+    serde_json::json!({
+        "id": nostr_event.id.to_hex(),
+        "pubkey": nostr_event.pubkey.to_hex(),
+        "created_at": nostr_event.created_at.as_secs(),
+        "kind": nostr_event.kind.as_u16(),
+        "tags": tags,
+        "content": nostr_event.content.clone(),
+        "sig": nostr_event.sig.to_string(),
+    })
+}
+
 /// A kind that hits the `_ =>` wildcard arm (NIP-29 chat message kind:9)
 /// fans out to registered `ObservedProjectionSink`s after a successful
 /// store insert. Before the F-04 wildcard-arm fix this assertion failed
@@ -285,5 +308,71 @@ fn ephemeral_event_reaches_parsers_and_observers_but_is_not_persisted() {
             .expect("store get_by_id must not error")
             .is_none(),
         "an ephemeral event must NOT be persisted (store-layer exclusion intact)"
+    );
+}
+
+#[test]
+fn expired_on_arrival_event_reaches_observers_but_not_parsers_or_store() {
+    use crate::store::VerifiedEvent;
+    use crate::substrate::IngestParser;
+
+    struct CapturingIngestParser {
+        kinds: Mutex<Vec<u32>>,
+    }
+    impl IngestParser for CapturingIngestParser {
+        fn parse(&self, evt: &VerifiedEvent) {
+            self.kinds.lock().unwrap().push(evt.raw().kind);
+        }
+    }
+
+    let slot = new_event_observer_slot();
+    let observer = CountingObserver::new();
+    register_rust_observer(&slot, observer.clone());
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot);
+
+    let parser = Arc::new(CapturingIngestParser {
+        kinds: Mutex::new(Vec::new()),
+    });
+    if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
+        d.replace_range_parser(
+            0..u32::MAX,
+            "test.all-kinds-expired",
+            Arc::clone(&parser) as Arc<dyn IngestParser>,
+        );
+    }
+
+    let value = signed_expired_event_value(30_315, "stale status");
+    let event_id = value
+        .get("id")
+        .and_then(serde_json::Value::as_str)
+        .unwrap()
+        .to_string();
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://relay.test",
+        "expired-sub",
+        &value,
+    );
+
+    assert_eq!(
+        observer.count.load(Ordering::SeqCst),
+        1,
+        "an expired-on-arrival event must still reach app ObservedProjectionSinks"
+    );
+    assert_eq!(
+        parser.kinds.lock().unwrap().clone(),
+        Vec::<u32>::new(),
+        "expired-on-arrival events must not feed parser-owned caches"
+    );
+    let id_bytes = crate::kernel::hex_to_pubkey_bytes(&event_id).expect("event id is 64-char hex");
+    assert!(
+        kernel
+            .store
+            .get_by_id(&id_bytes)
+            .expect("store get_by_id must not error")
+            .is_none(),
+        "an expired-on-arrival event must NOT be persisted"
     );
 }
