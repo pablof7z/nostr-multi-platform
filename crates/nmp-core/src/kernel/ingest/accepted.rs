@@ -113,7 +113,7 @@ impl Kernel {
                 ..
             }
         ) {
-            self.notify_observers_for_verified_event(&verified);
+            self.notify_observers_for_verified_event_with_provenance(&verified, Some(provenance));
         }
 
         // Timeline read-cache projection — live diagnostic/test path specific.

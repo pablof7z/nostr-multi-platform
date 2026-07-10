@@ -16,7 +16,11 @@
 //! mirrors `kernel/raw_event_observer_tests.rs::signed_event_value` and
 //! `kernel/ingest_tests.rs::signed_note`.
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
+use crate::actor::{
+    activate_observer_scoped, new_event_observer_slot, register_rust_observer,
+    register_rust_observer_muted, ObservedProjectionSink,
+};
+use crate::planner::InterestShape;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
 use nmp_network::role::RelayRole;
@@ -80,6 +84,30 @@ fn signed_expired_event_value(kind: u32, content: &str) -> serde_json::Value {
     let keys = Keys::generate();
     let nostr_event = EventBuilder::new(Kind::from(kind as u16), content)
         .tag(Tag::expiration(Timestamp::from_secs(1)))
+        .sign_with_keys(&keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    let tags: Vec<Vec<String>> = nostr_event
+        .tags
+        .iter()
+        .map(|t| t.as_slice().to_vec())
+        .collect();
+    serde_json::json!({
+        "id": nostr_event.id.to_hex(),
+        "pubkey": nostr_event.pubkey.to_hex(),
+        "created_at": nostr_event.created_at.as_secs(),
+        "kind": nostr_event.kind.as_u16(),
+        "tags": tags,
+        "content": nostr_event.content.clone(),
+        "sig": nostr_event.sig.to_string(),
+    })
+}
+
+fn signed_expired_group_status_value(group_id: &str, content: &str) -> serde_json::Value {
+    use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+    let keys = Keys::generate();
+    let nostr_event = EventBuilder::new(Kind::from(30_315u16), content)
+        .tag(Tag::expiration(Timestamp::from_secs(1)))
+        .tag(Tag::parse(["h", group_id]).expect("valid h tag"))
         .sign_with_keys(&keys)
         .expect("sign_with_keys cannot fail with a generated keypair");
     let tags: Vec<Vec<String>> = nostr_event
@@ -375,4 +403,45 @@ fn expired_on_arrival_event_reaches_observers_but_not_parsers_or_store() {
             .is_none(),
         "an expired-on-arrival event must NOT be persisted"
     );
+}
+
+#[test]
+fn expired_on_arrival_event_reaches_relay_pinned_observed_projection() {
+    let slot = new_event_observer_slot();
+    let observer = CountingObserver::new();
+    let observer_id = register_rust_observer_muted(&slot, observer.clone());
+
+    let mut tags = std::collections::BTreeMap::new();
+    tags.insert(
+        "h".to_string(),
+        std::collections::BTreeSet::from(["tenex-edge".to_string()]),
+    );
+    activate_observer_scoped(
+        &slot,
+        observer_id,
+        InterestShape {
+            kinds: std::collections::BTreeSet::from([30_315]),
+            tags,
+            relay_pin: Some("wss://nip29.f7z.io".to_string()),
+            ..Default::default()
+        },
+    );
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot);
+
+    let value = signed_expired_group_status_value("tenex-edge", "stale status");
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://nip29.f7z.io",
+        "expired-status-sub",
+        &value,
+    );
+
+    assert_eq!(
+        observer.count.load(Ordering::SeqCst),
+        1,
+        "expired relay-pinned group status must keep arrival provenance so scoped observers can match it"
+    );
+    assert_eq!(observer.kinds.lock().unwrap().clone(), vec![30_315]);
 }

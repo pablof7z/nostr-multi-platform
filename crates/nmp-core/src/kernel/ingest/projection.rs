@@ -97,20 +97,27 @@ impl Kernel {
         }
 
         // (3) D9-clamped app-observer notify.
-        self.notify_observers_for_verified_event(verified);
+        self.notify_observers_for_verified_event_with_provenance(verified, None);
     }
 
-    /// Deliver a verified wire event to app observers without feeding
-    /// parser-owned caches. Used for events that are valid and observable on
-    /// the wire but intentionally not stored, such as NIP-40 expired-on-arrival
-    /// status rows.
-    pub(in crate::kernel) fn notify_observers_for_verified_event(
+    /// Deliver a verified wire event to app observers with optional arrival
+    /// provenance, without feeding parser-owned caches.
+    ///
+    /// Stored events normally recover provenance from the event store in
+    /// `notify_event_observers`; rejected expired-on-arrival events never enter
+    /// the store, so relay-pinned observed projections need the arrival source
+    /// carried on the event.
+    pub(in crate::kernel) fn notify_observers_for_verified_event_with_provenance(
         &self,
         verified: &crate::store::VerifiedEvent,
+        provenance: Option<&str>,
     ) {
         let now_secs = self.now_secs();
         let mut kernel_event = helpers::kernel_event_from_verified(verified);
         kernel_event.created_at = kernel_event.created_at.min(now_secs);
+        if let Some(provenance) = provenance {
+            kernel_event.relay_provenance.push(provenance.to_string());
+        }
         self.notify_event_observers(&kernel_event);
     }
 
