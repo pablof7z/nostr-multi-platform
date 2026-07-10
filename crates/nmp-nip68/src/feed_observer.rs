@@ -2,29 +2,31 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::ObservedProjectionSink;
-use nmp_feed::{EventLookup, FlatFeedItem};
+use nmp_feed::FlatFeedItem;
 
 use super::{PictureFeed, PictureFeedEntry};
 use crate::KIND_PICTURE_EVENT;
 
 /// Observer adapter that applies deletes and caller-owned suppression.
+///
+/// Reactive-only (#3124): every check below reads data the delivered event
+/// itself carries (its own tags, or an embedded payload) — never a by-id
+/// store peek. A repost target's author is provable only via the wrapper's
+/// `p` tag or an embedded event payload; a tag-only repost from a
+/// NIP-18-noncompliant client (no `p` tag) is an accepted gap, same class as
+/// the delete-before-target no-op below — resolved once the target itself is
+/// delivered and mute-checked directly.
 pub struct PictureFeedObserver {
     feed: Arc<PictureFeed>,
-    event_lookup: EventLookup,
     suppression: Arc<dyn SuppressionLookup>,
 }
 
 #[must_use]
 pub fn picture_feed_observer(
     feed: Arc<PictureFeed>,
-    event_lookup: EventLookup,
     suppression: Arc<dyn SuppressionLookup>,
 ) -> Arc<PictureFeedObserver> {
-    Arc::new(PictureFeedObserver {
-        feed,
-        event_lookup,
-        suppression,
-    })
+    Arc::new(PictureFeedObserver { feed, suppression })
 }
 
 impl ObservedProjectionSink for PictureFeedObserver {
@@ -84,21 +86,15 @@ impl PictureFeedObserver {
             self.feed.remove_item(&target_id);
             return true;
         }
+        // Target author proven only by the wrapper's own `p` tag or an
+        // embedded payload — never a by-id lookup (#3124).
         if record
-            .embedded_event
-            .as_ref()
-            .is_some_and(|target| self.suppression.is_suppressed_author(&target.author))
+            .target_author_pubkey
+            .as_deref()
+            .is_some_and(|author| self.suppression.is_suppressed_author(author))
         {
             self.feed.remove_item(&target_id);
             return true;
-        }
-        if let Some(target) = (self.event_lookup)(&target_id) {
-            if self.suppression.is_suppressed_author(&target.author)
-                || self.suppression.is_suppressed_event(&target.id)
-            {
-                self.feed.remove_item(&target_id);
-                return true;
-            }
         }
         false
     }

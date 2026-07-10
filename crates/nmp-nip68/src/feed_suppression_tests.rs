@@ -47,6 +47,7 @@ fn tag_only_picture_repost(
     id: &str,
     author: &str,
     target_id: &str,
+    target_author: &str,
     created_at: u64,
 ) -> KernelEvent {
     KernelEvent {
@@ -56,6 +57,7 @@ fn tag_only_picture_repost(
         created_at,
         tags: vec![
             vec!["e".to_string(), target_id.to_string()],
+            vec!["p".to_string(), target_author.to_string()],
             vec!["k".to_string(), KIND_PICTURE_EVENT.to_string()],
         ],
         content: String::new(),
@@ -99,7 +101,7 @@ impl SuppressionLookup for TestSuppression {
 fn muted_reposter_removes_only_that_source_not_visible_target() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let suppression = Arc::new(TestSuppression::default());
-    let observer = picture_feed_observer(feed.clone(), Arc::new(|_| None), suppression.clone());
+    let observer = picture_feed_observer(feed.clone(), suppression.clone());
 
     observer.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
     suppression.suppress_author("carol");
@@ -121,7 +123,7 @@ fn muted_embedded_target_author_blocks_repost_wrapper() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|author| author == "carol")));
     let suppression = Arc::new(TestSuppression::default());
     suppression.suppress_author("bob");
-    let observer = picture_feed_observer(feed.clone(), Arc::new(|_| None), suppression);
+    let observer = picture_feed_observer(feed.clone(), suppression);
 
     observer.on_kernel_event(&repost(
         "wrapper",
@@ -134,33 +136,61 @@ fn muted_embedded_target_author_blocks_repost_wrapper() {
 }
 
 #[test]
-fn muted_cached_target_author_blocks_tag_only_repost() {
-    let target = event("target", "bob", KIND_PICTURE_EVENT, 20);
+fn muted_p_tagged_target_author_blocks_tag_only_repost() {
+    // A compliant tag-only repost carries a `p` tag naming the target's
+    // author (NIP-18 §"reposts SHOULD include a `p` tag..."; `build_repost_event`
+    // always emits it when the author is known) — provable from the
+    // wrapper's own tags, zero by-id lookup (#3124).
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|author| author == "carol")));
     let suppression = Arc::new(TestSuppression::default());
     suppression.suppress_author("bob");
-    let observer = picture_feed_observer(
-        feed.clone(),
-        Arc::new(move |id| {
-            if id == "target" {
-                Some(target.clone())
-            } else {
-                None
-            }
-        }),
-        suppression,
-    );
+    let observer = picture_feed_observer(feed.clone(), suppression);
 
-    observer.on_kernel_event(&tag_only_picture_repost("wrapper", "carol", "target", 40));
+    observer.on_kernel_event(&tag_only_picture_repost(
+        "wrapper", "carol", "target", "bob", 40,
+    ));
 
     assert!(feed.is_empty());
+}
+
+#[test]
+fn tag_only_repost_without_p_tag_is_not_suppressed_until_target_delivered() {
+    // Non-compliant wrapper (no `p` tag, no embedded payload): the target
+    // author is genuinely unknown at delivery time. This is the accepted gap
+    // (#3124) — never closed via a by-id lookup. The row surfaces as a
+    // placeholder and is suppressed once the target itself arrives and is
+    // checked directly, same as any other admitted-then-muted row.
+    let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|author| author == "carol")));
+    let suppression = Arc::new(TestSuppression::default());
+    suppression.suppress_author("bob");
+    let observer = picture_feed_observer(feed.clone(), suppression.clone());
+
+    observer.on_kernel_event(&KernelEvent {
+        id: "wrapper".to_string(),
+        author: "carol".to_string(),
+        kind: nmp_nip18::KIND_GENERIC_REPOST,
+        created_at: 40,
+        tags: vec![
+            vec!["e".to_string(), "target".to_string()],
+            vec!["k".to_string(), KIND_PICTURE_EVENT.to_string()],
+        ],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+    assert_eq!(feed.len(), 1, "tag-only repost without proof admits a placeholder");
+
+    observer.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
+    assert!(
+        feed.is_empty(),
+        "muted target author is caught once the target itself is delivered"
+    );
 }
 
 #[test]
 fn suppressing_repost_event_reveals_remaining_target_source() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let suppression = Arc::new(TestSuppression::default());
-    let observer = picture_feed_observer(feed.clone(), Arc::new(|_| None), suppression.clone());
+    let observer = picture_feed_observer(feed.clone(), suppression.clone());
     observer.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
     observer.on_kernel_event(&repost(
         "wrapper",

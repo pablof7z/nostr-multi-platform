@@ -172,7 +172,6 @@ fn delete_removes_only_author_owned_picture_rows() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let observer = picture_feed_observer(
         feed.clone(),
-        Arc::new(|_| None),
         nmp_core::substrate::empty_suppression_lookup(),
     );
     feed.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
@@ -208,7 +207,6 @@ fn delete_removes_picture_repost_row_by_wrapper_id() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let observer = picture_feed_observer(
         feed.clone(),
-        Arc::new(|_| None),
         nmp_core::substrate::empty_suppression_lookup(),
     );
     let target = event("target", "bob", KIND_PICTURE_EVENT, 20);
@@ -255,7 +253,6 @@ fn kind5_a_tag_delete_is_noop_for_non_addressable_picture_rows() {
     let feed = PictureFeed::new(picture_feed_predicate(Arc::new(|_| true)));
     let observer = picture_feed_observer(
         feed.clone(),
-        Arc::new(|_| None),
         nmp_core::substrate::empty_suppression_lookup(),
     );
     feed.on_kernel_event(&event("target", "bob", KIND_PICTURE_EVENT, 20));
