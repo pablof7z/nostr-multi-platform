@@ -76,7 +76,10 @@ impl ReadHost for FakeHost {
     fn read_demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reducer(projection_key)
     }
-    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+    fn read_demand_set_reconciler(
+        &self,
+        projection_key: &str,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reconciler(projection_key)
     }
 }
@@ -130,7 +133,7 @@ fn each_key_mounts_its_own_independent_read_session() {
     let mut desired = BTreeMap::new();
     desired.insert("group-1".to_string(), "group-1".to_string());
     desired.insert("group-2".to_string(), "group-2".to_string());
-    collection.reconcile(desired);
+    collection.reconcile(desired).expect("reconcile succeeds");
 
     assert_eq!(collection.live_count(), 2);
     assert_eq!(
@@ -139,7 +142,7 @@ fn each_key_mounts_its_own_independent_read_session() {
         "two independent read-sessions, one per key"
     );
 
-    collection.close();
+    collection.close().expect("close succeeds");
     assert_eq!(collection.live_count(), 0);
     assert_eq!(host.registry.live_count(), 0);
 }

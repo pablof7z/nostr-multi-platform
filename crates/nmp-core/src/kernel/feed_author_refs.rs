@@ -145,7 +145,9 @@ impl Kernel {
                 desired.insert((consumer_id.clone(), key), ());
             }
         }
-        let commands = self.feed_author_reconciler.reconcile(desired);
+        let Ok(commands) = self.feed_author_reconciler.reconcile(desired) else {
+            return Vec::new();
+        };
         let out = self.apply_feed_author_ref_commands(commands);
         #[cfg(debug_assertions)]
         self.warn_unresolved_feed_authors(&live_consumers);
@@ -234,7 +236,9 @@ impl Kernel {
             .filter(|(c, _)| c.as_str() != consumer_id)
             .flat_map(|(c, keys)| keys.iter().map(move |k| ((c.clone(), k.clone()), ())))
             .collect();
-        let commands = self.feed_author_reconciler.reconcile(desired);
+        let Ok(commands) = self.feed_author_reconciler.reconcile(desired) else {
+            return Vec::new();
+        };
         self.apply_feed_author_ref_commands(commands)
     }
 

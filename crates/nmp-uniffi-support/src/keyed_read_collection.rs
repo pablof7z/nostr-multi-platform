@@ -167,11 +167,11 @@ mod tests {
         let mut desired = BTreeMap::new();
         desired.insert("group-1".to_string(), "group-1".to_string());
         desired.insert("group-2".to_string(), "group-2".to_string());
-        collection.reconcile(desired);
+        collection.reconcile(desired).expect("reconcile succeeds");
         assert_eq!(collection.live_count(), 2);
         assert!(collection.full_recompute_matches());
 
-        collection.close();
+        collection.close().expect("close succeeds");
         assert_eq!(collection.live_count(), 0);
     }
 
@@ -197,11 +197,11 @@ mod tests {
 
         let mut desired = BTreeMap::new();
         desired.insert("group-1".to_string(), "group-1".to_string());
-        collection.reconcile(desired);
+        collection.reconcile(desired).expect("reconcile succeeds");
         assert_eq!(collection.live_count(), 1);
         assert!(collection.full_recompute_matches());
 
-        collection.close();
+        collection.close().expect("close succeeds");
         assert_eq!(collection.live_count(), 0);
     }
 }

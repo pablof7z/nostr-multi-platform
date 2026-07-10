@@ -22,13 +22,13 @@
 //! with one scope and one `BTreeMap<K, C>` input. Each
 //! [`KeyedReconciler::reconcile`] call stages the caller's current desired
 //! map as that input and commits: Trellis diffs it against the previously
-//! committed map and returns an ORDERED `Vec<ResourceCommand<C>>` — `Open`
-//! for a newly-desired key, `Replace` for a key whose payload changed,
-//! `Close` for a key no longer desired. The caller (the host) applies these
-//! commands **in Vec order** against its own real resources — order is
-//! load-bearing (trellis-core's own scope-teardown ordering guarantee is
-//! LIFO close, and that correctness lives in the plan's order) and must
-//! never be sorted or parallelized.
+//! committed map and returns either an explicit internal error or an ORDERED
+//! `Vec<ResourceCommand<C>>` — `Open` for a newly-desired key, `Replace` for a
+//! key whose payload changed, `Close` for a key no longer desired. The caller
+//! (the host) applies these commands **in Vec order** against its own real
+//! resources — order is load-bearing (trellis-core's own scope-teardown
+//! ordering guarantee is LIFO close, and that correctness lives in the plan's
+//! order) and must never be sorted or parallelized.
 //!
 //! # What this core does NOT own
 //!
@@ -63,6 +63,18 @@ use trellis_core::{
     DependencyList, Graph, GraphResult, InputNode, ResourceCommand, ResourceKey, ResourcePlan,
     ScopeId,
 };
+
+/// Internal failure reported by [`KeyedReconciler`] when Trellis reconciliation
+/// did not produce a valid plan.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum KeyedReconcilerError {
+    LockPoisoned,
+    Closed,
+    BeginTransaction,
+    SetInput,
+    Commit,
+    CloseScope,
+}
 
 /// One reusable Trellis-backed keyed reconciler. See module docs.
 pub struct KeyedReconciler<K, C>
@@ -136,14 +148,17 @@ where
     /// Reconciles the live member set to exactly `desired`, returning the
     /// ordered resource plan (apply in `Vec` order — see module docs).
     ///
-    /// D6 — a poisoned lock or a failed commit degrades to an empty plan
-    /// rather than a panic; the graph's last-committed state stays the
-    /// source of truth for the next call.
-    #[must_use]
-    pub fn reconcile(&self, desired: BTreeMap<K, C>) -> Vec<ResourceCommand<C>> {
-        let Ok(mut inner) = self.inner.lock() else {
-            return Vec::new();
-        };
+    /// D6 — failures are explicit internal state, not panics and not silent
+    /// no-op plans. The graph's last-committed state stays the source of truth
+    /// for the next call.
+    pub fn reconcile(
+        &self,
+        desired: BTreeMap<K, C>,
+    ) -> Result<Vec<ResourceCommand<C>>, KeyedReconcilerError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| KeyedReconcilerError::LockPoisoned)?;
         inner.reconcile(desired)
     }
 
@@ -151,21 +166,19 @@ where
     /// every still-live member exactly once in reverse-acquisition (LIFO)
     /// order (substrate-guaranteed by trellis-core's scope-close ordering). Idempotent: a second
     /// call after close returns an empty plan, never a panic (D6).
-    #[must_use]
-    pub fn close(&self) -> Vec<ResourceCommand<C>> {
-        let Ok(mut inner) = self.inner.lock() else {
-            return Vec::new();
-        };
+    pub fn close(&self) -> Result<Vec<ResourceCommand<C>>, KeyedReconcilerError> {
+        let mut inner = self
+            .inner
+            .lock()
+            .map_err(|_| KeyedReconcilerError::LockPoisoned)?;
         inner.close()
     }
 
     /// Runs Trellis's own `FullRecomputeCheck` oracle against this
-    /// reconciler's graph and returns whether incremental state matches a
-    /// full recompute from canonical inputs. The leak-audit oracle every
-    /// migrated reconciler wires into its equivalence harness (#3115/#3116):
-    /// any owner-set divergence between the incremental path (what
-    /// `reconcile`/`close` actually produced) and a full recompute is a
-    /// leak, by construction. A poisoned lock degrades to `false` (D6).
+    /// reconciler's graph and returns whether incremental graph state matches
+    /// a full recompute from canonical inputs. This is an internal graph
+    /// consistency check only: it does not prove a host successfully applied
+    /// the returned resource commands.
     #[must_use]
     pub fn full_recompute_matches(&self) -> bool {
         let Ok(inner) = self.inner.lock() else {
@@ -180,39 +193,38 @@ where
     K: Clone + Ord + Send + Sync + 'static,
     C: Clone + PartialEq + Send + Sync + 'static,
 {
-    fn reconcile(&mut self, desired: BTreeMap<K, C>) -> Vec<ResourceCommand<C>> {
+    fn reconcile(
+        &mut self,
+        desired: BTreeMap<K, C>,
+    ) -> Result<Vec<ResourceCommand<C>>, KeyedReconcilerError> {
         if self.closed {
-            return Vec::new();
+            return Err(KeyedReconcilerError::Closed);
         }
-        let Ok(mut tx) = self.graph.begin_transaction() else {
-            return Vec::new();
-        };
-        if tx.set_input(self.demand_input, desired).is_err() {
-            return Vec::new();
-        }
-        let Ok(result) = tx.commit() else {
-            return Vec::new();
-        };
+        let mut tx = self
+            .graph
+            .begin_transaction()
+            .map_err(|_| KeyedReconcilerError::BeginTransaction)?;
+        tx.set_input(self.demand_input, desired)
+            .map_err(|_| KeyedReconcilerError::SetInput)?;
+        let result = tx.commit().map_err(|_| KeyedReconcilerError::Commit)?;
         drop(tx);
-        result.resource_plan.into_commands()
+        Ok(result.resource_plan.into_commands())
     }
 
-    fn close(&mut self) -> Vec<ResourceCommand<C>> {
+    fn close(&mut self) -> Result<Vec<ResourceCommand<C>>, KeyedReconcilerError> {
         if self.closed {
-            return Vec::new();
+            return Ok(Vec::new());
         }
+        let mut tx = self
+            .graph
+            .begin_transaction()
+            .map_err(|_| KeyedReconcilerError::BeginTransaction)?;
+        tx.close_scope(self.scope)
+            .map_err(|_| KeyedReconcilerError::CloseScope)?;
+        let result = tx.commit().map_err(|_| KeyedReconcilerError::Commit)?;
         self.closed = true;
-        let Ok(mut tx) = self.graph.begin_transaction() else {
-            return Vec::new();
-        };
-        if tx.close_scope(self.scope).is_err() {
-            return Vec::new();
-        }
-        let Ok(result) = tx.commit() else {
-            return Vec::new();
-        };
         drop(tx);
-        result.resource_plan.into_commands()
+        Ok(result.resource_plan.into_commands())
     }
 }
 

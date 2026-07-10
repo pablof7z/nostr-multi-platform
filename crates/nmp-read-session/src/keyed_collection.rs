@@ -68,7 +68,7 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::trellis_reconciler::KeyedReconciler;
+use nmp_core::trellis_reconciler::{KeyedReconciler, KeyedReconcilerError};
 use trellis_core::{ResourceCommand, ResourceKey};
 
 use crate::registry::TeardownAction;
@@ -181,25 +181,25 @@ where
     /// `open`/teardown closure runs ([`KeyedReconciler::reconcile`] computes
     /// and returns the plan under its lock, dropping it on return, strictly
     /// before this method calls [`Self::apply`]).
-    pub fn reconcile(&self, desired: BTreeMap<K, C>) {
-        let commands = self.reconciler.reconcile(desired);
+    pub fn reconcile(&self, desired: BTreeMap<K, C>) -> Result<(), KeyedReconcilerError> {
+        let commands = self.reconciler.reconcile(desired)?;
         self.apply(commands);
+        Ok(())
     }
 
     /// Closes the collection: the FINAL teardown plan, withdrawing every
     /// still-live member exactly once in reverse-acquisition (LIFO) order
     /// (substrate-guaranteed by trellis-core's scope-close ordering).
     /// Idempotent: a second call after close is a no-op, never a panic (D6).
-    pub fn close(&self) {
-        let commands = self.reconciler.close();
+    pub fn close(&self) -> Result<(), KeyedReconcilerError> {
+        let commands = self.reconciler.close()?;
         self.apply(commands);
+        Ok(())
     }
 
     /// Runs Trellis's own `FullRecomputeCheck` oracle against this
-    /// collection's graph — the cross-session leak-audit oracle every
-    /// migrated reconciler wires into its equivalence harness (#3115/#3116):
-    /// any owner-set divergence between the incremental path and a full
-    /// recompute from canonical inputs is a leak, by construction.
+    /// collection's graph. This proves only internal Trellis graph consistency;
+    /// it does not prove the host successfully mounted each live resource.
     #[must_use]
     pub fn full_recompute_matches(&self) -> bool {
         self.reconciler.full_recompute_matches()
