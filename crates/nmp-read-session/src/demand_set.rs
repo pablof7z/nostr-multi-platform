@@ -49,7 +49,10 @@ use nmp_core::ObservedProjectionSink;
 use trellis_core::{ResourceCommand, ResourceKey};
 
 use crate::engine::replay_shapes_for;
-use crate::host::{KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHost, ReadReplayPolicy};
+use crate::host::{
+    DemandSetReconciler, KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHost,
+    ReadReplayPolicy,
+};
 use crate::registry::{DemandSetMembers, DemandSetState, ReadSessionBuild};
 use crate::ReadHandle;
 
@@ -143,7 +146,15 @@ pub fn reconcile_read_demand_set(
     let Some(members) = host.read_demand_set_members(projection_key) else {
         return false;
     };
-    let Some(reconciler) = host.read_demand_set_reconciler(projection_key) else {
+    // `read_demand_set_reconciler` hands back the reconciler type-erased
+    // (#3130 — a host impl lives on a scanned public-surface crate, and even
+    // the `DemandSetReconciler` alias must not name a raw Trellis type
+    // there); this module is the ONE place that downcasts it back, since it
+    // is the sole owner of the concrete type.
+    let Some(reconciler) = host
+        .read_demand_set_reconciler(projection_key)
+        .and_then(|erased| erased.downcast::<DemandSetReconciler>().ok())
+    else {
         return false;
     };
 

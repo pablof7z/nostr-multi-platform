@@ -6,8 +6,8 @@ use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_ownership::ProjectionRegistrationKey;
 use nmp_read_session::{
-    DemandSetMembers, DemandSetReconciler, ReadHost, ReadOutputEncoder, ReadSessionBuild,
-    ReadSessionId, ReadSessionRegistry, TeardownAction,
+    DemandSetMembers, ReadHost, ReadOutputEncoder, ReadSessionBuild, ReadSessionId,
+    ReadSessionRegistry, TeardownAction,
 };
 
 use super::*;
@@ -102,7 +102,7 @@ impl ReadHost for FakeHost {
         self.registry.demand_set_reducer(projection_key)
     }
 
-    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reconciler(projection_key)
     }
 }

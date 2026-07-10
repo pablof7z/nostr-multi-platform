@@ -10,7 +10,7 @@ use nmp_core::substrate::{KernelEvent, ObservedProjection};
 use nmp_core::{ObservedProjectionId, ObservedProjectionSink};
 use nmp_ownership::{DynamicProjectionKey, ProjectionRegistrationKey};
 
-use crate::host::{DemandSetReconciler, ReadDemand};
+use crate::host::ReadDemand;
 use crate::registry::{DemandSetMembers, ReadSessionBuild, ReadSessionId, ReadSessionRegistry};
 use crate::{
     close_read, open_read, ReadHandle, ReadHost, ReadOutputEncoder, ReadReplayPolicy, ReadSpec,
@@ -76,7 +76,7 @@ impl ReadHost for FakeHost {
     fn read_demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reducer(projection_key)
     }
-    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reconciler(projection_key)
     }
 }

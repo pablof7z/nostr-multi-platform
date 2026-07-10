@@ -96,7 +96,7 @@ impl ReadHost for FakeHost {
     fn read_demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reducer(projection_key)
     }
-    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<DemandSetReconciler>> {
+    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reconciler(projection_key)
     }
 }
@@ -333,6 +333,7 @@ fn full_recompute_oracle_and_converged_membership_across_a_reconcile_script() {
 
     let reconciler = host
         .read_demand_set_reconciler(projection_key)
+        .and_then(|erased| erased.downcast::<DemandSetReconciler>().ok())
         .expect("a demand-set session registers its Trellis reconciler");
     assert!(reconciler.full_recompute_matches());
     assert_eq!(

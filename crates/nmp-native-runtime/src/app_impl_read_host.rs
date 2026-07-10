@@ -104,7 +104,7 @@ impl ReadHost for NmpApp {
     fn read_demand_set_reconciler(
         &self,
         projection_key: &str,
-    ) -> Option<std::sync::Arc<nmp_read_session::DemandSetReconciler>> {
+    ) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
         self.read_host().read_demand_set_reconciler(projection_key)
     }
 }

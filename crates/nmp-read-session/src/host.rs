@@ -319,8 +319,18 @@ pub trait ReadHost {
     }
 
     /// The persistent [`DemandSetReconciler`] of the demand-set session
-    /// registered under `projection_key` (#3116). See
-    /// [`Self::read_session_id_for_projection_key`] for the
+    /// registered under `projection_key` (#3116), type-erased ([`Any`]) for
+    /// the same reason [`Self::read_demand_set_reducer`] is: a host
+    /// implementation lives on a scanned public-surface crate
+    /// (`nmp-native-runtime`, `nmp-browser-runtime`), and naming the raw
+    /// Trellis-backed [`DemandSetReconciler`] alias there — even though it
+    /// hides the literal `ResourceCommand`/`trellis_core` tokens — still
+    /// carries raw Trellis vocabulary across that boundary, defeating the
+    /// public-surface leak scan by type-laundering rather than closing it
+    /// (#3130). Only [`crate::demand_set::reconcile_read_demand_set`], which
+    /// knows the concrete type, downcasts the result back.
+    ///
+    /// See [`Self::read_session_id_for_projection_key`] for the
     /// degrade-gracefully contract when a host returns `None` — a host that
     /// cannot introspect its own registry degrades `reconcile_read_demand_set`
     /// to "no live session found", the same fallback an unknown projection
@@ -328,7 +338,7 @@ pub trait ReadHost {
     fn read_demand_set_reconciler(
         &self,
         _projection_key: &str,
-    ) -> Option<Arc<DemandSetReconciler>> {
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
         None
     }
 }
