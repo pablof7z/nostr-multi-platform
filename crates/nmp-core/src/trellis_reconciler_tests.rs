@@ -6,10 +6,11 @@
 //! at every step.
 
 use std::collections::BTreeMap;
+use std::panic::AssertUnwindSafe;
 
 use trellis_core::{ResourceCommand, ResourceKey};
 
-use super::KeyedReconciler;
+use super::{KeyedReconciler, KeyedReconcilerError};
 
 fn reconciler() -> KeyedReconciler<String, u32> {
     KeyedReconciler::new("test-scope", |key: &String| ResourceKey::new(key.clone()))
@@ -21,6 +22,19 @@ fn desired(pairs: &[(&str, u32)]) -> BTreeMap<String, u32> {
         .iter()
         .map(|(key, value)| ((*key).to_string(), *value))
         .collect()
+}
+
+fn reconcile(
+    reconciler: &KeyedReconciler<String, u32>,
+    pairs: &[(&str, u32)],
+) -> Vec<ResourceCommand<u32>> {
+    reconciler
+        .reconcile(desired(pairs))
+        .expect("reconcile succeeds")
+}
+
+fn close(reconciler: &KeyedReconciler<String, u32>) -> Vec<ResourceCommand<u32>> {
+    reconciler.close().expect("close succeeds")
 }
 
 fn opened_keys(commands: &[ResourceCommand<u32>]) -> Vec<String> {
@@ -46,7 +60,7 @@ fn closed_keys(commands: &[ResourceCommand<u32>]) -> Vec<String> {
 #[test]
 fn first_reconcile_opens_every_desired_member() {
     let reconciler = reconciler();
-    let commands = reconciler.reconcile(desired(&[("a", 1), ("b", 2)]));
+    let commands = reconcile(&reconciler, &[("a", 1), ("b", 2)]);
     assert_eq!(opened_keys(&commands), vec!["a", "b"]);
     assert!(reconciler.full_recompute_matches());
 }
@@ -54,9 +68,9 @@ fn first_reconcile_opens_every_desired_member() {
 #[test]
 fn reconcile_adds_a_new_member_without_touching_the_existing_one() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1), ("b", 2)]));
+    let _ = reconcile(&reconciler, &[("a", 1), ("b", 2)]);
 
-    let commands = reconciler.reconcile(desired(&[("a", 1), ("b", 2), ("c", 3)]));
+    let commands = reconcile(&reconciler, &[("a", 1), ("b", 2), ("c", 3)]);
     assert_eq!(opened_keys(&commands), vec!["c"]);
     assert!(
         closed_keys(&commands).is_empty(),
@@ -68,9 +82,9 @@ fn reconcile_adds_a_new_member_without_touching_the_existing_one() {
 #[test]
 fn reconcile_closes_a_member_no_longer_desired() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1), ("b", 2)]));
+    let _ = reconcile(&reconciler, &[("a", 1), ("b", 2)]);
 
-    let commands = reconciler.reconcile(desired(&[("b", 2)]));
+    let commands = reconcile(&reconciler, &[("b", 2)]);
     assert_eq!(closed_keys(&commands), vec!["a"]);
     assert!(
         opened_keys(&commands).is_empty(),
@@ -82,10 +96,14 @@ fn reconcile_closes_a_member_no_longer_desired() {
 #[test]
 fn reconcile_replaces_a_live_member_whose_payload_changed() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1)]));
+    let _ = reconcile(&reconciler, &[("a", 1)]);
 
-    let commands = reconciler.reconcile(desired(&[("a", 2)]));
-    assert_eq!(commands.len(), 1, "a payload change is one Replace: {commands:?}");
+    let commands = reconcile(&reconciler, &[("a", 2)]);
+    assert_eq!(
+        commands.len(),
+        1,
+        "a payload change is one Replace: {commands:?}"
+    );
     match &commands[0] {
         ResourceCommand::Replace { key, command, .. } => {
             assert_eq!(key.as_str(), "a");
@@ -99,9 +117,9 @@ fn reconcile_replaces_a_live_member_whose_payload_changed() {
 #[test]
 fn reconcile_leaves_an_unchanged_member_untouched() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1)]));
+    let _ = reconcile(&reconciler, &[("a", 1)]);
 
-    let commands = reconciler.reconcile(desired(&[("a", 1)]));
+    let commands = reconcile(&reconciler, &[("a", 1)]);
     assert!(
         commands.is_empty(),
         "an unchanged key/payload pair must not emit any command: {commands:?}"
@@ -112,11 +130,11 @@ fn reconcile_leaves_an_unchanged_member_untouched() {
 #[test]
 fn close_drains_every_member_in_reverse_acquisition_order() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1)]));
-    let _ = reconciler.reconcile(desired(&[("a", 1), ("b", 2)]));
-    let _ = reconciler.reconcile(desired(&[("a", 1), ("b", 2), ("c", 3)]));
+    let _ = reconcile(&reconciler, &[("a", 1)]);
+    let _ = reconcile(&reconciler, &[("a", 1), ("b", 2)]);
+    let _ = reconcile(&reconciler, &[("a", 1), ("b", 2), ("c", 3)]);
 
-    let commands = reconciler.close();
+    let commands = close(&reconciler);
     assert_eq!(
         closed_keys(&commands),
         vec!["c", "b", "a"],
@@ -127,23 +145,41 @@ fn close_drains_every_member_in_reverse_acquisition_order() {
 #[test]
 fn close_is_idempotent() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1)]));
-    let first = reconciler.close();
+    let _ = reconcile(&reconciler, &[("a", 1)]);
+    let first = close(&reconciler);
     assert_eq!(closed_keys(&first), vec!["a"]);
 
-    let second = reconciler.close();
-    assert!(second.is_empty(), "a second close is a no-op, never a panic");
+    let second = close(&reconciler);
+    assert!(
+        second.is_empty(),
+        "a second close is a no-op, never a panic"
+    );
 }
 
 #[test]
-fn reconcile_after_close_is_a_no_op() {
+fn reconcile_after_close_reports_closed() {
     let reconciler = reconciler();
-    let _ = reconciler.reconcile(desired(&[("a", 1)]));
-    let _ = reconciler.close();
+    let _ = reconcile(&reconciler, &[("a", 1)]);
+    let _ = close(&reconciler);
 
-    let commands = reconciler.reconcile(desired(&[("z", 9)]));
-    assert!(
-        commands.is_empty(),
-        "a closed reconciler ignores further reconcile calls"
+    assert_eq!(
+        reconciler.reconcile(desired(&[("z", 9)])),
+        Err(KeyedReconcilerError::Closed),
+        "a closed reconciler reports its state instead of returning a false no-op"
+    );
+}
+
+#[test]
+fn poisoned_lock_is_reported_not_conflated_with_no_op() {
+    let reconciler = reconciler();
+    let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        let _guard = reconciler.inner.lock().unwrap();
+        panic!("poison reconciler lock for deterministic failure");
+    }));
+
+    assert_eq!(
+        reconciler.reconcile(desired(&[("a", 1)])),
+        Err(KeyedReconcilerError::LockPoisoned),
+        "internal failure must not look like a successful empty plan"
     );
 }

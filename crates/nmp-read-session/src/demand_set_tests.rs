@@ -32,6 +32,7 @@ struct FakeHost {
     registry: ReadSessionRegistry,
     log: Arc<Mutex<Vec<String>>>,
     next_interest: Arc<AtomicU64>,
+    fail_next_open_for: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl FakeHost {
@@ -40,7 +41,14 @@ impl FakeHost {
             registry: ReadSessionRegistry::default(),
             log: Arc::new(Mutex::new(Vec::new())),
             next_interest: Arc::new(AtomicU64::new(1)),
+            fail_next_open_for: Arc::new(Mutex::new(BTreeSet::new())),
         }
+    }
+    fn fail_next_open_for(&self, relay: &str) {
+        self.fail_next_open_for
+            .lock()
+            .unwrap()
+            .insert(relay.to_string());
     }
     fn push(&self, entry: impl Into<String>) {
         self.log.lock().unwrap().push(entry.into());
@@ -55,6 +63,19 @@ impl ReadHost for FakeHost {
         self.push(format!("install:{}", key.as_str()));
     }
     fn open_read_interest(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        if decl.relay_pin.as_ref().is_some_and(|relay| {
+            self.fail_next_open_for
+                .lock()
+                .unwrap()
+                .remove(relay.as_str())
+        }) {
+            self.push(format!(
+                "open_failed:{}:{}",
+                decl.consumer_id,
+                decl.relay_pin.clone().unwrap_or_default()
+            ));
+            return ObservedProjectionId(0);
+        }
         let id = self.next_interest.fetch_add(1, Ordering::Relaxed);
         self.push(format!(
             "open:{}:{}",
@@ -96,7 +117,10 @@ impl ReadHost for FakeHost {
     fn read_demand_set_reducer(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reducer(projection_key)
     }
-    fn read_demand_set_reconciler(&self, projection_key: &str) -> Option<Arc<dyn Any + Send + Sync>> {
+    fn read_demand_set_reconciler(
+        &self,
+        projection_key: &str,
+    ) -> Option<Arc<dyn Any + Send + Sync>> {
         self.registry.demand_set_reconciler(projection_key)
     }
 }
@@ -289,6 +313,69 @@ fn a_demand_set_may_open_with_zero_members_and_stays_tracked() {
     );
 }
 
+#[test]
+fn failed_host_open_retries_on_unchanged_desired_and_oracle_stays_internal() {
+    let host = FakeHost::new();
+    let sink = Arc::new(RecordingSink::default());
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&sink) as _;
+    let reducer: Arc<dyn Any + Send + Sync> = Arc::clone(&sink) as _;
+    let projection_key = "app.test.failed-open";
+    let _handle = open_read_demand_set(
+        &host,
+        ReadDemandSetSpec {
+            projection_key: key(projection_key),
+            members: Vec::new(),
+            observer: Arc::clone(&observer),
+            reducer,
+            output_encoder: Box::new(|| None),
+        },
+    );
+    let reconciler = host
+        .read_demand_set_reconciler(projection_key)
+        .and_then(|erased| erased.downcast::<DemandSetReconciler>().ok())
+        .expect("a demand-set session registers its Trellis reconciler");
+
+    host.fail_next_open_for("wss://a.example");
+    assert!(reconcile_read_demand_set(
+        &host,
+        projection_key,
+        &observer,
+        vec![member("wss://a.example")],
+    ));
+    assert!(
+        reconciler.full_recompute_matches(),
+        "Trellis full recompute remains true after the graph commits desired A"
+    );
+    assert!(
+        live_member_keys(&host, projection_key).is_empty(),
+        "the host has not applied A even though the Trellis graph is internally consistent"
+    );
+
+    assert!(reconcile_read_demand_set(
+        &host,
+        projection_key,
+        &observer,
+        vec![member("wss://a.example")],
+    ));
+    assert_eq!(
+        live_member_keys(&host, projection_key),
+        relay_set(&["wss://a.example"]),
+        "unchanged desired state retries the missing host open"
+    );
+    let log = host.log();
+    assert!(
+        log.iter().any(|entry| entry.starts_with("open_failed:")),
+        "the first host open deterministically failed: {log:?}"
+    );
+    assert_eq!(
+        log.iter()
+            .filter(|entry| entry.starts_with("open:"))
+            .count(),
+        1,
+        "the unchanged desired retry performs exactly one successful host open: {log:?}"
+    );
+}
+
 // --- #3116 equivalence proof -----------------------------------------------
 //
 // `reconcile_read_demand_set` used to hand-roll its own `HashSet` diff; #3116
@@ -297,11 +384,10 @@ fn a_demand_set_may_open_with_zero_members_and_stays_tracked() {
 // only to delete it a few lines later in this same PR, this proves
 // equivalence directly against the ONE implementation that ships: at every
 // step of a reconcile script, (a) Trellis's own `FullRecomputeCheck` oracle
-// must agree the incremental state equals a full recompute from canonical
-// inputs (the leak-audit oracle #3115/#3116 call for), and (b) the converged
-// member-teardown-map membership must equal the desired set EXACTLY — no
-// more, no fewer entries — which is the order-independent trace-set parity
-// the design asked for (Open/Close per key, not command order).
+// must agree the internal graph state equals a full recompute from canonical
+// inputs, and (b) the host-side member-teardown-map membership must equal the
+// desired set EXACTLY — no more, no fewer entries. The failed-open test above
+// keeps those claims separate: the oracle alone is not host-convergence proof.
 
 fn live_member_keys(host: &FakeHost, projection_key: &str) -> BTreeSet<String> {
     host.read_demand_set_members(projection_key)

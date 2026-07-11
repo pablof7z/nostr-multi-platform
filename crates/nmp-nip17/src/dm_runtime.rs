@@ -106,7 +106,7 @@ impl DmRuntimeState {
         let mut effects = Vec::new();
         let active_pubkey = active_pubkey.filter(|pk| !pk.is_empty());
         let Some(account) = active_pubkey else {
-            apply_peer_commands(&mut effects, self.peer_reconciler.reconcile(BTreeMap::new()));
+            apply_peer_reconcile(&mut effects, &self.peer_reconciler, BTreeMap::new());
             if let Some(previous_account) = self.last_inbox_pubkey.take() {
                 effects.push(DmRuntimeEffect::WithdrawOwnRelayListInterest(
                     previous_account,
@@ -123,7 +123,7 @@ impl DmRuntimeState {
                     previous_account.clone(),
                 ));
             }
-            apply_peer_commands(&mut effects, self.peer_reconciler.reconcile(BTreeMap::new()));
+            apply_peer_reconcile(&mut effects, &self.peer_reconciler, BTreeMap::new());
             self.last_inbox_pubkey = Some(account.to_string());
             effects.push(DmRuntimeEffect::PushInboxInterest(account.to_string()));
             effects.push(DmRuntimeEffect::PushOwnRelayListInterest(
@@ -147,7 +147,9 @@ impl DmRuntimeState {
         let peer_commands = self
             .peer_reconciler
             .reconcile(next_peers.into_iter().map(|peer| (peer, ())).collect());
-        apply_peer_commands(&mut effects, peer_commands);
+        if let Ok(peer_commands) = peer_commands {
+            apply_peer_commands(&mut effects, peer_commands);
+        }
 
         let event = build_dm_relay_list_event(read_relay_urls);
         let relay_urls = relay_urls_from_event(&event);
@@ -227,6 +229,16 @@ fn relay_urls_from_event(event: &UnsignedEvent) -> Vec<String> {
 /// so [`apply_peer_commands`] never needs a separate translation table.
 fn peer_resource_key(peer: &String) -> ResourceKey {
     ResourceKey::new(peer.clone())
+}
+
+fn apply_peer_reconcile(
+    effects: &mut Vec<DmRuntimeEffect>,
+    reconciler: &KeyedReconciler<String, ()>,
+    desired: BTreeMap<String, ()>,
+) {
+    if let Ok(commands) = reconciler.reconcile(desired) {
+        apply_peer_commands(effects, commands);
+    }
 }
 
 /// Applies a Trellis resource plan **in `Vec` order** — never sort or
@@ -388,9 +400,11 @@ mod tests {
             &relays(&["wss://a.example"]),
             &["bob".to_string()],
         );
-        assert!(effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
-            "bob".to_string()
-        )));
+        assert!(
+            effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
+                "bob".to_string()
+            ))
+        );
         assert!(state.peer_reconciler.full_recompute_matches());
 
         // Grow further: bob stays, carol joins — only carol pushes.
@@ -464,9 +478,11 @@ mod tests {
             &relays(&["wss://a.example"]),
             &["bob".to_string()],
         );
-        assert!(effects.contains(&DmRuntimeEffect::WithdrawPeerRelayListInterest(
-            "bob".to_string()
-        )));
+        assert!(
+            effects.contains(&DmRuntimeEffect::WithdrawPeerRelayListInterest(
+                "bob".to_string()
+            ))
+        );
         assert!(
             effects.contains(&DmRuntimeEffect::PushPeerRelayListInterest(
                 "bob".to_string()

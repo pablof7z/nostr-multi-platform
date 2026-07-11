@@ -40,7 +40,7 @@
 //! into real `ReadHost` calls. The hand-rolled `HashSet` diff this module
 //! used before #3116 is gone — Trellis IS the diff.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::ObservedProjection;
@@ -50,8 +50,7 @@ use trellis_core::{ResourceCommand, ResourceKey};
 
 use crate::engine::replay_shapes_for;
 use crate::host::{
-    DemandSetReconciler, KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHost,
-    ReadReplayPolicy,
+    DemandSetReconciler, KeyedReadDemand, ReadDemand, ReadDemandSetSpec, ReadHost, ReadReplayPolicy,
 };
 use crate::registry::{DemandSetMembers, DemandSetState, ReadSessionBuild};
 use crate::ReadHandle;
@@ -91,15 +90,18 @@ pub fn open_read_demand_set(host: &dyn ReadHost, spec: ReadDemandSetSpec) -> Rea
             .expect("fresh KeyedReconciler construction over an empty graph cannot fail"),
     );
 
-    let commands = reconciler.reconcile(desired_map(initial_members));
-    apply_demand_set_commands(host, &observer, &members, commands);
+    if let Ok(commands) = reconciler.reconcile(desired_map(initial_members)) {
+        apply_demand_set_commands(host, &observer, &members, commands);
+    }
 
     let members_for_close = Arc::clone(&members);
     let reconciler_for_close = Arc::clone(&reconciler);
     let close_all_members: crate::registry::TeardownAction = Box::new(move || {
-        for command in reconciler_for_close.close() {
-            if let ResourceCommand::Close { key, .. } = command {
-                withdraw_member(&members_for_close, key.as_str());
+        if let Ok(commands) = reconciler_for_close.close() {
+            for command in commands {
+                if let ResourceCommand::Close { key, .. } = command {
+                    withdraw_member(&members_for_close, key.as_str());
+                }
             }
         }
     });
@@ -158,8 +160,20 @@ pub fn reconcile_read_demand_set(
         return false;
     };
 
-    let commands = reconciler.reconcile(desired_map(desired));
+    let desired = desired_map(desired);
+    let retry_desired = desired.clone();
+    let Ok(commands) = reconciler.reconcile(desired) else {
+        return false;
+    };
+    let attempted_host_opens = planned_host_open_keys(&commands);
     apply_demand_set_commands(host, observer, &members, commands);
+    retry_missing_desired_members(
+        host,
+        observer,
+        &members,
+        retry_desired,
+        &attempted_host_opens,
+    );
 
     (host.teardown_mark_changed())();
     true
@@ -223,11 +237,45 @@ fn apply_demand_set_commands(
     }
 }
 
+fn planned_host_open_keys(commands: &[ResourceCommand<ReadDemand>]) -> BTreeSet<String> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            ResourceCommand::Open { key, .. } | ResourceCommand::Replace { key, .. } => {
+                Some(key.as_str().to_string())
+            }
+            ResourceCommand::Close { .. } | ResourceCommand::Refresh { .. } => None,
+        })
+        .collect()
+}
+
+fn retry_missing_desired_members(
+    host: &dyn ReadHost,
+    observer: &Arc<dyn ObservedProjectionSink>,
+    members: &DemandSetMembers,
+    desired: BTreeMap<String, ReadDemand>,
+    attempted_host_opens: &BTreeSet<String>,
+) {
+    let live: BTreeSet<String> = match members.lock() {
+        Ok(map) => map.keys().cloned().collect(),
+        Err(err) => err.into_inner().keys().cloned().collect(),
+    };
+    for (key, demand) in desired {
+        if live.contains(&key) || attempted_host_opens.contains(&key) {
+            continue;
+        }
+        open_one_member(host, observer, members, key, demand);
+    }
+}
+
 /// Removes and runs `key`'s recorded teardown action, if the member is
 /// currently live. A poisoned lock or an already-withdrawn key is a safe
 /// no-op (D6).
 fn withdraw_member(members: &DemandSetMembers, key: &str) {
-    let action = members.lock().ok().and_then(|mut map| map.remove(key));
+    let action = match members.lock() {
+        Ok(mut map) => map.remove(key),
+        Err(err) => err.into_inner().remove(key),
+    };
     if let Some(action) = action {
         action();
     }
@@ -271,9 +319,10 @@ fn open_one_member(
     };
     if id.0 != 0 {
         let action = host.teardown_close_interest(id);
-        if let Ok(mut map) = members.lock() {
-            map.insert(key, action);
-        }
+        members
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key, action);
     }
 }
 
