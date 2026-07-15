@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, PoisonError};
 
 #[cfg(test)]
 use crate::trellis_adapter_trace::{
     output_frame_kinds, resource_traces, FeedSessionOutputFrameKind, FeedSessionResourceTrace,
 };
-use nmp_core::actor::{ActorCommand, InterestsCommand};
+use nmp_core::actor::ActorCommand;
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::{CommandSender, DependentInterestDelta};
 use nmp_feed::{FeedShape, ProjectionKey, TeardownAction};
@@ -20,6 +20,7 @@ use crate::diagnostics::{
 };
 use crate::source::{AcquisitionInterest, ExtraAcquisition};
 use crate::trellis_adapter_command::FeedSessionTrellisCommand;
+use crate::trellis_adapter_delivery::FeedSessionDeliveryQueue;
 use crate::trellis_adapter_delta::FeedSessionResourceLedger;
 use crate::trellis_adapter_diagnostics::{diagnostic_batch, diagnostic_context};
 use crate::trellis_owner_cell::TrellisGraphCell;
@@ -47,6 +48,7 @@ pub(super) struct FeedSessionTrellisAdapter {
     sender: CommandSender,
     owner: SubOwnerKey,
     diagnostics: FeedSessionDiagnosticsHandle,
+    delivery: Arc<Mutex<FeedSessionDeliveryQueue>>,
 }
 
 struct FeedSessionTrellisInner {
@@ -201,6 +203,7 @@ impl FeedSessionTrellisAdapter {
             sender,
             owner,
             diagnostics,
+            delivery: Arc::new(Mutex::new(FeedSessionDeliveryQueue::default())),
         })
     }
 
@@ -218,18 +221,19 @@ impl FeedSessionTrellisAdapter {
         reason: &'static str,
         diagnostic_reason: FeedSessionDiagnosticReasonCode,
     ) -> bool {
+        let mut delivered = self.flush_pending_delivery();
         let diagnostics_enabled = self.diagnostics.is_enabled();
         let Some(outcome) = self.inner.with_mut("sync", |inner| {
             inner.sync(extra, diagnostics_enabled, diagnostic_reason, reason)
         }) else {
-            return false;
+            return delivered;
         };
         self.record_diagnostics(outcome.diagnostics);
         if let Some(delta) = outcome.interest_delta {
-            self.apply_delta(delta, reason);
-            return true;
+            self.queue_delta(delta, reason);
+            delivered |= self.flush_pending_delivery();
         }
-        false
+        delivered
     }
 
     #[cfg(test)]
@@ -273,18 +277,20 @@ impl FeedSessionTrellisAdapter {
     pub(super) fn close_action(&self, remove_projection: TeardownAction) -> TeardownAction {
         let adapter = self.clone();
         Box::new(move || {
+            adapter.flush_pending_delivery();
             let Some(outcome) = adapter.inner.with_mut("close", |inner| {
                 inner.close_scope(adapter.diagnostics.is_enabled())
             }) else {
                 return;
             };
             adapter.record_diagnostics(outcome.diagnostics);
-            if outcome.output_cleared {
-                remove_projection();
-            }
             if let Some(delta) = outcome.interest_delta {
-                adapter.apply_delta(delta, "feed-session-acquisition-close");
+                adapter.queue_delta(delta, "feed-session-acquisition-close");
             }
+            if outcome.output_cleared {
+                adapter.queue_output_clear(remove_projection);
+            }
+            adapter.flush_pending_delivery();
         })
     }
 
@@ -302,17 +308,30 @@ impl FeedSessionTrellisAdapter {
         })
     }
 
-    fn apply_delta(&self, delta: DependentInterestDelta, reason: &'static str) {
-        if delta.is_empty() {
-            return;
+    fn queue_delta(&self, delta: DependentInterestDelta, reason: &'static str) {
+        self.delivery
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_delta(delta, reason);
+    }
+
+    fn queue_output_clear(&self, action: TeardownAction) {
+        self.delivery
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_output_clear(action);
+    }
+
+    fn flush_pending_delivery(&self) -> bool {
+        let flush = self
+            .delivery
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .flush(&self.sender, self.owner);
+        if let Some(output_clear) = flush.output_clear {
+            output_clear();
         }
-        let _ = self.sender.send(ActorCommand::Interests(
-            InterestsCommand::ApplyDependentInterestDelta {
-                owner: self.owner,
-                delta,
-                reason: reason.to_string(),
-            },
-        ));
+        flush.delivered_delta
     }
 
     fn record_diagnostics(&self, diagnostics: Option<FeedSessionDiagnosticBatch>) {
@@ -391,7 +410,6 @@ impl FeedSessionTrellisInner {
         if self.closed {
             return None;
         }
-        self.closed = true;
         let mut tx = match self.graph.begin_transaction() {
             Ok(tx) => tx,
             Err(_) => return Some(FeedSessionCloseOutcome::best_effort()),
@@ -403,6 +421,7 @@ impl FeedSessionTrellisInner {
             Ok(result) => result,
             Err(_) => return Some(FeedSessionCloseOutcome::best_effort()),
         };
+        self.closed = true;
         drop(tx);
         #[cfg(test)]
         self.record_output_frames(&result.output_frames);
@@ -440,7 +459,7 @@ impl FeedSessionTrellisInner {
 impl FeedSessionCloseOutcome {
     fn best_effort() -> Self {
         Self {
-            output_cleared: true,
+            output_cleared: false,
             interest_delta: None,
             diagnostics: None,
         }
